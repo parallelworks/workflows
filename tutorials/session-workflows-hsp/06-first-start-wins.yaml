@@ -13,7 +13,7 @@ jobs:
       - name: Fractal Demo
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: tutorials/hsp/06-first-start-wins-subworkflow.yaml
+          $yaml: tutorials/session-workflows-hsp/06-first-start-wins-subworkflow.yaml
           resource: ${{ matrix.worker.resource }}
           resolution: ${{ inputs.resolution }}
           scheduler: ${{ matrix.worker.scheduler }}

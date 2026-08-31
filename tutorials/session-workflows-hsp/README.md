@@ -28,7 +28,7 @@ By the end of the stages built so far you will understand how to:
 
 ## The example
 
-The thing we are automating lives in [`fractal-demo/`](../fractal-demo/README.md): a small script that renders a Mandelbrot fractal *and* serves a web page showing the progress live.
+The thing we are automating lives in [`demo-app/`](../demo-app/README.md): a small script that renders a Mandelbrot fractal *and* serves a web page showing the progress live.
 
 ```
   run.sh ──renders──▶ fractal.png + status.json ──serves──▶ live web page
@@ -36,7 +36,7 @@ The thing we are automating lives in [`fractal-demo/`](../fractal-demo/README.md
 
 | Script | What it does |
 | --- | --- |
-| `install.sh` | Builds a Python virtual environment at `~/pw/software/fractal-demo`. No packages to download. |
+| `install.sh` | Builds a Python virtual environment at `~/pw/software/demo-app`. No packages to download. |
 | `run.sh` | Renders the fractal and serves the live progress page. `RESOLUTION` sets the size (and run time); `PORT` sets the page's port. |
 
 `run.sh` starts a web server, then computes the fractal one row at a time, writing the image and a small status file into the folder the server reads from — so the page fills in as it renders. The rest of the tutorial is about getting Activate to run this for you and to put the page in your browser.
@@ -49,13 +49,13 @@ Before automating anything, run the demo manually so the moving parts are famili
 
 ```bash
 git clone https://github.com/parallelworks/workflows.git
-cd workflows/tutorials/fractal-demo
+cd workflows/tutorials/demo-app
 ```
 
 Install the environment, then render and serve a fractal:
 
 ```bash
-./install.sh                        # builds the venv at ~/pw/software/fractal-demo
+./install.sh                        # builds the venv at ~/pw/software/demo-app
 RESOLUTION=1000 PORT=8000 ./run.sh  # render a 1000x1000 fractal and serve it on port 8000
 ```
 
@@ -96,13 +96,13 @@ jobs:
           repo: https://github.com/parallelworks/workflows.git
           branch: canary
           sparse_checkout:                     # Fetch only the example directory, not the whole repo
-            - tutorials/fractal-demo
+            - tutorials/demo-app
       - name: Install Dependencies
         run: |
           # keep only the example directory from the sparse checkout
-          mv tutorials/fractal-demo .
+          mv tutorials/demo-app .
           rm -r workflow
-          ./fractal-demo/install.sh
+          ./demo-app/install.sh
 
   run:
     needs:
@@ -111,7 +111,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Render and Serve                # run.sh both renders the fractal and serves the page
-        run: RESOLUTION=${{ inputs.resolution }} PORT=${{ inputs.port }} ./fractal-demo/run.sh
+        run: RESOLUTION=${{ inputs.resolution }} PORT=${{ inputs.port }} ./demo-app/run.sh
 
 'on':
   execute:
@@ -147,7 +147,7 @@ By default every job in a workflow starts at the same time. `needs` makes a job 
 Setting `ssh.remoteHost` on a job runs every step in that job on the remote cluster over SSH. Each job sets it to `${{ inputs.resource.ip }}` — the IP of whichever cluster you pick in the form.
 
 **Where jobs run — `PW_JOB_DIR`.**
-By default every job runs from a per-run working directory on the node it lands on: `${HOME}/pw/jobs/<workflow-name>/<job-number>`, exported to your steps as `PW_JOB_DIR` (and as `PW_PARENT_JOB_DIR`, which a subworkflow reads to find the top-level run's directory). Both jobs here share that directory — which is why `run` can call `./fractal-demo/run.sh`: `install` checked the code out into the very same place. To run a job somewhere else, set `working-directory` at the job level. The run directory is **not** removed when the workflow finishes — whatever a job writes there persists until you delete it yourself (Stage 3 shows one way, with a step `cleanup`).
+By default every job runs from a per-run working directory on the node it lands on: `${HOME}/pw/jobs/<workflow-name>/<job-number>`, exported to your steps as `PW_JOB_DIR` (and as `PW_PARENT_JOB_DIR`, which a subworkflow reads to find the top-level run's directory). Both jobs here share that directory — which is why `run` can call `./demo-app/run.sh`: `install` checked the code out into the very same place. To run a job somewhere else, set `working-directory` at the job level. The run directory is **not** removed when the workflow finishes — whatever a job writes there persists until you delete it yourself (Stage 3 shows one way, with a step `cleanup`).
 
 **Expressions `${{ }}`.**
 Expressions are evaluated at runtime and replaced with their values. `${{ inputs.resource.ip }}` becomes the chosen cluster's IP; `${{ inputs.resolution }}` becomes the number entered in the form.
@@ -156,7 +156,7 @@ Expressions are evaluated at runtime and replaced with their values. `${{ inputs
 `uses` runs a built-in action instead of a shell command. The `checkout` action clones a repository onto the cluster; `sparse_checkout` limits it to just the directories you list, so you do not download the whole repo to run one example.
 
 **Inputs become environment variables.**
-`run.sh` reads `RESOLUTION` and `PORT` from the environment, so the workflow passes the form values straight through: `RESOLUTION=${{ inputs.resolution }} PORT=${{ inputs.port }} ./fractal-demo/run.sh`. No argument parsing, no editing the script.
+`run.sh` reads `RESOLUTION` and `PORT` from the environment, so the workflow passes the form values straight through: `RESOLUTION=${{ inputs.resolution }} PORT=${{ inputs.port }} ./demo-app/run.sh`. No argument parsing, no editing the script.
 
 **`run.sh` renders, then keeps serving.**
 The `run` job's one step renders the fractal and then keeps the web server up, so the job stays alive for as long as the page should be available. (Remember this — it matters in Stage 3.)
@@ -281,7 +281,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Render and Serve                # CHANGED: serve on the chosen port
-        run: PORT=${{ needs.install.outputs.PORT }} ./fractal-demo/run.sh   # RESOLUTION now comes from env
+        run: PORT=${{ needs.install.outputs.PORT }} ./demo-app/run.sh   # RESOLUTION now comes from env
         cleanup: rm -r ${PW_JOB_DIR}          # NEW: delete the run directory when the step exits
 
   session:
@@ -354,7 +354,7 @@ Until now everything ran on the **controller** (login) node. Heavy work belongs 
           export PORT=\$(pw agent open-port)   # \$ escaped → evaluated when the script RUNS
           echo \${PORT} > PORT
           export RESOLUTION=${{ inputs.resolution }}   # baked in NOW — env: can't reach the submitter
-          ${PWD}/fractal-demo/run.sh           # ${PWD} expands NOW → absolute path to the demo
+          ${PWD}/demo-app/run.sh           # ${PWD} expands NOW → absolute path to the demo
           EOF
           chmod +x script.sh
           echo "SCRIPT_PATH=${PWD}/script.sh" | tee -a $OUTPUTS   # hand the path to the subworkflow
@@ -486,7 +486,7 @@ jobs:
       - name: Fractal Demo
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: tutorials/hsp/04-subworkflow.yaml   # run Stage 4 as a subworkflow, once per worker
+          $yaml: tutorials/session-workflows-hsp/04-subworkflow.yaml   # run Stage 4 as a subworkflow, once per worker
           resource: ${{ matrix.worker.resource }}             # THIS job's own worker — not the whole list
           resolution: ${{ inputs.resolution }}
           scheduler: ${{ matrix.worker.scheduler }}
@@ -562,7 +562,7 @@ jobs:
       - name: Fractal Demo
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: tutorials/hsp/06-first-start-wins-subworkflow.yaml   # NEW subworkflow
+          $yaml: tutorials/session-workflows-hsp/06-first-start-wins-subworkflow.yaml   # NEW subworkflow
           resource: ${{ matrix.worker.resource }}
           # ... resolution, scheduler, slurm, pbs — passed through exactly as in Stage 5 ...
 ```
@@ -653,7 +653,7 @@ This is [`07-failover.yaml`](07-failover.yaml). The failover loop is a `retry` b
           timeout: "${{ inputs.attempt_timeout }}"
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: tutorials/hsp/04-subworkflow.yaml
+          $yaml: tutorials/session-workflows-hsp/04-subworkflow.yaml
           resolution: ${{ inputs.resolution }}
           resource:
             ip: ${{ inputs.workers get env.PW_WORKFLOW_STEP_CURRENT_RETRY get resource get ip }}

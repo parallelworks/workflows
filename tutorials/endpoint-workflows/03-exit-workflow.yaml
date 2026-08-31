@@ -17,13 +17,13 @@ jobs:
           repo: https://github.com/parallelworks/workflows.git
           branch: canary
           sparse_checkout:
-            - tutorials/fractal-demo
+            - tutorials/demo-app
       - name: Install Dependencies
         run: |
           # keep only the example directory from the sparse checkout
-          mv tutorials/fractal-demo .
+          mv tutorials/demo-app .
           rm -r workflow
-          ./fractal-demo/install.sh
+          ./demo-app/install.sh
 
   run:
     needs:
@@ -38,9 +38,9 @@ jobs:
         # script_submitter subworkflow uses to submit jobs.
         run: |
           if command -v setsid >/dev/null 2>&1; then
-            setsid pw endpoints run --name fractal-${PW_RUN_SLUG} -- ./fractal-demo/run.sh > run.${PW_JOB_ID}.out 2>&1 < /dev/null &
+            setsid pw endpoints run --name fractal-${PW_RUN_SLUG} -- ./demo-app/run.sh > run.${PW_JOB_ID}.out 2>&1 < /dev/null &
           else
-            nohup pw endpoints run --name fractal-${PW_RUN_SLUG} -- ./fractal-demo/run.sh > run.${PW_JOB_ID}.out 2>&1 < /dev/null &
+            nohup pw endpoints run --name fractal-${PW_RUN_SLUG} -- ./demo-app/run.sh > run.${PW_JOB_ID}.out 2>&1 < /dev/null &
           fi
       - name: Wait for Endpoint
         retry:

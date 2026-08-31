@@ -24,7 +24,7 @@ Open `http://localhost:8000/` and watch the fractal render. Press Ctrl+C to stop
 
 | Script | What it does |
 | --- | --- |
-| `install.sh` | Builds a Python virtual environment at `~/pw/software/fractal-demo`. No packages to download. |
+| `install.sh` | Builds a Python virtual environment at `~/pw/software/demo-app`. No packages to download. |
 | `run.sh` | Renders the fractal and serves the live progress page. `RESOLUTION` sets the image size, `PORT` the page's port. |
 
 ## Controlling the run time

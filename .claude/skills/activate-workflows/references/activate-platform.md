@@ -175,7 +175,7 @@ expressions (`ignore: ${{ .hidden }}` mirrors the hidden flag).
 | `editor` | multi-line text box (e.g. scheduler directives) |
 | `dropdown` | `options: [{label, value}]` |
 | `group` | container with `items:` (values at `inputs.<group>.<item>`) |
-| `list` | repeater the user adds rows to; each row has the fields under `template:`. At runtime `${{ inputs.<name> }}` is a **JSON array** — parse with `python3`, don't slice in shell. Items can themselves be `compute-clusters` (pass `[{"resource":"<name>"}]` in `-i`). See `tutorials/round-robin-failover/`. |
+| `list` | repeater the user adds rows to; each row has the fields under `template:`. At runtime `${{ inputs.<name> }}` is a **JSON array** — parse with `python3`, don't slice in shell. Items can themselves be `compute-clusters` (pass `[{"resource":"<name>"}]` in `-i`). See `tutorials/endpoint-workflows/07-failover.yaml`. |
 | `compute-clusters` | resource picker → resource object (§2); `include-workspace: true/false` |
 | `slurm-partitions` | partition dropdown; needs `resource: ${{ inputs.resource }}` |
 
@@ -211,12 +211,12 @@ graph gives you sequencing, data flow, conditionals, and parallelism:
   each other **run concurrently**; a downstream job with `needs: [w1, w2, w3]` joins
   them. (Verified: 3 workers logged the same finish second.) For N identical workers,
   use a **matrix strategy** (`strategy.matrix`) rather than hand-copying jobs — see
-  `tutorials/matrix/workflow.yaml`.
+  `tutorials/endpoint-workflows/05-matrix.yaml`.
 - **`PW_MATRIX_INDEX` carries the matrix worker's index** (verified): `0`, `1`, … in a
   matrix job's steps AND inside the jobs of a subworkflow invoked from a matrix job;
   unset outside a matrix, so read it as `${PW_MATRIX_INDEX:-}`. Use it whenever
   per-worker names must be unique and two workers may target the same resource — see
-  the endpoint naming in `tutorials/pw_endpoints/04-subworkflow.yaml`. Do NOT
+  the endpoint naming in `tutorials/endpoint-workflows/04-subworkflow.yaml`. Do NOT
   parse `PW_JOB_DIR` for it: at the matrix job's own level the path has no worker
   component at all. (`PW_PARENT_JOB_DIR` stays the top-level run dir at every nesting
   depth.)
@@ -228,13 +228,13 @@ graph gives you sequencing, data flow, conditionals, and parallelism:
   submitter job (tail skipped); service died early = the submitter step returns, and
   the tail cancels the waiter + exits 1 with an `::error` annotation; submitter fails
   hard = the tail is skipped and the waiter's `early-cancel: any-job-failed` ends the
-  run. See `tutorials/pw_endpoints/04-subworkflow.yaml` and
+  run. See `tutorials/endpoint-workflows/04-subworkflow.yaml` and
   `workflows/*/general.yaml` (v5 endpoint pattern).
-- See `tutorials/nginx/` (jobs, `needs`, `$OUTPUTS`, conditional `if:`,
-  sessions) and `tutorials/matrix/workflow.yaml` (fan-out workers via a matrix
-  strategy — the pattern to copy for a parameter sweep).
+- See `tutorials/session-workflows-hsp/` (jobs, `needs`, `$OUTPUTS`, conditional `if:`,
+  sessions — staged README) and `tutorials/endpoint-workflows/05-matrix.yaml` (fan-out
+  workers via a matrix strategy — the pattern to copy for a parameter sweep).
 
-### Step retries & attempt-aware logic (verified — see `tutorials/round-robin-failover`)
+### Step retries & attempt-aware logic (verified — see `tutorials/endpoint-workflows/07-failover.yaml`)
 A step can declare a `retry` block; it re-runs the step while it exits **non-zero**:
 ```yaml
 - name: Probe
@@ -256,7 +256,7 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   `${{ inputs.workers get env.PW_WORKFLOW_STEP_CURRENT_RETRY get resource get ip }}`
   resolves inside a `uses:` step's `with:`, advancing with the retry counter — verified
   live with a dead first resource failing over to a healthy second
-  (`tutorials/pw_endpoints/07-failover.yaml`). Two caveats still apply:
+  (`tutorials/endpoint-workflows/07-failover.yaml`). Two caveats still apply:
   (1) a list item picked with `get` does **not** pass through `with:` as one object —
   rebuild the resource **field by field** (`id`, `ip`, `name`, `namespace`, `provider`,
   `schedulerType`, `type`, `uri`, `user`); (2) a resource passed as a **URI string does
@@ -265,8 +265,8 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   clock and whatever per-attempt output you emit yourself. (`subworkflows/<job>/step_N`
   in the job-dir path is the **step index within the job**, not the attempt number —
   retried attempts reuse the same directory.) Per-attempt SSH failover on a plain `ssh:`/`run:` step is
-  `round-robin-failover`; for a matrix-style per-item resource, `matrix.worker.resource`
-  passes as a native object.
+  shown in `tutorials/endpoint-workflows/07-failover.yaml`; for a matrix-style
+  per-item resource, `matrix.worker.resource` passes as a native object.
 - **`max-retries` can be computed:** `max-retries: ${{ needs.<job>.outputs.N - 1 }}` —
   arithmetic is evaluated in the expression layer. An upstream step writing `N` to
   `$OUTPUTS` lets a later step in the **same job** size its own retries
@@ -577,9 +577,9 @@ sync with the platform. Read the one closest to your task:
 | **Session with install + base-path nginx proxy** (§11) | `workflows/jupyterlab/general.yaml` + `workflows/jupyterlab/*.sh` |
 | **Session whose `slug` is a query string** | `workflows/openvscode/general.yaml` (`slug=?folder=...`) |
 | **`parallelworks/checkout` (sparse) to fetch code** | preprocessing job of any workflow YAML above |
-| **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/matrix/workflow.yaml` (use this for sweeps) |
-| **Job DAG: `needs`, `$OUTPUTS`, sessions, `update-session`, `pw agent open-port`** | `tutorials/nginx/` (`readme.md` + `workflow.yaml`, staged 1→4) |
-| **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/round-robin-failover/` (staged README + `workflow.yaml`) |
+| **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/endpoint-workflows/05-matrix.yaml` (use this for sweeps) |
+| **Job DAG: `needs`, `$OUTPUTS`, sessions, `update-session`, `pw agent open-port`** | `tutorials/session-workflows-hsp/` (staged `README.md` + stage YAMLs 1→4) |
+| **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` (staged README) |
 
 > **Adding a new tutorial requires maintainer approval.** Tutorials must each show
 > something new and non-repetitive — do not add one to `tutorials/` without
@@ -797,7 +797,7 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   `pw endpoints list | grep -w <name>` — so build them from `${PW_RUN_SLUG}` (plus the
   resource name when several workers share a run). Killing the client process (cancel
   the run/step) deregisters the endpoint within seconds; racing/fan-out over a shared
-  name prefix is shown in `tutorials/pw_endpoints/` (verified two-resource
+  name prefix is shown in `tutorials/endpoint-workflows/` (verified two-resource
   first-start-wins race).
 - **Base-path apps need no base_url and no nginx on a subdomain endpoint**
   (`workflows/jupyterlab/start-template.sh`): subdomain endpoints serve at the root, so

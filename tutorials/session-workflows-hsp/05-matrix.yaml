@@ -8,7 +8,7 @@ jobs:
       - name: Fractal Demo
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: tutorials/hsp/04-subworkflow.yaml
+          $yaml: tutorials/session-workflows-hsp/04-subworkflow.yaml
           resource: ${{ matrix.worker.resource }}
           rundir: ${{ inputs.rundir }}
           resolution: ${{ inputs.resolution }}

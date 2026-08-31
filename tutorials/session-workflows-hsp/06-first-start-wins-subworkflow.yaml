@@ -1,60 +1,12 @@
+permissions:
+  - '*'
+
 sessions:
   fractal:
     redirect: true
 
 env:
   RESOLUTION: ${{ inputs.resolution }}
-
-# Ready-made presets for common PBS systems. Selecting one in the run form fills
-# in that system's sample #PBS scheduler directives (and turns scheduling on), so
-# you don't have to remember each site's node layout. Adapted from the sample
-# directives in workflows/script_submitter/v3.6/hsp.yaml — pick your resource, then
-# the matching configuration, and tweak the directives if you need to.
-configurations:
-  Carpenter:
-    inputs:
-      scheduler: true
-      pbs:
-        is_enabled: true
-        scheduler_directives: |
-          # Parameters that apply to all sites
-          #PBS -l walltime=00:30:00
-          #PBS -V
-          #PBS -q standard
-          #PBS -l select=1:ncpus=192:mpiprocs=192
-  Ruth:
-    inputs:
-      scheduler: true
-      pbs:
-        is_enabled: true
-        scheduler_directives: |
-          # Parameters that apply to all sites
-          #PBS -l walltime=00:30:00
-          #PBS -V
-          #PBS -q standard
-          #PBS -l select=1:ncpus=128:mpiprocs=128
-  Warhawk:
-    inputs:
-      scheduler: true
-      pbs:
-        is_enabled: true
-        scheduler_directives: |
-          # Parameters that apply to all sites
-          #PBS -l walltime=00:30:00
-          #PBS -V
-          #PBS -q standard
-          #PBS -l select=1:ncpus=128:mpiprocs=128
-  Wheat:
-    inputs:
-      scheduler: true
-      pbs:
-        is_enabled: true
-        scheduler_directives: |
-          # Parameters that apply to all sites
-          #PBS -l walltime=00:30:00
-          #PBS -V
-          #PBS -q standard
-          #PBS -l select=1:ncpus=92:mpiprocs=92:nmlas=4
 
 jobs:
   install:
@@ -67,13 +19,13 @@ jobs:
           repo: https://github.com/parallelworks/workflows.git
           branch: canary
           sparse_checkout:
-            - tutorials/fractal-demo
+            - tutorials/demo-app
       - name: Install Dependencies
         run: |
           # keep only the example directory from the sparse checkout
-          mv tutorials/fractal-demo .
+          mv tutorials/demo-app .
           rm -r workflow
-          ./fractal-demo/install.sh
+          ./demo-app/install.sh
       - name: Create Run Script
         run: |
           cat <<EOF >> script.sh
@@ -85,7 +37,7 @@ jobs:
           # env: does NOT reach here — run.sh runs inside the separate
           # script_submitter subworkflow — so it must travel in the script itself.
           export RESOLUTION=${{ inputs.resolution }}
-          ${PWD}/fractal-demo/run.sh
+          ${PWD}/demo-app/run.sh
           EOF
           chmod +x script.sh
           # We need to pass the PATH to the script submitter subworkflow
@@ -145,7 +97,7 @@ jobs:
             exit 1
           fi
           PORT=$(cat ${PORT_PATH})
-          if [[ ${{ inputs.scheduler }} == "true" ]]; then
+          if [[ "${{ inputs.scheduler }}" == "true" ]]; then
             HOSTNAME=$(cat ${HOSTNAME_PATH})
           else
             HOSTNAME=localhost
@@ -160,6 +112,79 @@ jobs:
           remoteHost: ${{ needs.session.outputs.HOSTNAME }}
           target: ${{ inputs.resource.id }}
           name: ${{ sessions.fractal }}
+
+  first_start_wins:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: First Start Wins
+        retry:
+          max-retries: 8640
+          interval: 10s
+        run: |
+          # Decide whether this worker keeps its session or stands down, looking
+          # only at THIS run's fractal sessions (workflowRun.slug == PW_RUN_SLUG,
+          # name ends in _fractal). "First start wins" = the first session that is
+          # actually RUNNING keeps serving; every other worker cancels itself. The
+          # tie-break is list order — whichever running session `pw sessions ls`
+          # returns first is the winner, and every worker reads the same list, so
+          # they all pick the same one. permissions: ['*'] authenticates pw.
+          MY_SESSION="${{ sessions.fractal }}"
+          MY_NAME="${MY_SESSION##*/}"   # tolerate an optional "user/" prefix
+
+          # Prints one word: WAIT | WIN | LOSE.
+          decision=$(pw sessions ls -o json | PW_RUN_SLUG="${PW_RUN_SLUG}" MY_NAME="${MY_NAME}" python3 -c '
+          import json, os, sys
+          slug = os.environ.get("PW_RUN_SLUG", "")
+          me   = os.environ.get("MY_NAME", "")
+          try:
+              rows = json.load(sys.stdin)
+          except Exception:
+              print("WAIT"); sys.exit(0)   # non-JSON/empty (transient) -> retry
+          running = [s.get("name", "") for s in rows
+                     if (s.get("workflowRun") or {}).get("slug") == slug
+                     and s.get("name", "").endswith("_fractal")
+                     and s.get("status") == "running"]
+          if not running:
+              print("WAIT")          # nothing running yet
+          elif running[0] == me:
+              print("WIN")           # first running session -> winner
+          else:
+              print("LOSE")          # someone else is running ahead of us
+          ')
+          echo "$(date) run=${PW_RUN_SLUG} me=${MY_NAME} decision=${decision:-<none>}"
+
+          # No session running for this run yet (or a transient empty list): keep polling.
+          if [ "${decision}" = "WAIT" ] || [ -z "${decision}" ]; then
+            echo "No running session for this run yet — waiting"
+            exit 1
+          fi
+
+          if [ "${decision}" = "WIN" ]; then
+            # The session list is eventually consistent, so a worker that started
+            # earlier may not be listed yet — a worker that only sees itself would
+            # wrongly win. Confirm we stay first across a few polls before committing.
+            if [ "${PW_WORKFLOW_STEP_CURRENT_RETRY:-0}" -lt 3 ]; then
+              echo "::notice::${MY_NAME} leading so far — confirming (attempt ${PW_WORKFLOW_STEP_CURRENT_RETRY:-0})"
+              exit 1
+            fi
+            echo "::notice::${MY_NAME} is the first running session — winner; leaving its session up"
+            echo "CANCEL=false" | tee -a $OUTPUTS
+            exit 0
+          fi
+
+          # decision == LOSE: another worker's session is running ahead of us.
+          echo "::notice::another session is running ahead of ${MY_NAME} — standing down"
+          echo "CANCEL=true" | tee -a $OUTPUTS
+      - name: Cancel Jobs
+        if: ${{ needs.first_start_wins.outputs.CANCEL == 'true' }}
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - script_submitter
+            - session
+        cleanup: pw sessions stop "${{ sessions.fractal }}" || true
+
 
 'on':
   execute:

@@ -53,8 +53,12 @@ its standalone workflow was legacy-generation and stayed in `interactive_session
 next to `workflows/<name>` at runtime; scripts reference them as `tools/...` relative
 to the run directory.
 
-**Tutorials** — [`tutorials/`](tutorials/) are staged, runnable lessons on the
-workflow system (job DAGs, sessions, endpoints, matrix fan-out, retries/failover).
+**Tutorials** — [`tutorials/`](tutorials/) are staged, runnable lessons that build a
+small demo app ([`demo-app/`](tutorials/demo-app/)) into a full workflow:
+[`endpoint-workflows/`](tutorials/endpoint-workflows/) (the current `pw endpoints`
+pattern, stages 1–7 incl. matrix fan-out, first-start-wins, and failover) and
+[`session-workflows-hsp/`](tutorials/session-workflows-hsp/) (the same journey with
+the older session-tunnel pattern, HSP-flavored).
 
 ## Variants
 

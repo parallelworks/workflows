@@ -1,11 +1,3 @@
-# permissions authenticates the in-workflow pw CLI — pw endpoints registers the
-# endpoint through the platform API.
-permissions:
-  - '*'
-
-env:
-  RESOLUTION: ${{ inputs.resolution }}
-
 jobs:
   install:
     ssh:
@@ -17,13 +9,13 @@ jobs:
           repo: https://github.com/parallelworks/workflows.git
           branch: canary
           sparse_checkout:
-            - tutorials/fractal-demo
+            - tutorials/demo-app
       - name: Install Dependencies
         run: |
           # keep only the example directory from the sparse checkout
-          mv tutorials/fractal-demo .
+          mv tutorials/demo-app .
           rm -r workflow
-          ./fractal-demo/install.sh
+          ./demo-app/install.sh
 
   run:
     needs:
@@ -32,9 +24,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Render and Serve
-        # No --port: pw picks a free local port and exports it as PORT, which
-        # run.sh reads. RESOLUTION comes from the workflow-level env block.
-        run: pw endpoints run --name fractal-${PW_RUN_SLUG} -- ./fractal-demo/run.sh
+        run: RESOLUTION=${{ inputs.resolution }} PORT=${{ inputs.port }} ./demo-app/run.sh
 
 'on':
   execute:
@@ -52,3 +42,10 @@ jobs:
         default: 2500
         min: 100
         max: 10000
+      port:
+        type: number
+        label: Port
+        tooltip: Port the progress web server listens on.
+        default: 8000
+        min: 1024
+        max: 65535

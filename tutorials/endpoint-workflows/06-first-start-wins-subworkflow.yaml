@@ -15,13 +15,13 @@ jobs:
           repo: https://github.com/parallelworks/workflows.git
           branch: canary
           sparse_checkout:
-            - tutorials/fractal-demo
+            - tutorials/demo-app
       - name: Install Dependencies
         run: |
           # keep only the example directory from the sparse checkout
-          mv tutorials/fractal-demo .
+          mv tutorials/demo-app .
           rm -r workflow
-          ./fractal-demo/install.sh
+          ./demo-app/install.sh
       - name: Create Run Script
         run: |
           # The name prefix fractal-<run-slug>- is shared by every worker in
@@ -38,7 +38,7 @@ jobs:
           # that runs this script, and PW_RUN_SLUG may not be exported on a
           # compute node.
           export RESOLUTION=${{ inputs.resolution }}
-          pw endpoints run --name ${endpoint_name} -- ${PWD}/fractal-demo/run.sh
+          pw endpoints run --name ${endpoint_name} -- ${PWD}/demo-app/run.sh
           EOF
           chmod +x script.sh
           # We need to pass the PATH to the script submitter subworkflow

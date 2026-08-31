@@ -21,6 +21,11 @@ Consolidation performed 2026-08-31, revised the same day after review feedback
    `references/session-to-endpoint-upgrade.md` (a conversion guide whose old-name
    references point at files in `interactive_session`, where the unconverted variants
    still live).
+5. **Tutorials trimmed and renamed**: `matrix/`, `nginx/`, and `round-robin-failover/`
+   were dropped (their topics live on as stages 5–7 of the two courses);
+   `fractal-demo`→`tutorials/demo-app`, `pw_endpoints`→`tutorials/endpoint-workflows`,
+   `hsp`→`tutorials/session-workflows-hsp` (all internal paths, the demo venv dir, and
+   the AI-skill references re-pointed).
 
 ## Global rewrite rules
 
@@ -70,7 +75,7 @@ Variant YAMLs land at `workflows/<new>/yamls/`, scripts at `workflows/<new>/`
 | `workflows/session_runner/v1.4` | copied + READMEs updated | — | internal `uses`/`$yaml` re-pointed (it calls script_submitter v3.6); used by vncserver + langflow-host |
 | `workflows/script_submitter/v3.6` | copied as-is + READMEs | — | fully self-contained |
 | `tools/oras`, `tools/utils`, `tools/tests` | `tools/` (repo root, unchanged path) | — | scripts reference `tools/...` relative to the run dir; keeping the root path means zero script edits |
-| `workflow/tutorials/*` | `tutorials/*` | — | their own checkouts/`uses:`/path mentions re-pointed to this repo |
+| `workflow/tutorials/{fractal-demo,pw_endpoints,hsp}` | `tutorials/{demo-app,endpoint-workflows,session-workflows-hsp}` | — | their own checkouts/`uses:`/path mentions re-pointed to this repo; `matrix`, `nginx`, `round-robin-failover` left behind (topics covered by course stages 5–7) |
 
 Readmes: each workflow's `workflow/readmes/<src>/` docs moved into its directory
 (`general.md` → `README.md`, `cloud.md` for jupyter; `general_k8s.md` → `README_k8s.md`;
@@ -147,6 +152,8 @@ skill's `references/session-to-endpoint-upgrade.md`):
 
 - `workflow/batch/` (helios/kestrel hsp batch examples) — not part of this catalog;
   follow-up decision.
+- `workflow/tutorials/{matrix,nginx,round-robin-failover}` — dropped at review; the
+  matrix/failover/first-start-wins topics are stages 5–7 of the migrated courses.
 - 48 unmatched thumbnails — stale pool entries with no migrated workflow.
 - `downloads/` binaries — already absent from the sources' `main` (live only in the
   old repo's `legacy` tag). The scripts that need them (`webshell/controller.sh`,

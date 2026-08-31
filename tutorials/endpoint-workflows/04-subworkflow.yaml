@@ -15,13 +15,13 @@ jobs:
           repo: https://github.com/parallelworks/workflows.git
           branch: canary
           sparse_checkout:
-            - tutorials/fractal-demo
+            - tutorials/demo-app
       - name: Install Dependencies
         run: |
           # keep only the example directory from the sparse checkout
-          mv tutorials/fractal-demo .
+          mv tutorials/demo-app .
           rm -r workflow
-          ./fractal-demo/install.sh
+          ./demo-app/install.sh
       - name: Create Run Script
         run: |
           # The endpoint name must be unique per worker, and a run can target
@@ -42,7 +42,7 @@ jobs:
           # The endpoint dials OUT from whichever node this script lands on —
           # controller or compute node — so no hostname or port bookkeeping is
           # needed: pw picks a free port and exports it as PORT for run.sh.
-          pw endpoints run --name ${endpoint_name} -- ${PWD}/fractal-demo/run.sh
+          pw endpoints run --name ${endpoint_name} -- ${PWD}/demo-app/run.sh
           EOF
           chmod +x script.sh
           # We need to pass the PATH to the script submitter subworkflow

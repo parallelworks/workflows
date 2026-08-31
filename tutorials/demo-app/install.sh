@@ -3,7 +3,7 @@
 # install.sh - Create the Python environment for this example.
 #
 # Builds a self-contained Python virtual environment at
-#   ${PW_SOFTWARE:-$HOME/pw/software}/fractal-demo
+#   ${PW_SOFTWARE:-$HOME/pw/software}/demo-app
 # The example uses only the Python standard library, so no packages are
 # downloaded - the environment simply gives the job a consistent, isolated
 # Python interpreter that behaves the same on every node.
@@ -14,9 +14,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Where the environment lives. Override PW_SOFTWARE to change the base folder.
 PW_SOFTWARE="${PW_SOFTWARE:-$HOME/pw/software}"
-VENV_DIR="$PW_SOFTWARE/fractal-demo"
+VENV_DIR="$PW_SOFTWARE/demo-app"
 VENV_PYTHON="$VENV_DIR/bin/python"
-LOCK_DIR="$PW_SOFTWARE/fractal-demo.lock"
+LOCK_DIR="$PW_SOFTWARE/demo-app.lock"
 
 echo "Setting up the Python environment for the fractal demo."
 

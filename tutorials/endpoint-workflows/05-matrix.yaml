@@ -1,5 +1,5 @@
-# permissions authenticates the in-workflow pw CLI — the subworkflow's autocancel
-# job calls `pw endpoints list/delete`, which only works if the parent grants this too.
+# permissions authenticates the in-workflow pw CLI in the subworkflow, which
+# registers and lists pw endpoints. The grant must be on the parent too.
 permissions:
   - '*'
 
@@ -13,7 +13,7 @@ jobs:
       - name: Fractal Demo
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: tutorials/pw_endpoints/06-first-start-wins-subworkflow.yaml
+          $yaml: tutorials/endpoint-workflows/04-subworkflow.yaml
           resource: ${{ matrix.worker.resource }}
           resolution: ${{ inputs.resolution }}
           scheduler: ${{ matrix.worker.scheduler }}
@@ -38,7 +38,7 @@ jobs:
       workers:
         type: list
         label: Compute Resources
-        tooltip: The resources that race. Every worker starts a render; the first endpoint up wins and the rest stand down.
+        tooltip: One entry per resource. Every worker renders its own fractal and registers its own endpoint.
         template:
           resource:
             type: compute-clusters

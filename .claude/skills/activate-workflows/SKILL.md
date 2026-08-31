@@ -39,8 +39,9 @@ every workflow: besides allowing everyone to run it, it is what lets the in-work
   use. Learn the patterns from the **repo's own workflows and tutorials**, not from
   invented demos (reference §9): sessions →
   `workflows/{webshell,jupyterlab,openvscode}/`; job DAG / sessions / outputs
-  → `tutorials/nginx/`; **fan-out / sweep → `tutorials/matrix/`**;
-  retry/failover → `tutorials/round-robin-failover/`.
+  → `tutorials/session-workflows-hsp/` (staged README); **fan-out / sweep →
+  `tutorials/endpoint-workflows/05-matrix.yaml`**; retry/failover →
+  `tutorials/endpoint-workflows/07-failover.yaml`.
 - **Pick the deployment variant by platform host — don't default to `general`.**
   `session_runner`/`script_submitter` ship as `general` / `emed` / `hsp` / `noaa`, and
   the **resource/scheduler/slurm/pbs form sections differ between them**. Choose:
@@ -190,11 +191,11 @@ non-repetitive; point at an existing tutorial instead.
   (`cd` into it). Pass values with `echo "K=v" | tee -a $OUTPUTS` (or pipe a program
   that prints `K=v` lines) and read `${{ needs.<job>.outputs.K }}`. Drive conditional
   steps with `if: ${{ needs.X.outputs.flag == 'true' }}` — compute the boolean
-  upstream. Fan out with a **matrix strategy** (see `tutorials/matrix/`); fan
+  upstream. Fan out with a **matrix strategy** (see `tutorials/endpoint-workflows/05-matrix.yaml`); fan
   in with `needs: [w1,w2,w3]`. For **retry/failover**, attach a `retry` block to a step
   and use `PW_WORKFLOW_STEP_CURRENT_RETRY` to pick a target per attempt — round-robin
   over a `list` input fails over across resources (see
-  `tutorials/round-robin-failover/`; reference §3 "Step retries").
+  `tutorials/endpoint-workflows/07-failover.yaml`; reference §3 "Step retries").
 - **Make scripts idempotent and traceable:** `set -o pipefail`, `set -x`; check
   before installing; safe to re-run.
 - **Stream progress and emit structured results.** Print incremental progress (it

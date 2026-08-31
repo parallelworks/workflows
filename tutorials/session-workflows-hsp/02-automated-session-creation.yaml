@@ -2,10 +2,6 @@ sessions:
   fractal:
     redirect: true
 
-
-env:
-  RESOLUTION: ${{ inputs.resolution }}
-
 jobs:
   install:
     ssh:
@@ -17,18 +13,13 @@ jobs:
           repo: https://github.com/parallelworks/workflows.git
           branch: canary
           sparse_checkout:
-            - tutorials/fractal-demo
+            - tutorials/demo-app
       - name: Install Dependencies
         run: |
           # keep only the example directory from the sparse checkout
-          mv tutorials/fractal-demo .
+          mv tutorials/demo-app .
           rm -r workflow
-          ./fractal-demo/install.sh
-      - name: Select Port
-        run: |
-          PORT=$(pw agent open-port)
-          echo "PORT=${PORT}" | tee -a $OUTPUTS
-          echo "::notice::Fractal will be served on port ${PORT}"
+          ./demo-app/install.sh
 
   run:
     needs:
@@ -37,8 +28,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Render and Serve
-        run: PORT=${{ needs.install.outputs.PORT }} ./fractal-demo/run.sh
-        cleanup: rm -r ${PW_JOB_DIR}
+        run: RESOLUTION=${{ inputs.resolution }} PORT=${{ inputs.port }} ./demo-app/run.sh
 
   session:
     needs:
@@ -47,7 +37,7 @@ jobs:
       - name: Create Session
         uses: parallelworks/update-session
         with:
-          remotePort: '${{ needs.install.outputs.PORT }}'
+          remotePort: '${{ inputs.port }}'
           target: ${{ inputs.resource.id }}
           name: ${{ sessions.fractal }}
 
@@ -67,3 +57,10 @@ jobs:
         default: 2500
         min: 100
         max: 10000
+      port:
+        type: number
+        label: Port
+        tooltip: Port the progress web server listens on.
+        default: 8000
+        min: 1024
+        max: 65535

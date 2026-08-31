@@ -44,7 +44,7 @@ check_positive_int "MAX_ITER" "$MAX_ITER"
 
 # Use the Python environment created by install.sh.
 PW_SOFTWARE="${PW_SOFTWARE:-$HOME/pw/software}"
-PYTHON="$PW_SOFTWARE/fractal-demo/bin/python"
+PYTHON="$PW_SOFTWARE/demo-app/bin/python"
 if [ ! -x "$PYTHON" ]; then
   echo "ERROR: Python environment not found at $PYTHON" >&2
   echo "Run ./install.sh first to create it." >&2

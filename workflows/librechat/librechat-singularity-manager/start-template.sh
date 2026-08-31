@@ -7,12 +7,12 @@ set -ex
 # MANAGER_SCRIPTS_DIR must be saved before service.env is sourced — service.env
 # overwrites SCRIPTS_DIR with the librechat-singularity path.
 # When the script is inlined into run.sh, BASH_SOURCE[0] resolves to run.sh in
-# the run dir; fall back to PW_PARENT_JOB_DIR/librechat-singularity-manager.
+# the run dir; fall back to the checkout path under PW_PARENT_JOB_DIR.
 _src_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$_src_dir/server.py" ]; then
     MANAGER_SCRIPTS_DIR="$_src_dir"
 else
-    MANAGER_SCRIPTS_DIR="${PW_PARENT_JOB_DIR}/librechat-singularity-manager"
+    MANAGER_SCRIPTS_DIR="${PW_PARENT_JOB_DIR}/workflows/librechat/librechat-singularity-manager"
 fi
 unset _src_dir
 

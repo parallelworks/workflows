@@ -127,9 +127,9 @@ if [ -n "${GPU_FLAG}" ]; then
     # Locate this runtime's helper scripts. The platform concatenates this template
     # into a run-dir script, so ${BASH_SOURCE} is unreliable -- probe known paths.
     kasm_src_dir=""
-    for _d in "${PW_PARENT_JOB_DIR}/kasmvnc-singularity" \
+    for _d in "${PW_PARENT_JOB_DIR}/workflows/kasmvnc/kasmvnc-singularity" \
               "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" \
-              "$(pwd)/kasmvnc-singularity" "$(pwd)"; do
+              "$(pwd)/workflows/kasmvnc/kasmvnc-singularity" "$(pwd)"; do
         if [ -n "${_d}" ] && [ -f "${_d}/install-host-nvidia-gl.sh" ]; then
             kasm_src_dir="${_d}"
             break

@@ -7,7 +7,7 @@
 # base-path patch stays disabled (basepath unset).
 set -ex
 
-SCRIPTS_DIR=${PW_PARENT_JOB_DIR}/librechat-singularity
+SCRIPTS_DIR=${PW_PARENT_JOB_DIR}/workflows/librechat/librechat-singularity
 
 # The Manager job waits for this file to locate the LibreChat node; scheduled
 # runs get it from the sbatch/qsub headers, unscheduled runs need it here.

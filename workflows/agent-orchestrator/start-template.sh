@@ -19,7 +19,7 @@
 ################################################################################
 set -x
 
-AGENT_DIR="${PW_PARENT_JOB_DIR}/${service_name:-agent-orchestrator}"
+AGENT_DIR="${PW_PARENT_JOB_DIR}/workflows/${service_name:-agent-orchestrator}"
 
 # `pw` on PATH (the orchestrator uses `pw ssh` / `pw sessions`), the brain
 # credentials, and the fleet marker.

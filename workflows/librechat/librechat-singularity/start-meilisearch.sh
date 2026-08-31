@@ -1,6 +1,6 @@
 #!/bin/bash
 # Starts MeiliSearch.
-# Sourced by start-template-v3.sh or restart-meilisearch.sh.
+# Sourced by start-template.sh or restart-meilisearch.sh.
 # Can also be run directly: bash start-meilisearch.sh  (auto-loads service.env)
 
 _UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

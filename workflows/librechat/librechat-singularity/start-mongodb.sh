@@ -1,6 +1,6 @@
 #!/bin/bash
 # Starts MongoDB.
-# Sourced by start-template-v3.sh or restart-mongodb.sh.
+# Sourced by start-template.sh or restart-mongodb.sh.
 # Can also be run directly: bash start-mongodb.sh  (auto-loads service.env)
 
 _UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

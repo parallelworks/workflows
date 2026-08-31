@@ -1,7 +1,7 @@
 #!/bin/bash
 # Starts (or restarts) LibreChat. Calls stop_existing before launching, so
 # running this script a second time is a clean restart.
-# Sourced by start-template-v3.sh; run directly to restart during a session.
+# Sourced by start-template.sh; run directly to restart during a session.
 
 _UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! declare -f stop_existing > /dev/null 2>&1; then

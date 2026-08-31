@@ -3,7 +3,7 @@
 #
 # Purpose: Serve the pulled GGUF models through Ollama's OpenAI-compatible API
 #          on a pw endpoint, running Ollama from the SIF downloaded by
-#          controller-v4.sh (sandbox fallback when the node cannot mount SIFs)
+#          controller.sh (sandbox fallback when the node cannot mount SIFs)
 # Runs on: Controller or compute node
 # Called by: Workflow after controller setup
 #

@@ -1,9 +1,26 @@
 # Migration map: `interactive_session` + `activate-rag-vllm` → `workflows`
 
-Consolidation performed 2026-08-31. Sources (read-only, untouched):
-`parallelworks/interactive_session@main` (ca0d0e24) and
-`parallelworks/activate-rag-vllm@main` (5c68590). **Latest version only** per workflow
-and platform variant; older versions stay behind in the source repos.
+Consolidation performed 2026-08-31, revised the same day after review feedback
+(round 2). Sources (read-only, untouched): `parallelworks/interactive_session@main`
+(ca0d0e24) and `parallelworks/activate-rag-vllm@main` (5c68590).
+
+**Round 2 changes (review feedback):**
+1. **One script version only, the latest.** All `-v3` scripts and the legacy-generation
+   variants that called them were removed from this repo (see "Left behind"); the
+   remaining scripts are unsuffixed (`controller.sh`, `start-template.sh`).
+2. **Per-workflow `yamls/` subdirectory**: variant YAMLs live at
+   `workflows/<name>/yamls/<variant>.yaml`; scripts and support files stay at the
+   directory root (which restored the original `cp workflows/<name>/*.yaml .`
+   conda-env glob in the jupyter/jupyterlab YAMLs — the workflow YAMLs no longer
+   share that directory).
+3. **Tutorials migrated** to `tutorials/` (from `workflow/tutorials/`), with their own
+   checkout/`uses:` references re-pointed to this repo.
+4. **No version suffixes anywhere**: filenames, YAML references, script comments,
+   docs, and the AI skill were scrubbed. The two deliberate exceptions are this file
+   (it records history) and the skill's
+   `references/session-to-endpoint-upgrade.md` (a conversion guide whose old-name
+   references point at files in `interactive_session`, where the unconverted variants
+   still live).
 
 ## Global rewrite rules
 
@@ -18,76 +35,70 @@ Applied to every migrated YAML (verbatim copies otherwise):
 | `$yaml: workflow/script_submitter/v3.6/…` | `$yaml: workflows/script_submitter/v3.6/…` |
 | sparse checkout / script paths `<dir>/…` | `workflows/<name>[/<impl>]/…` |
 | `…/controller-v4.sh`, `…/start-template-v4.sh` | `…/controller.sh`, `…/start-template.sh` |
-| `…/controller-v3.sh` (where a v4 also exists) | unchanged filename, new path prefix |
-| `…/controller-v3.sh` (v3 is the only generation: vncserver, langflow-host) | `…/controller.sh` |
+| `<variant>_v{4,5}.yaml` | `yamls/<variant>.yaml` |
 
 **Branch choice:** the empty `parallelworks/workflows` repo advertises `canary` as its
 default branch, so all runtime references target `@canary`. A later rename to `main`
-is a mechanical find/replace (`@canary`→`@main`, `branch: canary`→`branch: main`) —
-flagged as an open question below.
-
-**Filename versioning:** `<variant>_v{4,5}.yaml` → `<variant>.yaml`; newest script
-generation loses its suffix; a `-v3` script kept **only** where a migrated legacy
-variant still executes it. In `rag-vllm`, `controller_v5.sh`/`start_service_v5.sh`
-keep their suffix because the legacy `controller.sh`/`start_service.sh` (still used by
-`emed.yaml`) already own the unsuffixed names.
+is a mechanical find/replace (`@canary`→`@main`, `branch: canary`→`branch: main`).
 
 ## Per-workflow map (interactive_session)
 
+Variant YAMLs land at `workflows/<new>/yamls/`, scripts at `workflows/<new>/`
+(implementation subdirs where a runtime input selects them).
+
 | New directory | YAMLs (from `workflow/yamls/<src>/`) | Scripts (from) | Notes |
 |---|---|---|---|
-| `workflows/jupyter` | jupyter-host: general_v5, noaa_v5, emed_v4 | `jupyter-host/` v4→unsuffixed, v3 kept (emed) | env YAMLs enumerated in `cp` (glob would grab workflow YAMLs) |
-| `workflows/jupyterlab` | jupyterlab-host: general_v5, hsp_v5, noaa_v5, general_k8s_v5, emed_v4 | `jupyterlab-host/` v4→unsuffixed, v3 kept (emed) | same `cp` fix; + `k8s.yaml`/`k8s-readme.md` from `workflow/k8s/jupyter/` |
-| `workflows/openvscode` | openvscode: all five _v5 | `openvscode/` v4→unsuffixed (v3 left behind) | + `k8s.yaml`/`k8s-readme.md` from `workflow/k8s/vscode/` |
-| `workflows/webshell` | webshell: general_v5, noaa_v5, hsp_v4 | `webshell/` v4→unsuffixed, v3 kept (hsp) | controller keeps its `interactive_session@legacy` clone for the noVNC/ttyd tarball (see "downloads") |
-| `workflows/vncserver` | vncserver: all 14 _v4 | `vncserver/` v3→unsuffixed (only generation) | readme from typo dir `workflow/readmes/vnserver/` |
-| `workflows/kasmvnc` | kasmvnc-container: general/hsp/noaa/noaa_rstudio/general_k8s _v5; emed, general-rstudio, northrop (unversioned) | impl subdirs `kasmvnc-docker/` (v3 only, names kept), `kasmvnc-singularity/` (v4→unsuffixed, v3 kept) | v3 filenames kept so air-gapped `northrop.yaml` (local copy + `marketplace/session_runner/v1.4`, zero rewrites) works against either repo clone; + `k8s.yaml`/`k8s-readme.md` from `workflow/k8s/kasmvnc/` |
-| `workflows/n8n` | n8n: general/hsp/noaa _v5, emed_v4 | impl subdirs `n8n-docker/`, `n8n-singularity/` (v4→unsuffixed, v3 kept for emed) | runtime input values = subdir names |
-| `workflows/librechat` | librechat-container: general_v5, hsp_v5, general-all_v5, hsp-all_v5 | impl subdir `librechat-singularity/` (v4→unsuffixed; v3 left behind) | `-all` variants also sparse-checkout `workflows/librechat-singularity-manager` and `workflows/langflow-singularity` (cross-workflow refs, one repo now); `browser-demo/` migrated |
-| `workflows/librechat-singularity-manager` | librechat-singularity-manager: general, hsp | own dir, v4→unsuffixed (used by librechat `-all`), v3 kept (own yamls) | |
-| `workflows/langflow-host` | langflow-host: general_v4, hsp_v4 | v3→unsuffixed (only generation) | |
-| `workflows/langflow-singularity` | langflow-singularity: general_v4, hsp_v5 | v4→unsuffixed, v3 kept (general) + `flows/` | both start-templates' `flows` path updated to `workflows/langflow-singularity/flows` |
-| `workflows/streamlit` | streamlit: general_v5, hsp_v5 | from `streamlit-singularity/` (v4 only) + `demo/`, def, build script | start-template's demo-app path updated |
-| `workflows/open-notebook` | open-notebook: general_v5 | from `open-notebook-docker/` (v4 only) | |
-| `workflows/ollama` | ollama-gguf: general/hsp/noaa _v5 | impl subdirs `ollama-gguf/`, `ollama-gguf-container/` (v4→unsuffixed) | dir renamed to avoid `ollama-gguf/ollama-gguf/`; impl names (= input values) unchanged |
-| `workflows/agent-orchestrator` | agent-orchestrator: general_v5 | v4→unsuffixed + .py files (v3 left behind) | sparse `tools/utils` unchanged |
-| `workflows/hermes-agent` | hermes-agent: general_v5 | v4 (only) + proxies | |
-| `workflows/lite-agent` | lite-agent: general_v5 | v4→unsuffixed + .py files (v3 left behind) | |
-| `workflows/rag-service` | rag-service: general_v5 | v4 (only) + support files, `fixtures/` | checkout branch `rag-service` was deleted upstream → now `canary` (see "dead branches") |
-| `workflows/mlflow` | `workflow/k8s/mlflow/general.yaml` → `k8s.yaml` | none (self-contained) | k8s-only workflow |
-| `workflows/ollama-openwebui` | `workflow/k8s/ollama-openwebui/general.yaml` → `k8s.yaml` | none (self-contained) | k8s-only workflow |
-| `workflows/session_runner/v1.4` | copied as-is + READMEs | — | internal `uses`/`$yaml` re-pointed to this repo (it calls script_submitter v3.6) |
+| `workflows/jupyter` | jupyter-host: general_v5, noaa_v5 | `jupyter-host/` v4 pair → unsuffixed | conda-env YAMLs (`notebook*.yaml`) at dir root |
+| `workflows/jupyterlab` | jupyterlab-host: general_v5, hsp_v5, noaa_v5, general_k8s_v5 | `jupyterlab-host/` v4 pair → unsuffixed | + `yamls/k8s.yaml`/`k8s-readme.md` from `workflow/k8s/jupyter/` |
+| `workflows/openvscode` | openvscode: all five _v5 | `openvscode/` v4 pair → unsuffixed | + `yamls/k8s.yaml`/`k8s-readme.md` from `workflow/k8s/vscode/` |
+| `workflows/webshell` | webshell: general_v5, noaa_v5 | `webshell/` v4 pair → unsuffixed | controller keeps its `interactive_session@legacy` clone for the noVNC/ttyd tarball (see "downloads") |
+| `workflows/vncserver` | vncserver: all 14 _v4 | `vncserver/` v3 pair → unsuffixed (its only/latest generation; session pattern) | readme from typo dir `workflow/readmes/vnserver/` |
+| `workflows/kasmvnc` | kasmvnc-container: general/hsp/noaa/noaa_rstudio/general_k8s _v5 | impl subdir `kasmvnc-singularity/` (v4 pair → unsuffixed) + GPU build helpers | + `yamls/k8s.yaml`/`k8s-readme.md` from `workflow/k8s/kasmvnc/` |
+| `workflows/n8n` | n8n: general/hsp/noaa _v5 | impl subdirs `n8n-docker/`, `n8n-singularity/` (v4 pairs → unsuffixed) | runtime input values = subdir names |
+| `workflows/librechat` | librechat-container: general_v5, hsp_v5, general-all_v5, hsp-all_v5 | impl subdir `librechat-singularity/` (v4 pair → unsuffixed + helper scripts) and component `librechat-singularity-manager/` (v4 pair + `server.py`) | the `-all` variants sparse-checkout `workflows/librechat/librechat-singularity-manager` and `workflows/langflow-singularity`; `browser-demo/` migrated |
+| `workflows/langflow-host` | langflow-host: general_v4, hsp_v4 | v3 pair → unsuffixed (its only/latest generation; session pattern) | |
+| `workflows/langflow-singularity` | langflow-singularity: hsp_v5 | v4 pair → unsuffixed + `flows/` + build script | start-template's `flows` path updated to `workflows/langflow-singularity/flows` |
+| `workflows/streamlit` | streamlit: general_v5, hsp_v5 | from `streamlit-singularity/` + `demo/`, def, build script | start-template's demo-app path updated |
+| `workflows/open-notebook` | open-notebook: general_v5 | from `open-notebook-docker/` | |
+| `workflows/ollama` | ollama-gguf: general/hsp/noaa _v5 | impl subdirs `ollama-gguf/`, `ollama-gguf-container/` (v4 pairs → unsuffixed) | dir renamed to avoid `ollama-gguf/ollama-gguf/`; impl names (= input values) unchanged |
+| `workflows/agent-orchestrator` | agent-orchestrator: general_v5 | v4 pair → unsuffixed + .py files | sparse `tools/utils` unchanged |
+| `workflows/hermes-agent` | hermes-agent: general_v5 | v4 pair (only generation) + proxies | |
+| `workflows/lite-agent` | lite-agent: general_v5 | v4 pair → unsuffixed + .py files | |
+| `workflows/rag-service` | rag-service: general_v5 | v4 pair → unsuffixed + support files, `fixtures/` | checkout branch `rag-service` was deleted upstream → now `canary` (see "dead branches") |
+| `workflows/mlflow` | `workflow/k8s/mlflow/general.yaml` → `yamls/k8s.yaml` | none (self-contained) | k8s-only workflow |
+| `workflows/ollama-openwebui` | `workflow/k8s/ollama-openwebui/general.yaml` → `yamls/k8s.yaml` | none (self-contained) | k8s-only workflow |
+| `workflows/session_runner/v1.4` | copied + READMEs updated | — | internal `uses`/`$yaml` re-pointed (it calls script_submitter v3.6); used by vncserver + langflow-host |
 | `workflows/script_submitter/v3.6` | copied as-is + READMEs | — | fully self-contained |
 | `tools/oras`, `tools/utils`, `tools/tests` | `tools/` (repo root, unchanged path) | — | scripts reference `tools/...` relative to the run dir; keeping the root path means zero script edits |
+| `workflow/tutorials/*` | `tutorials/*` | — | their own checkouts/`uses:`/path mentions re-pointed to this repo |
 
-Readmes: each workflow's `workflow/readmes/<src>/` content moved into its directory;
-`general.md` → `README.md` (`cloud.md` for jupyter); `general_k8s.md` → `README_k8s.md`;
-per-deployment mds kept as-is. Thumbnails: matched by name from the shared
-`workflow/thumbnails/` pool into each workflow dir (kept their filenames).
+Readmes: each workflow's `workflow/readmes/<src>/` docs moved into its directory
+(`general.md` → `README.md`, `cloud.md` for jupyter; `general_k8s.md` → `README_k8s.md`;
+per-deployment mds kept only where the variant migrated). Thumbnails: matched by name
+from the shared `workflow/thumbnails/` pool (kept their filenames).
 
 ## rag-vllm (from activate-rag-vllm)
 
 Everything the stack runs from moved wholesale to `workflows/rag-vllm/` (lib/, scripts/,
-singularity/, docker/, configs/, docs/, tests/, the .py services, legacy
-`controller.sh`/`start_service.sh`, v5 scripts, READMEs, thumbnails, LICENSE.md,
-.gitignore). YAMLs: `yamls/general_v5.yaml`→`general.yaml` (supersedes root
-`workflow.yaml`), `yamls/hsp_v5.yaml`→`hsp.yaml`, `yamls/noaa_v5.yaml`→`noaa.yaml`,
-`yamls/emed.yaml`→`emed.yaml` (no v5 exists; legacy generation).
+singularity/, docker/, configs/, docs/, the .py services, `start_service.sh`, READMEs,
+thumbnails, LICENSE.md, .gitignore). YAMLs (latest generation only):
+`yamls/general_v5.yaml`→`yamls/general.yaml` (supersedes root `workflow.yaml`),
+`yamls/hsp_v5.yaml`→`yamls/hsp.yaml`, `yamls/noaa_v5.yaml`→`yamls/noaa.yaml`.
+The wrappers `controller_v5.sh`/`start_service_v5.sh` took the standard names
+`controller.sh`/`start-template.sh` (`start_service.sh` is not a version of them —
+it is the compose-stack launcher that `start-template.sh` executes in RAG mode).
 
 The old repo cloned **itself** with scripts at the checkout root; that layout shifted,
 so beyond the global rules:
 
-- v5 YAMLs: checkout gained `sparse_checkout: [workflows/rag-vllm]`; script existence
+- YAMLs: checkout gained `sparse_checkout: [workflows/rag-vllm]`; script existence
   checks and `cat` lines prefixed with `workflows/rag-vllm/`; `service.repository`
   default → this repo; `repository_branch` default → `canary`; RAG run-dir defaults
   `…/activate-rag-vllm` → `…/workflows` (it now holds a clone of this repo).
-- `controller_v5.sh`: after cloning `${repository}` into `${rag_rundir}`, the stack
-  root is now `rag_appdir="${rag_rundir}/workflows/rag-vllm"` — run artifacts,
-  `cache/`, and `.run.env` target it, and it is exported in `inputs.sh`.
-- `start_service_v5.sh`: launches `start_service.sh` from (and cancels via)
-  `${rag_appdir}` instead of `${rag_rundir}`.
-- `emed.yaml`: post-clone `cd`s, `working-directory`, and the four session_runner
-  paths gained the `/workflows/rag-vllm` suffix; defaults updated as above.
+- `controller.sh`: after cloning `${repository}` into `${rag_rundir}`, the stack root
+  is `rag_appdir="${rag_rundir}/workflows/rag-vllm"` — run artifacts, `cache/`, and
+  `.run.env` target it, and it is exported in `inputs.sh`.
+- `start-template.sh`: launches `start_service.sh` from (and cancels via) `${rag_appdir}`.
 
 ## Dead branches (pre-existing breakage, now fixed)
 
@@ -104,33 +115,46 @@ worth a close look at testing time.
 
 ## Left behind (not copied), with reasons
 
-- **Old YAML versions** (87 files under `workflow/yamls/`): superseded per-variant
-  (`_v4` where a `_v5` exists, unversioned where any versioned file exists), e.g. all of
-  `vncserver`'s pre-v4 none, `kasmvnc-container/{general,noaa,noaa_rstudio,general_k8s}.yaml`,
-  `librechat-container/{general,hsp,general-all,hsp-all}.yaml`, `jupyter-host/general_v4.yaml`, etc.
-- **`workflow.yaml`, `yamls/{hsp,noaa}.yaml` in activate-rag-vllm**: superseded by the
-  v5 files (per the known facts: `general_v5` supersedes root `workflow.yaml`).
-- **`session_runner/v1.3`, `script_submitter/v3.5`**: no selected YAML references them
-  (v3.5 is still referenced as a **marketplace** slug by `vncserver/rstudio_k8s.yaml` —
-  that's a platform registration, not a repo path).
-- **Older scripts nothing selected uses**: `agent-orchestrator/{controller,start-template}-v3.sh`,
-  `lite-agent/*-v3.sh`, `openvscode/*-v3.sh`, `librechat-singularity/{controller,start-template}-v3.sh`.
-- **`workflow/tutorials/` (27 files)**: teaching material, not platform workflows; the
-  AI skill still points at them in `interactive_session`. Candidate for a follow-up move.
-- **`workflow/batch/` (helios/kestrel hsp batch examples)**: not part of the session
-  workflow catalog this migration covers. Candidate for a follow-up decision.
-- **48 unmatched thumbnails**: stale pool entries (abaqus, ansys, fluent, gt_logo, …)
-  with no migrated workflow.
-- **`downloads/` binaries**: already absent from `main` (live only in the old repo's
-  `legacy` tag). The scripts that need them (`webshell/controller*.sh`,
-  `jupyter*/controller-v3.sh`, `vncserver/controller.sh`) intentionally keep cloning
-  `interactive_session` at `legacy` — left untouched.
-- **Old repo docs** (`CLAUDE.md`, `DeveloperGuide.md`, `README.md`,
-  `AIPromptAddingNewWorkflow.md`): rewritten fresh for this repo rather than copied.
-- `.claude/settings.json`, `.gitignore`, `.gitattributes`, `workflow/.DS_Store`: repo-local
-  config/noise.
-- `jupyter-host/notebook*.yaml` naming note: both env files migrated; all other support
-  files followed their scripts.
+**Legacy-generation variants and their dependencies** (round 2: the old and new script
+generations are architecturally incompatible — the old ones serve the injected
+`${service_port}` for a platform tunnel session, the new ones run `pw endpoints run` —
+so these stay in `interactive_session` until converted; the conversion guide is the
+skill's `references/session-to-endpoint-upgrade.md`):
+
+- `jupyter-host/emed_v4.yaml`, `jupyterlab-host/emed_v4.yaml`, `n8n/emed_v4.yaml`,
+  `kasmvnc-container/emed.yaml`, `webshell/hsp_v4.yaml`,
+  `kasmvnc-container/general-rstudio.yaml`, `kasmvnc-container/northrop.yaml`
+  (air-gapped local-copy variant), `langflow-singularity/general_v4.yaml`,
+  `librechat-singularity-manager/{general,hsp}.yaml` (the standalone manager
+  workflow; its scripts live on here as a librechat `-all` component),
+  `activate-rag-vllm/yamls/emed.yaml` (+ the legacy root `controller.sh` it ran)
+- all `controller-v3.sh`/`start-template-v3.sh` files, the `kasmvnc-docker/` impl
+  (v3-only, selectable only from the removed variants), and support files only the
+  legacy scripts used: `jupyter-host/nginx-unprivileged.def`,
+  `n8n-docker/docker-compose.yml.template` (no consumer in any generation),
+  `jupyterlab-host/dask-extension-jupyterlab-demo.ipynb` (no consumer),
+  `activate-rag-vllm/tests/` (asserts against the superseded legacy YAMLs)
+- per-deployment readmes of removed variants: `jupyter-host/{emed-onprem,atnorth-onprem,podmt3,workdir}.md`
+
+**Superseded versions** (the original latest-only rule):
+
+- Old YAML versions (87 files under `workflow/yamls/`), `workflow.yaml` +
+  `yamls/{hsp,noaa}.yaml` in activate-rag-vllm, `session_runner/v1.3`,
+  `script_submitter/v3.5`, and older scripts nothing selected used
+  (agent-orchestrator/lite-agent/openvscode/librechat-singularity `-v3` pairs).
+
+**Out of scope / stale:**
+
+- `workflow/batch/` (helios/kestrel hsp batch examples) — not part of this catalog;
+  follow-up decision.
+- 48 unmatched thumbnails — stale pool entries with no migrated workflow.
+- `downloads/` binaries — already absent from the sources' `main` (live only in the
+  old repo's `legacy` tag). The scripts that need them (`webshell/controller.sh`,
+  `vncserver/controller.sh`) intentionally keep cloning `interactive_session@legacy`.
+- Old repo docs (`CLAUDE.md`, `DeveloperGuide.md`, `README.md`,
+  `AIPromptAddingNewWorkflow.md`) — rewritten fresh for this repo.
+- `.claude/settings.json`, `.gitignore`, `.gitattributes`, `workflow/.DS_Store` —
+  repo-local config/noise (this repo has its own).
 
 ## Judgment calls (review these)
 
@@ -141,48 +165,50 @@ worth a close look at testing time.
    `streamlit`(-singularity)→`streamlit`, `activate-rag-vllm`→`rag-vllm`.
    Hidden `service.name` **values** were NOT changed, so endpoint/session names are
    identical to before.
-3. **Impl subdirectories keep their old names** (`kasmvnc-docker`, `n8n-singularity`,
-   `ollama-gguf-container`, `librechat-singularity`) because form input values select
-   them at runtime; renaming them would change visible input values.
+3. **Impl subdirectories keep their old names** (`kasmvnc-singularity`,
+   `n8n-docker`, `n8n-singularity`, `ollama-gguf`, `ollama-gguf-container`,
+   `librechat-singularity`) because form input values select them at runtime.
 4. **`tools/` stays at the repo root** so scripts' `tools/...` run-dir-relative
    references work unchanged.
-5. **`cp <dir>/*.yaml .` globs** (jupyter, jupyterlab) now enumerate the two conda env
-   files — the glob would otherwise sweep up the workflow YAMLs that live alongside.
+5. **`librechat-singularity-manager` folded into `workflows/librechat/`** as a
+   component: its standalone workflow was legacy-generation (left behind), but the
+   librechat `-all` variants still execute its scripts.
 6. **Thumbnail guesses** (registration data not visible from here): openvscode→`gitpod.png`
    (openvscode-server is Gitpod's project), vncserver→`desktop.png`,
    agent-orchestrator→`python-ai-orchestrator.png`, lite-agent→`python-ai-worker.png`,
-   librechat-singularity-manager→`librechat.png`, ollama-openwebui→`ollama.png`.
-   rag-service has no plausible thumbnail in the pool (none copied).
-7. **webshell has no general readme** in the old repo (only `noaa-onprem.md`) — none was
-   invented; the noaa one moved.
+   ollama-openwebui→`ollama.png`. rag-service has no plausible thumbnail in the pool.
+7. **webshell has no general readme** in the old repo — none was invented; the noaa
+   one moved.
 8. **AI home**: canonical skill at `.claude/skills/activate-workflows/` (auto-discovered
    by Claude Code in-repo); approach guides + installer at `docs/ai-workflow-development/`;
-   references updated for the new layout, with the historical upgrade/container guides
-   carrying a layout-mapping note instead of a risky full rewrite.
+   references updated for the new layout. `session-to-endpoint-upgrade.md` (renamed
+   from the old v4-to-v5 doc) deliberately keeps pre-consolidation names — it guides
+   conversions of the variants still living in `interactive_session`.
 9. **Latent quirk preserved**: ollama's singularity→native fallback flips
    `service_impl` to `ollama-gguf` even when only `ollama-gguf-container` was
-   sparse-checked-out, so the fallback still fails at the controller step exactly as it
-   did before (fail-loud guard). Fixing it (checkout both impls) is a one-line change
-   left out to keep this a pure reorganization.
+   sparse-checked-out, so the fallback still fails at the controller step exactly as
+   before (fail-loud guard). Fixing it (checkout both impls) is a one-line change
+   left out to keep this a reorganization.
 10. **librechat's Docker option** (`container_runtime: librechat-docker`) was already
-    broken on `main` (no such directory) and remains so — the singularity default works.
+    broken on the sources' `main` (no such directory) and remains so — the
+    singularity default works.
+11. **rag-vllm's `docs/` prose** still describes some pre-consolidation details
+    (`workflow.yaml`, emed) — script names were updated, prose left to the owning team.
 
 ## Marketplace / platform registrations to re-point (out of scope here)
 
 Platform-side registrations still reference old repo paths. When re-pointing them:
 
 - Every marketplace workflow entry that pins `workflow/yamls/<x>/<variant>_vN.yaml`
-  → `workflows/<name>/<variant>.yaml` in `parallelworks/workflows@canary`.
+  → `workflows/<name>/yamls/<variant>.yaml` in `parallelworks/workflows@canary`.
+  Entries for the left-behind legacy variants keep pointing at `interactive_session`.
 - Marketplace subworkflow slugs: `marketplace/session_runner/v1.4`,
-  `marketplace/script_submitter/v3.5|v3.6` (used by `kasmvnc/northrop.yaml` and
-  `vncserver/rstudio_k8s.yaml`) — their registrations must move to
+  `marketplace/script_submitter/v3.5|v3.6` (v3.5 is used by
+  `vncserver/yamls/rstudio_k8s.yaml`) — their registrations must move to
   `workflows/{session_runner,script_submitter}/...` in this repo (v3.5 would need to
   stay on the old repo or the yaml bumped to v3.6).
 - Readme/thumbnail paths in registrations (`workflow/readmes/...`,
   `workflow/thumbnails/...`) → the files inside each `workflows/<name>/`.
-- The air-gapped **northrop** deployment: its `interactive_sessions_dir` input must
-  point at a clone of this repo's `workflows/kasmvnc` directory (impl subdirs and v3
-  filenames unchanged, so the old clone keeps working too).
 
 ## Test results
 
@@ -192,16 +218,14 @@ _Pending checkpoint approval — to be filled in after push + testing._
 |---|---|---|---|
 | (all) | — | — | not yet run |
 
-Static-only (platform-bound variants): emed/hsp/noaa/northrop/k8s variants — YAML
-parse + path-existence + reference checks only.
+Static-only (platform-bound variants): emed/hsp/noaa/k8s variants — YAML parse +
+path-existence + reference checks only.
 
 ## Open questions
 
 1. Keep `canary` as the long-lived default branch, or rename to `main` after the
    migration lands? (Mechanical find/replace either way.)
-2. Migrate `workflow/tutorials/` (the AI skill leans on them) and `workflow/batch/`
-   in a follow-up?
+2. Migrate `workflow/batch/` in a follow-up?
 3. Thumbnail guesses in judgment call 6 — confirm against the actual registrations.
-4. `jupyter` vs `jupyterlab` naming: `workflow/k8s/jupyter/` actually deploys
-   JupyterLab and was folded into `workflows/jupyterlab/k8s.yaml` per the plan; the
-   classic-notebook workflow now lives at `workflows/jupyter/`. Comfortable?
+4. Converting the left-behind legacy variants (emed etc.) to the endpoint pattern so
+   they can join this repo — who/when?

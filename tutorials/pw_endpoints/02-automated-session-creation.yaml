@@ -1,0 +1,54 @@
+# permissions authenticates the in-workflow pw CLI — pw endpoints registers the
+# endpoint through the platform API.
+permissions:
+  - '*'
+
+env:
+  RESOLUTION: ${{ inputs.resolution }}
+
+jobs:
+  install:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout Fractal Demo
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - tutorials/fractal-demo
+      - name: Install Dependencies
+        run: |
+          # keep only the example directory from the sparse checkout
+          mv tutorials/fractal-demo .
+          rm -r workflow
+          ./fractal-demo/install.sh
+
+  run:
+    needs:
+      - install
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Render and Serve
+        # No --port: pw picks a free local port and exports it as PORT, which
+        # run.sh reads. RESOLUTION comes from the workflow-level env block.
+        run: pw endpoints run --name fractal-${PW_RUN_SLUG} -- ./fractal-demo/run.sh
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Resource Target
+        tooltip: The compute cluster to run the fractal example on.
+        autoselect: true
+        optional: false
+      resolution:
+        type: number
+        label: Resolution
+        tooltip: Image size in pixels. Larger values look sharper but take longer to render.
+        default: 2500
+        min: 100
+        max: 10000

@@ -3,8 +3,7 @@
 Dense, copy-paste-ready facts for building workflows on the Activate platform.
 Everything here was verified against `pw v7.56.0` and the workflows now consolidated in this
 `parallelworks/workflows` repo (one directory per workflow under `workflows/`; version
-suffixes dropped — git tags version the repo). Tutorials cited as `workflow/tutorials/...`
-still live in the `parallelworks/interactive_session` repo.
+suffixes dropped — git tags version the repo; the tutorials live at `tutorials/`).
 Originally verified against the `interactive_session` repo
 (`session_runner/v1.4`, `script_submitter/v3.6`), and live runs on this machine.
 
@@ -176,7 +175,7 @@ expressions (`ignore: ${{ .hidden }}` mirrors the hidden flag).
 | `editor` | multi-line text box (e.g. scheduler directives) |
 | `dropdown` | `options: [{label, value}]` |
 | `group` | container with `items:` (values at `inputs.<group>.<item>`) |
-| `list` | repeater the user adds rows to; each row has the fields under `template:`. At runtime `${{ inputs.<name> }}` is a **JSON array** — parse with `python3`, don't slice in shell. Items can themselves be `compute-clusters` (pass `[{"resource":"<name>"}]` in `-i`). See `workflow/tutorials/round-robin-failover/`. |
+| `list` | repeater the user adds rows to; each row has the fields under `template:`. At runtime `${{ inputs.<name> }}` is a **JSON array** — parse with `python3`, don't slice in shell. Items can themselves be `compute-clusters` (pass `[{"resource":"<name>"}]` in `-i`). See `tutorials/round-robin-failover/`. |
 | `compute-clusters` | resource picker → resource object (§2); `include-workspace: true/false` |
 | `slurm-partitions` | partition dropdown; needs `resource: ${{ inputs.resource }}` |
 
@@ -212,12 +211,12 @@ graph gives you sequencing, data flow, conditionals, and parallelism:
   each other **run concurrently**; a downstream job with `needs: [w1, w2, w3]` joins
   them. (Verified: 3 workers logged the same finish second.) For N identical workers,
   use a **matrix strategy** (`strategy.matrix`) rather than hand-copying jobs — see
-  `workflow/tutorials/matrix/workflow.yaml`.
+  `tutorials/matrix/workflow.yaml`.
 - **`PW_MATRIX_INDEX` carries the matrix worker's index** (verified): `0`, `1`, … in a
   matrix job's steps AND inside the jobs of a subworkflow invoked from a matrix job;
   unset outside a matrix, so read it as `${PW_MATRIX_INDEX:-}`. Use it whenever
   per-worker names must be unique and two workers may target the same resource — see
-  the endpoint naming in `workflow/tutorials/pw_endpoints/04-subworkflow.yaml`. Do NOT
+  the endpoint naming in `tutorials/pw_endpoints/04-subworkflow.yaml`. Do NOT
   parse `PW_JOB_DIR` for it: at the matrix job's own level the path has no worker
   component at all. (`PW_PARENT_JOB_DIR` stays the top-level run dir at every nesting
   depth.)
@@ -229,10 +228,10 @@ graph gives you sequencing, data flow, conditionals, and parallelism:
   submitter job (tail skipped); service died early = the submitter step returns, and
   the tail cancels the waiter + exits 1 with an `::error` annotation; submitter fails
   hard = the tail is skipped and the waiter's `early-cancel: any-job-failed` ends the
-  run. See `workflow/tutorials/pw_endpoints/04-subworkflow.yaml` and
+  run. See `tutorials/pw_endpoints/04-subworkflow.yaml` and
   `workflows/*/general.yaml` (v5 endpoint pattern).
-- See `workflow/tutorials/nginx/` (jobs, `needs`, `$OUTPUTS`, conditional `if:`,
-  sessions) and `workflow/tutorials/matrix/workflow.yaml` (fan-out workers via a matrix
+- See `tutorials/nginx/` (jobs, `needs`, `$OUTPUTS`, conditional `if:`,
+  sessions) and `tutorials/matrix/workflow.yaml` (fan-out workers via a matrix
   strategy — the pattern to copy for a parameter sweep).
 
 ### Step retries & attempt-aware logic (verified — see `tutorials/round-robin-failover`)
@@ -257,7 +256,7 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   `${{ inputs.workers get env.PW_WORKFLOW_STEP_CURRENT_RETRY get resource get ip }}`
   resolves inside a `uses:` step's `with:`, advancing with the retry counter — verified
   live with a dead first resource failing over to a healthy second
-  (`workflow/tutorials/pw_endpoints/07-failover.yaml`). Two caveats still apply:
+  (`tutorials/pw_endpoints/07-failover.yaml`). Two caveats still apply:
   (1) a list item picked with `get` does **not** pass through `with:` as one object —
   rebuild the resource **field by field** (`id`, `ip`, `name`, `namespace`, `provider`,
   `schedulerType`, `type`, `uri`, `user`); (2) a resource passed as a **URI string does
@@ -320,8 +319,8 @@ session_runner:
           slurm: { is_enabled: ..., partition: ..., time: ..., scheduler_directives: ... }
           pbs:   { is_enabled: ..., scheduler_directives: ... }
         service:
-          start_service_script: ${PW_PARENT_JOB_DIR}/<dir>/start-template-v3.sh
-          controller_script:    ${PW_PARENT_JOB_DIR}/workflows/<name>/controller-v3.sh
+          start_service_script: ${PW_PARENT_JOB_DIR}/workflows/<name>/start-template.sh
+          controller_script:    ${PW_PARENT_JOB_DIR}/workflows/<name>/controller.sh
           inputs_sh:            ${PW_PARENT_JOB_DIR}/inputs.sh
           slug: ""                                      # URL path after the host; "" = root app
           rundir: ${PW_PARENT_JOB_DIR}
@@ -346,9 +345,9 @@ session_runner:
 5. On cancel/failure, the trap runs `cancel.sh` and kills the process group.
 
 **Your contract (the two scripts you provide):**
-- `controller-v3.sh` — idempotent install/setup on the login node. All `inputs.sh`
+- `controller.sh` — idempotent install/setup on the login node. All `inputs.sh`
   vars are available.
-- `start-template-v3.sh` — must:
+- `start-template.sh` — must:
   - bind the service on **`${service_port}`** and **host `0.0.0.0`** (so the tunnel reaches it),
   - write `${PW_PARENT_JOB_DIR}/cancel.sh` (commands that stop the service),
   - keep the job alive (background the server + `sleep inf`, or run it in foreground).
@@ -569,7 +568,7 @@ inputs grouped into a cluster group + a service group; `permissions: ['*']`.
 ## 9. Where to look for working patterns (use the repo, not invented examples)
 
 Learn from the **real workflows already in this repo** and the **tutorials under
-`workflow/tutorials/` in the `interactive_session` repo** — they are maintained, reviewed, and kept in
+`tutorials/`** — they are maintained, reviewed, and kept in
 sync with the platform. Read the one closest to your task:
 
 | Pattern you need | Look at |
@@ -578,12 +577,12 @@ sync with the platform. Read the one closest to your task:
 | **Session with install + base-path nginx proxy** (§11) | `workflows/jupyterlab/general.yaml` + `workflows/jupyterlab/*.sh` |
 | **Session whose `slug` is a query string** | `workflows/openvscode/general.yaml` (`slug=?folder=...`) |
 | **`parallelworks/checkout` (sparse) to fetch code** | preprocessing job of any workflow YAML above |
-| **Fan-out / sweep over N workers** (matrix strategy) | `workflow/tutorials/matrix/workflow.yaml` (use this for sweeps) |
-| **Job DAG: `needs`, `$OUTPUTS`, sessions, `update-session`, `pw agent open-port`** | `workflow/tutorials/nginx/` (`readme.md` + `workflow.yaml`, staged 1→4) |
-| **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `workflow/tutorials/round-robin-failover/` (staged README + `workflow.yaml`) |
+| **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/matrix/workflow.yaml` (use this for sweeps) |
+| **Job DAG: `needs`, `$OUTPUTS`, sessions, `update-session`, `pw agent open-port`** | `tutorials/nginx/` (`readme.md` + `workflow.yaml`, staged 1→4) |
+| **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/round-robin-failover/` (staged README + `workflow.yaml`) |
 
 > **Adding a new tutorial requires maintainer approval.** Tutorials must each show
-> something new and non-repetitive — do not add one to `workflow/tutorials/` without
+> something new and non-repetitive — do not add one to `tutorials/` without
 > sign-off from the repo maintainer (Alvaro). Prefer pointing at an existing tutorial.
 
 ---
@@ -642,10 +641,10 @@ remedies, both used in the repo:
   ```
   then point the app's base-URL setting at it (JupyterLab:
   `c.ServerApp.base_url = '${basepath}'`, plus `default_url`/`static_url_prefix`/… — see
-  `jupyterlab-host/start-template-v3.sh`).
+  `workflows/jupyterlab/start-template.sh`).
 - **Front it with an nginx reverse proxy** that listens on `${service_port}` and proxies
   to the app on a private port, rewriting the prefix (and setting the WebSocket upgrade
-  headers). `jupyterlab-host/start-template-v3.sh` writes an `nginx.conf` and runs an
+  headers). `workflows/jupyterlab/start-template.sh` writes an `nginx.conf` and runs an
   `nginx-unprivileged` container for exactly this.
 - **If the app honors `X-Forwarded-Prefix`, you need neither.** The session tunnel
   forwards that header, so an app that reads it at runtime (injecting the prefix into
@@ -781,7 +780,7 @@ command instead: `pw ssh c "echo <b64> | base64 -d | curl --data-binary @- http:
 
 ### Endpoint sessions (`pw endpoints`) — the v5 workflow pattern (verified)
 **Upgrading a v4 workflow to this pattern? Follow the step-by-step playbook in
-[v4-to-v5-endpoints-upgrade.md](v4-to-v5-endpoints-upgrade.md)** (distilled from the
+[session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md)** (distilled from the
 openvscode and jupyterlab conversions). The v5-generation workflows (openvscode,
 jupyterlab-host) replace platform sessions
 (`sessions:` + `session_runner`) with **endpoint sessions**: the service side runs
@@ -798,10 +797,10 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   `pw endpoints list | grep -w <name>` — so build them from `${PW_RUN_SLUG}` (plus the
   resource name when several workers share a run). Killing the client process (cancel
   the run/step) deregisters the endpoint within seconds; racing/fan-out over a shared
-  name prefix is shown in `workflow/tutorials/pw_endpoints/` (verified two-resource
+  name prefix is shown in `tutorials/pw_endpoints/` (verified two-resource
   first-start-wins race).
 - **Base-path apps need no base_url and no nginx on a subdomain endpoint**
-  (`jupyterlab-host/start-template-v4.sh`): subdomain endpoints serve at the root, so
+  (`workflows/jupyterlab/start-template.sh`): subdomain endpoints serve at the root, so
   `pw endpoints run ${pw_endpoints_args} -- jupyter-lab --port {port} --config …` is
   enough — v3's nginx proxy + base-path config is obsolete in v5. For path-based
   endpoints (`--no-subdomain`) set the app's base path to the `{path}` token

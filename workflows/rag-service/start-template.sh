@@ -2,7 +2,7 @@
 # Interactive Session Starter - RAG Service
 #
 # Purpose: start the two rag-service processes on the execution node, both
-#          inside the dependency SIF container pulled by controller-v4.sh:
+#          inside the dependency SIF container pulled by controller.sh:
 #          1. indexer.py in the background (sole writer of the LanceDB table),
 #             logging into the job dir, with a cancel.sh that kills it;
 #          2. rag_server.py in the foreground wrapped by `pw endpoints run`,
@@ -60,7 +60,7 @@ if ! which singularity &> /dev/null; then
 fi
 
 if ! [ -f "${container_sif}" ]; then
-    echo "::error title=Error::Missing container image ${container_sif} -- controller-v4.sh did not run?"
+    echo "::error title=Error::Missing container image ${container_sif} -- controller.sh did not run?"
     pw workflows runs cancel ${PW_RUN_SLUG}
     exit 1
 fi

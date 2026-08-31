@@ -7,7 +7,7 @@ things:
 |------|---------|---------|
 | `controller.sh` | Controller (login) node | Install software, download dependencies |
 | `start-template.sh` | Controller or compute node | Start the web service |
-| `<variant>.yaml` (e.g. `general.yaml`) | Platform | Define the UI form, generate `inputs.sh`, orchestrate |
+| `yamls/<variant>.yaml` (e.g. `yamls/general.yaml`) | Platform | Define the UI form, generate `inputs.sh`, orchestrate |
 
 The controller node always has internet access. The compute node may not.
 
@@ -67,7 +67,7 @@ Requirements: listen on **`service_port`**, write a **`cancel.sh`**, end with
 
 ## 3. The workflow YAML
 
-`workflows/my-session/general.yaml`. Its jobs:
+`workflows/my-session/yamls/general.yaml`. Its jobs:
 
 1. **preprocessing** — `parallelworks/checkout` of this repo (sparse:
    `workflows/my-session`, plus `tools/...` if the scripts use the shared tools),
@@ -81,21 +81,19 @@ Requirements: listen on **`service_port`**, write a **`cancel.sh`**, end with
    `<service.name>-${PW_RUN_SLUG}` is online, then leave the service running
    (`SKIP_CLEANUP` marker) and cancel the submitter's wait.
 
-**Copy a real one instead of writing from scratch** — `workflows/webshell/general.yaml`
-is the smallest complete example; `workflows/jupyterlab/general.yaml` shows a conda
-install plus support files. Key parts to adapt:
+**Copy a real one instead of writing from scratch** —
+`workflows/webshell/yamls/general.yaml` is the smallest complete example;
+`workflows/jupyterlab/yamls/general.yaml` shows a conda install plus support files.
+Key parts to adapt:
 
 - the hidden `service.name` input (endpoint name prefix),
 - the sparse-checkout paths (`workflows/my-session`, `tools/...`),
 - the `cat workflows/my-session/controller.sh` / `start-template.sh` lines,
 - the `service` input group (your form fields → `inputs.sh` variables).
 
-Never copy file globs from the workflow dir (`cp workflows/my-session/*.yaml .` would
-grab the workflow YAMLs themselves) — enumerate the files you need.
-
 ## 4. Platform variants
 
-One YAML per deployment: `general.yaml` (standard SLURM/PBS clusters), plus
+One YAML per deployment: `yamls/general.yaml` (standard SLURM/PBS clusters), plus
 `emed.yaml` / `hsp.yaml` / `noaa.yaml` where the workflow is offered there. Variants
 differ in scheduler directives, partitions, module loads, and defaults — copy the
 matching variant of a similar workflow (they pass their variant's
@@ -105,7 +103,7 @@ matching variant of a similar workflow (they pass their variant's
 
 ```bash
 # from the repo root, after pushing your branch (the YAML pulls the repo from GitHub at runtime)
-pw workflows run ./workflows/my-session/general.yaml -i '{"cluster":{"resource":"<cluster>","scheduler":false}}'
+pw workflows run ./workflows/my-session/yamls/general.yaml -i '{"cluster":{"resource":"<cluster>","scheduler":false}}'
 pw endpoints list        # your endpoint should come online
 # cancel the run in the UI or with pw, then confirm the service was cleaned up
 ```
@@ -113,15 +111,18 @@ pw endpoints list        # your endpoint should come online
 While iterating you can point the YAML's checkout `branch:` at a development branch;
 restore it to `canary` before merging.
 
-## Appendix: the v4 / session_runner generation
+## Appendix: the session_runner generation
 
-Some variants (all of `vncserver` and `langflow-host`; the `emed` variants of
-`jupyter`, `jupyterlab`, `n8n`, `kasmvnc`; `webshell/hsp.yaml`; `kasmvnc/general-rstudio.yaml`;
-`librechat-singularity-manager`; `langflow-singularity/general.yaml`; `rag-vllm/emed.yaml`)
-still use the older pattern: a `sessions:` block, `-v3` scripts, and
-`workflows/session_runner/v1.4/<variant>.yaml`, which registers a **platform tunnel
-session** instead of a `pw` endpoint. Its interface (session, resource, cluster
-scheduler settings, `service.{start_service_script,controller_script,inputs_sh,slug,rundir}`)
-is documented in `workflows/session_runner/v1.4/README.md`. New workflows should use
-the endpoint pattern; to upgrade an old variant, follow
-`.claude/skills/activate-workflows/references/v4-to-v5-endpoints-upgrade.md`.
+Two workflows (**vncserver** and **langflow-host**) still use the older pattern: a
+`sessions:` block and `workflows/session_runner/v1.4/<variant>.yaml`, which submits
+the start script and registers a **platform tunnel session** on the injected
+`${service_port}` instead of a `pw` endpoint. Its interface (session, resource,
+cluster scheduler settings, `service.{start_service_script,controller_script,inputs_sh,slug,rundir}`)
+is documented in `workflows/session_runner/v1.4/README.md`.
+
+New workflows should use the endpoint pattern. The legacy platform variants that
+depended on the older script generation (emed files, webshell hsp, kasmvnc
+general-rstudio/northrop, langflow-singularity general, librechat-singularity-manager's
+standalone workflow, rag-vllm emed) were **left in `parallelworks/interactive_session`**;
+to convert one to the endpoint pattern and bring it here, follow
+`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`.

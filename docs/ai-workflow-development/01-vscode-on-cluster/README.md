@@ -21,8 +21,8 @@ agent's shell and the workflow's jobs share one node, debugging is fully local
    ```
    It copies the repo skill (`.claude/skills/activate-workflows/`) into
    `~/.claude/skills/activate-workflows/`. Keep this `workflows` repo on the
-   node — the skill points at its real workflows (`workflows/`) for examples
-   (tutorials still live in the `interactive_session` repo).
+   node — the skill points at its real workflows (`workflows/`) and tutorials
+   (`tutorials/`) for examples.
 5. **Ask for a workflow**, e.g.:
    > *Using the activate-workflows skill, build a workflow that runs a simulation and
    > serves a live progress page as a session.*

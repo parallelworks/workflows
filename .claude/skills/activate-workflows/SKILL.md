@@ -39,8 +39,8 @@ every workflow: besides allowing everyone to run it, it is what lets the in-work
   use. Learn the patterns from the **repo's own workflows and tutorials**, not from
   invented demos (reference §9): sessions →
   `workflows/{webshell,jupyterlab,openvscode}/`; job DAG / sessions / outputs
-  → `workflow/tutorials/nginx/`; **fan-out / sweep → `workflow/tutorials/matrix/`** (tutorials live in the `parallelworks/interactive_session` repo);
-  retry/failover → `workflow/tutorials/round-robin-failover/`.
+  → `tutorials/nginx/`; **fan-out / sweep → `tutorials/matrix/`**;
+  retry/failover → `tutorials/round-robin-failover/`.
 - **Pick the deployment variant by platform host — don't default to `general`.**
   `session_runner`/`script_submitter` ship as `general` / `emed` / `hsp` / `noaa`, and
   the **resource/scheduler/slurm/pbs form sections differ between them**. Choose:
@@ -84,7 +84,7 @@ Mirror the proven pattern (see `workflows/webshell/general.yaml`): a
 Provide the two contract scripts `session_runner` expects:
 - **`controller.sh`** — idempotent setup on the login node (has internet). Often
   just verifies prerequisites.
-- **`start-template-v3.sh`** — binds **`${service_port}`** on `0.0.0.0`, writes
+- **`start-template.sh`** — binds **`${service_port}`** on `0.0.0.0`, writes
   `${PW_PARENT_JOB_DIR}/cancel.sh` (how to stop the service), and ends with
   `sleep inf` (or runs the server in foreground).
 
@@ -112,7 +112,7 @@ matching variant's YAML**. Add `include-workspace: true` on the
 (JupyterLab, many SPAs) need to know that prefix — either set the app's base-URL
 (compute `basepath=/me/session/${PW_USER}/${{ sessions.session }}` and feed it in) or
 front it with an **nginx reverse proxy** on `${service_port}`. See reference §11 and
-`jupyterlab-host/start-template-v3.sh`. Apps that serve relative paths just use
+`workflows/jupyterlab/start-template.sh`. Apps that serve relative paths just use
 `slug: ""` and need neither.
 
 Numbers from `integer` inputs arrive as **strings**; guard with `${var:-default}`.
@@ -174,7 +174,7 @@ misunderstood subworkflow input, a debugging trick that worked — **add it to t
 file or the reference** so the next run avoids it. These files are living documents.
 Because the **platform docs change**, re-check them when behavior surprises you and
 correct this skill toward the docs. **Do not add a new tutorial to
-`workflow/tutorials/` without maintainer approval** — each must show something new and
+`tutorials/` without maintainer approval** — each must show something new and
 non-repetitive; point at an existing tutorial instead.
 
 ## Best practices
@@ -190,11 +190,11 @@ non-repetitive; point at an existing tutorial instead.
   (`cd` into it). Pass values with `echo "K=v" | tee -a $OUTPUTS` (or pipe a program
   that prints `K=v` lines) and read `${{ needs.<job>.outputs.K }}`. Drive conditional
   steps with `if: ${{ needs.X.outputs.flag == 'true' }}` — compute the boolean
-  upstream. Fan out with a **matrix strategy** (see `workflow/tutorials/matrix/`); fan
+  upstream. Fan out with a **matrix strategy** (see `tutorials/matrix/`); fan
   in with `needs: [w1,w2,w3]`. For **retry/failover**, attach a `retry` block to a step
   and use `PW_WORKFLOW_STEP_CURRENT_RETRY` to pick a target per attempt — round-robin
   over a `list` input fails over across resources (see
-  `workflow/tutorials/round-robin-failover/`; reference §3 "Step retries").
+  `tutorials/round-robin-failover/`; reference §3 "Step retries").
 - **Make scripts idempotent and traceable:** `set -o pipefail`, `set -x`; check
   before installing; safe to re-run.
 - **Stream progress and emit structured results.** Print incremental progress (it

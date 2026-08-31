@@ -69,7 +69,7 @@ directory (offline-safe) if not. The service code itself is not baked into
 the container — it comes from the workflow checkout, so code changes never
 require a container rebuild. To change pinned dependencies: edit
 `requirements.txt`, run `./build-container.sh`, push a **new tag**, and bump
-`CONTAINER_TAG` in `controller-v4.sh`.
+`CONTAINER_TAG` in `controller.sh`.
 
 ## Search API
 

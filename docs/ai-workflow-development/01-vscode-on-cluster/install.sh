@@ -26,6 +26,6 @@ echo "  - SKILL.md"
 echo "  - references/"
 echo
 echo "The skill points at this repo's own workflows (workflows/) for working examples —"
-echo "keep this repo available on the node. Tutorials still live in interactive_session."
+echo "keep this repo available on the node."
 echo
 echo 'In Claude Code: "Using the activate-workflows skill, build a workflow that ..."'

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# start-template-v4.sh — n8n via Singularity behind a pw endpoint
+# start-template.sh — n8n via Singularity behind a pw endpoint
 #
-# Uses the SIF downloaded by controller-v4.sh. Falls back to a sandbox
+# Uses the SIF downloaded by controller.sh. Falls back to a sandbox
 # directory when the node cannot mount SIF images (no squashfs support).
 
 set -x

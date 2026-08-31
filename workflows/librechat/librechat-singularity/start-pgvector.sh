@@ -1,6 +1,6 @@
 #!/bin/bash
 # Starts PostgreSQL/pgvector. Initializes the data directory on first run.
-# Sourced by start-template-v3.sh or restart-pgvector.sh.
+# Sourced by start-template.sh or restart-pgvector.sh.
 # Can also be run directly: bash start-pgvector.sh  (auto-loads service.env)
 
 _UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

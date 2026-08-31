@@ -21,7 +21,7 @@ container_sif=${service_parent_install_dir}/containers/kasmvnc-${kasmvnc_os}-gpu
 # The controller runs on the controller/login node (which has internet) -- NOT on
 # the compute node where the container ultimately runs. Its only job is to download
 # the SIF; whether the node can mount it (and whether a sandbox must be built from
-# it) is decided at run time by start-template-v4.sh.
+# it) is decided at run time by start-template.sh.
 if ! [ -f "${container_sif}" ]; then
     echo "::group::KasmVNC SIF Download"
     echo "::notice::Using GitHub registry to download file"

@@ -15,7 +15,7 @@ agent at the repo's own workflows and tutorials.
 | Piece | Where | Shared? |
 |-------|-------|---------|
 | **Reference** — platform facts (YAML schema, `session_runner`/`script_submitter`, `pw` CLI, job-dir layout, deployment variants, code delivery, base-path sessions) | [`/.claude/skills/activate-workflows/references/`](../../.claude/skills/activate-workflows/references/) | shared by every approach |
-| **Examples to learn from** — the real workflows in this repo (`workflows/`) and the tutorials still in the `interactive_session` repo (`workflow/tutorials/`) | this repo + `interactive_session` | shared |
+| **Examples to learn from** — the real workflows (`workflows/`) and tutorials (`tutorials/`) in this repo | this repo | shared |
 | **Methodology** — the step-by-step process the agent follows | [`/.claude/skills/activate-workflows/SKILL.md`](../../.claude/skills/activate-workflows/SKILL.md) | shared (approaches may fork it) |
 | **Setup guide + installer** — how to host/drive the agent | `<approach>/README.md` + `<approach>/install.sh` | per approach |
 
@@ -47,8 +47,8 @@ It copies the repo skill (`.claude/skills/activate-workflows/`) into
 
 > *Using the activate-workflows skill, build a workflow that …*
 
-The skill points at this repo's real workflows (`workflows/`) for worked patterns, so
-keep this repo available on the node (tutorials still live in `interactive_session`).
+The skill points at this repo's real workflows (`workflows/`) and tutorials
+(`tutorials/`) for worked patterns, so keep this repo available on the node.
 
 ## Adding a new approach
 
@@ -59,5 +59,5 @@ keep this repo available on the node (tutorials still live in `interactive_sessi
    resources, and `bash install.sh`.
 4. Add a row to the **Approaches** table above.
 
-> The skill teaches from the repo's own `workflow/yamls/` and `workflow/tutorials/` —
+> The skill teaches from the repo's own `workflows/` and `tutorials/` —
 > point new material there. New tutorials require maintainer approval.

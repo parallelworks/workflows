@@ -1,7 +1,7 @@
 #!/bin/bash
 # start.sh - Desktop Startup Script (runs on compute node)
 #
-# It uses resources prepared by controller-v4.sh which runs on the controller.
+# It uses resources prepared by controller.sh which runs on the controller.
 # Serves the desktop through a pw endpoint instead of a platform session:
 #   - endpoint_name / endpoint_slug: pw endpoints registration (from inputs.sh)
 #   - basepath: any non-root path; the container's nginx template renders a

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Starts the RAG API.
-# Sourced by start-template-v3.sh or restart-ragapi.sh.
+# Sourced by start-template.sh or restart-ragapi.sh.
 # Can also be run directly: bash start-ragapi.sh  (auto-loads service.env)
 
 _UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

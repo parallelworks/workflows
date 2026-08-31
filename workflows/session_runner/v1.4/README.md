@@ -23,10 +23,10 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:
-      - uses: github/parallelworks/interactive_session@main
+      - uses: github/parallelworks/workflows@canary
         early-cancel: any-job-failed
         with:
-          $yaml: workflow/session_runner/v1.4/general.yaml
+          $yaml: workflows/session_runner/v1.4/general.yaml
           session: ${{ sessions.session }}
           resource: ${{ inputs.cluster.resource }}
           cluster:
@@ -40,8 +40,8 @@ jobs:
               is_enabled: false
               scheduler_directives: ""
           service:
-            start_service_script: ${PW_PARENT_JOB_DIR}/my-service/start-template-v3.sh
-            controller_script: ${PW_PARENT_JOB_DIR}/my-service/controller-v3.sh
+            start_service_script: ${PW_PARENT_JOB_DIR}/workflows/my-service/start-template.sh
+            controller_script: ${PW_PARENT_JOB_DIR}/workflows/my-service/controller.sh
             inputs_sh: ${PW_PARENT_JOB_DIR}/inputs.sh
             slug: my-slug
             rundir: ${PW_PARENT_JOB_DIR}

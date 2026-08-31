@@ -1,10 +1,8 @@
 > **Layout note (post-consolidation):** this document predates the move to the
-> `parallelworks/workflows` repo. Map old paths as follows:
-> `workflow/yamls/<service>/<variant>_vN.yaml` -> `workflows/<name>/<variant>.yaml`,
-> `<service>/controller-v4.sh` / `start-template-v4.sh` -> `workflows/<name>/controller.sh` / `start-template.sh`
-> (v3 scripts still used by v4-generation variants keep the `-v3` suffix), and
-> `jupyterlab-host`/`jupyter-host`/`kasmvnc-container`/`ollama-gguf`/`librechat-container` are now
-> `jupyterlab`/`jupyter`/`kasmvnc`/`ollama`/`librechat`. Version suffixes are dropped; git tags version the repo.
+> `parallelworks/workflows` repo. In this repo each workflow lives at
+> `workflows/<name>/` with its variant YAMLs under `yamls/` and a single,
+> unsuffixed script generation (`controller.sh`, `start-template.sh`) — version
+> suffixes only exist in the old `interactive_session` repo history.
 
 # Delivering Singularity containers as SIF files (ORAS on ghcr.io)
 
@@ -12,7 +10,7 @@
 > the sandbox-tarball delivery (`ghcr.io/parallelworks/n8n:1.0` — an `n8n.tgz`
 > holding an unpacked sandbox directory) was replaced by a **SIF file**
 > (`ghcr.io/parallelworks/n8n:2.0`). Ground truth:
-> `n8n-singularity/{build-container.sh,controller-v4.sh,start-template-v4.sh}`.
+> `workflows/n8n/n8n-singularity/{build-container.sh,controller.sh,start-template.sh}`.
 > Everything below was verified on live runs on gcpsmall unless marked otherwise.
 
 ## Why SIF instead of a tarballed sandbox
@@ -65,7 +63,7 @@ tools/oras/oras logout ghcr.io   # so later pull tests exercise the anonymous pa
   A brand-new package is **private by default** and must be made public in the
   GitHub UI (Package settings → Danger Zone) before workflows can pull it.
 - **Version by tag, don't overwrite:** `n8n:1.0` = legacy sandbox tgz (still used by
-  `controller-v3.sh` on older branches), `n8n:2.0` = SIF. Old workflow versions keep
+  the pre-SIF controller on older branches), `n8n:2.0` = SIF. Old workflow versions keep
   working.
 - Pull with **oras**, matching how it was pushed. A plain `oras push` records the
   generic artifact type (`application/vnd.unknown.artifact.v1`), not the SIF media
@@ -79,7 +77,7 @@ Some nodes cannot mount SIF images (no squashfs kernel/FUSE support, locked-down
 setuid). Probe with the cheapest possible container run — **on the node that runs
 the service**, not the login node: with `scheduler: true` the service lands on a
 compute node whose support can differ, so the probe belongs in the **start
-template**, never the controller. From `n8n-singularity/start-template-v4.sh`:
+template**, never the controller. From `workflows/n8n/n8n-singularity/start-template.sh`:
 
 ```bash
 if singularity exec "${container_sif}" /bin/true > /dev/null 2>&1; then
@@ -107,7 +105,7 @@ fi
 
 ## Recipe: convert a sandbox-tgz workflow to SIF
 
-Using n8n as the template (diff `controller-v3.sh` → `controller-v4.sh`):
+Using n8n as the template (diff the old sandbox controller → the SIF controller in the `interactive_session` history):
 
 1. **Build script** — replace `build --sandbox` + `tar` with a single
    `singularity build <name>.sif docker://<image>:<tag>`; update the push hint to
@@ -135,7 +133,7 @@ A10G GPU):
   `ghcr.io/parallelworks/ollama-gguf:<tag>` (same tag as the release).
 - One YAML serves both runtimes: a `service.name` **dropdown**
   (`ollama-gguf` | `ollama-gguf-container`) feeds `sparse_checkout` and the
-  `<name>/controller-v4.sh` / `<name>/start-template-v4.sh` paths (the
+  `workflows/<name>/.../controller.sh` / `start-template.sh` paths (the
   kasmvnc-container pattern). Add `tools/oras` to `sparse_checkout` — the
   container controller sources `tools/oras/libs.sh`.
 - The launcher passes the endpoint port with `--env

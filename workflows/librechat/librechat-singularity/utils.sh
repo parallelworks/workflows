@@ -1,6 +1,6 @@
 #!/bin/bash
 # Common helper functions for LibreChat service scripts.
-# Sourced by start-template-v3.sh; also sourced automatically by each start-*.sh
+# Sourced by start-template.sh; also sourced automatically by each start-*.sh
 # when they are run standalone (after sourcing service.env).
 
 stop_existing() {

@@ -7,9 +7,9 @@ This repository is the consolidated home of the **ACTIVATE platform workflows**
 It replaces the split layouts of the old `interactive_session` and `activate-rag-vllm`
 repos: **one workflow = one self-contained directory** under `workflows/`.
 
-A typical session workflow consists of:
-- **Workflow YAMLs** (`workflows/<name>/<variant>.yaml`) — the UI form + job orchestration,
-  one file per platform variant (`general`, `emed`, `hsp`, `noaa`, `*k8s*`, …)
+A typical workflow consists of:
+- **Variant YAMLs** (`workflows/<name>/yamls/<variant>.yaml`) — the UI form + job
+  orchestration, one file per platform variant (`general`, `emed`, `hsp`, `noaa`, `*k8s*`)
 - A **controller script** (`controller.sh`) — runs on the login node, idempotent
   install/setup with internet access
 - A **start script** (`start-template.sh`) — runs on the compute or login node,
@@ -19,42 +19,44 @@ A typical session workflow consists of:
 ## Repository structure
 
 ```
-workflows/<name>/            # one directory per workflow (YAMLs + scripts + docs together)
+workflows/<name>/yamls/      # the workflow's variant YAMLs (general.yaml, hsp.yaml, k8s.yaml, ...)
+workflows/<name>/            # scripts + support files + README + thumbnail
 workflows/<name>/<impl>/     # multi-implementation workflows keep impl subdirs whose names
-                             # match the form input values (kasmvnc-docker, n8n-singularity,
-                             # ollama-gguf-container, librechat-singularity, ...)
-workflows/session_runner/v1.4/    # shared subworkflow: sessions for v4-generation workflows
+                             # match the form input values (n8n-docker, n8n-singularity,
+                             # kasmvnc-singularity, ollama-gguf-container, librechat-singularity, ...)
+workflows/session_runner/v1.4/    # shared subworkflow: platform tunnel sessions (vncserver, langflow-host)
 workflows/script_submitter/v3.6/  # shared subworkflow: SLURM/PBS/SSH script submission
 tools/oras, tools/utils      # shared runtime tools, referenced as tools/... from run dirs
+tutorials/                   # staged, runnable lessons on the workflow system
 docs/                        # developer + AI docs
 .claude/skills/activate-workflows/  # Claude Code skill for building workflows here
 ```
 
 ## Versioning
 
-- **No version suffixes in filenames.** Git tags version the repo. `general.yaml`, not
-  `general_v5.yaml`; `controller.sh`, not `controller-v4.sh`.
-- Exception: where a legacy variant still runs an older script generation, that older
-  script keeps its suffix (`controller-v3.sh` beside `controller.sh`). The v4-generation
-  YAML variants (all of `vncserver`, `langflow-host`, several `emed`/`hsp` files) use the
-  `-v3` scripts through `session_runner`; everything v5 uses the unsuffixed scripts
-  through `script_submitter`.
-- `session_runner`/`script_submitter` keep explicit version directories (`v1.4`, `v3.6`)
-  because platform marketplace registrations reference those paths.
+- **One version only — the latest.** No version suffixes in filenames or references:
+  `general.yaml`, `controller.sh`, `start-template.sh`. Git tags version the repo.
+- Legacy-generation variants that required older scripts were **not migrated**; they
+  live in `parallelworks/interactive_session` until converted to the endpoint pattern
+  (see MIGRATION.md and
+  `.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`).
+- `session_runner`/`script_submitter` keep explicit version directories (`v1.4`,
+  `v3.6`) because platform marketplace registrations reference those paths.
 
 ## The two workflow generations
 
-1. **v5 / endpoint pattern (current)** — preprocessing checks out this repo
+1. **Endpoint pattern (current, most workflows)** — preprocessing checks out this repo
    (`parallelworks/checkout`, sparse `workflows/<name>` [+ `tools/...`]), assembles
    `inputs.sh` + `controller.sh` + `start-template.sh`, submits through
    `workflows/script_submitter/v3.6/<variant>.yaml`, and waits for a **`pw` endpoint**
    (`pw endpoints list`) named `<service>-${PW_RUN_SLUG}`. No `sessions:` block.
-2. **v4 / session pattern (legacy variants)** — preprocessing checks out scripts, then
-   `workflows/session_runner/v1.4/<variant>.yaml` submits the job and registers a
-   platform tunnel session.
+2. **Session pattern (vncserver, langflow-host)** — preprocessing checks out scripts,
+   then `workflows/session_runner/v1.4/<variant>.yaml` submits the job and registers a
+   platform tunnel session on the injected `${service_port}`.
 
-Do not mix the two in one variant; when upgrading a v4 variant, follow
-`.claude/skills/activate-workflows/references/v4-to-v5-endpoints-upgrade.md`.
+The two patterns need different start scripts — don't mix them. To convert a session
+workflow to the endpoint pattern, follow
+`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`.
 
 ## Critical rules and conventions
 
@@ -77,12 +79,10 @@ Do not mix the two in one variant; when upgrading a v4 variant, follow
   Changes only take effect once pushed to that branch.
 - Checked-out paths are repo-relative: scripts materialize at
   `<rundir>/workflows/<name>/...` — reference them with that prefix.
-- Do NOT copy globs like `cp workflows/<name>/*.yaml .` — the workflow YAMLs live in
-  the same directory as the support files now; enumerate the files you need.
 - Form inputs are grouped as `cluster` (resource/scheduler) and `service`
   (service-specific); values read as `${{ inputs.cluster.* }}` / `${{ inputs.service.* }}`.
-- The hidden `service.name` input is the **endpoint/session name prefix** — it is no
-  longer a checkout path. Keep its value stable; renaming it changes endpoint names.
+- The hidden `service.name` input is the **endpoint/session name prefix** — it is not
+  a checkout path. Keep its value stable; renaming it changes endpoint names.
 - Multi-implementation workflows select their script subdir via a runtime input
   (`container_runtime`, `service.container_runtime`, `service.name`): the input
   **values must match the impl subdirectory names** under `workflows/<name>/`.
@@ -94,10 +94,10 @@ Do not mix the two in one variant; when upgrading a v4 variant, follow
 
 ## No build system
 
-No build system, test suite, or linter. Deployment happens by the ACTIVATE platform
-cloning this repo and executing scripts directly. Validate YAML changes with
-`pw workflows run ./workflows/<name>/<variant>.yaml -i '{...}'` against a real cluster
-(remember to push first — see above). `emed`/`hsp`/`noaa`/`northrop` variants can only
+No build system or linter. Deployment happens by the ACTIVATE platform cloning this
+repo and executing scripts directly. Validate YAML changes with
+`pw workflows run ./workflows/<name>/yamls/<variant>.yaml -i '{...}'` against a real
+cluster (remember to push first — see above). `emed`/`hsp`/`noaa` variants can only
 run from those platforms.
 
 ## Git and deployment

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# start-template-v4.sh — Langflow via Singularity (runs on the service node)
+# start-template.sh — Langflow via Singularity (runs on the service node)
 #
-# Uses the SIF images downloaded by controller-v4.sh. Optionally launches an
+# Uses the SIF images downloaded by controller.sh. Optionally launches an
 # HFTEI embeddings server for RAG, then Langflow and the OpenAI-compatible
 # Langflow proxy, and registers the Langflow endpoint.
 

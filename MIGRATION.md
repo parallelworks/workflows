@@ -217,16 +217,43 @@ Platform-side registrations still reference old repo paths. When re-pointing the
 - Readme/thumbnail paths in registrations (`workflow/readmes/...`,
   `workflow/thumbnails/...`) → the files inside each `workflows/<name>/`.
 
-## Test results
+## Test results (2026-08-31, repo public, canary pushed)
 
-_Pending checkpoint approval — to be filled in after push + testing._
+Method: `pw workflows run <abs path to yamls/general.yaml> -i …` from this repo;
+pass = the endpoint appears in `pw endpoints list` and serves HTTP 200 (or, for the
+session generation, the tunnel session reaches `running`), then the endpoint/run is
+torn down and cleanup verified.
 
-| Workflow | Variant tested | Target | Result |
+| Workflow | Variant | Target | Result |
 |---|---|---|---|
-| (all) | — | — | not yet run |
+| webshell | general | gcpsmall | PASS (endpoint online, HTTP 200, cleanup OK) |
+| openvscode | general | gcpsmall | PASS |
+| jupyter | general | gcpsmall | PASS (fresh conda install, 2m09s) |
+| jupyterlab | general | gcpsmall | PASS (endpoint 143s, HTTP 200) |
+| streamlit | general | gcpsmall | PASS |
+| n8n | general (n8n-singularity default) | gcpsmall | PASS |
+| kasmvnc | general (kasmvnc-singularity) | gcpsmall | PASS |
+| open-notebook | general | gcpsmall | PASS (docker) |
+| librechat | general (singularity) | gcpsmall | PASS |
+| librechat | general-all | gcpsmall (both roles) | PASS with `enable_proxy:false` — all 3 endpoints (librechat, manager component, langflow) online, HTTP 200. The proxy path needs connected platform AI models + pre-staged `langflow_proxy` code (environment; the original was broken outright — dead `librechat-v2` branch) |
+| lite-agent | general | gcpsmall | PASS after fix PR #1 (first run exposed the composed-checkout-path bug) |
+| agent-orchestrator | general | gcpsmall | PASS |
+| hermes-agent | general | gcpsmall | PASS (dashboard build + endpoint) |
+| langflow-host | general | gcpsmall | PASS (tunnel session `running`, cleanup on cancel verified) |
+| vncserver | general | gcpsmall | Equivalent-to-original: tunnel session registered and noVNC healthy on its port, but session_runner's readiness poll probes `localhost` while websockify binds the primary IP — never flips to `running`. The ORIGINAL `general_v4.yaml` from interactive_session reproduces this identically on gcpsmall → pre-existing, not migration breakage |
+| rag-service | general | gcpsmall | FAIL — pre-existing: `ghcr.io/parallelworks/rag-service:1.0` returns 403 anonymously (package private/missing); the original was also unrunnable (checkout of deleted `rag-service` branch) |
+| ollama | general (`gpt-oss:20b`) | awsgpu | PASS (endpoint online, run completed, HTTP 200) |
+| rag-vllm | general (vllm runtype, `openai/gpt-oss-20b`) | awsgpu | PASS (endpoint online, run completed, HTTP 200; ~13GB model + SIF pull, ~15 min) |
 
-Static-only (platform-bound variants): emed/hsp/noaa/k8s variants — YAML parse +
-path-existence + reference checks only.
+Found and fixed during testing (PR #1, merged to canary): seven scripts composed
+checkout paths from variables (`AGENT_DIR`/`SERVICE_DIR`/`SCRIPTS_DIR`/
+`MANAGER_SCRIPTS_DIR`/kasmvnc GL probe) and still assumed the old top-level layout.
+
+Static-only (cannot run from here): all `emed`/`hsp`/`noaa` variants,
+`langflow-singularity/hsp.yaml` (its scripts were exercised live by general-all),
+and the k8s variants incl. `mlflow`/`ollama-openwebui` (no kubernetes cluster
+attached) — YAML parse + path-existence + reference checks only. n8n-docker and
+ollama-gguf-container implementation paths not separately exercised.
 
 ## Open questions
 

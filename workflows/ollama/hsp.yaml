@@ -1,0 +1,641 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/ollama/${{ inputs.service.name }}
+            - tools/oras
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_models="${{ inputs.service.models }}"
+          service_serve_only_requested="${{ inputs.service.serve_only_requested }}"
+          service_context_length="${{ inputs.service.context_length }}"
+          service_keep_alive="${{ inputs.service.keep_alive }}"
+          service_preload="${{ inputs.service.preload }}"
+          service_models_dir="${{ inputs.service.models_dir }}"
+          service_model_names="${{ inputs.service.model_names }}"
+          service_ollama_version="${{ inputs.service.ollama_version }}"
+          endpoint_name="$(printf '%s' '${{ inputs.service.endpoint_name }}' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
+          pw_endpoints_args="--name ${endpoint_name:-${{ inputs.service.name }}-${PW_RUN_SLUG}}"
+          EOF
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh # remove var=""
+          # Add export= to all lines
+          sed -i 's/^/export /' inputs.sh
+          # session_runner v1.4 computed the shared HSP install dir; v5 calls
+          # script_submitter directly, so replicate that step here.
+          #
+          # The shared location is preferred because several users then read one
+          # copy of the software, but it is not guaranteed: PROJECTS_HOME can be
+          # unset, can point at a tree the account cannot write (seen as
+          # /p/app/unsupported on a system with no project directory yet), or can
+          # exist while its parent refuses a new subdirectory. A private
+          # directory always works, so an unusable shared one degrades to that
+          # instead of ending the run.
+          source /etc/profile
+          usable_dir() { # writable if it exists, creatable if it does not
+            [ -n "$1" ] || return 1
+            if [ -d "$1" ]; then
+              [ -w "$1" ] || return 1
+            else
+              mkdir -p "$1" 2> /dev/null || return 1
+              chmod g+rwx,o+rx "$1" 2> /dev/null || true
+            fi
+            return 0
+          }
+          # Home is the smallest filesystem on these systems and the image and
+          # its sandbox are gigabytes, so a private install goes to the work
+          # filesystem where the site defines one and only falls back to home
+          # where it does not.
+          hsp_install_dir=""
+          private_dir="${HOME}/pw"
+          [ -n "${WORKDIR}" ] && [ -d "${WORKDIR}" ] && private_dir="${WORKDIR}/pw"
+          if [ -n "${PROJECTS_HOME}" ] && usable_dir "${PROJECTS_HOME}/hsp"; then
+            hsp_install_dir="${PROJECTS_HOME}/hsp"
+          elif usable_dir "${private_dir}"; then
+            [ -n "${PROJECTS_HOME}" ] \
+              && echo "::warning title=Install Directory::${PROJECTS_HOME}/hsp is not writable by this account; installing to ${private_dir} instead, which no other user shares" \
+              || echo "::warning title=Install Directory::PROJECTS_HOME is empty; installing to ${private_dir}, which no other user shares"
+            hsp_install_dir="${private_dir}"
+          elif usable_dir "${HOME}/pw"; then
+            echo "::warning title=Install Directory::${private_dir} is not writable by this account; installing to ${HOME}/pw, which is the smallest filesystem here"
+            hsp_install_dir="${HOME}/pw"
+          else
+            echo "::error title=Install Directory::Neither ${PROJECTS_HOME:-a project directory} nor ${private_dir} nor ${HOME}/pw can be written; the run has nowhere to install"
+            exit 1
+          fi
+          echo "::notice title=Install Directory::Using Install Directory: ${hsp_install_dir}"
+          echo "export service_parent_install_dir=${hsp_install_dir}" >> inputs.sh
+
+          # Where the software goes and where the models come from are separate
+          # questions. Installing needs a writable directory; reading a model
+          # that is already staged needs only read permission, and the project
+          # directory is where models are staged for everyone on the system.
+          # Tying the two together is what sent an account outside the project
+          # group off to re-download tens of gigabytes that were already on the
+          # filesystem, so the project store is named here whether or not this
+          # account can write to it, and the controller decides between reusing
+          # it read-only and staging into the work filesystem instead.
+          # Same split for the software: an image or tarball already staged in
+          # the project directory is readable by every account on the system, so
+          # an account that cannot write there should run that copy rather than
+          # download 2.8 GB of container again into its own work filesystem.
+          if [ -n "${PROJECTS_HOME}" ] && [ -d "${PROJECTS_HOME}/hsp" ]; then
+            echo "export service_shared_install_dir=\"${PROJECTS_HOME}/hsp\"" >> inputs.sh
+          fi
+          if [ -n "${PROJECTS_HOME}" ] && [ -d "${PROJECTS_HOME}/hsp/ollama-gguf/models" ]; then
+            echo "::notice title=Model Directory::Project model store: ${PROJECTS_HOME}/hsp/ollama-gguf/models"
+            echo "export service_shared_models_dir=\"${PROJECTS_HOME}/hsp/ollama-gguf/models\"" >> inputs.sh
+          fi
+
+          # The container implementation needs singularity or apptainer, and not
+          # every system has one. Rather than failing a launch that the native
+          # implementation could serve, decide here which one this host can run
+          # and let the later steps assemble that.
+          service_impl="${{ inputs.service.name }}"
+          if [ "${service_impl}" = "ollama-gguf-container" ]; then
+            # The same search the container scripts use, so a runtime that is
+            # installed but off PATH does not quietly demote the run to native.
+            found=""
+            if ! type module > /dev/null 2>&1; then
+              for init in /etc/profile.d/modules.sh /etc/profile.d/lmod.sh \
+                          /usr/share/Modules/init/bash /usr/share/lmod/lmod/init/bash; do
+                [ -r "${init}" ] && . "${init}" 2> /dev/null && break
+              done
+            fi
+            if type module > /dev/null 2>&1; then
+              for candidate in apptainer singularity singularityce singularity-ce; do
+                module load ${candidate} > /dev/null 2>&1 && break
+              done
+            fi
+            found="$(command -v singularity || command -v apptainer)"
+            if [ -z "${found}" ]; then
+              for candidate in /usr/bin /usr/local/bin /usr/sbin /opt/apptainer/bin /opt/singularity/bin \
+                               /usr/local/apptainer/bin /usr/local/singularity/bin \
+                               /cm/local/apps/apptainer/current/bin /cm/shared/apps/singularity/current/bin \
+                               /sw/apptainer/bin /sw/singularity/bin /apps/singularity/bin; do
+                for name in singularity apptainer; do
+                  [ -x "${candidate}/${name}" ] && found="${candidate}/${name}" && break 2
+                done
+              done
+            fi
+            if [ -z "${found}" ]; then
+              echo "::warning title=Container Runtime::No singularity or apptainer found on this system; serving with the native ollama install instead"
+              service_impl="ollama-gguf"
+            else
+              echo "::notice title=Container Runtime::Found ${found}"
+            fi
+          fi
+          echo "::notice title=Implementation::Using ${service_impl}"
+          echo "${service_impl}" > service_impl.txt
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # Fail loud when the checkout did not materialize the service scripts
+          # (e.g. the runtime does not exist on the checked-out branch); a failing
+          # cat mid-step would otherwise be silently ignored
+          service_impl="$(cat service_impl.txt)"
+          if [ ! -f "workflows/ollama/${service_impl}/controller.sh" ]; then
+            echo "::error title=Error::workflows/ollama/${service_impl}/controller.sh not found in the checkout of branch canary"
+            exit 1
+          fi
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat "workflows/ollama/${service_impl}/controller.sh" >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          service_impl="$(cat service_impl.txt)"
+          if [ ! -f "workflows/ollama/${service_impl}/start-template.sh" ]; then
+            echo "::error title=Error::workflows/ollama/${service_impl}/start-template.sh not found in the checkout of branch canary"
+            exit 1
+          fi
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+          cat "workflows/ollama/${service_impl}/start-template.sh" >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  session_runner:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/hsp.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            account: ${{ inputs.cluster.slurm.account }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            qos: ${{ inputs.cluster.slurm.qos }}
+            cpus_per_task: ${{ inputs.cluster.slurm.cpus_per_task }}
+            nodes: ${{ inputs.cluster.slurm.nodes }}
+            node_type: ${{ inputs.cluster.slurm.node_type }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            time: ${{ inputs.cluster.slurm.time }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            account: ${{ inputs.cluster.pbs.account }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::Session runner failed before the endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        run: |
+          # An endpoint name becomes a DNS label, so pw endpoints rejects anything
+          # outside [a-z0-9-] - one uppercase letter is enough to fail the launch.
+          # Fold it here rather than leaving that to the operator, with the same
+          # fold the Create Inputs step used, or this loop waits for a name that
+          # was never registered.
+          endpoint_name="$(printf '%s' '${{ inputs.service.endpoint_name }}' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
+          if [ -z "${endpoint_name}" ]; then
+            endpoint_name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          fi
+          echo "::notice::Waiting for endpoint ${endpoint_name} to come online"
+          # grep -w treats a dash as a word boundary, so a short name matches any
+          # longer endpoint starting with it: a run asking for "ollama" accepts a
+          # running "ollama-gguf-container-..." as its own, cancels its script
+          # submitter and finishes green having served nothing. Match the name
+          # column exactly.
+          until pw endpoints list | awk '{print $1}' | grep -qxF "${endpoint_name}"; do
+            echo "$(date) Endpoint ${endpoint_name} not found yet; retrying in 10 seconds"
+            sleep 10
+          done
+          echo "::notice::Endpoint ${endpoint_name} is online"
+          touch ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          sleep 2
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Service host
+        include-workspace: false
+        tooltip: Resource to host the service
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Job?
+            tooltip: |
+              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
+              No  → Job is executed in the controller or login node instead
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=partition slurm directive'
+              qos:
+                label: Quality of Service [QoS]
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              cpus_per_task:
+                label: CPUs per task
+                type: number
+                default: 1
+                tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              nodes:
+                label: Number of nodes
+                type: number
+                default: 1
+                tooltip: '--nodes=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              node_type:
+                label: Node Type
+                type: dropdown
+                optional: true
+                default: ''
+                option-key: ${{ inputs.resource.ip }}
+                tooltip: '--constraint=<value> slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider || (inputs.resource.ip != 'blueback.navydsrc.hpc.mil' && inputs.resource.ip != 'narwhal.navydsrc.hpc.mil' && inputs.resource.ip != 'nautilus.navydsrc.hpc.mil' && inputs.resource.ip != 'raider.afrl.hpc.mil' && inputs.resource.ip != 'crux.mhpcc.hpc.mil') }}
+                hidden: ${{ .ignore }}
+                options:
+                  blueback.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  narwhal.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - smla
+                    - dmla
+                    - viz
+                    - transfer
+                  nautilus.navydsrc.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  raider.afrl.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  crux.mhpcc.hpc.mil:
+                    - AMD
+                    - Intel
+              time:
+                label: Walltime
+                type: string
+                default: '00:30:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job (format: D-HH:MM:SS or HH:MM:SS, e.g. 7-00:00:00 or 01:00:00)'
+              scheduler_directives:
+                type: editor
+                optional: true
+                default: |
+                  #SBATCH --gres=gpu:1
+                  ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix.
+                  One GPU is requested by default, since a model server without one runs
+                  on CPU and answers slowly. How a GPU is named is site specific: plain
+                  gpu:1 works where the scheduler defines no GPU types, and elsewhere the
+                  type belongs in the request, as in --gres=gpu:h100_nvl:1. Run
+                  sinfo -o "%P %G" on the cluster to see the types it offers. Other
+                  examples:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              account:
+                label: Account
+                type: string
+                tooltip: PBS account for job submission (-A)
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                default: |
+                  # Parameters that apply to all sites
+                  #PBS -l walltime=00:30:00
+                  #PBS -V
+                  #PBS -q standard
+                  # The select line is site specific; adjust ncpus to the node shape
+                  #PBS -l select=1:ncpus=1:ngpus=1
+                  # Remove first # to activate specific lines
+                  #=====Ruth (Lustre, only vis has NVIDIA)=====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128:ngpus=1
+                  #=====Warhawk (Lustre)====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128:ngpus=2
+                  #=====Wheat (WEKA, nmlas=4|6)====
+                  ##PBS -l select=1:ncpus=92:mpiprocs=92:nmlas=4
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+
+      service:
+        type: group
+        label: Ollama Settings
+        items:
+          name:
+            label: Runtime
+            type: dropdown
+            default: ollama-gguf-container
+            tooltip: |
+              Native installs the Ollama release tarball on the host (needs glibc >= 2.28
+              and zstd). The Singularity container runs the official ollama/ollama image
+              instead and works on hosts where the native binary cannot run.
+            options:
+              - label: Native (Ollama tarball)
+                value: ollama-gguf
+              - label: Singularity container
+                value: ollama-gguf-container
+          models:
+            label: Models to serve
+            type: string
+            default: huggingface.co/culturerevolt/gemma-4-12b-heretic-abliterated-GGUF:Q4_K_M
+            tooltip: |
+              Space or comma separated list of models to pull and serve. Accepts Ollama
+              library names or Hugging Face GGUF references
+              (huggingface.co/<owner>/<repo>:<quant>). Ensure the host has enough disk and memory
+              for the quantization you pick — a Q4_K_M of a 31B model is about 19 GB.
+              Examples, lightest first:
+              huggingface.co/unsloth/gemma-4-E4B-it-GGUF:Q4_K_M
+              huggingface.co/mradermacher/gemma-4-31B-it-heretic-GGUF:Q4_K_M
+              huggingface.co/mradermacher/gemma-4-31B-it-The-DECKARD-HERETIC-UNCENSORED-Thinking-GGUF:Q4_K_M
+          serve_only_requested:
+            label: Serve only the requested models
+            type: boolean
+            default: true
+            tooltip: |
+              Expose only the models listed above instead of every model cached in the
+              model directory. Either way the run serves from a manifests view it
+              assembles for itself, so the models keep the names set above rather than
+              the reference they were pulled with.
+          context_length:
+            label: Context Length
+            type: dropdown
+            default: max
+            tooltip: |
+              Context window used for loaded models (OLLAMA_CONTEXT_LENGTH). The
+              default reads the window the model was trained for and serves at that,
+              which is what most people expect and what makes long documents and
+              conversations work. It costs memory: the KV cache grows with the window,
+              and a GPU that cannot hold it offloads to CPU and answers more slowly, so
+              pick a fixed size on a small GPU or a heavily shared one. Auto leaves the
+              choice to ollama, whose own default is small.
+            options:
+              - value: max
+                label: Model maximum (full trained window)
+              - value: auto
+                label: Auto (ollama default, small)
+              - value: '4096'
+                label: 4K tokens
+              - value: '8192'
+                label: 8K tokens
+              - value: '16384'
+                label: 16K tokens
+              - value: '32768'
+                label: 32K tokens
+              - value: '65536'
+                label: 64K tokens
+              - value: '131072'
+                label: 128K tokens
+          keep_alive:
+            label: Keep models loaded
+            type: string
+            default: -1
+            optional: true
+            tooltip: How long a model stays loaded in memory after its last request (OLLAMA_KEEP_ALIVE), e.g. 5m, 1h, or -1 to keep it loaded forever
+          preload:
+            label: Preload models
+            type: boolean
+            default: true
+            tooltip: Load the requested models into memory as soon as the server starts, so the first request does not wait for the model to load. Combine with Keep models loaded = -1 to keep them in memory permanently.
+          models_dir:
+            label: Model Directory
+            type: string
+            optional: true
+            tooltip: |
+              Directory where model weights are stored (OLLAMA_MODELS). Setting it
+              pins the store and skips the search. Left empty, the run looks for a
+              store that already holds every model requested, in order:
+              ${PROJECTS_HOME}/hsp/ollama-gguf/models, which is where models are
+              staged for everyone on the system and is reused even where this
+              account cannot write to it; then the install directory; then
+              ${WORKDIR}/pw/software/ollama-gguf/models; then the same path under
+              ${HOME}. If no store holds them all, they are pulled into the first
+              writable one in that same order — the work filesystem before home,
+              which has far less quota. WORKDIR is scratch and is purged, which is
+              the right trade for a cache that can be pulled again.
+          model_names:
+            label: Serve models as
+            type: string
+            optional: true
+            tooltip: |
+              Names to serve the models under, in the same order as the list above,
+              space or comma separated. Leave empty for the default, which drops the
+              registry host, the uploader and the -GGUF suffix: a model pulled as
+              huggingface.co/mradermacher/gemma-4-31B-it-heretic-GGUF:Q4_K_M is served
+              as gemma-4-31b-it-heretic:q4_k_m. The name is what the platform chat
+              shows as the model id, so a short one is worth setting where the
+              repository name is long.
+          endpoint_name:
+            label: Endpoint name
+            type: string
+            optional: true
+            tooltip: |
+              Name of the endpoint session. Defaults to <runtime>-<run slug>. A fixed
+              name keeps the chat model ids stable across relaunches, which is what a
+              RAG or agent configuration needs. The name becomes a DNS label, so it is
+              folded to lowercase and anything outside a-z 0-9 - becomes a dash. Pick
+              one that is not a prefix of another of your endpoints: the wait-for-endpoint
+              check matches by prefix, so a shorter name is satisfied by a longer one
+              already running and the launch finishes without serving anything.
+          ollama_version:
+            label: Ollama version
+            type: string
+            hidden: true
+            default: v0.32.5
+
+configurations:
+  Carpenter:
+    inputs:
+      cluster:
+        scheduler: true
+        pbs:
+          scheduler_directives: |
+            #PBS -q HIE
+            #PBS -l select=1:ncpus=128:mpiprocs=1:ngpus=1
+            #PBS -l walltime=01:00:00
+            #PBS -V
+      service:
+        name: ollama-gguf-container
+
+  Makau:
+    inputs:
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 1
+          is_enabled: true
+          nodes: 1
+          partition: standard
+          qos: standard
+          scheduler_directives: "#SBATCH --gres=gpu:h100_nvl:1"
+          time: "01:00:00"
+      service:
+        name: ollama-gguf-container
+        # The h100_nvl nodes (cn17-24) carry 94 GB, which is enough to serve a
+        # 31B at Q8_0 rather than the Q4_K_M a smaller card forces, and Q8_0 is
+        # near-lossless against the BF16 release for a model this size. Measured
+        # on this hardware: Q4_K_M of a 31B took 17.4 GiB of weights and 12.3 GiB
+        # of KV cache at a 128K window, so Q8_0 lands near 44 GiB at 128K and
+        # near 58 GiB at the model's full 262144, both comfortable. Gemma's
+        # sliding-window attention is what keeps the cache that small; a model
+        # without it would not fit at this context.
+        #
+        # Staged in the project directory, so a run that keeps this default
+        # starts without downloading 33 GB first.
+        models: hf.co/llmfan46/gemma-4-31B-it-uncensored-heretic-GGUF:Q8_0
+        # A fixed name keeps the chat model id stable across relaunches, which
+        # is what a RAG or agent config needs. Endpoint names are per-user, so
+        # this only collides with a second concurrent run of your own.
+        endpoint_name: ollama
+
+  Nautilus:
+    inputs:
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 1
+          is_enabled: true
+          nodes: 1
+          node_type: mla
+          partition: general
+          qos: hie
+          time: "01:00:00"
+      service:
+        name: ollama-gguf-container
+
+  Wheat:
+    inputs:
+      cluster:
+        scheduler: true
+        pbs:
+          scheduler_directives: |
+            #PBS -q HIE
+            #PBS -l select=1:ncpus=92:mpiprocs=1:ngpus=1
+            #PBS -l walltime=01:00:00
+            #PBS -V
+      service:
+        name: ollama-gguf-container

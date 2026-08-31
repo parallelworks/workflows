@@ -1,0 +1,516 @@
+#!/bin/bash
+# start.sh - Desktop Startup Script (runs on compute node)
+#
+# It uses resources prepared by controller-v4.sh which runs on the controller.
+# Serves the desktop through a pw endpoint instead of a platform session:
+#   - endpoint_name / endpoint_slug: pw endpoints registration (from inputs.sh)
+#   - basepath: any non-root path; the container's nginx template renders a
+#     duplicate `location /` (and fails) when BASE_PATH is "/", while any other
+#     value is harmless because the template also proxies the root location,
+#     which is where the subdomain endpoint serves from.
+
+set -ex
+
+echo "::group::Desktop Service Starting (Compute Node)"
+
+# Container runtime selection. Prefer apptainer over singularity: apptainer mounts
+# SIFs rootless (it bundles squashfuse/fuse-overlayfs), and a SIF -- being a single
+# file -- reads reliably on parallel filesystems (Lustre/GPFS/WEKA/NFS) where an
+# exploded sandbox directory returns truncated reads that corrupt Perl/Python at
+# startup. Older setuid-mode singularity (no suid bit, no FUSE) cannot mount a SIF
+# unprivileged and is forced onto the unreliable sandbox path.
+# Works whether the runtime is already in PATH or must be loaded via environment
+# modules, so it is portable across the many systems this script runs on. Every
+# later invocation uses ${CONTAINER}.
+CONTAINER=""
+if command -v apptainer &>/dev/null; then
+    CONTAINER=apptainer
+elif module load apptainer &>/dev/null && command -v apptainer &>/dev/null; then
+    CONTAINER=apptainer
+    echo "::notice::Loaded apptainer module"
+elif command -v singularity &>/dev/null; then
+    CONTAINER=singularity
+elif module load singularity &>/dev/null && command -v singularity &>/dev/null; then
+    CONTAINER=singularity
+    echo "::notice::Loaded singularity module"
+else
+    echo "::error title=Error::Neither apptainer nor singularity found in PATH or via environment modules"
+    exit 1
+fi
+echo "::notice::Using container runtime: ${CONTAINER} ($(${CONTAINER} --version 2>/dev/null))"
+
+if [ -n "${service_parent_install_dir}" ]; then
+    container_sif=${service_parent_install_dir}/containers/kasmvnc-${kasmvnc_os}-gpu.sif
+    if ! [ -f "${container_sif}" ] && ! [ -w "${service_parent_install_dir}" ]; then
+        echo "::warning::container_sif ${container_sif} does not exist and no write permission to ${service_parent_install_dir}. Resetting to ${HOME}/pw/software."
+        service_parent_install_dir=${HOME}/pw/software
+    fi
+else
+    service_parent_install_dir=${HOME}/pw/software
+fi
+
+# One container image: the GPU (VirtualGL) build. It renders on an NVIDIA GPU
+# when one is present and falls back to software (llvmpipe) rendering on its
+# own, so there is no separate software image. The SIF is preferred (a single
+# file reads reliably on parallel filesystems); a sandbox directory is built
+# from it below only when this node's runtime cannot mount a SIF.
+container_sif=${service_parent_install_dir}/containers/kasmvnc-${kasmvnc_os}-gpu.sif
+sandbox_dir=${service_parent_install_dir}/containers/kasmvnc-${kasmvnc_os}-sandbox
+
+# Initialize cancel script
+echo '#!/bin/bash' > cancel.sh
+chmod +x cancel.sh
+echo "mv cancel.sh cancel.sh.executed" >> cancel.sh
+
+
+find_available_display() {
+    local minPort=5901
+    local maxPort=5999
+    local port displayNumber x11Port
+    for port in $(seq ${minPort} ${maxPort} | shuf); do
+        displayNumber=${port: -2}
+        XdisplayNumber=${displayNumber#0}
+
+        # Check if VNC port (5900+display) is in use
+        if netstat -aln | grep -q "LISTEN.*:${port}\b" 2>/dev/null; then
+            continue
+        fi
+        # Check if X11 TCP port (6000+display) is in use (e.g. SSH X11 forwarding)
+        x11Port=$((6000 + XdisplayNumber))
+        if netstat -aln | grep -q "LISTEN.*:${x11Port}\b" 2>/dev/null; then
+            continue
+        fi
+        # Check for X11 socket/lock files (filesystem and abstract Unix domain sockets)
+        # Abstract sockets are held in kernel namespace and won't appear under /tmp/.X11-unix/
+        # but are visible via ss -xl; Singularity shares the host network namespace so the
+        # container would collide with them.
+        if [ -e "/tmp/.X11-unix/X${XdisplayNumber}" ] || [ -e "/tmp/.X${XdisplayNumber}-lock" ]; then
+            continue
+        fi
+        if ss -xl 2>/dev/null | grep -qE "\.X11-unix/X${XdisplayNumber}([^0-9]|$)"; then
+            continue
+        fi
+        if pgrep -f "(Xvnc|Xorg|Xvfb) :${XdisplayNumber}( |$)" > /dev/null 2>&1; then
+            continue
+        fi
+
+        export displayPort=${port}
+        export DISPLAY=":${XdisplayNumber}"
+        return 0
+    done
+    return 1
+}
+
+find_available_display || { echo "::error::No available display found"; exit 1; }
+
+# The container's nginx listens on this port; pw endpoints http exposes it below.
+service_port=$(pw agent open-port)
+
+echo "::notice::Starting KasmVNC Container..."
+
+# Auto-detect GPU support for Singularity --nv flag
+GPU_FLAG=""
+if command -v nvidia-smi &>/dev/null && nvidia-smi --list-gpus &>/dev/null; then
+    GPU_FLAG="--nv"
+    echo "::notice::NVIDIA GPU detected, enabling Singularity --nv flag"
+else
+    echo "::notice::No NVIDIA GPU detected, running without --nv"
+fi
+
+# This script runs on the compute node, where the GPU (if any) actually is. For
+# hardware rendering with a GPU present, make sure the host has the NVIDIA OpenGL/
+# EGL userspace so that Singularity --nv can inject it into the container for
+# VirtualGL (many cloud GPU images ship compute-only drivers). Best-effort and
+# idempotent; the container falls back to software if it can't be provisioned.
+NV_GL_BIND_FLAGS=""
+if [ -n "${GPU_FLAG}" ]; then
+    # Locate this runtime's helper scripts. The platform concatenates this template
+    # into a run-dir script, so ${BASH_SOURCE} is unreliable -- probe known paths.
+    kasm_src_dir=""
+    for _d in "${PW_PARENT_JOB_DIR}/kasmvnc-singularity" \
+              "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" \
+              "$(pwd)/kasmvnc-singularity" "$(pwd)"; do
+        if [ -n "${_d}" ] && [ -f "${_d}/install-host-nvidia-gl.sh" ]; then
+            kasm_src_dir="${_d}"
+            break
+        fi
+    done
+    if [ -n "${kasm_src_dir}" ]; then
+        bash "${kasm_src_dir}/install-host-nvidia-gl.sh" || echo "::warning::host NVIDIA GL setup skipped/failed"
+    fi
+
+    # When the host lacks root, install-host-nvidia-gl.sh extracts the NVIDIA GL/EGL
+    # userspace into a user-writable dir instead of /usr/lib64. Bind those libraries
+    # into the container's /usr/lib64 (where the loader and the EGL ICD look) so GPU
+    # rendering works without root. If GL was installed system-wide (root) this dir
+    # won't exist and --nv injects the libraries directly instead.
+    nv_gl_userdir="${service_parent_install_dir}/nvidia-gl"
+    if [ -e "${nv_gl_userdir}/libEGL_nvidia.so.0" ]; then
+        for _lib in "${nv_gl_userdir}"/*.so*; do
+            [ -e "${_lib}" ] || continue
+            _real="$(readlink -f "${_lib}")"
+            NV_GL_BIND_FLAGS="${NV_GL_BIND_FLAGS} --bind ${_real}:/usr/lib64/$(basename "${_lib}")"
+        done
+        echo "::notice::Binding rootless NVIDIA GL userspace from ${nv_gl_userdir} into the container"
+    fi
+fi
+
+# Directories auto-mounted when present. Absence is normal across the many systems
+# this runs on, so missing auto-mounts are skipped silently (debug, not warning).
+default_mount_directories="${HOME} /p/work /p/work1 /p/app /p/cwfs /scratch /run/munge /etc/pbs.conf /var/spool/pbs /opt/pbs"
+
+# User-requested mounts come from the 'container_mount_paths' editor input (one path
+# per line). Strip any CR a browser editor may have added so existence checks don't
+# fail on a trailing '\r'.
+container_mount_paths=$(printf '%s' "${container_mount_paths}" | tr -d '\r')
+
+# Build "--bind dir" flags for directories that exist. With warn_missing="warn" a
+# user-visible warning is emitted for absent paths (used for the user-requested
+# paths); the auto-mount defaults stay silent.
+build_mount_flags() {
+    local directories="$1"
+    local warn_missing="$2"
+    local flags="" dir
+
+    for dir in ${directories}; do
+        if [ -e "${dir}" ]; then
+            flags="${flags} --bind ${dir}"
+            echo "::debug::Mount: ${dir} exists, adding to bind mounts" >&2
+        elif [ "${warn_missing}" = "warn" ]; then
+            echo "::warning::Mount path '${dir}' does not exist on this host; skipping" >&2
+        else
+            echo "::debug::Mount: ${dir} does not exist, skipping" >&2
+        fi
+    done
+
+    echo "${flags}"
+}
+
+# Build mount flags: silent for the auto-mounted defaults, warn for user-requested paths
+MOUNT_FLAGS="$(build_mount_flags "${default_mount_directories}") $(build_mount_flags "${container_mount_paths}" warn)"
+echo "::notice::Mount flags: ${MOUNT_FLAGS}"
+
+touch empty
+chmod 644 empty
+touch error.log
+chmod 666 error.log
+
+# Create a per-job /tmp to avoid cross-user permission conflicts on shared nodes
+# (Singularity bind-mounts host /tmp by default; container entrypoint writes /tmp/env.sh)
+mkdir -p $PWD/container_tmp
+# Pre-create .X11-unix so Xvnc doesn't fail trying to mkdir it as root under --userns
+mkdir -p $PWD/container_tmp/.X11-unix
+# Writable XKB dir: under --userns /var/lib/xkb is read-only inside the image,
+# so xkbcomp can't write the compiled keymap and Xvnc fails to activate the keyboard.
+mkdir -p $PWD/xkb
+echo "rm -rf $PWD/container_tmp" >> cancel.sh
+echo "rm -rf $PWD/xkb" >> cancel.sh
+
+# Unset host env vars that corrupt the container's runtime.
+# On Cray EX systems, LD_LIBRARY_PATH carries PE paths (libsci, mpich, cce) that
+# cause Python/Perl inside the container to load incompatible native libraries.
+# PYTHONSTARTUP points to a host file that doesn't exist in the container.
+unset PYTHONPATH PYTHONHOME PERL5LIB PERLLIB PERL5OPT PYTHONSTARTUP LD_LIBRARY_PATH
+
+# Only bind /etc/environment if it's safe (simple key=value, no shell control flow).
+# Some systems have shell syntax in /etc/environment that breaks Singularity's 95-apps.sh.
+ETC_ENV_FLAG=""
+if [ -f /etc/environment ] && ! grep -qE '^\s*(if|for|while|case|do|then|function)\b' /etc/environment 2>/dev/null; then
+    ETC_ENV_FLAG="--bind /etc/environment:/etc/environment:ro"
+else
+    echo "::warning::Skipping /etc/environment bind (file missing or contains shell syntax)"
+fi
+
+if ! [ -f "${container_sif}" ]; then
+    echo "::error title=Error::Missing container image ${container_sif}"
+    exit 1
+fi
+
+# Pick a (runtime, image) combination proven to work on this node by probing a
+# real 'exec true'. No single signal can be trusted across this fleet: FIPS-Go
+# apptainer builds whose engine panics when it cannot dlopen libcrypto
+# (narwhal's 1.3.6 module), SIF FUSE mounts unavailable, sandboxes on NFS or
+# parallel home filesystems failing exec with I/O errors, and noexec tmpdirs.
+# Order: each candidate runtime tries the SIF, then a previously built
+# sandbox, then a fresh sandbox extracted to node-local disk first (shared
+# filesystems are where sandbox exec breaks).
+sif_kb=$(du -k "${container_sif}" | cut -f1)
+
+runtime_userns_flag() {
+    local bin
+    bin=$(command -v "$1" 2>/dev/null) || true
+    if [ -n "${bin}" ] && ! test -u "${bin}"; then
+        echo "--userns"
+    fi
+}
+
+probe_image() { # <runtime> <image>
+    "$1" exec $(runtime_userns_flag "$1") "$2" /bin/true >/dev/null 2>&1
+}
+
+sif_squashfs_offset() { # <runtime>: squashfs partition offset (CLI-only, works even when the engine is broken)
+    "$1" sif list "${container_sif}" 2>/dev/null \
+        | awk -F'|' 'tolower($0) ~ /squashfs/ {split($4, a, "-"); gsub(/[^0-9]/, "", a[1]); print a[1]; exit}'
+}
+
+extract_sandbox() { # <runtime> <dest>
+    local rt=$1 dest=$2 offset
+    chmod -R u+w "${dest}" 2>/dev/null || true
+    rm -rf "${dest}"
+    # Host unsquashfs reads the squashfs partition straight out of the SIF:
+    # no container engine, no fakeroot, no build tmpdir constraints. Files
+    # come out owned by the invoking user, which --userns runs are fine with.
+    offset=$(sif_squashfs_offset "${rt}")
+    if [ -n "${offset}" ] && command -v unsquashfs >/dev/null 2>&1; then
+        if unsquashfs -no-xattrs -o "${offset}" -d "${dest}" "${container_sif}"; then
+            return 0
+        fi
+        chmod -R u+w "${dest}" 2>/dev/null || true
+        rm -rf "${dest}"
+        # unsquashfs older than 4.5 has no -o: carve the partition out first
+        if tail -c +"$((offset + 1))" "${container_sif}" > "${dest}.part" \
+           && unsquashfs -no-xattrs -d "${dest}" "${dest}.part"; then
+            rm -f "${dest}.part"
+            return 0
+        fi
+        rm -f "${dest}.part"
+        chmod -R u+w "${dest}" 2>/dev/null || true
+        rm -rf "${dest}"
+    fi
+    # No usable unsquashfs: fall back to the runtime's own converter
+    ${rt} build --force --sandbox "${dest}" "${container_sif}"
+}
+
+container_image=""
+_tried_runtimes=""
+for _rt in "${CONTAINER}" apptainer singularity; do
+    case " ${_tried_runtimes} " in *" ${_rt} "*) continue ;; esac
+    _tried_runtimes="${_tried_runtimes} ${_rt}"
+    command -v ${_rt} >/dev/null 2>&1 || module load ${_rt} >/dev/null 2>&1 || true
+    command -v ${_rt} >/dev/null 2>&1 || continue
+
+    if probe_image "${_rt}" "${container_sif}"; then
+        echo "::notice::${_rt} runs the SIF directly on this node"
+        CONTAINER=${_rt}
+        container_image="${container_sif}"
+        break
+    fi
+    echo "::notice::${_rt} cannot run the SIF directly on this node; trying sandbox"
+
+    if [ -d "${sandbox_dir}" ] && probe_image "${_rt}" "${sandbox_dir}"; then
+        CONTAINER=${_rt}
+        container_image="${sandbox_dir}"
+        break
+    fi
+
+    for _loc in "${TMPDIR:-}" /tmp /var/tmp "${service_parent_install_dir}/containers"; do
+        [ -n "${_loc}" ] && [ -d "${_loc}" ] && [ -w "${_loc}" ] || continue
+        [ "$(df -Pk "${_loc}" 2>/dev/null | awk 'NR==2{print $4}')" -ge "$((sif_kb * 4))" ] 2>/dev/null || continue
+        # noexec mounts cannot host a runnable sandbox; catch them cheaply
+        if cp /bin/true "${_loc}/.exec-probe-$$" 2>/dev/null && "${_loc}/.exec-probe-$$" 2>/dev/null; then
+            _exec_ok=1
+        else
+            _exec_ok=""
+        fi
+        rm -f "${_loc}/.exec-probe-$$"
+        [ -n "${_exec_ok}" ] || continue
+        if [ "${_loc}" = "${service_parent_install_dir}/containers" ]; then
+            _dest="${sandbox_dir}"    # shared install dir: persistent, reused by later runs
+        else
+            _dest="${_loc}/kasmvnc-${kasmvnc_os}-sandbox-${PW_RUN_SLUG}"    # node-local: per-run
+            echo "chmod -R u+w ${_dest} 2>/dev/null; rm -rf ${_dest} # node-local sandbox" >> cancel.sh
+        fi
+        echo "::notice::Extracting sandbox to ${_dest}"
+        if extract_sandbox "${_rt}" "${_dest}" && probe_image "${_rt}" "${_dest}"; then
+            CONTAINER=${_rt}
+            container_image="${_dest}"
+            break 2
+        fi
+        echo "::warning::Sandbox at ${_dest} is not runnable with ${_rt}; trying next option"
+        chmod -R u+w "${_dest}" 2>/dev/null || true
+        rm -rf "${_dest}"
+    done
+done
+
+if [ -z "${container_image}" ]; then
+    echo "::error title=Error::No container runtime on this node can run ${container_sif} (tried:${_tried_runtimes})"
+    exit 1
+fi
+echo "::notice::Using ${CONTAINER} with image ${container_image}"
+
+USERNS_FLAG=$(runtime_userns_flag "${CONTAINER}")
+WRITABLE_TMPFS_FLAG=""
+if [ -n "${USERNS_FLAG}" ]; then
+    echo "::notice::${CONTAINER} has no setuid bit, enabling --userns"
+elif df -T "$(dirname "${container_image}")" 2>/dev/null | awk 'NR==2{print $2}' | grep -qi lustre; then
+    echo "::notice::Container is on a Lustre filesystem, skipping --writable-tmpfs (overlay not supported)"
+else
+    WRITABLE_TMPFS_FLAG="--writable-tmpfs"
+fi
+
+env
+
+# Retry a couple of times on a fresh display in case of a display collision.
+display_tries=3
+kasmvnc_container_pid=""
+started=""
+_launched=""
+_try=0
+while [ ${_try} -lt ${display_tries} ]; do
+    _try=$((_try + 1))
+    if [ -n "${_launched}" ]; then
+        rm -rf $PWD/container_tmp $PWD/xkb
+        find_available_display || { echo "::error::No available display found"; exit 1; }
+    fi
+    _launched=1
+    mkdir -p $PWD/container_tmp/.X11-unix
+    mkdir -p $PWD/xkb
+
+    echo "::notice::Starting KasmVNC container on display :${XdisplayNumber} (image: ${container_image}, try ${_try}/${display_tries})..."
+    set -x
+    ${CONTAINER} run \
+        ${WRITABLE_TMPFS_FLAG} ${USERNS_FLAG} ${ETC_ENV_FLAG} \
+        ${GPU_FLAG} \
+        ${NV_GL_BIND_FLAGS} \
+        ${MOUNT_FLAGS} \
+        --env XAUTHORITY=/tmp/.Xauthority \
+        --env DISPLAY=":${XdisplayNumber}" \
+        --env BASE_PATH="${basepath}" \
+        --env NGINX_PORT="${service_port}" \
+        --env KASM_PORT=$(pw agent open-port) \
+        --env VNC_DISPLAY="${XdisplayNumber}" \
+        --bind /etc/passwd:/etc/passwd:ro \
+        --bind /etc/group:/etc/group:ro \
+        --bind /etc/ssl/certs:/etc/ssl/certs:ro \
+        --bind $PWD/empty:/etc/nginx/conf.d/default.conf \
+        --bind $PWD/error.log:/var/log/nginx/error.log \
+        --bind $PWD/container_tmp:/tmp \
+        --bind $PWD/xkb:/var/lib/xkb \
+        "${container_image}" &
+    set +x
+    kasmvnc_container_pid=$!
+    echo "::notice::KasmVNC container started with PID ${kasmvnc_container_pid} (image: ${container_image})"
+
+    sleep 20
+    if kill -0 "${kasmvnc_container_pid}" 2>/dev/null; then
+        started=1
+        break
+    fi
+    echo "::warning::Container exited within 20s on display :${XdisplayNumber}"
+done
+
+if [ -z "${started}" ]; then
+    echo "::error::KasmVNC failed to start with any image"
+    exit 1
+fi
+echo "::notice::KasmVNC running (image: ${container_image}, PID ${kasmvnc_container_pid})"
+
+# Register cleanup for the running container and its display.
+echo "kill ${kasmvnc_container_pid} #kasmvnc_container_pid" >> cancel.sh
+echo "pkill -TERM -f \"Xvnc :${XdisplayNumber}\"" >> cancel.sh
+echo "sleep 3" >> cancel.sh
+echo "pkill -KILL -f \"Xvnc :${XdisplayNumber}\"" >> cancel.sh
+
+sleep 5
+
+if ! kill -0 "${kasmvnc_container_pid}" 2>/dev/null; then
+    echo "::error::KasmVNC failed to start"
+    exit 1
+fi
+
+xauthority_file=""
+echo "::notice::Waiting for .Xauthority file"
+for i in $(seq 1 10); do
+    xauthority_file=$(find container_tmp -name .Xauthority 2>/dev/null | head -1)
+    if [ -n "${xauthority_file}" ]; then
+        break
+    fi
+    echo "Waiting for .Xauthority file (attempt ${i}/10)..."
+    sleep 5
+done
+if [ -n "${xauthority_file}" ]; then
+    export XAUTHORITY="${PWD}/${xauthority_file}"
+    echo "::notice::Setting XAUTHORITY to ${XAUTHORITY}"
+else
+    echo "::warning::.Xauthority file not found after 10 attempts"
+fi
+# Wait some time for display to be ready
+sleep 20
+xterm_cmd="$(which xterm 2>/dev/null || echo ${service_parent_install_dir}/tools/xterm)"
+export DISPLAY=":${XdisplayNumber}"
+run_xterm_loop(){
+    while true; do
+        echo "::notice::Starting xterm with ${xterm_cmd}"
+        ${xterm_cmd} -fa "DejaVu Sans Mono" -fs 12 -e bash -c '
+printf "╔══════════════════════════════════════════════════════════════╗\n"
+printf "║              Welcome to your Remote Desktop Session          ║\n"
+printf "╚══════════════════════════════════════════════════════════════╝\n"
+printf "\n"
+printf "This terminal runs directly on the cluster node — not inside the\n"
+printf "desktop environment. If you close it, it will automatically reopen.\n\n"
+printf "The desktop you see in your browser runs inside a container\n"
+printf "(an isolated software environment). Applications started from\n"
+printf "this terminal run on the host node instead.\n\n"
+printf "Tip: You can launch host applications here. The & keeps your\n"
+printf "terminal free while the app runs. Example:\n\n"
+printf "  firefox &\n\n"
+printf "────────────────────────────────────────────────────────────────\n\n"
+exec bash'
+        sleep 1
+    done
+}
+
+export DISPLAY=":${XdisplayNumber}"
+run_xterm_loop | tee -a ${PW_PARENT_JOB_DIR}/xterm.out &
+run_xterm_pid=$!
+echo "kill ${run_xterm_pid} || true # run_xterm_loop" >> cancel.sh
+
+if [ -n "${startup_command}" ]; then
+    echo "::notice::Running startup command: ${startup_command}"
+    eval ${startup_command} &
+    startup_command_pid=$!
+    echo "kill ${startup_command_pid} || true # startup_command" >> cancel.sh
+fi
+
+# Wait for the container's nginx to answer before registering the endpoint, so
+# the endpoint never points at a port nobody is listening on yet.
+echo "::notice::Waiting for the KasmVNC web server on port ${service_port}"
+web_up=""
+for i in $(seq 1 60); do
+    if curl -s -o /dev/null "http://localhost:${service_port}/health"; then
+        web_up=1
+        break
+    fi
+    if ! kill -0 "${kasmvnc_container_pid}" 2>/dev/null; then
+        break
+    fi
+    sleep 5
+done
+if [ -z "${web_up}" ]; then
+    echo "::error title=Error::KasmVNC web server never answered on port ${service_port}"
+    # Fail loud: without this, wait_for_endpoint polls forever for an endpoint
+    # that will never register
+    pw workflows runs cancel ${PW_RUN_SLUG}
+    exit 1
+fi
+
+echo "::notice::Registering endpoint ${endpoint_name}"
+pw endpoints http --name "${endpoint_name}" --slug "${endpoint_slug}" --output text ${service_port} &
+endpoint_pid=$!
+echo "kill ${endpoint_pid} || true # pw endpoints http" >> cancel.sh
+
+# Job lifetime = container AND endpoint client: whichever exits first ends the
+# job. This is what makes `pw endpoints delete` stop the whole desktop.
+wait -n ${kasmvnc_container_pid} ${endpoint_pid}
+echo "::warning::Container or endpoint client exited; tearing down"
+# Run the cleanup here instead of relying on the workflow's exit trap, so the
+# containers die even if this template runs without the trap wrapper. Safe both
+# ways: cancel.sh moves itself to cancel.sh.executed on its first line, so the
+# trap finds nothing left to run.
+bash cancel.sh || true
+echo "::endgroup::"
+# No-op if the run already completed (endpoint was up); cancels it if the
+# endpoint client died before ever registering.
+pw workflows runs cancel ${PW_RUN_SLUG} || true
+exit 1
+

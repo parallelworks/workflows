@@ -1,0 +1,21 @@
+cache
+# docs directory is for RAG documents, but allow documentation files
+docs/*
+!docs/*.md
+!docs/IMPLEMENTATION_PLAN.md
+!docs/ARCHITECTURE.md
+.env
+env.sh
+*.sif
+logs
+etc.hosts
+resolv.conf
+PROXY_PORT
+SESSION_PORT
+*.jinja
+job.started
+job.ended
+cancel.sh
+run.sh
+.run.env
+__pycache__

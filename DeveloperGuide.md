@@ -111,18 +111,13 @@ pw endpoints list        # your endpoint should come online
 While iterating you can point the YAML's checkout `branch:` at a development branch;
 restore it to `canary` before merging.
 
-## Appendix: the session_runner generation
+## Appendix: the legacy session pattern
 
-Two workflows (**vncserver** and **langflow-host**) still use the older pattern: a
-`sessions:` block and `workflows/session_runner/v1.4/<variant>.yaml`, which submits
-the start script and registers a **platform tunnel session** on the injected
-`${service_port}` instead of a `pw` endpoint. Its interface (session, resource,
-cluster scheduler settings, `service.{start_service_script,controller_script,inputs_sh,slug,rundir}`)
-is documented in `workflows/session_runner/v1.4/README.md`.
-
-New workflows should use the endpoint pattern. The legacy platform variants that
-depended on the older script generation (emed files, webshell hsp, kasmvnc
-general-rstudio/northrop, langflow-singularity general, librechat-singularity-manager's
-standalone workflow, rag-vllm emed) were **left in `parallelworks/interactive_session`**;
-to convert one to the endpoint pattern and bring it here, follow
+The older pattern (a `sessions:` block + the `session_runner` subworkflow registering
+a **platform tunnel session** on an injected `${service_port}`) is not used by
+anything in this repo. The workflows and variants that still depend on it — vncserver,
+langflow-host, the emed files, webshell hsp, kasmvnc general-rstudio/northrop,
+langflow-singularity general, librechat-singularity-manager's standalone workflow,
+rag-vllm emed — live in `parallelworks/interactive_session`. To convert one to the
+endpoint pattern and bring it here, follow
 `.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`.

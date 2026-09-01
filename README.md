@@ -22,7 +22,6 @@ Legacy-generation variants that still depended on older scripts were left behind
 | [jupyter](workflows/jupyter/) | Jupyter Notebook (classic) | general, noaa |
 | [jupyterlab](workflows/jupyterlab/) | JupyterLab | general, hsp, noaa, general_k8s, k8s |
 | [kasmvnc](workflows/kasmvnc/) | KasmVNC desktop (Singularity) | general, general_rstudio, hsp, noaa, noaa_rstudio, general_k8s, k8s |
-| [langflow-host](workflows/langflow-host/) | Langflow (host install) | general, hsp |
 | [langflow-singularity](workflows/langflow-singularity/) | Langflow (Singularity) | hsp |
 | [librechat](workflows/librechat/) | LibreChat (+ `-all` stacks with manager & Langflow) | general, hsp, general-all, hsp-all |
 | [lite-agent](workflows/lite-agent/) | Lightweight agent worker | general |
@@ -35,20 +34,17 @@ Legacy-generation variants that still depended on older scripts were left behind
 | [rag-service](workflows/rag-service/) | RAG search/index service | general |
 | [rag-vllm](workflows/rag-vllm/) | vLLM inference server + optional RAG stack | general, hsp, noaa |
 | [streamlit](workflows/streamlit/) | Streamlit apps (Singularity) | general, hsp |
-| [vncserver](workflows/vncserver/) | VNC desktop + apps (MATLAB, RStudio, …) | general, emed(+apps), noaa(+apps), general_k8s, rstudio_k8s |
 | [webshell](workflows/webshell/) | Web terminal (ttyd) | general, noaa |
 
 `librechat-singularity-manager` is a component of the librechat `-all` workflows
 ([workflows/librechat/librechat-singularity-manager/](workflows/librechat/librechat-singularity-manager/));
 its standalone workflow was legacy-generation and stayed in `interactive_session`.
 
-**Shared subworkflows** (referenced by the workflow YAMLs via
+**Shared subworkflow** (referenced by the workflow YAMLs via
 `uses: github/parallelworks/workflows@canary` + `$yaml:`):
 
-- [workflows/session_runner/v1.4/](workflows/session_runner/) — session orchestration
-  for the session-generation workflows (vncserver, langflow-host)
 - [workflows/script_submitter/v3.6/](workflows/script_submitter/) — SLURM/PBS/SSH
-  script submission used by everything else
+  script submission used by every workflow
 
 **Shared tools** — [`tools/`](tools/) (`tools/oras`, `tools/utils`) are sparse-checked-out
 next to `workflows/<name>` at runtime; scripts reference them as `tools/...` relative
@@ -76,9 +72,8 @@ From a machine with the [`pw` CLI](https://parallelworks.com/docs/cli) authentic
 pw workflows run ./workflows/webshell/yamls/general.yaml -i '{"cluster":{"resource":"<cluster-name>","scheduler":false}}'
 ```
 
-Most workflows register a **`pw` endpoint** (check `pw endpoints list`); the
-session-generation ones (vncserver, langflow-host) create a **platform tunnel
-session**. Note that workflow YAMLs pull this repo from GitHub at runtime
+Every workflow registers a **`pw` endpoint** (check `pw endpoints list`).
+Note that workflow YAMLs pull this repo from GitHub at runtime
 (`parallelworks/checkout` + subworkflow `uses:`), so local YAML edits only take full
 effect once pushed to the referenced branch (**canary**).
 

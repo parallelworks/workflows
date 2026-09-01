@@ -158,7 +158,7 @@ jobs:
 ### Calling a subworkflow
 ```yaml
 - uses: github/parallelworks/workflows@canary
-  $yaml: workflows/session_runner/v1.4/general.yaml   # path within this repo
+  $yaml: workflows/script_submitter/v3.6/general.yaml   # path within this repo
   with: { ...subworkflow inputs... }
 # or a marketplace slug:
 - uses: marketplace/script_submitter/v3.6
@@ -277,9 +277,12 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
 
 ---
 
-## 4. `session_runner` subworkflow (start a web service + make a session)
+## 4. `session_runner` subworkflow (LEGACY — start a web service + make a tunnel session)
 
-Path: `workflows/session_runner/v1.4/<deployment>.yaml`. Older: `v1.3`.
+Legacy: nothing in this repo uses it (every workflow here is endpoint-pattern, §5).
+It lives in `parallelworks/interactive_session` at
+`workflow/session_runner/v1.4/<deployment>.yaml`, serving the unconverted session
+workflows still there. Kept documented for conversions.
 
 ### Choosing the deployment variant (`general` / `emed` / `hsp` / `noaa`) — IMPORTANT
 Do **not** default to `general`. Pick the variant that matches the **Activate platform
@@ -308,10 +311,10 @@ session_runner:
   ssh:
     remoteHost: ${{ inputs.resource.ip }}
   steps:
-    - uses: github/parallelworks/workflows@canary
+    - uses: github/parallelworks/interactive_session@main
       early-cancel: any-job-failed
       with:
-        $yaml: workflows/session_runner/v1.4/general.yaml
+        $yaml: workflow/session_runner/v1.4/general.yaml
         session: ${{ sessions.session }}
         resource: ${{ inputs.resource }}
         cluster:
@@ -553,7 +556,6 @@ Repo: `https://github.com/parallelworks/workflows`. Read these for working patte
 | `DeveloperGuide.md`, `CLAUDE.md` | the repo's own how-to + conventions |
 | `workflows/webshell/general.yaml` | **simplest** full v5 example (preprocessing → script_submitter → endpoint) |
 | `workflows/webshell/{controller,start-template}.sh` | minimal controller + start scripts |
-| `workflows/session_runner/v1.4/general.yaml` + `README.md` | the subworkflow internals + interface |
 | `workflows/script_submitter/v3.6/general.yaml` + `README.md` | submission modes + interface |
 | `workflows/jupyterlab/general.yaml` + scripts | typical: install + nginx base-path proxy (see §11) |
 | `workflows/openvscode/general.yaml` | session whose URL slug is a query string (`?folder=...`) |
@@ -573,7 +575,6 @@ sync with the platform. Read the one closest to your task:
 
 | Pattern you need | Look at |
 |---|---|
-| **Simplest v4-generation session** (preprocessing → `session_runner`) | `workflows/vncserver/general.yaml` + `workflows/vncserver/{controller,start-template}.sh` |
 | **Session with install + base-path nginx proxy** (§11) | `workflows/jupyterlab/general.yaml` + `workflows/jupyterlab/*.sh` |
 | **Session whose `slug` is a query string** | `workflows/openvscode/general.yaml` (`slug=?folder=...`) |
 | **`parallelworks/checkout` (sparse) to fetch code** | preprocessing job of any workflow YAML above |

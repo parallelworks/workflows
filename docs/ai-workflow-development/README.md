@@ -14,7 +14,7 @@ agent at the repo's own workflows and tutorials.
 
 | Piece | Where | Shared? |
 |-------|-------|---------|
-| **Reference** — platform facts (YAML schema, `session_runner`/`script_submitter`, `pw` CLI, job-dir layout, deployment variants, code delivery, base-path sessions) | [`/.claude/skills/activate-workflows/references/`](../../.claude/skills/activate-workflows/references/) | shared by every approach |
+| **Reference** — platform facts (YAML schema, the endpoint pattern, `script_submitter`, `pw` CLI, job-dir layout, deployment variants, code delivery) | [`/.claude/skills/activate-workflows/references/`](../../.claude/skills/activate-workflows/references/) | shared by every approach |
 | **Examples to learn from** — the real workflows (`workflows/`) and tutorials (`tutorials/`) in this repo | this repo | shared |
 | **Methodology** — the step-by-step process the agent follows | [`/.claude/skills/activate-workflows/SKILL.md`](../../.claude/skills/activate-workflows/SKILL.md) | shared (approaches may fork it) |
 | **Setup guide + installer** — how to host/drive the agent | `<approach>/README.md` + `<approach>/install.sh` | per approach |

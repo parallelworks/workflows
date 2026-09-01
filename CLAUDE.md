@@ -69,6 +69,9 @@ registering a platform tunnel session) is legacy and lives only in
   (default `${HOME}/pw/software`) for installs.
 - Shared tools are referenced as `tools/oras/...` / `tools/utils/...` relative to the
   run directory (the YAML sparse-checkouts them alongside `workflows/<name>`).
+- Pull ghcr/ORAS artifacts through `tools/oras/libs.sh:oras_pull_file` (it retries —
+  ghcr intermittently rate-limits anonymous pulls) and keep the packages **public**;
+  verify anonymous access before shipping.
 
 ### Workflow YAMLs
 - **The repo is fetched from GitHub at runtime**: `parallelworks/checkout` steps pull
@@ -94,15 +97,34 @@ registering a platform tunnel session) is legacy and lives only in
 ## No build system
 
 No build system or linter. Deployment happens by the ACTIVATE platform cloning this
-repo and executing scripts directly. Validate YAML changes with
-`pw workflows run ./workflows/<name>/yamls/<variant>.yaml -i '{...}'` against a real
-cluster (remember to push first — see above). `emed`/`hsp`/`noaa` variants can only
-run from those platforms.
+repo and executing scripts directly. `emed`/`hsp`/`noaa` variants can only run from
+those platforms — validate them statically.
+
+## Testing and debugging
+
+- **Push before testing.** Checkout and `uses:` steps fetch this repo from GitHub at
+  run time; local edits are invisible until they are on the referenced branch.
+- Run with the **absolute** YAML path (a relative path is parsed as a git host):
+  `pw workflows run /abs/path/workflows/<name>/yamls/general.yaml -i '{"cluster":{"resource":"<cluster>","scheduler":false}}'`
+- **Pass = the endpoint serves:** `pw endpoints list` shows `<service.name>-<run-slug>`
+  and its URL answers. The run completes while the service keeps running.
+- **Tear down:** `pw endpoints delete <name>` kills the remote process tree; verify
+  with `ps -x` (daemonizing apps that re-parent to PID 1 can survive).
+- **Debug from the job dir** (`~/pw/jobs/<run>/` on the execution node):
+  `run.<JOBID>.out` is the service output; `logs/<job>/step_N/step.out` the step
+  trace; `logs/<job>/step_N/script-unstable.sh` is the **rendered** step showing every
+  `${{ input }}` as its literal value — read it first when a form value seems ignored.
+  From anywhere: `pw workflows runs errors <slug>`.
+- `pw` auth tokens expire; "Authentication has expired" means a human must run `pw auth`.
+- Registered ("remote") workflows pin one YAML path (`pw workflows get <name>` →
+  `remote.yaml`); the form and its defaults come from that file — point registrations
+  at `workflows/<name>/yamls/<variant>.yaml` and `workflows/<name>/thumbnails/…`.
 
 ## Git and deployment
 
 - Primary branch: **canary** (`git@github.com:parallelworks/workflows.git`) — the
-  branch the YAMLs reference at runtime.
+  branch the YAMLs reference at runtime. Branch rules require changes to land **via
+  pull request**; work on a side branch and merge (squash) into canary.
 - Large binaries stay out of this repo. Legacy binaries (noVNC tarballs, SIF images)
   are still fetched from the old `interactive_session` repo's `legacy` tag by the
   scripts that need them — leave those clone blocks alone.

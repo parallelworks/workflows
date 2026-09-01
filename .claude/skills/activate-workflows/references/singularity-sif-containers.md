@@ -13,6 +13,15 @@
 > `workflows/n8n/n8n-singularity/{build-container.sh,controller.sh,start-template.sh}`.
 > Everything below was verified on live runs on gcpsmall unless marked otherwise.
 
+## Operational notes (learned from live runs)
+
+- **Pull SIFs through `tools/oras/libs.sh:oras_pull_file`** (or replicate its retry
+  loop): ghcr intermittently answers `toomanyrequests` to anonymous pulls, and a
+  single-attempt pull fails the whole run over a hiccup measured in milliseconds.
+- **Keep the ghcr package public.** An anonymous pull of a private package fails with
+  403 `unauthorized`; verify with an anonymous manifest request before shipping a
+  workflow that references it.
+
 ## Why SIF instead of a tarballed sandbox
 
 | | sandbox + tgz (old) | SIF (new) |

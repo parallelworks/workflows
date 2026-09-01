@@ -68,8 +68,18 @@ pull_sif() {
     [ -f "${sif}" ] && return 0
     echo "::group::SIF Download ${uri}"
     pull_dir=$(mktemp -d -p "${service_parent_install_dir}/containers")
-    if ! "${oras_bin}" pull "${uri}" -o "${pull_dir}"; then
-        echo "::error title=Error::oras pull failed for ${uri}"
+    # ghcr.io intermittently answers "toomanyrequests" to anonymous pulls;
+    # a short retry rides out the rate limit instead of failing the workflow
+    local attempt pulled=""
+    for attempt in 1 2 3; do
+        if "${oras_bin}" pull "${uri}" -o "${pull_dir}"; then
+            pulled=yes
+            break
+        fi
+        [ "${attempt}" -lt 3 ] && sleep $((attempt * 5))
+    done
+    if [ -z "${pulled}" ]; then
+        echo "::error title=Error::oras pull failed for ${uri} after ${attempt} attempts"
         exit 1
     fi
     pulled_sif=$(find "${pull_dir}" -name '*.sif' -type f | head -1)

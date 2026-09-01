@@ -23,8 +23,13 @@ oras_pull_file(){
     host_path=$3
     local output_dir
     output_dir=$(dirname ${host_path})
-    if ! ${PW_PARENT_JOB_DIR}/tools/oras/oras pull ${repo} -o ${output_dir}; then
-        echo "::error title=Error::oras pull failed for ${repo}"
-        exit 1
-    fi
+    # ghcr.io intermittently answers "toomanyrequests" to anonymous pulls;
+    # a short retry rides out the rate limit instead of failing the workflow
+    local attempt
+    for attempt in 1 2 3; do
+        ${PW_PARENT_JOB_DIR}/tools/oras/oras pull ${repo} -o ${output_dir} && return 0
+        [ "${attempt}" -lt 3 ] && sleep $((attempt * 5))
+    done
+    echo "::error title=Error::oras pull failed for ${repo} after ${attempt} attempts"
+    exit 1
 }

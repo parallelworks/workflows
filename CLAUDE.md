@@ -14,13 +14,15 @@ A typical workflow consists of:
   install/setup with internet access
 - A **start script** (`start-template.sh`) — runs on the compute or login node,
   launches the service
-- Support files (conda env YAMLs, container defs, helper scripts), `README.md`, thumbnail
+- Support files (conda env YAMLs, container defs, helper scripts), `README.md`, and
+  marketplace thumbnails in `thumbnails/`
 
 ## Repository structure
 
 ```
 workflows/<name>/yamls/      # the workflow's variant YAMLs (general.yaml, hsp.yaml, k8s.yaml, ...)
-workflows/<name>/            # scripts + support files + README + thumbnail
+workflows/<name>/            # scripts + support files + README
+workflows/<name>/thumbnails/ # marketplace thumbnails (one per registered variant look)
 workflows/<name>/<impl>/     # multi-implementation workflows keep impl subdirs whose names
                              # match the form input values (n8n-docker, n8n-singularity,
                              # kasmvnc-singularity, ollama-gguf-container, librechat-singularity, ...)

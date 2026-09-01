@@ -6,7 +6,8 @@ and [`activate-rag-vllm`](https://github.com/parallelworks/activate-rag-vllm).
 
 **One workflow = one directory** under [`workflows/`](workflows/): the variant YAMLs
 (grouped in a `yamls/` subdirectory), the `controller.sh`/`start-template.sh` scripts,
-support files, README, and thumbnail all live together. There are **no version
+support files, README, and marketplace thumbnails (grouped in a `thumbnails/`
+subdirectory) all live together. There are **no version
 suffixes** — every file is the latest version, and git tags version the repo.
 Legacy-generation variants that still depended on older scripts were left behind in
 `interactive_session` until they are converted to the endpoint pattern

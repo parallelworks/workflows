@@ -80,7 +80,9 @@ Variant YAMLs land at `workflows/<new>/yamls/`, scripts at `workflows/<new>/`
 Readmes: each workflow's `workflow/readmes/<src>/` docs moved into its directory
 (`general.md` → `README.md`, `cloud.md` for jupyter; `general_k8s.md` → `README_k8s.md`;
 per-deployment mds kept only where the variant migrated). Thumbnails: matched by name
-from the shared `workflow/thumbnails/` pool (kept their filenames).
+from the shared `workflow/thumbnails/` pool (kept their filenames), grouped under
+each workflow's `thumbnails/` subdirectory; `r.png` joined `workflows/kasmvnc/thumbnails/`
+for the rstudio variants.
 
 ## rag-vllm (from activate-rag-vllm)
 
@@ -224,7 +226,7 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   `workflows/{session_runner,script_submitter}/...` in this repo (v3.5 would need to
   stay on the old repo or the yaml bumped to v3.6).
 - Readme/thumbnail paths in registrations (`workflow/readmes/...`,
-  `workflow/thumbnails/...`) → the files inside each `workflows/<name>/`.
+  `workflow/thumbnails/...`) → the files inside each `workflows/<name>/thumbnails/`.
 
 ## Test results (2026-08-31, repo public, canary pushed)
 

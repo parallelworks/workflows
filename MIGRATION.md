@@ -84,9 +84,18 @@ from the shared `workflow/thumbnails/` pool (kept their filenames).
 
 ## rag-vllm (from activate-rag-vllm)
 
-Everything the stack runs from moved wholesale to `workflows/rag-vllm/` (lib/, scripts/,
-singularity/, docker/, configs/, docs/, the .py services, `start_service.sh`, READMEs,
-thumbnails, LICENSE.md, .gitignore). YAMLs (latest generation only):
+The runtime tree lives at `workflows/rag-vllm/`, trimmed (round 3 review) to what the
+YAMLs reach directly or transitively: `controller.sh`, `start-template.sh`,
+`start_service.sh`, the three .py services + `indexer_config.yaml`,
+`singularity/{env.sh.example,Singularity.rag,Singularity.vllm,singularity-entrypoint.sh}`
+(the defs are copied by `start_service.sh`; the entrypoint is baked in by
+`Singularity.rag`), plus READMEs/thumbnails/LICENSE.md/.gitignore as
+registration/legal assets. Removed as unreachable from the YAMLs: `lib/` (only the
+legacy scripts sourced it), `docker/` + the docker RUNMODE branch inputs (the YAMLs
+hardcode RUNMODE=singularity), `docs/`, `scripts/` (SIF build drivers),
+`configs/hpc-presets.yaml` (presets are inlined in hsp.yaml), `singularity-compose.yml`,
+`run_local.sh`, `clean.sh`, `local.env.example`, and nested duplicate directories from
+a non-idempotent copy during the initial migration. YAMLs (latest generation only):
 `yamls/general_v5.yaml`→`yamls/general.yaml` (supersedes root `workflow.yaml`),
 `yamls/hsp_v5.yaml`→`yamls/hsp.yaml`, `yamls/noaa_v5.yaml`→`yamls/noaa.yaml`.
 The wrappers `controller_v5.sh`/`start_service_v5.sh` took the standard names

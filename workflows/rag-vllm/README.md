@@ -97,28 +97,17 @@ curl http://localhost:8081/health
 ## Project Structure
 
 ```
-activate-rag-vllm/
-├── workflow.yaml          # ACTIVATE workflow definition
-├── start_service.sh       # Service entrypoint
+rag-vllm/
+├── yamls/                 # Workflow variants (general, hsp, noaa)
+├── controller.sh          # Login-node setup (containers, tokenizers, RAG clone)
+├── start-template.sh      # Endpoint wrapper run on the execution node
+├── start_service.sh       # RAG-stack launcher (run from the repo clone)
 ├── rag_proxy.py           # OpenAI-compatible proxy
 ├── rag_server.py          # RAG search server
 ├── indexer.py             # Document indexer
-├── run_local.sh           # Local development runner
-├── singularity/           # Apptainer/Singularity container configs
-├── docker/                # Docker configs (local dev)
-├── lib/                   # Shared utilities
-├── configs/               # HPC preset configurations
-└── docs/                  # Additional documentation
+├── indexer_config.yaml    # Indexer runtime config template
+└── singularity/           # Container defs + runtime env template
 ```
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [Local Development Guide](docs/LOCAL_DEVELOPMENT.md) | Running locally for debugging |
-| [Workflow Configuration](docs/WORKFLOW_CONFIGURATION.md) | YAML workflow customization |
-| [Architecture](docs/ARCHITECTURE.md) | System design details |
-| [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) | Development roadmap |
 
 ## Demo
 

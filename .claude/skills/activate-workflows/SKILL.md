@@ -2,17 +2,17 @@
 name: activate-workflows
 description: >-
   Develop, test, and debug workflows on the Activate platform by Parallel Works.
-  Use whenever the task involves an Activate / Parallel Works workflow, a remote
-  interactive session, a web server exposed through the platform, the session_runner
-  or script_submitter subworkflows, or the `pw` CLI (workflows create/update/run,
-  sessions, cluster). Provides a proven local-first process plus a reference of
-  platform facts pointing at the repo's real workflows and tutorials.
+  Use whenever the task involves an Activate / Parallel Works workflow, a service
+  exposed as a pw endpoint, the script_submitter subworkflow, or the `pw` CLI
+  (workflows create/update/run, endpoints, cluster). Provides a proven local-first
+  process plus a reference of platform facts pointing at the repo's real workflows
+  and tutorials.
 ---
 
 # Developing Activate (Parallel Works) workflows
 
 A repeatable process for building a workflow that runs code on a compute resource
-and (optionally) exposes a web server as a platform session. Read
+and (optionally) exposes a web service as a **`pw` endpoint**. Read
 [references/activate-platform.md](references/activate-platform.md) for the YAML
 schema, subworkflow interfaces, `pw` CLI, and job-directory layout — this file is
 the **process**; that file is the **facts**.
@@ -31,24 +31,27 @@ every workflow: besides allowing everyone to run it, it is what lets the in-work
 
 ## Golden rules
 
-- **Reuse subworkflows for submission/sessions; plain DAGs for the rest.** For a web
-  service + session, wrap your code with `session_runner`. For "just run a
-  script/sim on a cluster," call `script_submitter` (`v3.6`) directly. Do **not**
-  hand-write job submission, port allocation, or tunnel logic. But pure orchestration
-  (multi-job DAG, data flow, fan-out) needs **no** subworkflow — that's a first-class
-  use. Learn the patterns from the **repo's own workflows and tutorials**, not from
-  invented demos (reference §9): sessions →
+- **Reuse the endpoint pattern and `script_submitter`; plain DAGs for the rest.**
+  For a web service, copy the repo's endpoint pattern: preprocessing checks out the
+  code, `script_submitter` (`v3.6`) submits the start script, the start script runs
+  the service under `pw endpoints run`, and a `wait_for_endpoint` job confirms it.
+  For "just run a script/sim on a cluster," call `script_submitter` directly. Do
+  **not** hand-write job submission, port allocation, or tunnel logic (the legacy
+  `session_runner` tunnel-session pattern lives only in `interactive_session` —
+  reference §4). Pure orchestration (multi-job DAG, data flow, fan-out) needs **no**
+  subworkflow — that's a first-class use. Learn the patterns from the **repo's own
+  workflows and tutorials**, not from invented demos (reference §9): endpoints →
   `workflows/{webshell,jupyterlab,openvscode}/`; job DAG / sessions / outputs
   → `tutorials/session-workflows-hsp/` (staged README); **fan-out / sweep →
   `tutorials/endpoint-workflows/05-matrix.yaml`**; retry/failover →
   `tutorials/endpoint-workflows/07-failover.yaml`.
 - **Pick the deployment variant by platform host — don't default to `general`.**
-  `session_runner`/`script_submitter` ship as `general` / `emed` / `hsp` / `noaa`, and
+  `script_submitter` ships as `general` / `emed` / `hsp` / `noaa`, and
   the **resource/scheduler/slurm/pbs form sections differ between them**. Choose:
   `emed` for `cluster.einsteinmed.edu`, `noaa` for `noaa.parallel.works`, `hsp` for
   `activate.hpc.mil`, `general` otherwise — **if unclear, ask the user.** Then copy the
   cluster/slurm/pbs form and `with:` block from the matching
-  `workflows/<name>/<variant>.yaml`. (`pw context list` shows the host.)
+  `workflows/<name>/yamls/<variant>.yaml`. (`pw context list` shows the host.)
 - **Pass every required subworkflow input, and `--dry-run` first.** A subworkflow's
   defaults-filler does NOT apply its own `hidden`/`ignore` rules, so non-optional
   fields with no default must be passed explicitly even when its form would hide
@@ -78,67 +81,84 @@ correct output.
 
 ## Step 2 — Wrap the working code in workflow YAML
 
-Mirror the proven pattern (see `workflows/webshell/general.yaml`): a
-**preprocessing** job that gets your files onto the node + writes `inputs.sh`, then a
-**session_runner** (or **script_submitter**) job.
+Mirror the proven pattern (see `workflows/webshell/yamls/general.yaml`): a
+**preprocessing** job (checkout + `inputs.sh` + run `controller.sh` + assemble the
+start script), a **script_submitter** job that submits it, and a
+**wait_for_endpoint** job that polls `pw endpoints list` for
+`<service.name>-${PW_RUN_SLUG}`, then touches the `SKIP_CLEANUP` marker and cancels
+the submitter so the service outlives the run.
 
-Provide the two contract scripts `session_runner` expects:
+Provide the two contract scripts:
 - **`controller.sh`** — idempotent setup on the login node (has internet). Often
   just verifies prerequisites.
-- **`start-template.sh`** — binds **`${service_port}`** on `0.0.0.0`, writes
-  `${PW_PARENT_JOB_DIR}/cancel.sh` (how to stop the service), and ends with
-  `sleep inf` (or runs the server in foreground).
+- **`start-template.sh`** — launches the service under
+  `pw endpoints run ${pw_endpoints_args} -- <cmd with {port}>`, and **fails loud**:
+  if `pw endpoints run` exits without the endpoint registered, cancel the run
+  (`pw workflows runs cancel ${PW_RUN_SLUG}`) so `wait_for_endpoint` never polls
+  forever (copy the tail of `workflows/webshell/start-template.sh`).
+
+**Path rule (learned the hard way):** checked-out content materializes under
+`${PW_PARENT_JOB_DIR}/workflows/<name>/…` — every path a YAML or script builds to
+reach repo files (including ones composed from variables like
+`"${PW_PARENT_JOB_DIR}/${service_name}"`) must carry the `workflows/` prefix. And
+never glob a directory that contains the workflow YAMLs (`yamls/` keeps them apart —
+keep it that way).
 
 **Getting the scripts onto the node — use `parallelworks/checkout`, never base64**
-(reference §10). Two modes depending on whether Claude can push to the repo:
+(reference §10). The repo is fetched from GitHub **at runtime**, so nothing you edit
+locally takes effect until it is pushed. Two modes depending on whether Claude can
+push to the repo:
 1. **Write access (recommended):** ask the user to grant a **deploy key with write
-   permission**. Work on a **development branch — never `main`** — commit and push your
-   code, then `parallelworks/checkout` that branch (`branch: <dev-branch>`,
-   `sparse_checkout: [<service-dir>]`). The user reviews/merges the branch, then you
-   flip `branch:` to `main`.
+   permission**. Work on a **development branch — never `canary` directly** (branch
+   rules require PRs) — commit and push, then `parallelworks/checkout` that branch
+   (`branch: <dev-branch>`, `sparse_checkout: [workflows/<name>]`). Open a PR to
+   `canary`; after the merge, flip `branch:` back to `canary`.
 2. **No write access:** you can't push, so stage the files on the resource (e.g.
    `~/pw/dev/<workflow>/`) and give preprocessing **two steps** — the
    `parallelworks/checkout` step **commented out** (configured for after the merge) and
    a **copy step** (`cp -r ~/pw/dev/<workflow>/. .`) that mimics it. The user later
    pushes & merges, uncomments checkout, and deletes the copy step.
 
-Wire `session_runner`'s `service.{start_service_script,controller_script,inputs_sh,
-rundir}` to `${PW_PARENT_JOB_DIR}/...` paths, set `slug` (`""` for a root web app),
-and pass `resource`, `cluster.scheduler`, `cluster.slurm`, `cluster.pbs` **from the
-matching variant's YAML**. Add `include-workspace: true` on the
-`compute-clusters` input if the workspace should be selectable.
+Pass `script_submitter`'s inputs **from the matching variant's YAML** (`resource`,
+`use_existing_script`+`script_path`, `scheduler`, `slurm`/`pbs`, and the
+`skip_cleanups_file` wiring — copy the whole `with:` block). Add
+`include-workspace: true` on the `compute-clusters` input if the workspace should be
+selectable. The hidden `service.name` input is the **endpoint name prefix** — keep it
+stable (renaming it changes endpoint names users see).
 
-**Sessions served from a base-path URL.** A session lives at
-`…/me/session/<user>/<session-name>/<slug>`. Apps that build absolute URLs
-(JupyterLab, many SPAs) need to know that prefix — either set the app's base-URL
-(compute `basepath=/me/session/${PW_USER}/${{ sessions.session }}` and feed it in) or
-front it with an **nginx reverse proxy** on `${service_port}`. See reference §11 and
-`workflows/jupyterlab/start-template.sh`. Apps that serve relative paths just use
-`slug: ""` and need neither.
+**Base paths:** subdomain endpoints serve at the URL root, so most apps need no
+base-URL config and no nginx (reference §11/§12); `--slug` handles a landing path or
+query string.
 
 Numbers from `integer` inputs arrive as **strings**; guard with `${var:-default}`.
 
 ## Step 3 — Test end-to-end with the `pw` client
 
+**Push first.** The YAML's checkout and `uses:` steps fetch the repo from GitHub at
+run time, so an untested local edit is invisible until it is on the referenced branch.
+
 ```bash
 # always validate first — catches YAML/schema/variant errors without executing
-pw workflows run --dry-run -i '{"resource":"<name>","scheduler":false}' ./my.yaml
+pw workflows run --dry-run -i '{"cluster":{"resource":"<name>","scheduler":false}}' /abs/path/general.yaml
 
-pw workflows create my-wf  --yaml my.yaml --display-name "My WF"
-pw workflows update my-wf  --yaml my.yaml          # after each edit
-pw workflows run    my-wf  -i '{"resource":"<name>","scheduler":false,"…":…}' \
-                           --name "e2e-1" -o json  # note run.slug + redirect (session name)
+# run a repo YAML directly (ABSOLUTE path — a relative path is parsed as a git host)
+pw workflows run /abs/path/workflows/<name>/yamls/general.yaml \
+    -i '{"cluster":{"resource":"<name>","scheduler":false}}' -o json   # note run.slug
 ```
 
 - **Pass the resource as a bare name string** (`"gcpsmall"`, `"workspace"`); the
   platform resolves the full object. Never hardcode IPs.
 - Pick an **active** resource (`pw cluster ls`). `scheduler:false` runs the service
   on the login node — simplest for a demo.
-- Watch progress: `pw workflows runs logs <slug> -f` or poll
-  `pw workflows runs view <slug> -o json`. Success looks like the `create_session`
-  job logging **"Session is ready"**.
-- Confirm the session: `pw sessions ls -o table` shows it `running`, `tunnel`, with
-  the remote host/port.
+- Watch progress: `pw workflows runs logs <slug>` or poll
+  `pw workflows runs view <slug> -o json`.
+- **Success = the endpoint is online and serving:** `pw endpoints list` shows
+  `<service.name>-<run-slug>` with its URL; `curl` it (expect 200, or the platform
+  auth redirect for `--openai` endpoints). The run itself completes once
+  `wait_for_endpoint` sees it — the service keeps running.
+- **Tear down when done:** `pw endpoints delete <name>` kills the whole remote
+  process tree; verify with `ps -x | grep <service>`. Beware daemonizing apps that
+  re-parent to PID 1 (e.g. RStudio's `rsession`) — they can survive the tree kill.
 
 ## Step 4 — Debug from the job directory and processes
 
@@ -146,12 +166,14 @@ After every run, inspect artifacts on the **node where the job ran** (the resour
 login node when `scheduler:false`):
 
 ```bash
-ls -la ~/pw/jobs/<workflow-name>/<NNNNN>/         # run number zero-padded to 5 digits
-cat   ~/pw/jobs/<workflow-name>/<NNNNN>/run.*.out # script_submitter output
-cat   ~/pw/jobs/<workflow-name>/<NNNNN>/SESSION_PORT  ~/.../HOSTNAME
-cat   ~/pw/jobs/<workflow-name>/<NNNNN>/<your-service>.out
+ls -la ~/pw/jobs/<slug-or-name/NNNNN>/            # inline runs: ~/pw/jobs/<run-slug>/
+cat   ~/pw/jobs/<run>/run.*.out                   # script_submitter output (service stdout)
+cat   ~/pw/jobs/<run>/logs/<job>/step_N/step.out  # per-step trace (+ step.exit)
+cat   ~/pw/jobs/<run>/logs/<job>/step_N/script-unstable.sh  # the RENDERED step — every
+                                                  # ${{ input }} shown as its literal value:
+                                                  # the fastest way to see what the form sent
 ps -x | grep <your-process>                       # is the service alive?
-curl  localhost:$(cat ~/pw/jobs/<wf>/<NNNNN>/SESSION_PORT)/   # does it answer?
+pw endpoints list                                 # is the endpoint registered?
 ```
 
 **The execution node may not be this machine.** It's the login node of the chosen
@@ -163,10 +185,10 @@ pw workflows runs logs   <slug> --job session_runner          # subworkflow step
 pw workflows runs errors <slug> -o text                       # just the failures
 ```
 
-Diagnose → fix the local code or YAML → push to the dev branch (Mode A) or re-stage
-the files (Mode B) → `pw workflows update` → re-run. **Cancel runs you're done with:**
-`pw workflows runs cancel <slug>` (its cleanup trap runs `cancel.sh`, stops the
-service, and removes the session). A lingering `sleep inf` run holds resources.
+Diagnose → fix the local code or YAML → push (PR to `canary`, or the dev branch the
+checkout points at) → re-run. **Clean up what you started:** `pw endpoints delete`
+for live endpoints, `pw workflows runs cancel <slug>` for runs still executing. A
+lingering endpoint holds the service process.
 
 ## Step 5 — Harden this skill
 
@@ -207,8 +229,18 @@ non-repetitive; point at an existing tutorial instead.
 - **Relative paths inside submitted scripts.** `script_submitter` `cd`s into `rundir`
   first; reference files relative to it, not via `${PW_PARENT_JOB_DIR}` (which may be
   unset on a SLURM/PBS compute node — the home FS is shared, so relative paths work).
-- **Pin subworkflow versions** (`v1.4`, `v3.6`) so a marketplace update can't silently
-  change behavior.
+- **Pin subworkflow versions** (`v3.6`) so an update can't silently change behavior.
+- **Pull ghcr artifacts through `tools/oras/libs.sh:oras_pull_file`** (or copy its
+  retry loop): ghcr intermittently rate-limits anonymous pulls (`toomanyrequests`) —
+  a single-attempt pull fails a whole run for nothing. And keep the packages
+  **public**: verify with an anonymous manifest request before shipping (a private
+  package 403s and no retry will save you).
+- **Registered ("remote") workflows pin one YAML path** (`remote.yaml` in
+  `pw workflows get <name> -o json`, plus `readme`/`thumbnail` paths). The form —
+  including defaults — comes from *that* file: a desktop that ignores your
+  `startup_command` default usually means the registration points at the wrong
+  variant. Point registrations at `workflows/<name>/yamls/<variant>.yaml` and
+  thumbnails at `workflows/<name>/thumbnails/…`.
 - **Cross-node service reach (multi-resource workflows).** When one job/service must reach
   another resource's service, expose it on localhost with `pw forward -L p:host:p
   <resource>` (`host` = `localhost` if unscheduled, the `HOSTNAME` value if scheduled —
@@ -253,6 +285,17 @@ non-repetitive; point at an existing tutorial instead.
 - **`pw sessions stop` 404s** if the run was already canceled (cancel tears the
   session down). Not an error.
 - **Always `--dry-run`** before a real run; it catches schema/YAML problems cheaply.
+- **`pw workflows run ./relative/path.yaml` is parsed as a git host** and fails with
+  a bogus DNS/GitLab error — always pass the **absolute path** for local YAML files.
+- **`pw` auth expires** (short-term tokens): a day-old shell suddenly failing every
+  command with "Authentication has expired" needs the user to run `pw auth` — it
+  prompts for a credential; there is nothing the agent can mint itself.
+- **Forgetting to push before a run** tests the *old* code: the checkout and `uses:`
+  steps fetch from GitHub, not your working tree.
+- **Composed checkout paths without the `workflows/` prefix**
+  (`"${PW_PARENT_JOB_DIR}/${service_name}"`-style) fail with file-not-found only at
+  run time — grep for `PW_PARENT_JOB_DIR` compositions when a script can't find its
+  own files.
 - **`pw forward` target host (verified):** forward a service to localhost with
   `pw forward -L p:host:p <resource>` — `host=localhost` when the service is on the
   **login node** (unscheduled; its external hostname is NOT reachable), `host=<HOSTNAME
@@ -271,8 +314,8 @@ Reusable takeaways from building a multi-agent workflow (an orchestrator on the
 workspace + a worker per cluster). Platform mechanics are in **reference §12**.
 
 - **`--dry-run` is necessary but NOT sufficient.** It only validates schema/variant.
-  "Tested end-to-end" (Step 3/4) means a real `create`+`run`, watching for "Session
-  is ready", exercising the *live* service, and debugging from `~/pw/jobs`. Don't
+  "Tested end-to-end" (Step 3/4) means a real run, the endpoint online in
+  `pw endpoints list`, exercising the *live* service, and debugging from `~/pw/jobs`. Don't
   call a workflow tested on a dry-run alone.
 - **Test through the real client path, not a stand-in.** Reach the service the way
   the user will — through the platform proxy/session/chat — not just a local `curl`.

@@ -4,7 +4,7 @@ Consolidation performed 2026-08-31, revised the same day after review feedback
 (round 2). Sources (read-only, untouched): `parallelworks/interactive_session@main`
 (ca0d0e24) and `parallelworks/activate-rag-vllm@main` (5c68590).
 
-**Round 2 changes (review feedback):**
+**Review changes (applied after the initial migration, in order):**
 1. **One script version only, the latest.** All `-v3` scripts and the legacy-generation
    variants that called them were removed from this repo (see "Left behind"); the
    remaining scripts are unsuffixed (`controller.sh`, `start-template.sh`).

@@ -69,8 +69,10 @@ target Kubernetes clusters ([docs/k8s-workflows.md](docs/k8s-workflows.md)).
 From a machine with the [`pw` CLI](https://parallelworks.com/docs/cli) authenticated:
 
 ```bash
-pw workflows run ./workflows/webshell/yamls/general.yaml -i '{"cluster":{"resource":"<cluster-name>","scheduler":false}}'
+pw workflows run "$PWD/workflows/webshell/yamls/general.yaml" -i '{"cluster":{"resource":"<cluster-name>","scheduler":false}}'
 ```
+
+(Pass the YAML as an **absolute path** — the CLI parses relative paths as git hosts.)
 
 Every workflow registers a **`pw` endpoint** (check `pw endpoints list`).
 Note that workflow YAMLs pull this repo from GitHub at runtime

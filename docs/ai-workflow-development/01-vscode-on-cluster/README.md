@@ -27,20 +27,22 @@ agent's shell and the workflow's jobs share one node, debugging is fully local
    > *Using the activate-workflows skill, build a workflow that runs a simulation and
    > serves a live progress page as a session.*
 
-The agent then follows `SKILL.md`: **develop locally → wrap in YAML (reusing
-`session_runner`/`script_submitter`, matching the deployment variant) → deliver code
-via `parallelworks/checkout` → test with `pw workflows create/run` → debug from
-`~/pw/jobs` + `ps -x` → iterate.**
+The agent then follows `SKILL.md`: **develop locally → wrap in YAML (the endpoint
+pattern + `script_submitter`, matching the deployment variant) → deliver code via
+`parallelworks/checkout` (push first) → run with `pw workflows run` → verify with
+`pw endpoints list` → debug from `~/pw/jobs` + `ps -x` → iterate.**
 
 ## Notes
 
 - **Give Claude write access** via a deploy key with write permission so it can push
-  workflow code to a **development branch** (never `main`) and `parallelworks/checkout`
-  it. Without write access, the agent stages files on the resource and uses a stand-in
-  copy step beside a commented-out checkout for you to merge later (SKILL Step 2).
+  workflow code to a **development branch** (never straight to `canary` — it only
+  accepts pull requests) and `parallelworks/checkout` it. Without write access, the
+  agent stages files on the resource and uses a stand-in copy step beside a
+  commented-out checkout for you to merge later (SKILL Step 2).
 - Pick the resource whose login node **is** the VS Code node, run with
   `scheduler:false`, so `~/pw/jobs` and `ps -x` are local.
-- `--dry-run` every YAML before a real run; cancel session runs when done
+- `--dry-run` every YAML before a real run; when done, delete test endpoints
+  (`pw endpoints delete <name>`) and cancel lingering runs
   (`pw workflows runs cancel <slug>`).
 - The platform docs are the source of truth and may be newer than this skill:
   [workflows](https://parallelworks.com/docs/run/workflows/building-workflows) ·

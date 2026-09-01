@@ -13,11 +13,11 @@ including cleanup. They need no scripts or other files, and they do not use the
 
 | Workflow | File | Notes |
 |---|---|---|
-| JupyterLab | `workflows/jupyterlab/k8s.yaml` | readme: `k8s-readme.md` |
-| KasmVNC | `workflows/kasmvnc/k8s.yaml` | readme: `k8s-readme.md` |
-| Code Server | `workflows/openvscode/k8s.yaml` | readme: `k8s-readme.md` |
-| MLFlow | `workflows/mlflow/k8s.yaml` | k8s-only workflow (its `README.md`) |
-| Ollama + OpenWebUI | `workflows/ollama-openwebui/k8s.yaml` | k8s-only workflow (its `README.md`) |
+| JupyterLab | `workflows/jupyterlab/yamls/k8s.yaml` | readme: `k8s-readme.md` |
+| KasmVNC | `workflows/kasmvnc/yamls/k8s.yaml` | readme: `k8s-readme.md` |
+| Code Server | `workflows/openvscode/yamls/k8s.yaml` | readme: `k8s-readme.md` |
+| MLFlow | `workflows/mlflow/yamls/k8s.yaml` | k8s-only workflow (its `README.md`) |
+| Ollama + OpenWebUI | `workflows/ollama-openwebui/yamls/k8s.yaml` | k8s-only workflow (its `README.md`) |
 
 ## Hybrid workflows (`general_k8s.yaml`)
 
@@ -27,9 +27,9 @@ Kubernetes cluster it conditionally executes k8s jobs instead.
 
 | Workflow | File |
 |---|---|
-| JupyterLab | `workflows/jupyterlab/general_k8s.yaml` |
-| KasmVNC | `workflows/kasmvnc/general_k8s.yaml` |
-| Code Server | `workflows/openvscode/general_k8s.yaml` |
+| JupyterLab | `workflows/jupyterlab/yamls/general_k8s.yaml` |
+| KasmVNC | `workflows/kasmvnc/yamls/general_k8s.yaml` |
+| Code Server | `workflows/openvscode/yamls/general_k8s.yaml` |
 
 ### When to use each
 

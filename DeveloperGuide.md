@@ -101,15 +101,48 @@ matching variant of a similar workflow (they pass their variant's
 
 ## 5. Testing
 
+Push first — the YAML pulls this repo from GitHub at run time, so local edits are
+invisible until they are on the referenced branch. Then, with the **absolute** YAML
+path (a relative path is parsed as a git host):
+
 ```bash
-# from the repo root, after pushing your branch (the YAML pulls the repo from GitHub at runtime)
-pw workflows run ./workflows/my-session/yamls/general.yaml -i '{"cluster":{"resource":"<cluster>","scheduler":false}}'
-pw endpoints list        # your endpoint should come online
-# cancel the run in the UI or with pw, then confirm the service was cleaned up
+pw workflows run /abs/path/workflows/my-session/yamls/general.yaml \
+    -i '{"cluster":{"resource":"<cluster>","scheduler":false}}'
+pw endpoints list                       # pass = my-session-<run-slug> online, URL serves
+pw endpoints delete my-session-<slug>   # tear down; confirm with ps -x
 ```
 
-While iterating you can point the YAML's checkout `branch:` at a development branch;
-restore it to `canary` before merging.
+While iterating, point the YAML's checkout `branch:` at a development branch and
+restore it to `canary` before the PR merges (canary only accepts pull requests).
+
+## 6. Debugging
+
+Everything a run did is in its job dir on the execution node
+(`~/pw/jobs/<slug>/`, or `~/pw/jobs/<name>/<NNNNN>/` for registered workflows):
+
+- `run.<JOBID>.out` — the service's stdout/stderr
+- `logs/<job>/step_N/step.out`, `step.exit` — per-step trace and exit code
+- `logs/<job>/step_N/script-unstable.sh` — the **rendered** step: every `${{ input }}`
+  appears as the literal value the form sent. When a value seems ignored (a default
+  not applied, an empty field), read this first.
+- From any machine: `pw workflows runs errors <slug>` and `pw workflows runs logs <slug>`.
+
+## Common pitfalls
+
+- **Testing unpushed code** — the checkout fetches GitHub, not your working tree.
+- **Relative YAML path in `pw workflows run`** — parsed as a git host; use absolute.
+- **Composing checkout paths without the `workflows/` prefix** — checked-out files
+  materialize at `${PW_PARENT_JOB_DIR}/workflows/<name>/…`, including paths built
+  from variables (`"${PW_PARENT_JOB_DIR}/${service_name}"`-style bugs surface only at
+  run time).
+- **Globbing the workflow dir** — variant YAMLs live in `yamls/` precisely so
+  `cp workflows/<name>/*.yaml .` grabs only support files; keep it that way.
+- **Single-attempt ghcr pulls** — ghcr intermittently rate-limits anonymous pulls;
+  use `tools/oras/libs.sh:oras_pull_file` (it retries) and keep packages public.
+- **A registered workflow ignoring your defaults** — the registration pins one YAML
+  path (`pw workflows get <name>` → `remote.yaml`); if it points at the wrong variant,
+  the form (and its defaults) are the wrong variant's.
+- **"Authentication has expired"** — `pw` tokens lapse; re-run `pw auth`.
 
 ## Appendix: the legacy session pattern
 

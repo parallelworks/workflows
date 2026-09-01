@@ -26,11 +26,13 @@ documented here, **trust the docs and fix this file** (Step 5 of the methodology
   one or more **jobs**, and optionally **sessions**.
 - Jobs run **on a resource**, reached over SSH (`ssh.remoteHost`). Steps are shell
   (`run:`) or reusable **actions** (`uses:`). Jobs form a DAG via `needs:`.
-- A **session** exposes a web server running on a resource through the platform UI
-  (a reverse tunnel). The `nginx` tutorial builds one up step by step.
+- A web service is exposed as a **`pw` endpoint**: the service side runs
+  `pw endpoints run`, which dials out, registers a reverse tunnel, and gets a
+  subdomain URL (§12). Every workflow in this repo uses this pattern. (The older
+  platform *tunnel session* mechanism is legacy — §4.)
 - **Subworkflows** are workflows invoked from a step with `uses:` + `$yaml:`. Reuse
-  `session_runner` (start a web service + make a session) and `script_submitter`
-  (submit a script via SSH/SLURM/PBS) instead of writing launch logic yourself.
+  `script_submitter` (submit a script via SSH/SLURM/PBS) instead of writing launch
+  logic yourself; the endpoint registration lives in each workflow's start script.
 
 ### Where jobs run = where you debug (IMPORTANT)
 `ssh: remoteHost: ${{ inputs.resource.ip }}` runs that job's steps on the **login
@@ -148,7 +150,7 @@ jobs:
     Verified: `sparse_checkout: [workflow/readmes]` materializes
     `${PW_PARENT_JOB_DIR}/workflow/readmes`, visible to later `needs:`-dependent jobs.
     This is **the** way to get code onto the node — see §10. Every real session YAML in
-    the repo (e.g. `workflows/webshell/general.yaml`) starts preprocessing with a
+    the repo (e.g. `workflows/webshell/yamls/general.yaml`) starts preprocessing with a
     `parallelworks/checkout` of `parallelworks/workflows` + a `sparse_checkout` of `workflows/<name>`.
   - `parallelworks/update-session` — register/refresh a session (target/name/slug/remoteHost/remotePort)
   - `parallelworks/cancel-jobs` — cancel sibling jobs (e.g. a `tail -f` streamer)
@@ -301,7 +303,7 @@ section** of your YAML: the `resource`, `scheduler`, `slurm`, and `pbs` input gr
 the `with:` block you pass differ per variant (e.g. `emed`'s `slurm` has `slurm_options`,
 `partition_default`, `cpus_per_task`, `mem`, `gres_gpu_*` instead of `general`'s
 `partition`). **Copy the cluster/slurm/pbs form and the `with:` mapping from the matching
-`workflows/<name>/<variant>.yaml`**, not from a `general` example, or
+`workflows/<name>/yamls/<variant>.yaml`**, not from a `general` example, or
 `--dry-run` will reject the run with mismatched fields.
 
 **Invoke it** from a job that depends on your preprocessing:
@@ -322,8 +324,8 @@ session_runner:
           slurm: { is_enabled: ..., partition: ..., time: ..., scheduler_directives: ... }
           pbs:   { is_enabled: ..., scheduler_directives: ... }
         service:
-          start_service_script: ${PW_PARENT_JOB_DIR}/workflows/<name>/start-template.sh
-          controller_script:    ${PW_PARENT_JOB_DIR}/workflows/<name>/controller.sh
+          start_service_script: ${PW_PARENT_JOB_DIR}/<service-dir>/start-template-v3.sh   # interactive_session layout
+          controller_script:    ${PW_PARENT_JOB_DIR}/<service-dir>/controller-v3.sh
           inputs_sh:            ${PW_PARENT_JOB_DIR}/inputs.sh
           slug: ""                                      # URL path after the host; "" = root app
           rundir: ${PW_PARENT_JOB_DIR}
@@ -446,7 +448,10 @@ session (batch compute). Use **`session_runner`** when you also need a live web 
 ## 6. `pw` CLI reference (verified)
 
 Global flags: `--context`, `--platform-host`, `-v/--verbose`. Assume already
-authenticated (`pw context list` shows the current user/org); never run `pw auth`.
+authenticated (`pw context list` shows the current user/org). Short-term tokens
+**expire** (typically after ~a day): when every command starts failing with
+"Authentication has expired", ask the user to run `pw auth` — the credential prompt
+needs a human; do not try to mint one.
 
 ### Workflows
 ```bash
@@ -457,8 +462,10 @@ pw workflows get <name> -o yaml            # fetch the stored YAML
 pw workflows delete <name>
 pw workflows run <name-or-file> [-i <json|file>] [--name "label"] [--dry-run] [-o json|text]
 ```
-`run` accepts a saved name, a `marketplace/...` slug, or a local `./file.yaml` (inline
-run → workflow `inline.<slug>`). `-i` is a JSON string or path to a JSON file.
+`run` accepts a saved name, a `marketplace/...` slug, or a local YAML file — pass the
+**absolute path**: a relative `./workflows/x/yamls/y.yaml` is parsed as a git host and
+fails with a bogus DNS error (inline run → workflow `inline.<slug>`). `-i` is a JSON
+string or path to a JSON file.
 `--dry-run` validates YAML+schema server-side **without executing** — run it before
 every real launch. `-o json` returns the run object (`run.slug`, `run.number`,
 `run.status`, plus `redirect` = the session name when one is created).
@@ -477,7 +484,16 @@ service node isn't local. `--job session_runner` / `--job create_session` narrow
 the interesting subworkflow jobs. Step logs may 404 for steps that haven't produced
 output yet — harmless.
 
-### Sessions
+### Endpoints (how every workflow here serves)
+```bash
+pw endpoints list                   # name, status, URL — the pass/fail check for a run
+pw endpoints delete <name>          # tears down the whole remote process tree
+```
+Endpoint names are `<service.name>-<run-slug>`. `delete` kills the `pw endpoints run`
+wrapper and its children — but a daemonizing app that re-parented to PID 1 (e.g.
+RStudio's `rsession`) can survive; check `ps -x` after teardown.
+
+### Sessions (legacy tunnel sessions)
 ```bash
 pw sessions ls [-o table|json] [-t desktop|vscode|tunnel]
 pw sessions create --type tunnel --remote-port <P> <resource> [--name N] [--open] [--connect --port <L>]
@@ -525,25 +541,26 @@ Named run → `~/pw/jobs/<workflow-name>/<NNNNN>/` on the **execution node** (ru
 **zero-padded to 5 digits**, e.g. `~/pw/jobs/my-session/00002/`). Inline run →
 `~/pw/jobs/<run-slug>/`. This path is `${PW_PARENT_JOB_DIR}`.
 
-Contents after a `session_runner` launch (all verified on a live run):
+Contents after an endpoint-pattern launch (all verified on live runs):
 ```
-~/pw/jobs/my-session/00002/
+~/pw/jobs/<run>/
 ├── inputs.sh                              # exported PW vars + your form values
-├── controller-preprocessing-<JOBID>.sh    # inputs.sh + your controller script (what ran)
-├── start-service-<JOBID>.sh               # inputs.sh + port/trap glue + your start script
-├── run.sh / run-template.sh               # script_submitter's generated wrapper
-├── run.<JOBID>.out                        # script_submitter stdout/stderr
-├── HOSTNAME                               # the service node's REAL hostname (login *-mgmt or compute node) — not literally "localhost"; it's the pw forward target for a scheduled job (§6)
-├── SESSION_PORT                           # the allocated service_port
-├── job.started                            # marker session_runner waits for
-├── cancel.sh                              # your shutdown script (run on cancel)
-├── <your service dir>/ ...                # files checked out / staged by preprocessing
-├── <your service output>                  # e.g. server.out, result.json
-├── logs/<job>/step_N/                      # per-step logs
-└── subworkflows/session_runner/step_0/logs/<job>/...   # subworkflow step logs
+├── controller-<JOBID>.sh                  # inputs.sh + your controller script (what ran)
+├── start-service-<JOBID>.sh               # inputs.sh + cleanup trap + your start script
+├── SKIP_CLEANUP                           # touched by wait_for_endpoint → service outlives the run
+├── workflows/<name>/..., tools/...        # the sparse checkout
+├── run.<JOBID>.out                        # service stdout (here, or under subworkflows/…/step_0/
+│                                          #   when the YAML does not pass rundir)
+├── cancel.sh                              # shutdown script (run on cancel / endpoint delete)
+├── logs/<job>/step_N/step.out             # per-step trace; step.exit = exit code
+├── logs/<job>/step_N/script-unstable.sh   # the RENDERED step: every ${{ input }} as its
+│                                          #   literal value — read this first when a form
+│                                          #   value seems ignored
+└── subworkflows/session_runner/step_0/…   # script_submitter subworkflow logs (the job
+                                           #   is still *named* session_runner for history)
 ```
-Debug checklist on the service node: `cat run.<JOBID>.out`, your service log,
-`cat SESSION_PORT HOSTNAME`, `ps -x | grep <your-process>`, `curl localhost:$(cat SESSION_PORT)/`.
+Debug checklist on the service node: `cat run.<JOBID>.out`, the rendered step scripts,
+`ps -x | grep <your-process>`, `pw endpoints list`, then `pw workflows runs errors <slug>`.
 
 ---
 
@@ -554,11 +571,11 @@ Repo: `https://github.com/parallelworks/workflows`. Read these for working patte
 | file | why |
 |------|-----|
 | `DeveloperGuide.md`, `CLAUDE.md` | the repo's own how-to + conventions |
-| `workflows/webshell/general.yaml` | **simplest** full v5 example (preprocessing → script_submitter → endpoint) |
+| `workflows/webshell/yamls/general.yaml` | **simplest** full endpoint example (preprocessing → script_submitter → wait_for_endpoint) |
 | `workflows/webshell/{controller,start-template}.sh` | minimal controller + start scripts |
 | `workflows/script_submitter/v3.6/general.yaml` + `README.md` | submission modes + interface |
-| `workflows/jupyterlab/general.yaml` + scripts | typical: install + nginx base-path proxy (see §11) |
-| `workflows/openvscode/general.yaml` | session whose URL slug is a query string (`?folder=...`) |
+| `workflows/jupyterlab/yamls/general.yaml` + scripts | typical: conda install + support files |
+| `workflows/openvscode/yamls/general.yaml` | endpoint whose URL slug is a query string (`?folder=...`) |
 | `workflows/kasmvnc/` | complex: containers, multiple options |
 
 Conventions: scripts idempotent; service binds `${service_port}` on `0.0.0.0`; write
@@ -575,8 +592,8 @@ sync with the platform. Read the one closest to your task:
 
 | Pattern you need | Look at |
 |---|---|
-| **Session with install + base-path nginx proxy** (§11) | `workflows/jupyterlab/general.yaml` + `workflows/jupyterlab/*.sh` |
-| **Session whose `slug` is a query string** | `workflows/openvscode/general.yaml` (`slug=?folder=...`) |
+| **Endpoint with a real install + support files** | `workflows/jupyterlab/yamls/general.yaml` + `workflows/jupyterlab/*.sh` |
+| **Endpoint whose `--slug` is a query string** | `workflows/openvscode/yamls/general.yaml` (`--slug ?folder=...`) |
 | **`parallelworks/checkout` (sparse) to fetch code** | preprocessing job of any workflow YAML above |
 | **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/endpoint-workflows/05-matrix.yaml` (use this for sweeps) |
 | **Job DAG: `needs`, `$OUTPUTS`, sessions, `update-session`, `pw agent open-port`** | `tutorials/session-workflows-hsp/` (staged `README.md` + stage YAMLs 1→4) |
@@ -782,9 +799,9 @@ command instead: `pw ssh c "echo <b64> | base64 -d | curl --data-binary @- http:
 ### Endpoint sessions (`pw endpoints`) — the v5 workflow pattern (verified)
 **Upgrading a v4 workflow to this pattern? Follow the step-by-step playbook in
 [session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md)** (distilled from the
-openvscode and jupyterlab conversions). The v5-generation workflows (openvscode,
-jupyterlab-host) replace platform sessions
-(`sessions:` + `session_runner`) with **endpoint sessions**: the service side runs
+openvscode and jupyterlab conversions). Every workflow in this repo uses
+**endpoint sessions** (the legacy `sessions:` + `session_runner` tunnel pattern lives
+only in `interactive_session`): the service side runs
 `pw endpoints run`/`http`, which dials out, registers a reverse tunnel, and gets a
 subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query string like
 `?folder=/dir` or a path like `lab`). Key facts, all verified on live runs:
@@ -820,7 +837,7 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   it in a pod. `ghcr.io/parallelworks/pw-cli:<ver>` is distroless (entrypoint
   `/usr/local/bin/pw`, nonroot 65532), so pass subcommands via container `args:`.
 - **Kubernetes: run the client as a sidecar** (see
-  `workflows/openvscode/general_k8s.yaml`): the app container serves its port,
+  `workflows/openvscode/yamls/general_k8s.yaml`): the app container serves its port,
   the `pw-cli` sidecar runs `pw endpoints http --name <n> -o text <port>` against pod-local
   `localhost:<port>`; feed `PW_API_KEY` from a Secret created with
   `kubectl create secret generic ... --from-literal=PW_API_KEY="${PW_API_KEY}" --dry-run=client -o yaml | kubectl apply -f -`
@@ -832,7 +849,7 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   `<service>-${PW_RUN_SLUG}` in one job and wait for it in another. (`PW_JOB_ID` carries
   the same value, but prefer `PW_RUN_SLUG` — the name says what it is.) It is also the
   argument `pw workflows runs cancel` takes, enabling **fail-loud self-cancellation**:
-  the openvscode v4-suffixed start template runs `pw workflows runs cancel ${PW_RUN_SLUG}`
+  the start templates run `pw workflows runs cancel ${PW_RUN_SLUG}`
   when `pw endpoints run` exits non-zero, so a failed service tears down the whole run
   instead of leaving `wait_for_endpoint` polling forever. Both vars reach scheduled
   compute nodes via the `inputs.sh` `env | grep '^PW_'` capture.

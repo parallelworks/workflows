@@ -20,7 +20,7 @@ Legacy-generation variants that still depended on older scripts were left behind
 | [hermes-agent](workflows/hermes-agent/) | Hermes agent with auth/TCP proxies | general |
 | [jupyter](workflows/jupyter/) | Jupyter Notebook (classic) | general, noaa |
 | [jupyterlab](workflows/jupyterlab/) | JupyterLab | general, hsp, noaa, general_k8s, k8s |
-| [kasmvnc](workflows/kasmvnc/) | KasmVNC desktop (Singularity) | general, hsp, noaa, noaa_rstudio, general_k8s, k8s |
+| [kasmvnc](workflows/kasmvnc/) | KasmVNC desktop (Singularity) | general, general_rstudio, hsp, noaa, noaa_rstudio, general_k8s, k8s |
 | [langflow-host](workflows/langflow-host/) | Langflow (host install) | general, hsp |
 | [langflow-singularity](workflows/langflow-singularity/) | Langflow (Singularity) | hsp |
 | [librechat](workflows/librechat/) | LibreChat (+ `-all` stacks with manager & Langflow) | general, hsp, general-all, hsp-all |

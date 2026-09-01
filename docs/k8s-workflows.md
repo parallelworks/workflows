@@ -30,7 +30,6 @@ Kubernetes cluster it conditionally executes k8s jobs instead.
 | JupyterLab | `workflows/jupyterlab/general_k8s.yaml` |
 | KasmVNC | `workflows/kasmvnc/general_k8s.yaml` |
 | Code Server | `workflows/openvscode/general_k8s.yaml` |
-| VNC Desktop | `workflows/vncserver/general_k8s.yaml`, `workflows/vncserver/rstudio_k8s.yaml` |
 
 ### When to use each
 

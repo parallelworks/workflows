@@ -26,7 +26,6 @@ workflows/<name>/thumbnails/ # marketplace thumbnails (one per registered varian
 workflows/<name>/<impl>/     # multi-implementation workflows keep impl subdirs whose names
                              # match the form input values (n8n-docker, n8n-singularity,
                              # kasmvnc-singularity, ollama-gguf-container, librechat-singularity, ...)
-workflows/session_runner/v1.4/    # shared subworkflow: platform tunnel sessions (vncserver, langflow-host)
 workflows/script_submitter/v3.6/  # shared subworkflow: SLURM/PBS/SSH script submission
 tools/oras, tools/utils      # shared runtime tools, referenced as tools/... from run dirs
 tutorials/                   # staged, runnable lessons on the workflow system
@@ -42,22 +41,20 @@ docs/                        # developer + AI docs
   live in `parallelworks/interactive_session` until converted to the endpoint pattern
   (see MIGRATION.md and
   `.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`).
-- `session_runner`/`script_submitter` keep explicit version directories (`v1.4`,
-  `v3.6`) because platform marketplace registrations reference those paths.
+- `script_submitter` keeps its explicit version directory (`v3.6`) because platform
+  marketplace registrations reference that path.
 
-## The two workflow generations
+## The endpoint pattern
 
-1. **Endpoint pattern (current, most workflows)** — preprocessing checks out this repo
-   (`parallelworks/checkout`, sparse `workflows/<name>` [+ `tools/...`]), assembles
-   `inputs.sh` + `controller.sh` + `start-template.sh`, submits through
-   `workflows/script_submitter/v3.6/<variant>.yaml`, and waits for a **`pw` endpoint**
-   (`pw endpoints list`) named `<service>-${PW_RUN_SLUG}`. No `sessions:` block.
-2. **Session pattern (vncserver, langflow-host)** — preprocessing checks out scripts,
-   then `workflows/session_runner/v1.4/<variant>.yaml` submits the job and registers a
-   platform tunnel session on the injected `${service_port}`.
+Every workflow here uses it: preprocessing checks out this repo
+(`parallelworks/checkout`, sparse `workflows/<name>` [+ `tools/...`]), assembles
+`inputs.sh` + `controller.sh` + `start-template.sh`, submits through
+`workflows/script_submitter/v3.6/<variant>.yaml`, and waits for a **`pw` endpoint**
+(`pw endpoints list`) named `<service>-${PW_RUN_SLUG}`. No `sessions:` block.
 
-The two patterns need different start scripts — don't mix them. To convert a session
-workflow to the endpoint pattern, follow
+The older session pattern (a `sessions:` block + the `session_runner` subworkflow
+registering a platform tunnel session) is legacy and lives only in
+`parallelworks/interactive_session`; to convert one of those workflows, follow
 `.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`.
 
 ## Critical rules and conventions
@@ -77,7 +74,7 @@ workflow to the endpoint pattern, follow
 - **The repo is fetched from GitHub at runtime**: `parallelworks/checkout` steps pull
   `https://github.com/parallelworks/workflows.git` (branch **canary**) and subworkflow
   steps use `uses: github/parallelworks/workflows@canary` with
-  `$yaml: workflows/{session_runner/v1.4,script_submitter/v3.6}/<variant>.yaml`.
+  `$yaml: workflows/script_submitter/v3.6/<variant>.yaml`.
   Changes only take effect once pushed to that branch.
 - Checked-out paths are repo-relative: scripts materialize at
   `<rundir>/workflows/<name>/...` — reference them with that prefix.

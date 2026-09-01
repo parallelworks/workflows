@@ -242,6 +242,7 @@ torn down and cleanup verified.
 | streamlit | general | gcpsmall | PASS |
 | n8n | general (n8n-singularity default) | gcpsmall | PASS |
 | kasmvnc | general (kasmvnc-singularity) | gcpsmall | PASS |
+| kasmvnc | general_rstudio (added post-migration, #11) | gcpsmall | PASS (endpoint online 61s, HTTP 200, RStudio process confirmed running in the container, cleanup OK) |
 | open-notebook | general | gcpsmall | PASS (docker) |
 | librechat | general (singularity) | gcpsmall | PASS |
 | librechat | general-all | gcpsmall (both roles) | PASS with `enable_proxy:false` — all 3 endpoints (librechat, manager component, langflow) online, HTTP 200. The proxy path needs connected platform AI models + pre-staged `langflow_proxy` code (environment; the original was broken outright — dead `librechat-v2` branch) |

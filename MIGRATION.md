@@ -252,7 +252,7 @@ torn down and cleanup verified.
 | vncserver | general | gcpsmall | Equivalent-to-original: tunnel session registered and noVNC healthy on its port, but session_runner's readiness poll probes `localhost` while websockify binds the primary IP — never flips to `running`. The ORIGINAL `general_v4.yaml` from interactive_session reproduces this identically on gcpsmall → pre-existing, not migration breakage |
 | rag-service | general | gcpsmall | FAIL — pre-existing: `ghcr.io/parallelworks/rag-service:1.0` returns 403 anonymously (package private/missing); the original was also unrunnable (checkout of deleted `rag-service` branch) |
 | ollama | general (`gpt-oss:20b`) | awsgpu | PASS (endpoint online, run completed, HTTP 200) |
-| rag-vllm | general (vllm runtype, `openai/gpt-oss-20b`) | awsgpu | PASS (endpoint online, run completed, HTTP 200; ~13GB model + SIF pull, ~15 min) |
+| rag-vllm | general (vllm runtype, `openai/gpt-oss-20b`) | awsgpu | PASS (endpoint online, run completed, HTTP 200; ~13GB model + SIF pull, ~15 min). A post-trim re-test could not run — awsgpu was shut down by then (controller fails at singularity detection, before any trimmed file is reachable); the tested vllm path uses only controller.sh + start-template.sh + the pulled SIF, all retained |
 
 Found and fixed during testing (PR #1, merged to canary): seven scripts composed
 checkout paths from variables (`AGENT_DIR`/`SERVICE_DIR`/`SCRIPTS_DIR`/

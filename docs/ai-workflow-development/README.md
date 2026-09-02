@@ -6,8 +6,12 @@ to *host and drive the agent*; they share the same platform reference and point 
 agent at the repo's own workflows and tutorials.
 
 **Official docs (authoritative — newer than this skill when they conflict):**
-[building workflows](https://parallelworks.com/docs/run/workflows/building-workflows) ·
-[sessions](https://parallelworks.com/docs/run/sessions) ·
+[building workflows](https://parallelworks.com/docs/run/workflows/building-workflows)
+([YAML fields](https://parallelworks.com/docs/run/workflows/building-workflows/yaml-fields) ·
+[inputs & expressions](https://parallelworks.com/docs/run/workflows/building-workflows/inputs-and-expressions) ·
+[actions](https://parallelworks.com/docs/run/workflows/building-workflows/actions)) ·
+[endpoint sessions](https://parallelworks.com/docs/run/sessions/endpoints) ·
+[`pw endpoints` CLI](https://parallelworks.com/docs/cli/pw/endpoints) ·
 [`pw` CLI](https://parallelworks.com/docs/cli)
 
 ## The model

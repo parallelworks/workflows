@@ -90,3 +90,10 @@ effect once pushed to the referenced branch (**canary**).
   [.claude/skills/activate-workflows/](.claude/skills/activate-workflows/)
 - [MIGRATION.md](MIGRATION.md) — the consolidation map: where every file came from,
   what stayed behind, and why
+- Official platform docs:
+  [building workflows](https://parallelworks.com/docs/run/workflows/building-workflows)
+  ([YAML fields](https://parallelworks.com/docs/run/workflows/building-workflows/yaml-fields) ·
+  [inputs & expressions](https://parallelworks.com/docs/run/workflows/building-workflows/inputs-and-expressions) ·
+  [actions](https://parallelworks.com/docs/run/workflows/building-workflows/actions)) ·
+  [endpoint sessions](https://parallelworks.com/docs/run/sessions/endpoints) ·
+  [`pw endpoints` CLI](https://parallelworks.com/docs/cli/pw/endpoints)

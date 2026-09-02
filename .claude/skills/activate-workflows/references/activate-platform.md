@@ -856,10 +856,10 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
 - `PW_RUN_SLUG` holds the **run slug** (same in every job) — build the endpoint name as
   `<service>-${PW_RUN_SLUG}` in one job and wait for it in another. (`PW_JOB_ID` carries
   the same value, but prefer `PW_RUN_SLUG` — the name says what it is.) It is also the
-  argument `pw workflows runs cancel` takes, enabling **fail-loud self-cancellation**:
-  the start templates run `pw workflows runs cancel ${PW_RUN_SLUG}`
-  when `pw endpoints run` exits non-zero, so a failed service tears down the whole run
-  instead of leaving `wait_for_endpoint` polling forever. Both vars reach scheduled
+  argument `pw workflows runs cancel` takes. Start templates must NOT self-cancel the
+  run with it (removed everywhere — it marked failed runs as canceled): on failure they
+  exit non-zero, the submitter job fails, and the session_runner's cancel-jobs step
+  stops `wait_for_endpoint`. Both vars reach scheduled
   compute nodes via the `inputs.sh` `env | grep '^PW_'` capture.
 
 ### Serving GGUF models with Ollama behind an endpoint (verified, `ollama-gguf`)

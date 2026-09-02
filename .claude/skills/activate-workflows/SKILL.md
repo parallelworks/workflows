@@ -111,9 +111,11 @@ Provide the two contract scripts:
   just verifies prerequisites.
 - **`start-template.sh`** — launches the service under
   `pw endpoints run ${pw_endpoints_args} -- <cmd with {port}>`, and **fails loud**:
-  if `pw endpoints run` exits without the endpoint registered, cancel the run
-  (`pw workflows runs cancel ${PW_RUN_SLUG}`) so `wait_for_endpoint` never polls
-  forever (copy the tail of `workflows/webshell/app/start-template.sh`).
+  if `pw endpoints run` exits without the endpoint registered, exit non-zero so
+  the submitter job fails and the session_runner's cancel-jobs step stops
+  `wait_for_endpoint` (copy the tail of `workflows/webshell/app/start-template.sh`).
+  Do NOT self-cancel the run with `pw workflows runs cancel` from inside a start
+  template — that was removed everywhere (it marked failed runs as canceled).
 
 **Path rule (learned the hard way):** only the runtime subtree is checked out —
 `workflows/<name>/app` (single-implementation) or `workflows/<name>/<impl>` — and it

@@ -102,8 +102,8 @@ Contract differences vs v3:
   pw endpoints run ${pw_endpoints_args} -- <server-cmd> --port {port} ...
   if [ $? -ne 0 ]; then
       echo "::error title=Error::pw endpoints command failed"
-      # Fail loud: without this, wait_for_endpoint polls forever
-      pw workflows runs cancel ${PW_RUN_SLUG}
+      # Fail loud (exit non-zero): the submitter job fails and the workflow's
+      # cancel-jobs step stops wait_for_endpoint
       exit 1
   fi
   ```

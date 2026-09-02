@@ -20,7 +20,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [hermes-agent](workflows/hermes-agent/) | Hermes agent with auth/TCP proxies | general |
 | [jupyter](workflows/jupyter/) | Jupyter Notebook (classic) | general, emed, noaa |
 | [jupyterlab](workflows/jupyterlab/) | JupyterLab | general, emed, hsp, noaa, general_k8s, k8s |
-| [kasmvnc](workflows/kasmvnc/) | KasmVNC desktop (Singularity) | general, general_rstudio, emed, emed_rstudio, emed_schrodinger, emed_firefox, hsp, noaa, noaa_rstudio, general_k8s, k8s |
+| [kasmvnc](workflows/kasmvnc/) | KasmVNC desktop (Singularity) | general, general_rstudio, emed, emed_{rstudio, matlab, firefox, fsl, schrodinger, vmd}, hsp, noaa, noaa_rstudio, general_k8s, k8s |
 | [langflow-singularity](workflows/langflow-singularity/) | Langflow (Singularity) | hsp |
 | [librechat](workflows/librechat/) | LibreChat (+ `-all` stacks with manager & Langflow) | general, hsp, general-all, hsp-all |
 | [lite-agent](workflows/lite-agent/) | Lightweight agent worker | general |

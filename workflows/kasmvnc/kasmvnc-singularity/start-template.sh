@@ -482,6 +482,27 @@ run_xterm_loop | tee -a ${PW_PARENT_JOB_DIR}/xterm.out &
 run_xterm_pid=$!
 echo "kill ${run_xterm_pid} || true # run_xterm_loop" >> cancel.sh
 
+# Run a command inside the desktop's container image, attached to its display.
+# For apps the host nodes do not ship (e.g. firefox on the emed compute nodes)
+# but the image does: the running Xvnc's socket and .Xauthority live in the
+# shared container_tmp bind, so a second exec of the same image reaches the
+# same desktop.
+run_in_container() {
+    ${CONTAINER} exec ${USERNS_FLAG} ${MOUNT_FLAGS} \
+        --env DISPLAY=":${XdisplayNumber}" \
+        --env XAUTHORITY=/tmp/.Xauthority \
+        --bind $PWD/container_tmp:/tmp \
+        "${container_image}" "$@"
+}
+
+# App variants (emed_rstudio, emed_matlab, ...) pass a visible "command to load
+# the app" plus a hidden binary instead of a raw startup_command; compose them
+# here so an empty load command doesn't leave a leading ";" (a syntax error
+# under eval).
+if [ -z "${startup_command}" ] && [ -n "${service_bin}" ]; then
+    startup_command="${service_load_env:+${service_load_env}; }${service_bin}"
+fi
+
 if [ -n "${startup_command}" ]; then
     echo "::notice::Running startup command: ${startup_command}"
     eval ${startup_command} &

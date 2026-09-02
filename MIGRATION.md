@@ -306,6 +306,8 @@ ollama-gguf-container implementation paths not separately exercised.
    (schrodinger by module/binary check; it is mechanically identical to the other two
    desktop variants). The emed marketplace registrations still point at
    `interactive_session` and must be re-pointed at `workflows/<name>/yamls/emed*.yaml`
-   here once this lands on canary. Legacy `vncserver/emed_{fsl,matlab,vmd}_v4.yaml` and
-   the plain-desktop `emed_v4.yaml` have no replacement yet — same recipe: a kasmvnc
-   variant with the right `startup_command` (fsl/matlab/vmd modules exist on the cluster).
+   here once this lands on canary. All six vncserver app variants
+   (rstudio, matlab, firefox, fsl, schrodinger, vmd) are replaced by kasmvnc
+   `emed_<app>.yaml` variants carrying the legacy `load_env`/`bin` form fields; only
+   the plain-desktop `vncserver/emed_v4.yaml` has no dedicated replacement (the
+   kasmvnc `emed.yaml` desktop covers it).

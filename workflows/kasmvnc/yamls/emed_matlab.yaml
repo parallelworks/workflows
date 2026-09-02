@@ -331,15 +331,15 @@ jobs:
               - label: Rocky Linux 9
                 value: rocky9
           load_env:
-            label: Command to load Schrodinger
+            label: Command to load Matlab
             type: string
-            default: module load schrodinger
-            tooltip: Runs on the compute node before launching Schrodinger on the desktop's display
+            default: module load matlab
+            tooltip: Runs on the compute node before launching Matlab on the desktop's display
           bin:
             label: Service Binary
             type: string
             hidden: true
-            default: maestro
+            default: matlab -desktop
           container_mount_paths:
             type: editor
             label: Additional Mount Paths

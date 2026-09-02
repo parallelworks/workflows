@@ -42,7 +42,8 @@ jobs:
           PATH=$HOME/pw:$PATH
           service_parent_install_dir=/public/codelab/singularity
           kasmvnc_os="${{ inputs.desktop.kasmvnc_os }}"
-          startup_command="${{ inputs.desktop.startup_command }}"
+          service_load_env="${{ inputs.desktop.load_env }}"
+          service_bin="${{ inputs.desktop.bin }}"
           container_mount_paths="${{ inputs.desktop.container_mount_paths }}"
           pw_endpoints_args="--no-subdomain"
           EOF
@@ -329,12 +330,16 @@ jobs:
             options:
               - label: Rocky Linux 9
                 value: rocky9
-          startup_command:
+          load_env:
+            label: Command to load RStudio
             type: string
-            label: Command to start RStudio
-            default: module load rstudio; rstudio
-            tooltip: Runs on the compute node after the desktop starts. Loads the RStudio module (which also selects its R) and launches RStudio Desktop.
-            optional: true
+            default: module load rstudio
+            tooltip: Runs on the compute node before launching RStudio on the desktop's display
+          bin:
+            label: Service Binary
+            type: string
+            hidden: true
+            default: rstudio
           container_mount_paths:
             type: editor
             label: Additional Mount Paths

@@ -537,9 +537,11 @@ with no extra flags.
 
 ## 7. Job directory layout
 
-Named run → `~/pw/jobs/<workflow-name>/<NNNNN>/` on the **execution node** (run number
-**zero-padded to 5 digits**, e.g. `~/pw/jobs/my-session/00002/`). Inline run →
-`~/pw/jobs/<run-slug>/`. This path is `${PW_PARENT_JOB_DIR}`.
+Registered-workflow run → `~/pw/jobs/<workflow-name>/<run-number>/` on the
+**execution node** (run number **zero-padded to 5 digits**, e.g.
+`~/pw/jobs/my-session/00002/`). CLI file (inline) run → `~/pw/jobs/<run-slug>/`
+(e.g. `~/pw/jobs/rational-lionfish/`). Both verified live; this path is
+`${PW_PARENT_JOB_DIR}`.
 
 Contents after an endpoint-pattern launch (all verified on live runs):
 ```
@@ -575,6 +577,7 @@ Repo: `https://github.com/parallelworks/workflows`. Read these for working patte
 | `workflows/webshell/{controller,start-template}.sh` | minimal controller + start scripts |
 | `workflows/script_submitter/v3.6/general.yaml` + `README.md` | submission modes + interface |
 | `workflows/jupyterlab/yamls/general.yaml` + scripts | typical: conda install + support files |
+| `workflows/streamlit/yamls/general.yaml` + scripts | **Singularity/SIF service**: SIF via `oras_pull_file`, `.def` + `build-container.sh`, sandbox fallback |
 | `workflows/openvscode/yamls/general.yaml` | endpoint whose URL slug is a query string (`?folder=...`) |
 | `workflows/kasmvnc/` | complex: containers, multiple options |
 
@@ -593,6 +596,7 @@ sync with the platform. Read the one closest to your task:
 | Pattern you need | Look at |
 |---|---|
 | **Endpoint with a real install + support files** | `workflows/jupyterlab/yamls/general.yaml` + `workflows/jupyterlab/*.sh` |
+| **Singularity/SIF service** (oras pull, def + build script) | `workflows/streamlit/` (simple); `workflows/kasmvnc/` (multi-impl, GPU helpers) |
 | **Endpoint whose `--slug` is a query string** | `workflows/openvscode/yamls/general.yaml` (`--slug ?folder=...`) |
 | **`parallelworks/checkout` (sparse) to fetch code** | preprocessing job of any workflow YAML above |
 | **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/endpoint-workflows/05-matrix.yaml` (use this for sweeps) |

@@ -2,10 +2,10 @@
 
 ## Project Overview
 
-This repository is the consolidated home of the **ACTIVATE platform workflows**
-(interactive sessions, model servers, k8s services) for [Parallel Works](https://parallelworks.com).
-It replaces the split layouts of the old `interactive_session` and `activate-rag-vllm`
-repos: **one workflow = one self-contained directory** under `workflows/`.
+This repository is the home of the **ACTIVATE platform workflows** (interactive
+sessions, model servers, k8s services) for [Parallel Works](https://parallelworks.com):
+**one workflow = one self-contained directory** under `workflows/`. Provenance and
+anything predating this layout: MIGRATION.md.
 
 A typical workflow consists of:
 - **Variant YAMLs** (`workflows/<name>/yamls/<variant>.yaml`) — the UI form + job
@@ -37,10 +37,7 @@ docs/                        # developer + AI docs
 
 - **One version only — the latest.** No version suffixes in filenames or references:
   `general.yaml`, `controller.sh`, `start-template.sh`. Git tags version the repo.
-- Legacy-generation variants that required older scripts were **not migrated**; they
-  live in `parallelworks/interactive_session` until converted to the endpoint pattern
-  (see MIGRATION.md and
-  `.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`).
+  (Where older versions live: MIGRATION.md.)
 - `script_submitter` keeps its explicit version directory (`v3.6`) because platform
   marketplace registrations reference that path.
 
@@ -52,10 +49,9 @@ Every workflow here uses it: preprocessing checks out this repo
 `workflows/script_submitter/v3.6/<variant>.yaml`, and waits for a **`pw` endpoint**
 (`pw endpoints list`) named `<service>-${PW_RUN_SLUG}`. No `sessions:` block.
 
-The older session pattern (a `sessions:` block + the `session_runner` subworkflow
-registering a platform tunnel session) is legacy and lives only in
-`parallelworks/interactive_session`; to convert one of those workflows, follow
-`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`.
+To convert a legacy session-pattern workflow to this pattern, follow
+`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`
+(what is legacy and where it lives: MIGRATION.md).
 
 ## Critical rules and conventions
 
@@ -110,7 +106,9 @@ those platforms — validate them statically.
   and its URL answers. The run completes while the service keeps running.
 - **Tear down:** `pw endpoints delete <name>` kills the remote process tree; verify
   with `ps -x` (daemonizing apps that re-parent to PID 1 can survive).
-- **Debug from the job dir** (`~/pw/jobs/<run>/` on the execution node):
+- **Debug from the job dir** on the execution node — `~/pw/jobs/<run-slug>/` for
+  CLI file runs, `~/pw/jobs/<workflow-name>/<run-number, 5 digits>/` for registered
+  workflows:
   `run.<JOBID>.out` is the service output; `logs/<job>/step_N/step.out` the step
   trace; `logs/<job>/step_N/script-unstable.sh` is the **rendered** step showing every
   `${{ input }}` as its literal value — read it first when a form value seems ignored.
@@ -125,9 +123,8 @@ those platforms — validate them statically.
 - Primary branch: **canary** (`git@github.com:parallelworks/workflows.git`) — the
   branch the YAMLs reference at runtime. Branch rules require changes to land **via
   pull request**; work on a side branch and merge (squash) into canary.
-- Large binaries stay out of this repo. Legacy binaries (noVNC tarballs, SIF images)
-  are still fetched from the old `interactive_session` repo's `legacy` tag by the
-  scripts that need them — leave those clone blocks alone.
-- Platform marketplace registrations may still point at old repo paths; changing a
-  path here without re-pointing the registration breaks the marketplace entry
-  (see MIGRATION.md).
+- Large binaries stay out of this repo. A few controllers fetch prebuilt binaries
+  from an external `legacy` git tag at run time — leave those clone blocks alone
+  (background: MIGRATION.md).
+- Marketplace registrations pin repo paths; renaming a path here without re-pointing
+  the registration breaks the entry (registration notes: MIGRATION.md).

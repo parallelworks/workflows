@@ -4,10 +4,14 @@
 # It uses resources prepared by controller.sh which runs on the controller.
 # Serves the desktop through a pw endpoint instead of a platform session:
 #   - endpoint_name / endpoint_slug: pw endpoints registration (from inputs.sh)
-#   - basepath: any non-root path; the container's nginx template renders a
-#     duplicate `location /` (and fails) when BASE_PATH is "/", while any other
-#     value is harmless because the template also proxies the root location,
-#     which is where the subdomain endpoint serves from.
+#   - pw_endpoints_args: extra flags for pw endpoints http; platforms without
+#     session subdomains (emed) pass --no-subdomain for a path-based URL
+#   - basepath: the prefix the container's nginx serves under. Subdomain
+#     endpoints serve at the root, so those variants pass any non-root value
+#     (the nginx template renders a duplicate `location /` and fails when
+#     BASE_PATH is "/", while any other value is harmless because the template
+#     also proxies the root location). Path-based endpoints pass the real
+#     /me/session/<user>/<name> prefix the platform forwards unchanged.
 
 set -ex
 
@@ -495,7 +499,7 @@ if [ -z "${web_up}" ]; then
 fi
 
 echo "::notice::Registering endpoint ${endpoint_name}"
-pw endpoints http --name "${endpoint_name}" --slug "${endpoint_slug}" --output text ${service_port} &
+pw endpoints http ${pw_endpoints_args} --name "${endpoint_name}" --slug "${endpoint_slug}" --output text ${service_port} &
 endpoint_pid=$!
 echo "kill ${endpoint_pid} || true # pw endpoints http" >> cancel.sh
 

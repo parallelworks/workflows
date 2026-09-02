@@ -343,6 +343,19 @@ fi
 echo "::notice::Using ${CONTAINER} with image ${container_image}"
 
 USERNS_FLAG=$(runtime_userns_flag "${CONTAINER}")
+
+# The image entrypoint runs 'pkill -u $(id -u) -f Xvnc' (and killall on the XFCE
+# processes) as "stale session cleanup". In the host PID namespace that kills this
+# user's other desktops on the node: two desktops starting on one emed node killed
+# each other's Xvnc. A private PID namespace confines the cleanup to this container.
+# Probed because some sites disable PID namespaces in the runtime config.
+PID_NS_FLAG=""
+if "${CONTAINER}" exec ${USERNS_FLAG} --pid "${container_image}" /bin/true >/dev/null 2>&1; then
+    PID_NS_FLAG="--pid"
+else
+    echo "::warning::${CONTAINER} cannot create a PID namespace on this node; starting another desktop on it as the same user may kill this one"
+fi
+
 WRITABLE_TMPFS_FLAG=""
 if [ -n "${USERNS_FLAG}" ]; then
     echo "::notice::${CONTAINER} has no setuid bit, enabling --userns"
@@ -373,7 +386,7 @@ while [ ${_try} -lt ${display_tries} ]; do
     echo "::notice::Starting KasmVNC container on display :${XdisplayNumber} (image: ${container_image}, try ${_try}/${display_tries})..."
     set -x
     ${CONTAINER} run \
-        ${WRITABLE_TMPFS_FLAG} ${USERNS_FLAG} ${ETC_ENV_FLAG} \
+        ${WRITABLE_TMPFS_FLAG} ${USERNS_FLAG} ${PID_NS_FLAG} ${ETC_ENV_FLAG} \
         ${GPU_FLAG} \
         ${NV_GL_BIND_FLAGS} \
         ${MOUNT_FLAGS} \
@@ -411,9 +424,9 @@ echo "::notice::KasmVNC running (image: ${container_image}, PID ${kasmvnc_contai
 
 # Register cleanup for the running container and its display.
 echo "kill ${kasmvnc_container_pid} #kasmvnc_container_pid" >> cancel.sh
-echo "pkill -TERM -f \"Xvnc :${XdisplayNumber}\"" >> cancel.sh
+echo "pkill -TERM -f \"Xvnc :${XdisplayNumber}( |\$)\"" >> cancel.sh
 echo "sleep 3" >> cancel.sh
-echo "pkill -KILL -f \"Xvnc :${XdisplayNumber}\"" >> cancel.sh
+echo "pkill -KILL -f \"Xvnc :${XdisplayNumber}( |\$)\"" >> cancel.sh
 
 sleep 5
 

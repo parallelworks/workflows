@@ -408,12 +408,30 @@ while [ ${_try} -lt ${display_tries} ]; do
     kasmvnc_container_pid=$!
     echo "::notice::KasmVNC container started with PID ${kasmvnc_container_pid} (image: ${container_image})"
 
-    sleep 20
-    if kill -0 "${kasmvnc_container_pid}" 2>/dev/null; then
+    # Wait for the container's web server or its death before deciding. The
+    # entrypoint converts the SIF for about a minute before Xvnc binds its
+    # sockets, and a concurrent desktop starting on the same node can take the
+    # allocated port in that window ("vncExtInit: failed to bind socket") -- a
+    # late death like that must retry on fresh display and ports, not only an
+    # exit within the first seconds.
+    _web_up=""
+    for _i in $(seq 1 36); do
+        if ! kill -0 "${kasmvnc_container_pid}" 2>/dev/null; then
+            break
+        fi
+        if curl -s -o /dev/null "http://localhost:${service_port}/health"; then
+            _web_up=1
+            break
+        fi
+        sleep 5
+    done
+    if [ -n "${_web_up}" ] || kill -0 "${kasmvnc_container_pid}" 2>/dev/null; then
+        # Healthy, or alive but slow -- the wait loop below keeps polling it
         started=1
         break
     fi
-    echo "::warning::Container exited within 20s on display :${XdisplayNumber}"
+    echo "::warning::Container exited before its web server answered on display :${XdisplayNumber}"
+    service_port=$(pw agent open-port)
 done
 
 if [ -z "${started}" ]; then

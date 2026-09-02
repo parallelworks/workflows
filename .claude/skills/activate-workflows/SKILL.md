@@ -27,7 +27,7 @@ docs and harden this skill (Step 5):
 **Assume the `pw` client is already authenticated** — otherwise ask the user to log
 in. Confirm context with `pw context list` if unsure. **Set `permissions: ['*']`** in
 every workflow: besides allowing everyone to run it, it is what lets the in-workflow
-`pw` client authenticate (e.g. `pw agent open-port`).
+`pw` client authenticate (e.g. `pw endpoints run`).
 
 ## Golden rules
 

@@ -152,8 +152,12 @@ Everything a run did is in its job dir on the execution node:
   `${PW_PARENT_JOB_DIR}/workflows/<name>/app/…` (or `…/<impl>/…`), including paths
   built from variables (`"${PW_PARENT_JOB_DIR}/${service_name}"`-style bugs surface
   only at run time).
-- **Globbing the workflow dir** — variant YAMLs live in `yamls/` precisely so
-  `cp workflows/<name>/*.yaml .` grabs only support files; keep it that way.
+- **Globs copy everything in the directory they target.** Some preprocessing steps
+  collect support files with a glob — e.g. jupyter runs `cp workflows/jupyter/app/*.yaml .`
+  to gather its conda-env files. That only works because `app/` contains nothing but
+  runtime files: the workflow's own variant YAMLs live in `yamls/`, outside `app/`.
+  Keep it that way — a workflow YAML (or any unrelated file) placed inside `app/`
+  would be swept into every run.
 - **Single-attempt ghcr pulls** — ghcr intermittently rate-limits anonymous pulls;
   use `tools/oras/libs.sh:oras_pull_file` (it retries) and keep packages public.
 - **A registered workflow ignoring your defaults** — the registration pins one YAML

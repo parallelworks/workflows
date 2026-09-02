@@ -308,6 +308,13 @@ non-repetitive; point at an existing tutorial instead.
 - **`oras pull` says `denied` for a public package:** a stale ghcr login in the
   user's `~/.docker/config.json` on the cluster is being sent. `tools/oras/libs.sh`
   pulls anonymously first for this reason — reuse it instead of calling oras directly.
+- **Container entrypoints that `pkill` by name kill sibling jobs:** singularity shares
+  the host PID namespace, so the KasmVNC image's start-up `pkill -u $(id -u) -f Xvnc`
+  killed the same user's other desktop starting on that node (verified on emed: two
+  concurrent starts killed each other). Run such containers with `--pid` (works
+  unprivileged with `--userns`; probe it, some sites disable PID namespaces) and anchor
+  every `pkill -f` pattern you write to `cancel.sh` (`"Xvnc :${N}( |$)"`, not `"Xvnc :${N}"`).
+  Test with two runs pinned to one node (`#SBATCH --nodelist=<node>`).
 - **curl is not a websocket probe:** `curl -H 'Upgrade: websocket' …` returned 404
   from a websockify path that a raw HTTP/1.1 upgrade request (python socket) got 101
   from. Test handshakes with a raw request before blaming the route.

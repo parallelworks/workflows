@@ -80,7 +80,7 @@ Configure CPU, memory, and walltime. With Singularity, NVIDIA GPUs are auto-dete
 ## Requirements
 
 - **Docker**: Docker daemon must be running and accessible (with or without `sudo`) on the target compute node.
-- **Singularity**: `singularity` or `apptainer` must be available (via `module load singularity` or in `$PATH`).
+- **Singularity**: `singularity` or `apptainer` must be available (via `module load singularity` or in `$PATH`). The container runs in its own PID namespace (`--pid`) when the runtime allows it; where PID namespaces are disabled the session logs a warning, and starting a second desktop as the same user on the same node can stop the first one (the image's start-up cleanup kills the user's Xvnc processes).
 
 ---
 

@@ -82,7 +82,12 @@
 > `oras pull` answer `denied` for a public package — `tools/oras/libs.sh` now pulls
 > anonymously first; (2) **curl is a bad websocket probe** — it reported 404 on
 > `/websockify` while a raw HTTP/1.1 upgrade request (python socket) got 101; test the
-> handshake with a raw request, not `curl -H Upgrade`.
+> handshake with a raw request, not `curl -H Upgrade`; (3) **two desktops of one user
+> starting on the same node killed each other**: the image entrypoint runs
+> `pkill -u $(id -u) -f Xvnc` in the shared host PID namespace. The start template now
+> runs the container with `--pid` (probed) and anchors its own `pkill -f` patterns —
+> verified with two runs pinned to one node via `#SBATCH --nodelist`, both online,
+> deleting one leaves the other serving.
 
 ## What changes conceptually
 

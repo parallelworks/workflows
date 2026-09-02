@@ -271,6 +271,16 @@ Found and fixed during testing (PR #1, merged to canary): seven scripts composed
 checkout paths from variables (`AGENT_DIR`/`SERVICE_DIR`/`SCRIPTS_DIR`/
 `MANAGER_SCRIPTS_DIR`/kasmvnc GL probe) and still assumed the old top-level layout.
 
+Full re-test after the `app/` restructure (review change 6a, 2026-09-02): every
+runnable workflow re-verified end-to-end — rag-vllm first on awsgpu (vllm runtype,
+gpt-oss-20b, endpoint online), then webshell, jupyter, jupyterlab, openvscode,
+streamlit, open-notebook, lite-agent, agent-orchestrator, hermes-agent, and
+librechat general-all (all three endpoints) on gcpsmall with the new `app/` paths;
+kasmvnc general + general_rstudio, n8n, librechat general (unchanged multi-impl), and
+ollama on awsgpu as regressions. All PASS with HTTP verified and endpoints torn down.
+rag-service still fails at its pre-existing private ghcr package — after the `app/`
+controller path resolved and the pull retried 3 times.
+
 Static-only (cannot run from here): all `emed`/`hsp`/`noaa` variants,
 `langflow-singularity/hsp.yaml` (its scripts were exercised live by general-all),
 and the k8s variants incl. `mlflow`/`ollama-openwebui` (no kubernetes cluster

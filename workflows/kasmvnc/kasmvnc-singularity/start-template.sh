@@ -97,9 +97,21 @@ find_available_display() {
         if pgrep -f "(Xvnc|Xorg|Xvfb) :${XdisplayNumber}( |$)" > /dev/null 2>&1; then
             continue
         fi
+        # The container ports are derived from the display number, in ranges
+        # below the kernel's ephemeral window (32768+): a port from
+        # 'pw agent open-port' sat unbound for the ~1 min the entrypoint spends
+        # converting the SIF, and busy siblings (MATLAB services) stole it in
+        # that window -- three retries collided in a row on a loaded node.
+        # Derived ports cannot be stolen by ephemeral allocation and cannot
+        # collide between desktops (the display number is node-unique).
+        if netstat -aln | grep -qE "LISTEN.*:($((25900 + XdisplayNumber))|$((26900 + XdisplayNumber)))\b" 2>/dev/null; then
+            continue
+        fi
 
         export displayPort=${port}
         export DISPLAY=":${XdisplayNumber}"
+        export kasm_ws_port=$((25900 + XdisplayNumber))
+        export service_port=$((26900 + XdisplayNumber))
         return 0
     done
     return 1
@@ -107,8 +119,8 @@ find_available_display() {
 
 find_available_display || { echo "::error::No available display found"; exit 1; }
 
-# The container's nginx listens on this port; pw endpoints http exposes it below.
-service_port=$(pw agent open-port)
+# The container's nginx listens on ${service_port} (derived by
+# find_available_display); pw endpoints http exposes it below.
 
 echo "::notice::Starting KasmVNC Container..."
 
@@ -394,7 +406,7 @@ while [ ${_try} -lt ${display_tries} ]; do
         --env DISPLAY=":${XdisplayNumber}" \
         --env BASE_PATH="${basepath}" \
         --env NGINX_PORT="${service_port}" \
-        --env KASM_PORT=$(pw agent open-port) \
+        --env KASM_PORT="${kasm_ws_port}" \
         --env VNC_DISPLAY="${XdisplayNumber}" \
         --bind /etc/passwd:/etc/passwd:ro \
         --bind /etc/group:/etc/group:ro \
@@ -431,7 +443,6 @@ while [ ${_try} -lt ${display_tries} ]; do
         break
     fi
     echo "::warning::Container exited before its web server answered on display :${XdisplayNumber}"
-    service_port=$(pw agent open-port)
 done
 
 if [ -z "${started}" ]; then

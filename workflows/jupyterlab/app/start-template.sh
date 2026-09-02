@@ -35,12 +35,18 @@ if [ -z ${service_notebook_dir} ]; then
     service_notebook_dir=${HOME}
 fi
 
-# The base_url comes from pw endpoints run's {path} token below: "/" on a
-# subdomain endpoint (the default), the /me/session/<user>/<name>/ prefix on a
-# path-based one (--no-subdomain). No reverse proxy is needed either way. The
-# endpoint requires platform login unless made public.
+# service_base_url is the endpoint's base path: unset ("/") on subdomain
+# endpoints, /me/session/<user>/<name>/ on path-based ones (--no-subdomain),
+# where the emed YAML computes it in preprocessing. Do NOT use the {path}
+# token for this: it includes the --slug, so base_url would become
+# <prefix>/lab and the lab UI would hide at <prefix>/lab/lab (verified).
+# default_url is pinned because a site-wide jupyter config can redirect the
+# server root to /tree, serving the Notebook UI instead of JupyterLab
+# (verified on cluster.einsteinmed.edu's shared conda env).
 cat > jupyter_lab_config.py <<EOF
 c.ServerApp.root_dir = '${service_notebook_dir}'
+c.ServerApp.base_url = '${service_base_url:-/}'
+c.ServerApp.default_url = '/lab'
 c.ServerApp.allow_remote_access = True
 c.IdentityProvider.token = ''
 EOF
@@ -55,13 +61,12 @@ fi
 
 # START SERVICE
 echo "::group::Start Service"
-echo "::notice::Starting JupyterLab: pw endpoints run ${pw_endpoints_args} -- jupyter-lab --port {port} --ServerApp.base_url={path}"
+echo "::notice::Starting JupyterLab: pw endpoints run ${pw_endpoints_args} -- jupyter-lab --port {port} (base_url=${service_base_url:-/})"
 
 set -x
 # {port} is replaced by pw endpoints run with the local port it forwards to
 pw endpoints run ${pw_endpoints_args} -- jupyter-lab \
     --port {port} \
-    --ServerApp.base_url={path} \
     --no-browser \
     --allow-root \
     --config ${PWD}/jupyter_lab_config.py

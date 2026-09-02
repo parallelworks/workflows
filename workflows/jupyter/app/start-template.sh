@@ -44,11 +44,14 @@ echo "::notice::Jupyter version:"
 jupyter notebook --version
 
 # START SERVICE
-# The base URL comes from pw endpoints run's {path} token: "/" on a subdomain
-# endpoint (the default), the /me/session/<user>/<name>/ prefix on a path-based
-# one (--no-subdomain). The v3 nginx proxy (notebook >= 7) and the
-# pw_jupyter_proxy base-path plugin (notebook < 7) are not needed either way.
-# The endpoint requires platform login unless made public.
+# service_base_url is the endpoint's base path: unset ("/") on subdomain
+# endpoints, /me/session/<user>/<name>/ on path-based ones (--no-subdomain),
+# where the emed YAML computes it in preprocessing. Do NOT use the {path}
+# token for this: it includes the --slug, so base_url would become
+# <prefix>/tree and the app would hide at <prefix>/tree/tree (verified with
+# jupyterlab). The v3 nginx proxy (notebook >= 7) and the pw_jupyter_proxy
+# base-path plugin (notebook < 7) are not needed either way. The endpoint
+# requires platform login unless made public.
 echo "::group::Start Service"
 set -x
 
@@ -65,7 +68,7 @@ if [ "${jupyter_major_version}" -lt 7 ]; then
     # {port} is replaced by pw endpoints run with the local port it forwards to
     pw endpoints run ${pw_endpoints_args} -- jupyter-notebook \
         --port={port} \
-        --NotebookApp.base_url={path} \
+        --NotebookApp.base_url=${service_base_url:-/} \
         --NotebookApp.iopub_data_rate_limit=10000000000 \
         --NotebookApp.token= \
         --NotebookApp.password=$sha \
@@ -77,6 +80,8 @@ else
 
     cat > jupyter_notebook_config.py <<EOF
 c.ServerApp.root_dir = '${service_notebook_dir}'
+c.ServerApp.base_url = '${service_base_url:-/}'
+c.ServerApp.default_url = '/tree'
 c.ServerApp.allow_remote_access = True
 c.IdentityProvider.token = ''
 EOF
@@ -92,7 +97,6 @@ PYEOF
     # {port} is replaced by pw endpoints run with the local port it forwards to
     pw endpoints run ${pw_endpoints_args} -- jupyter-notebook \
         --port {port} \
-        --ServerApp.base_url={path} \
         --no-browser \
         --config ${PWD}/jupyter_notebook_config.py
 

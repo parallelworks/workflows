@@ -21,9 +21,13 @@ jobs:
           env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
           # Encase values between quotes
           sed -i 's/=\(.*\)/="\1"/' inputs.sh
-          # Write input form variables and ensure the pw agent is in the PATH.
           # This platform has no session subdomains: --no-subdomain gives a
-          # path-based endpoint under /me/session/<user>/<name>/.
+          # path-based endpoint under /me/session/<user>/<name>/. That prefix is
+          # known before launch, so pass it as the app's base_url explicitly
+          # (the {path} token includes the --slug and cannot be used for this).
+          endpoint_name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          echo "service_base_url=/me/session/${PW_USER}/${endpoint_name}/" >> inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
           cat <<'EOF' >> inputs.sh
           PATH=$HOME/pw:$PATH
           service_notebook_dir="${{ inputs.service.notebook_dir }}"

@@ -315,6 +315,16 @@ non-repetitive; point at an existing tutorial instead.
   unprivileged with `--userns`; probe it, some sites disable PID namespaces) and anchor
   every `pkill -f` pattern you write to `cancel.sh` (`"Xvnc :${N}( |$)"`, not `"Xvnc :${N}"`).
   Test with two runs pinned to one node (`#SBATCH --nodelist=<node>`).
+- **`pw agent open-port` is a TOCTOU trap for slow-starting services:** the port
+  sits unbound while the service boots (a SIF conversion takes ~1 min), and busy
+  siblings on the node (MATLAB's dynamic services) steal it from the ephemeral
+  range in that window — three retries collided in a row. For services with a
+  slow bind, derive ports below the ephemeral window (32768+; e.g. 25900+display)
+  from a node-unique value instead (see kasmvnc's start template).
+- **A backgrounded startup app inherits a closed stdin:** console-driven GUIs
+  (vmd) read stdin, get EOF, and "exit normally" right after starting. Launch
+  with stdin on a read-write FIFO (`mkfifo f; cmd 0<> f &`) — never blocks,
+  never EOFs (verified with vmd on emed).
 - **curl is not a websocket probe:** `curl -H 'Upgrade: websocket' …` returned 404
   from a websockify path that a raw HTTP/1.1 upgrade request (python socket) got 101
   from. Test handshakes with a raw request before blaming the route.

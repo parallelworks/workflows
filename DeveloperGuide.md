@@ -118,6 +118,16 @@ pw endpoints list                       # pass = my-session-<run-slug> online, U
 pw endpoints delete my-session-<slug>   # tear down; confirm with ps -x
 ```
 
+**Verify cleanup on cancel — part of testing, every time.** Cancel a run mid-flight
+(`pw workflows runs cancel <slug>` while the service is starting or serving) and
+confirm the cleanup actually ran: no service processes left (`ps -x`), no scheduler
+job (`squeue`/`qstat` when `scheduler:true`), no container instances
+(`singularity instance list`, `docker ps`), no stray listeners. Then do the same
+check after `pw endpoints delete` on a successful run — apps that daemonize and
+re-parent to PID 1 (e.g. RStudio's `rsession`) can survive the tree kill and need
+handling in `cancel.sh`. Write `cancel.sh` at the very top of the start script so a
+cancel at any moment finds it.
+
 While iterating, point the YAML's checkout `branch:` at a development branch and
 restore it to `canary` before the PR merges (canary only accepts pull requests).
 

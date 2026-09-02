@@ -11,7 +11,7 @@ jobs:
           uses: parallelworks/checkout
           with:
             repo: https://github.com/parallelworks/workflows.git
-            branch: dev-emed
+            branch: canary
             sparse_checkout:
               - workflows/openvscode/app
         - name: Create Inputs

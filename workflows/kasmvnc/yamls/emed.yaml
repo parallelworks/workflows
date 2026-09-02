@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: dev-emed
+          branch: canary
           sparse_checkout:
             - workflows/kasmvnc/${{ inputs.container_runtime }}
             - tools/oras

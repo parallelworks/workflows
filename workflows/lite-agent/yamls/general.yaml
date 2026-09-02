@@ -19,7 +19,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: app-subdir
           sparse_checkout:
             - workflows/lite-agent/app
             - tools/utils

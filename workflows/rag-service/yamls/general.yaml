@@ -16,7 +16,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: app-subdir
           sparse_checkout:
             - workflows/rag-service/app
             - tools/oras

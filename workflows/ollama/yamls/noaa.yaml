@@ -46,10 +46,48 @@ jobs:
         run: |
           source inputs.sh
           set -x
-          # This script prepares the target host and always runs in the controller node
-          if [ -z "${service_parent_install_dir}" ] && [ -d /contrib/pw ]; then
-            echo "::notice title=Install Directory::Using Install Directory: /contrib/pw"
-            echo "service_parent_install_dir=/contrib/pw" >> inputs.sh
+          # This script prepares the target host and always runs in the controller node.
+          # The image and the model weights can exceed the ${HOME} quota on the NOAA
+          # systems, so each cluster names a shared software directory where one
+          # staged copy serves every user.
+          if [ "existing" != "${{ inputs.resource.provider }}" ]; then
+            # Cloud clusters have no shared software directory
+            PROJECTS_HOME="${HOME}/pw"
+          else
+            case "${{ inputs.resource.ip }}" in
+              hfe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Hera
+              mfe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Mercury
+              ufe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Ursa
+              gaea[0-9]*.ncrc.gov) PROJECTS_HOME=/usw/rdhpcs/software/pw ;; # Gaea
+              an[0-9]*.princeton.rdhpcs.noaa.gov) PROJECTS_HOME="${HOME}/pw" ;; # PPAN
+              # Unknown host: keep the old default of /contrib/pw when present
+              *) [ -d /contrib/pw ] && PROJECTS_HOME=/contrib/pw || PROJECTS_HOME="${HOME}/pw" ;;
+            esac
+          fi
+          echo "export PROJECTS_HOME=\"${PROJECTS_HOME}\"" >> inputs.sh
+          # Name the shared store whether or not this account can write it: an image
+          # or a model already staged there is readable by every account, and the
+          # controller decides between reusing it read-only and downloading into a
+          # writable directory instead.
+          if [ -d "${PROJECTS_HOME}" ]; then
+            echo "export service_shared_install_dir=\"${PROJECTS_HOME}\"" >> inputs.sh
+          fi
+          if [ -d "${PROJECTS_HOME}/ollama-gguf/models" ]; then
+            echo "::notice title=Model Directory::Shared model store: ${PROJECTS_HOME}/ollama-gguf/models"
+            echo "export service_shared_models_dir=\"${PROJECTS_HOME}/ollama-gguf/models\"" >> inputs.sh
+          fi
+          # Only Alvaro.Vidal may download into the shared directory; every other
+          # account downloads to ${HOME}/pw (the controller still reuses anything
+          # already staged in the shared store read-only)
+          if [ -z "${service_parent_install_dir}" ]; then
+            if [ "$(whoami)" = "Alvaro.Vidal" ] && mkdir -p "${PROJECTS_HOME}" 2> /dev/null; then
+              chmod a+rX "${PROJECTS_HOME}" 2> /dev/null || true
+              install_dir="${PROJECTS_HOME}"
+            else
+              install_dir="${HOME}/pw"
+            fi
+            echo "::notice title=Install Directory::Using Install Directory: ${install_dir}"
+            echo "export service_parent_install_dir=\"${install_dir}\"" >> inputs.sh
           fi
 
           # The container implementation needs singularity or apptainer, and not
@@ -232,7 +270,7 @@ jobs:
         label: Install Directory
         type: string
         optional: true
-        tooltip: 'Parent directory for software installation. Default: /contrib/pw if it exists, otherwise ${HOME}/pw/software. Ensure the directory has sufficient space for the model weights!'
+        tooltip: 'Parent directory for software installation. Default: the shared cluster software directory (/contrib/pw on Hera, Mercury, and Ursa; /usw/rdhpcs/software/pw on Gaea) when your account maintains it, otherwise ${HOME}/pw. Software and models already staged in the shared directory are reused read-only either way. Ensure the directory has sufficient space for the model weights!'
       cluster:
         type: group
         label: Compute Cluster Settings
@@ -416,7 +454,7 @@ jobs:
             label: Model Directory
             type: string
             optional: true
-            tooltip: Directory where model weights are stored (OLLAMA_MODELS). Default is <install directory>/ollama-gguf/models (the install directory resolves to /contrib/pw when present). If new models must be pulled and this directory is not writable, the run falls back to ${HOME}/pw/software/ollama-gguf/models.
+            tooltip: Directory where model weights are stored (OLLAMA_MODELS). Default is <install directory>/ollama-gguf/models (the install directory resolves to the shared cluster software directory, e.g. /contrib/pw, for its maintainer). Models already staged in the shared directory are served read-only; if new models must be pulled and this directory is not writable, the run falls back to a writable one under ${HOME}/pw.
           model_names:
             label: Serve models as
             type: string

@@ -128,7 +128,7 @@ if [ "${runtype}" = "all" ]; then
     else
         git clone -b "${repository_branch}" "${repository}" "${rag_rundir}"
     fi
-    rag_appdir="${rag_rundir}/workflows/rag-vllm"
+    rag_appdir="${rag_rundir}/workflows/rag-vllm/app"
     rm -f "${rag_appdir}"/{jobid,SESSION_PORT,job.started,job.ended,run.out,HOSTNAME,cancel.sh}
     rm -rf "${rag_appdir}/logs"
 

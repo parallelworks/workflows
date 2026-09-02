@@ -27,7 +27,7 @@ agent's shell and the workflow's jobs share one node, debugging is fully local
    > *Using the activate-workflows skill, build a workflow that runs a simulation and
    > serves a live progress page as a session.*
 
-The agent then follows `SKILL.md`: **develop locally → wrap in YAML (the endpoint
+The agent then follows `SKILL.md`: **develop on the target machine → wrap in YAML (the endpoint
 pattern + `script_submitter`, matching the deployment variant) → deliver code via
 `parallelworks/checkout` (push first) → run with `pw workflows run` → verify with
 `pw endpoints list` → debug from `~/pw/jobs` + `ps -x` → iterate.**

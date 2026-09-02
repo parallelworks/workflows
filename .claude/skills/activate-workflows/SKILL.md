@@ -4,9 +4,9 @@ description: >-
   Develop, test, and debug workflows on the Activate platform by Parallel Works.
   Use whenever the task involves an Activate / Parallel Works workflow, a service
   exposed as a pw endpoint, the script_submitter subworkflow, or the `pw` CLI
-  (workflows create/update/run, endpoints, cluster). Provides a proven local-first
-  process plus a reference of platform facts pointing at the repo's real workflows
-  and tutorials.
+  (workflows create/update/run, endpoints, cluster). Provides a proven
+  target-machine-first process plus a reference of platform facts pointing at the
+  repo's real workflows and tutorials.
 ---
 
 # Developing Activate (Parallel Works) workflows
@@ -37,11 +37,12 @@ every workflow: besides allowing everyone to run it, it is what lets the in-work
   the service under `pw endpoints run`, and a `wait_for_endpoint` job confirms it.
   For "just run a script/sim on a cluster," call `script_submitter` directly. Do
   **not** hand-write job submission, port allocation, or tunnel logic (the legacy
-  `session_runner` tunnel-session pattern lives only in `interactive_session` —
-  reference §4). Pure orchestration (multi-job DAG, data flow, fan-out) needs **no**
-  subworkflow — that's a first-class use. Learn the patterns from the **repo's own
-  workflows and tutorials**, not from invented demos (reference §9): endpoints →
-  `workflows/{webshell,jupyterlab,openvscode}/`; job DAG / sessions / outputs
+  `session_runner` pattern is documented in reference §4 for conversions). Pure
+  orchestration (multi-job DAG, data flow, fan-out) needs **no** subworkflow — that's
+  a first-class use. Learn the patterns from the **repo's own workflows and
+  tutorials**, not from invented demos (reference §9): endpoints →
+  `workflows/{webshell,jupyterlab,openvscode}/`; **Singularity/SIF services →
+  `workflows/streamlit/` (simple) and `workflows/kasmvnc/` (multi-impl)**; job DAG / sessions / outputs
   → `tutorials/session-workflows-hsp/` (staged README); **fan-out / sweep →
   `tutorials/endpoint-workflows/05-matrix.yaml`**; retry/failover →
   `tutorials/endpoint-workflows/07-failover.yaml`.
@@ -57,27 +58,40 @@ every workflow: besides allowing everyone to run it, it is what lets the in-work
   fields with no default must be passed explicitly even when its form would hide
   them (e.g. `script_submitter`'s `cleanup_script_path`). `--dry-run` catches this —
   and variant/field mismatches — cheaply before you burn a real run.
-- **Develop locally before touching YAML.** The YAML is a thin wrapper around code
-  that already works.
+- **Develop on the target machine before touching YAML.** The YAML is a thin wrapper
+  around code that already works there (directly if this shell is the target's login
+  node, else via `pw ssh <resource>` — Step 1).
 - **Know where your job runs.** `ssh.remoteHost: ${{ inputs.resource.ip }}` runs a
   job on that resource's login node — that's where the job dir and your process
   live. See Step 4.
 
-## Step 1 — Develop the code locally first
+## Step 1 — Develop the code on the target machine first
 
-Write and test the core program (server, simulation, script) **directly on this
-machine** until it runs standalone. Do not write any YAML yet.
+Pick the **target resource** before anything else (`pw cluster ls`; it must be
+`active`) — developing and testing needs a real machine, and the workflow's jobs will
+run on that resource's login node.
+
+- **If this shell IS the target's login node** (common: the agent runs in a session
+  on the cluster; compare `hostname` with the resource), work directly — edit files,
+  run the program, inspect `~/pw/jobs/…` and `ps -x` locally. This is the fastest loop.
+- **Otherwise, drive the target through `pw ssh <resource>`** — stage/edit code in
+  the shared home, execute remotely (`pw ssh <resource> "cmd"`), and read job dirs
+  the same way. Don't develop against the wrong machine: what runs here may be
+  missing there (each cluster has its own filesystem and installed tools).
+
+Then write and test the core program (server, simulation, script) on that machine
+until it runs standalone. Do not write any YAML yet.
 
 - For a web service: bind a port from an argument/env var, default to `0.0.0.0`,
   and serve everything the page needs. Prefer the **standard library / preinstalled
   tools** so the controller script has nothing to install. Test every endpoint with
   `curl` and confirm it terminates/looks right.
 - Drive it the way the platform will: `python3 server.py --port 8731 …` in the
-  background, then `curl localhost:8731/...`. Iterate here — it's the fastest loop.
+  background, then `curl localhost:8731/...`.
 - Keep each piece a real file (you'll check these into the repo and `checkout` later).
 
-Done when: the program runs from a clean shell with no manual setup and produces
-correct output.
+Done when: the program runs from a clean shell on the target machine with no manual
+setup and produces correct output.
 
 ## Step 2 — Wrap the working code in workflow YAML
 
@@ -202,8 +216,8 @@ non-repetitive; point at an existing tutorial instead.
 
 ## Best practices
 
-- **Develop locally first; prefer the standard library** so controller scripts have
-  nothing to install.
+- **Develop on the target machine first; prefer the standard library** so controller
+  scripts have nothing to install.
 - **Deliver code with `parallelworks/checkout`, not base64.** Push to a dev branch and
   checkout that branch (write access), or stage on the resource + a commented-out
   checkout beside a stand-in copy step (no write access). See Step 2 / reference §10.

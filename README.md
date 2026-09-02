@@ -1,17 +1,15 @@
 # Parallel Works Workflows
 
-The consolidated home of the Parallel Works / ACTIVATE platform workflows previously
-split across [`interactive_session`](https://github.com/parallelworks/interactive_session)
-and [`activate-rag-vllm`](https://github.com/parallelworks/activate-rag-vllm).
+The home of the Parallel Works / ACTIVATE platform workflows.
 
 **One workflow = one directory** under [`workflows/`](workflows/): the variant YAMLs
-(grouped in a `yamls/` subdirectory), the `controller.sh`/`start-template.sh` scripts,
-support files, README, and marketplace thumbnails (grouped in a `thumbnails/`
-subdirectory) all live together. There are **no version
-suffixes** — every file is the latest version, and git tags version the repo.
-Legacy-generation variants that still depended on older scripts were left behind in
-`interactive_session` until they are converted to the endpoint pattern
-(see [MIGRATION.md](MIGRATION.md)).
+(in `yamls/`), the `controller.sh`/`start-template.sh` scripts, support files, README,
+and marketplace thumbnails (in `thumbnails/`) all live together. There are **no
+version suffixes** — every file is the latest version; git tags version the repo.
+Every workflow serves through the **`pw` endpoint pattern**.
+
+How this repo was assembled, and where anything older lives, is recorded in
+[MIGRATION.md](MIGRATION.md).
 
 ## Workflow index
 
@@ -37,8 +35,7 @@ Legacy-generation variants that still depended on older scripts were left behind
 | [webshell](workflows/webshell/) | Web terminal (ttyd) | general, noaa |
 
 `librechat-singularity-manager` is a component of the librechat `-all` workflows
-([workflows/librechat/librechat-singularity-manager/](workflows/librechat/librechat-singularity-manager/));
-its standalone workflow was legacy-generation and stayed in `interactive_session`.
+([workflows/librechat/librechat-singularity-manager/](workflows/librechat/librechat-singularity-manager/)).
 
 **Shared subworkflow** (referenced by the workflow YAMLs via
 `uses: github/parallelworks/workflows@canary` + `$yaml:`):

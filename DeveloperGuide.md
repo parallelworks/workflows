@@ -83,7 +83,9 @@ Requirements: listen on **`service_port`**, write a **`cancel.sh`**, end with
 
 **Copy a real one instead of writing from scratch** —
 `workflows/webshell/yamls/general.yaml` is the smallest complete example;
-`workflows/jupyterlab/yamls/general.yaml` shows a conda install plus support files.
+`workflows/jupyterlab/yamls/general.yaml` shows a conda install plus support files;
+`workflows/streamlit/yamls/general.yaml` + its scripts show a **Singularity/SIF**
+service (SIF pulled via oras, `.def` + `build-container.sh` alongside).
 Key parts to adapt:
 
 - the hidden `service.name` input (endpoint name prefix),
@@ -117,8 +119,9 @@ restore it to `canary` before the PR merges (canary only accepts pull requests).
 
 ## 6. Debugging
 
-Everything a run did is in its job dir on the execution node
-(`~/pw/jobs/<slug>/`, or `~/pw/jobs/<name>/<NNNNN>/` for registered workflows):
+Everything a run did is in its job dir on the execution node:
+`~/pw/jobs/<run-slug>/` for CLI file runs, or
+`~/pw/jobs/<workflow-name>/<run-number, 5 digits>/` for registered workflows.
 
 - `run.<JOBID>.out` — the service's stdout/stderr
 - `logs/<job>/step_N/step.out`, `step.exit` — per-step trace and exit code
@@ -144,13 +147,10 @@ Everything a run did is in its job dir on the execution node
   the form (and its defaults) are the wrong variant's.
 - **"Authentication has expired"** — `pw` tokens lapse; re-run `pw auth`.
 
-## Appendix: the legacy session pattern
+## Appendix: converting a legacy workflow
 
-The older pattern (a `sessions:` block + the `session_runner` subworkflow registering
-a **platform tunnel session** on an injected `${service_port}`) is not used by
-anything in this repo. The workflows and variants that still depend on it — vncserver,
-langflow-host, the emed files, webshell hsp, kasmvnc general-rstudio/northrop,
-langflow-singularity general, librechat-singularity-manager's standalone workflow,
-rag-vllm emed — live in `parallelworks/interactive_session`. To convert one to the
-endpoint pattern and bring it here, follow
-`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`.
+Nothing in this repo uses the older session pattern (a `sessions:` block + the
+`session_runner` subworkflow). To convert a legacy workflow to the endpoint pattern
+and bring it here, follow
+`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`;
+which workflows are still legacy and where they live is in MIGRATION.md.

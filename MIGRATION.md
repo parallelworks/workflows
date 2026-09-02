@@ -26,6 +26,11 @@ Consolidation performed 2026-08-31, revised the same day after review feedback
    `fractal-demo`→`tutorials/demo-app`, `pw_endpoints`→`tutorials/endpoint-workflows`,
    `hsp`→`tutorials/session-workflows-hsp` (all internal paths, the demo venv dir, and
    the AI-skill references re-pointed).
+6a. **Runtime files grouped under `app/`** (later review): single-implementation
+   workflows sparse-checkout `workflows/<name>/app` (scripts + support files) so runs
+   stop materializing `yamls/`, `thumbnails/`, and READMEs; multi-implementation
+   workflows already had this property via their impl subdirs. Build tooling (defs,
+   `build-container.sh`) and docs stay outside `app/`.
 6. **Session pattern dropped entirely**: `workflows/vncserver`, `workflows/langflow-host`,
    and `workflows/session_runner` were removed — legacy, no `pw` endpoints (they
    registered platform tunnel sessions). They remain in `parallelworks/interactive_session`
@@ -265,6 +270,16 @@ torn down and cleanup verified.
 Found and fixed during testing (PR #1, merged to canary): seven scripts composed
 checkout paths from variables (`AGENT_DIR`/`SERVICE_DIR`/`SCRIPTS_DIR`/
 `MANAGER_SCRIPTS_DIR`/kasmvnc GL probe) and still assumed the old top-level layout.
+
+Full re-test after the `app/` restructure (review change 6a, 2026-09-02): every
+runnable workflow re-verified end-to-end — rag-vllm first on awsgpu (vllm runtype,
+gpt-oss-20b, endpoint online), then webshell, jupyter, jupyterlab, openvscode,
+streamlit, open-notebook, lite-agent, agent-orchestrator, hermes-agent, and
+librechat general-all (all three endpoints) on gcpsmall with the new `app/` paths;
+kasmvnc general + general_rstudio, n8n, librechat general (unchanged multi-impl), and
+ollama on awsgpu as regressions. All PASS with HTTP verified and endpoints torn down.
+rag-service still fails at its pre-existing private ghcr package — after the `app/`
+controller path resolved and the pull retried 3 times.
 
 Static-only (cannot run from here): all `emed`/`hsp`/`noaa` variants,
 `langflow-singularity/hsp.yaml` (its scripts were exercised live by general-all),

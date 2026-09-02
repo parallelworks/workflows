@@ -21,11 +21,13 @@ A typical workflow consists of:
 
 ```
 workflows/<name>/yamls/      # the workflow's variant YAMLs (general.yaml, hsp.yaml, k8s.yaml, ...)
-workflows/<name>/            # scripts + support files + README
-workflows/<name>/thumbnails/ # marketplace thumbnails (one per registered variant look)
-workflows/<name>/<impl>/     # multi-implementation workflows keep impl subdirs whose names
-                             # match the form input values (n8n-docker, n8n-singularity,
+workflows/<name>/app/        # runtime files: scripts + support files — the ONLY subtree
+                             # the workflow sparse-checkouts at run time
+workflows/<name>/<impl>/     # multi-implementation workflows use impl subdirs instead of app/,
+                             # named after the form input values (n8n-docker, n8n-singularity,
                              # kasmvnc-singularity, ollama-gguf-container, librechat-singularity, ...)
+workflows/<name>/            # README + build tooling (defs, build-container.sh)
+workflows/<name>/thumbnails/ # marketplace thumbnails (one per registered variant look)
 workflows/script_submitter/v3.6/  # shared subworkflow: SLURM/PBS/SSH script submission
 tools/oras, tools/utils      # shared runtime tools, referenced as tools/... from run dirs
 tutorials/                   # staged, runnable lessons on the workflow system
@@ -44,7 +46,8 @@ docs/                        # developer + AI docs
 ## The endpoint pattern
 
 Every workflow here uses it: preprocessing checks out this repo
-(`parallelworks/checkout`, sparse `workflows/<name>` [+ `tools/...`]), assembles
+(`parallelworks/checkout`, sparse `workflows/<name>/app` — or an impl subdir —
+[+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through
 `workflows/script_submitter/v3.6/<variant>.yaml`, and waits for a **`pw` endpoint**
 (`pw endpoints list`) named `<service>-${PW_RUN_SLUG}`. No `sessions:` block.
@@ -76,7 +79,8 @@ To convert a legacy session-pattern workflow to this pattern, follow
   `$yaml: workflows/script_submitter/v3.6/<variant>.yaml`.
   Changes only take effect once pushed to that branch.
 - Checked-out paths are repo-relative: scripts materialize at
-  `<rundir>/workflows/<name>/...` — reference them with that prefix.
+  `<rundir>/workflows/<name>/app/...` (or `.../<impl>/...`) — reference them with
+  that full prefix, including paths composed from variables.
 - Form inputs are grouped as `cluster` (resource/scheduler) and `service`
   (service-specific); values read as `${{ inputs.cluster.* }}` / `${{ inputs.service.* }}`.
 - The hidden `service.name` input is the **endpoint/session name prefix** — it is not

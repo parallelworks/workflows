@@ -3,8 +3,9 @@
 The home of the Parallel Works / ACTIVATE platform workflows.
 
 **One workflow = one directory** under [`workflows/`](workflows/): the variant YAMLs
-(in `yamls/`), the `controller.sh`/`start-template.sh` scripts, support files, README,
-and marketplace thumbnails (in `thumbnails/`) all live together. There are **no
+(in `yamls/`), the runtime files (`controller.sh`/`start-template.sh` + support files,
+in `app/` or an implementation subdir — the only subtree checked out at run time),
+README, build tooling, and marketplace thumbnails (in `thumbnails/`) all live together. There are **no
 version suffixes** — every file is the latest version; git tags version the repo.
 Every workflow serves through the **`pw` endpoint pattern**.
 

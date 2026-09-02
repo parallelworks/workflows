@@ -13,7 +13,7 @@ jobs:
           repo: https://github.com/parallelworks/workflows.git
           branch: canary
           sparse_checkout:
-            - workflows/open-notebook
+            - workflows/open-notebook/app
       - name: Create Inputs
         run: |
           set -x
@@ -41,7 +41,7 @@ jobs:
           set -x
           # This script prepares the target host and always runs in the controller node
           cp inputs.sh controller-${PW_JOB_ID}.sh
-          cat workflows/open-notebook/controller.sh >> controller-${PW_JOB_ID}.sh
+          cat workflows/open-notebook/app/controller.sh >> controller-${PW_JOB_ID}.sh
           bash controller-${PW_JOB_ID}.sh
       - name: Create Service Script
         run: |
@@ -67,7 +67,7 @@ jobs:
 
           echo "::notice::Starting service"
           EOF
-          cat workflows/open-notebook/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          cat workflows/open-notebook/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
           echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
           echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
 

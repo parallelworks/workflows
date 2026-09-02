@@ -24,7 +24,7 @@ jobs:
           repo: ${{ inputs.service.repository }}
           branch: ${{ inputs.service.repository_branch }}
           sparse_checkout:
-            - workflows/rag-vllm
+            - workflows/rag-vllm/app
       - name: Create Inputs
         run: |
           set -x
@@ -75,16 +75,16 @@ jobs:
         early-cancel: any-job-failed
         run: |
           set -x
-          if [ ! -s workflows/rag-vllm/controller.sh ]; then
+          if [ ! -s workflows/rag-vllm/app/controller.sh ]; then
               echo "::error title=Error::controller.sh not found in the checkout — branch '${{ inputs.service.repository_branch }}' of ${{ inputs.service.repository }} does not contain the workflow scripts"
               exit 1
           fi
           cp inputs.sh controller-${PW_JOB_ID}.sh
-          cat workflows/rag-vllm/controller.sh >> controller-${PW_JOB_ID}.sh
+          cat workflows/rag-vllm/app/controller.sh >> controller-${PW_JOB_ID}.sh
           bash controller-${PW_JOB_ID}.sh
       - name: Create Service Script
         run: |
-          if [ ! -s workflows/rag-vllm/start-template.sh ]; then
+          if [ ! -s workflows/rag-vllm/app/start-template.sh ]; then
               echo "::error title=Error::start-template.sh not found in the checkout — branch '${{ inputs.service.repository_branch }}' of ${{ inputs.service.repository }} does not contain the workflow scripts"
               exit 1
           fi
@@ -111,7 +111,7 @@ jobs:
           echo "::notice::Starting service"
           EOF
 
-          cat workflows/rag-vllm/start-template.sh >> start-service-${PW_JOB_ID}.sh
+          cat workflows/rag-vllm/app/start-template.sh >> start-service-${PW_JOB_ID}.sh
           echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
           echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
 

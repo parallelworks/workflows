@@ -109,14 +109,14 @@ Provide the two contract scripts:
   `pw endpoints run ${pw_endpoints_args} -- <cmd with {port}>`, and **fails loud**:
   if `pw endpoints run` exits without the endpoint registered, cancel the run
   (`pw workflows runs cancel ${PW_RUN_SLUG}`) so `wait_for_endpoint` never polls
-  forever (copy the tail of `workflows/webshell/start-template.sh`).
+  forever (copy the tail of `workflows/webshell/app/start-template.sh`).
 
-**Path rule (learned the hard way):** checked-out content materializes under
-`${PW_PARENT_JOB_DIR}/workflows/<name>/…` — every path a YAML or script builds to
-reach repo files (including ones composed from variables like
-`"${PW_PARENT_JOB_DIR}/${service_name}"`) must carry the `workflows/` prefix. And
-never glob a directory that contains the workflow YAMLs (`yamls/` keeps them apart —
-keep it that way).
+**Path rule (learned the hard way):** only the runtime subtree is checked out —
+`workflows/<name>/app` (single-implementation) or `workflows/<name>/<impl>` — and it
+materializes at `${PW_PARENT_JOB_DIR}/workflows/<name>/app/…`. Every path a YAML or
+script builds to reach repo files (including ones composed from variables like
+`"${PW_PARENT_JOB_DIR}/${service_name}"`) must carry that full prefix. Keep
+`yamls/`, `thumbnails/`, and READMEs out of `app/` so runs never materialize them.
 
 **Getting the scripts onto the node — use `parallelworks/checkout`, never base64**
 (reference §10). The repo is fetched from GitHub **at runtime**, so nothing you edit
@@ -125,7 +125,7 @@ push to the repo:
 1. **Write access (recommended):** ask the user to grant a **deploy key with write
    permission**. Work on a **development branch — never `canary` directly** (branch
    rules require PRs) — commit and push, then `parallelworks/checkout` that branch
-   (`branch: <dev-branch>`, `sparse_checkout: [workflows/<name>]`). Open a PR to
+   (`branch: <dev-branch>`, `sparse_checkout: [workflows/<name>/app]`). Open a PR to
    `canary`; after the merge, flip `branch:` back to `canary`.
 2. **No write access:** you can't push, so stage the files on the resource (e.g.
    `~/pw/dev/<workflow>/`) and give preprocessing **two steps** — the

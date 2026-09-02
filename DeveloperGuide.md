@@ -5,9 +5,13 @@ things:
 
 | File | Runs on | Purpose |
 |------|---------|---------|
-| `controller.sh` | Controller (login) node | Install software, download dependencies |
-| `start-template.sh` | Controller or compute node | Start the web service |
+| `app/controller.sh` | Controller (login) node | Install software, download dependencies |
+| `app/start-template.sh` | Controller or compute node | Start the web service |
 | `yamls/<variant>.yaml` (e.g. `yamls/general.yaml`) | Platform | Define the UI form, generate `inputs.sh`, orchestrate |
+
+`app/` holds everything the run needs (scripts + support files) and is the only
+subtree the workflow sparse-checkouts; `yamls/`, `thumbnails/`, README, and build
+tooling stay outside it.
 
 The controller node always has internet access. The compute node may not.
 
@@ -18,7 +22,7 @@ interactive session workflow for [deployment] that [does X]."*
 
 ## 1. The controller script
 
-`workflows/my-session/controller.sh` runs **before** the service starts, on the login
+`workflows/my-session/app/controller.sh` runs **before** the service starts, on the login
 node. Use it for anything needing internet. All `inputs.sh` variables are available.
 
 ```bash
@@ -41,7 +45,7 @@ Keep it **idempotent** — check whether software exists before installing.
 
 ## 2. The start script
 
-`workflows/my-session/start-template.sh` starts the web service. The platform provides
+`workflows/my-session/app/start-template.sh` starts the web service. The platform provides
 `service_port` — your service **must** listen on it. All `inputs.sh` variables are
 available.
 
@@ -70,7 +74,7 @@ Requirements: listen on **`service_port`**, write a **`cancel.sh`**, end with
 `workflows/my-session/yamls/general.yaml`. Its jobs:
 
 1. **preprocessing** — `parallelworks/checkout` of this repo (sparse:
-   `workflows/my-session`, plus `tools/...` if the scripts use the shared tools),
+   `workflows/my-session/app`, plus `tools/...` if the scripts use the shared tools),
    generate `inputs.sh` from the form values + `PW_*` environment, run
    `inputs.sh + controller.sh` inline, and assemble the start script
    (`inputs.sh` + a cleanup trap + `start-template.sh`).
@@ -89,8 +93,8 @@ service (SIF pulled via oras, `.def` + `build-container.sh` alongside).
 Key parts to adapt:
 
 - the hidden `service.name` input (endpoint name prefix),
-- the sparse-checkout paths (`workflows/my-session`, `tools/...`),
-- the `cat workflows/my-session/controller.sh` / `start-template.sh` lines,
+- the sparse-checkout paths (`workflows/my-session/app`, `tools/...`),
+- the `cat workflows/my-session/app/controller.sh` / `start-template.sh` lines,
 - the `service` input group (your form fields → `inputs.sh` variables).
 
 ## 4. Platform variants
@@ -134,10 +138,10 @@ Everything a run did is in its job dir on the execution node:
 
 - **Testing unpushed code** — the checkout fetches GitHub, not your working tree.
 - **Relative YAML path in `pw workflows run`** — parsed as a git host; use absolute.
-- **Composing checkout paths without the `workflows/` prefix** — checked-out files
-  materialize at `${PW_PARENT_JOB_DIR}/workflows/<name>/…`, including paths built
-  from variables (`"${PW_PARENT_JOB_DIR}/${service_name}"`-style bugs surface only at
-  run time).
+- **Composing checkout paths wrong** — checked-out files materialize at
+  `${PW_PARENT_JOB_DIR}/workflows/<name>/app/…` (or `…/<impl>/…`), including paths
+  built from variables (`"${PW_PARENT_JOB_DIR}/${service_name}"`-style bugs surface
+  only at run time).
 - **Globbing the workflow dir** — variant YAMLs live in `yamls/` precisely so
   `cp workflows/<name>/*.yaml .` grabs only support files; keep it that way.
 - **Single-attempt ghcr pulls** — ghcr intermittently rate-limits anonymous pulls;

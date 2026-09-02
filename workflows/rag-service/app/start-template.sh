@@ -28,7 +28,7 @@
 set -x
 
 JOB_DIR="${PW_PARENT_JOB_DIR:-${PWD}}"
-SERVICE_DIR="${JOB_DIR}/workflows/${service_name:-rag-service}"
+SERVICE_DIR="${JOB_DIR}/workflows/${service_name:-rag-service}/app"
 
 if [ -n "${service_parent_install_dir}" ]; then
     container_sif=${service_parent_install_dir}/containers/rag-service.sif

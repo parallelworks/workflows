@@ -151,7 +151,7 @@ jobs:
     `${PW_PARENT_JOB_DIR}/workflow/readmes`, visible to later `needs:`-dependent jobs.
     This is **the** way to get code onto the node — see §10. Every real session YAML in
     the repo (e.g. `workflows/webshell/yamls/general.yaml`) starts preprocessing with a
-    `parallelworks/checkout` of `parallelworks/workflows` + a `sparse_checkout` of `workflows/<name>`.
+    `parallelworks/checkout` of `parallelworks/workflows` + a `sparse_checkout` of `workflows/<name>/app` (or an impl subdir).
   - `parallelworks/update-session` — register/refresh a session (target/name/slug/remoteHost/remotePort)
   - `parallelworks/cancel-jobs` — cancel sibling jobs (e.g. a `tail -f` streamer)
   - `parallelworks/scheduler-agent`, `parallelworks/wait-for-agent` — dynamic compute node
@@ -550,7 +550,7 @@ Contents after an endpoint-pattern launch (all verified on live runs):
 ├── controller-<JOBID>.sh                  # inputs.sh + your controller script (what ran)
 ├── start-service-<JOBID>.sh               # inputs.sh + cleanup trap + your start script
 ├── SKIP_CLEANUP                           # touched by wait_for_endpoint → service outlives the run
-├── workflows/<name>/..., tools/...        # the sparse checkout
+├── workflows/<name>/app/..., tools/...    # the sparse checkout (runtime subtree only)
 ├── run.<JOBID>.out                        # service stdout (here, or under subworkflows/…/step_0/
 │                                          #   when the YAML does not pass rundir)
 ├── cancel.sh                              # shutdown script (run on cancel / endpoint delete)
@@ -574,7 +574,7 @@ Repo: `https://github.com/parallelworks/workflows`. Read these for working patte
 |------|-----|
 | `DeveloperGuide.md`, `CLAUDE.md` | the repo's own how-to + conventions |
 | `workflows/webshell/yamls/general.yaml` | **simplest** full endpoint example (preprocessing → script_submitter → wait_for_endpoint) |
-| `workflows/webshell/{controller,start-template}.sh` | minimal controller + start scripts |
+| `workflows/webshell/app/{controller,start-template}.sh` | minimal controller + start scripts |
 | `workflows/script_submitter/v3.6/general.yaml` + `README.md` | submission modes + interface |
 | `workflows/jupyterlab/yamls/general.yaml` + scripts | typical: conda install + support files |
 | `workflows/streamlit/yamls/general.yaml` + scripts | **Singularity/SIF service**: SIF via `oras_pull_file`, `.def` + `build-container.sh`, sandbox fallback |
@@ -639,7 +639,7 @@ resource and **mimic** checkout with a copy step:
      #   with:
      #     repo: https://github.com/parallelworks/workflows.git
      #     branch: <your-dev-branch>
-     #     sparse_checkout: [ <your-service-dir> ]
+     #     sparse_checkout: [ workflows/<name>/app ]
      - name: Copy staged files (stand-in for checkout)
        run: |
          set -x

@@ -68,7 +68,7 @@ Variant YAMLs land at `workflows/<new>/yamls/`, scripts at `workflows/<new>/`
 | `workflows/openvscode` | openvscode: all five _v5 | `openvscode/` v4 pair → unsuffixed | + `yamls/k8s.yaml`/`k8s-readme.md` from `workflow/k8s/vscode/` |
 | `workflows/webshell` | webshell: general_v5, noaa_v5 | `webshell/` v4 pair → unsuffixed | controller keeps its `interactive_session@legacy` clone for the noVNC/ttyd tarball (see "downloads") |
 | `workflows/vncserver` | vncserver: all 14 _v4 | `vncserver/` v3 pair → unsuffixed (its only/latest generation; session pattern) | readme from typo dir `workflow/readmes/vnserver/`; **removed later** (review change 6) |
-| `workflows/kasmvnc` | kasmvnc-container: general/hsp/noaa/noaa_rstudio/general_k8s _v5 | impl subdir `kasmvnc-singularity/` (v4 pair → unsuffixed) + GPU build helpers | + `yamls/k8s.yaml`/`k8s-readme.md` from `workflow/k8s/kasmvnc/`; `yamls/general_rstudio.yaml` added post-migration — the endpoint-pattern replacement for the legacy `general-rstudio.yaml` (general.yaml mechanics + noaa_rstudio's rstudio form) |
+| `workflows/kasmvnc` | kasmvnc-container: general/hsp/noaa/noaa_rstudio/general_k8s _v5 | impl subdir `kasmvnc-singularity/` (v4 pair → unsuffixed) + GPU build helpers | + `yamls/k8s.yaml`/`k8s-readme.md` from `workflow/k8s/kasmvnc/`; `yamls/general_rstudio.yaml` added post-migration — the endpoint-pattern replacement for the legacy `general-rstudio.yaml` (general.yaml mechanics + noaa_rstudio's rstudio form); `yamls/emed.yaml` converted 2026-09-02 from the legacy session-pattern `kasmvnc-container/emed.yaml` — a **path-based** endpoint (`--no-subdomain`; the emed platform has no session subdomains), verified live on `cluster.einsteinmed.edu` |
 | `workflows/n8n` | n8n: general/hsp/noaa _v5 | impl subdirs `n8n-docker/`, `n8n-singularity/` (v4 pairs → unsuffixed) | runtime input values = subdir names |
 | `workflows/librechat` | librechat-container: general_v5, hsp_v5, general-all_v5, hsp-all_v5 | impl subdir `librechat-singularity/` (v4 pair → unsuffixed + helper scripts) and component `librechat-singularity-manager/` (v4 pair + `server.py`) | the `-all` variants sparse-checkout `workflows/librechat/librechat-singularity-manager` and `workflows/langflow-singularity`; `browser-demo/` migrated |
 | `workflows/langflow-host` | langflow-host: general_v4, hsp_v4 | v3 pair → unsuffixed (its only/latest generation; session pattern) | **removed later** (review change 6) |
@@ -148,7 +148,8 @@ so these stay in `interactive_session` until converted; the conversion guide is 
 skill's `references/session-to-endpoint-upgrade.md`):
 
 - `jupyter-host/emed_v4.yaml`, `jupyterlab-host/emed_v4.yaml`, `n8n/emed_v4.yaml`,
-  `kasmvnc-container/emed.yaml`, `webshell/hsp_v4.yaml`,
+  `webshell/hsp_v4.yaml`, (`kasmvnc-container/emed.yaml` was converted 2026-09-02 →
+  `workflows/kasmvnc/yamls/emed.yaml`; see the per-workflow map),
   `kasmvnc-container/general-rstudio.yaml`, `kasmvnc-container/northrop.yaml`
   (air-gapped local-copy variant), `langflow-singularity/general_v4.yaml`,
   `librechat-singularity-manager/{general,hsp}.yaml` (the standalone manager
@@ -281,7 +282,10 @@ ollama on awsgpu as regressions. All PASS with HTTP verified and endpoints torn 
 rag-service still fails at its pre-existing private ghcr package — after the `app/`
 controller path resolved and the pull retried 3 times.
 
-Static-only (cannot run from here): all `emed`/`hsp`/`noaa` variants,
+Static-only (cannot run from here): all `hsp`/`noaa` variants and the `emed` variants
+except `kasmvnc/yamls/emed.yaml` (run live on `cluster.einsteinmed.edu`, 2026-09-02:
+endpoint online, HTTP + websocket verified through the platform, delete and cancel
+teardowns clean),
 `langflow-singularity/hsp.yaml` (its scripts were exercised live by general-all),
 and the k8s variants incl. `mlflow`/`ollama-openwebui` (no kubernetes cluster
 attached) — YAML parse + path-existence + reference checks only. n8n-docker and
@@ -294,4 +298,6 @@ ollama-gguf-container implementation paths not separately exercised.
 2. Migrate `workflow/batch/` in a follow-up?
 3. Thumbnail guesses in judgment call 6 — confirm against the actual registrations.
 4. Converting the left-behind legacy variants (emed etc.) to the endpoint pattern so
-   they can join this repo — who/when?
+   they can join this repo — who/when? **In progress (2026-09-02):** the emed variants
+   are being converted one at a time and tested on `cluster.einsteinmed.edu`; kasmvnc
+   is done (`workflows/kasmvnc/yamls/emed.yaml`, the reference path-based conversion).

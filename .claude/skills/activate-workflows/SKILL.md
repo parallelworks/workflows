@@ -302,6 +302,15 @@ non-repetitive; point at an existing tutorial instead.
   the branch is merged.
 - **Base-path apps break at the session URL** if served at the host root — set the
   app's base URL or front it with an nginx proxy (reference §11).
+- **No session subdomains on emed:** register endpoints with `--no-subdomain` there
+  (the platform then serves `/me/session/<PW_USER>/<name>/` and forwards the full
+  path — give the app that base path). See `workflows/kasmvnc/yamls/emed.yaml`.
+- **`oras pull` says `denied` for a public package:** a stale ghcr login in the
+  user's `~/.docker/config.json` on the cluster is being sent. `tools/oras/libs.sh`
+  pulls anonymously first for this reason — reuse it instead of calling oras directly.
+- **curl is not a websocket probe:** `curl -H 'Upgrade: websocket' …` returned 404
+  from a websockify path that a raw HTTP/1.1 upgrade request (python socket) got 101
+  from. Test handshakes with a raw request before blaming the route.
 - **Service must bind `0.0.0.0:${service_port}`** (not `127.0.0.1`, not a fixed
   port) or the tunnel can't reach it / the port clashes.
 - **Forgot `cancel.sh` or `sleep inf`:** the service is killed immediately or the

@@ -831,6 +831,14 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   enough — v3's nginx proxy + base-path config is obsolete in v5. For path-based
   endpoints (`--no-subdomain`) set the app's base path to the `{path}` token
   (exported as `PW_ENDPOINT_PATH`) instead.
+- **Path-based endpoints (verified on `cluster.einsteinmed.edu`, kasmvnc emed):** the
+  emed platform has **no session subdomains**, so `pw endpoints http/run` there needs
+  `--no-subdomain`. The URL is `https://<platform-host>/me/session/<PW_USER>/<name>/<slug>`
+  and the platform forwards the **full path** to the app (no `--strip-path`), so the
+  base path is known before launch: `/me/session/${PW_USER}/<name>` (both vars are in
+  the workflow env and reach compute nodes via `inputs.sh`). `pw endpoints list` prints
+  the path instead of a URL. Anonymous requests still get the `307` login redirect;
+  `Authorization: Bearer <token>` requests (and websocket upgrades) go through.
 - **`pw endpoints run` substitutes the `{port}` token** (also exports `PORT`) into the
   wrapped command — shell `${port}` expands to empty *before* `pw` sees it, so the app
   falls back to its default port (code-server → `:80` → `EACCES`, instant exit) while

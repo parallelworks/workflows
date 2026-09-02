@@ -68,8 +68,10 @@ fi
 echo "::endgroup::"
 echo "::group::Starting n8n"
 
-# pw endpoints run exports PORT and PW_ENDPOINT_URL to the wrapped command;
-# the launcher reads them at runtime (they are unknown before launch)
+# pw endpoints run exports PORT, PW_ENDPOINT_URL and PW_ENDPOINT_PATH to the
+# wrapped command; the launcher reads them at runtime (they are unknown before
+# launch). PW_ENDPOINT_PATH is "/" on subdomain endpoints and the
+# /me/session/<user>/<name>/ prefix on path-based ones (--no-subdomain).
 cat > launch-n8n-${PW_JOB_ID}.sh <<EOF
 #!/bin/bash
 exec singularity run \\
@@ -84,6 +86,7 @@ exec singularity run \\
     --env N8N_PROTOCOL=http \\
     --env N8N_DIAGNOSTICS_ENABLED=false \\
     --env N8N_VERSION_NOTIFICATIONS_ENABLED=false \\
+    --env N8N_PATH="\${PW_ENDPOINT_PATH}" \\
     --env N8N_EDITOR_BASE_URL="\${PW_ENDPOINT_URL}" \\
     --env WEBHOOK_URL="\${PW_ENDPOINT_URL}" \\
     "${container_ref}"

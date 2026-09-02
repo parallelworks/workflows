@@ -4,74 +4,82 @@ permissions:
 
 jobs:
   preprocessing:
-      ssh:
-        remoteHost: ${{ inputs.cluster.resource.ip }}
-      steps:
-        - name: Checkout
-          uses: parallelworks/checkout
-          with:
-            repo: https://github.com/parallelworks/workflows.git
-            branch: dev-emed
-            sparse_checkout:
-              - workflows/openvscode/app
-        - name: Create Inputs
-          run: |
-            set -x
-            # Write PW variables
-            env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
-            # Encase values between quotes
-            sed -i 's/=\(.*\)/="\1"/' inputs.sh
-            # Write input form variables and ensure the pw agent is in the PATH.
-            # This platform has no session subdomains: --no-subdomain gives a
-            # path-based endpoint under /me/session/<user>/<name>/, and code-server
-            # serves relative URLs, so --strip-path removes that prefix before
-            # forwarding instead of configuring a base path.
-            cat <<'EOF' >> inputs.sh
-            PATH=$HOME/pw:$PATH
-            service_download_url="${{ inputs.service.download_url }}"
-            service_password="${{ inputs.service.password }}"
-            service_directory="${{ inputs.service.directory }}"
-            pw_endpoints_args="--no-subdomain --strip-path --name ${{ inputs.service.name }}-${PW_RUN_SLUG} --slug ?folder=${{ inputs.service.directory }}"
-            EOF
-            # Remove empty variables
-            sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
-            sed -i '/=""/d' inputs.sh # remove var=""
-            # Add export= to all lines
-            sed -i 's/^/export /' inputs.sh
-        - name: Controller Preprocessing
-          run: |
-            set -x
-            # This script prepares the target host and always runs in the controller node
-            cp inputs.sh controller-${PW_JOB_ID}.sh
-            cat workflows/openvscode/app/controller.sh >> controller-${PW_JOB_ID}.sh
-            bash controller-${PW_JOB_ID}.sh
-        - name: Create Service Script
-          run: |
-            rm -f HOSTNAME SESSION_PORT job.ended job.started
-            # This script starts the service
-            cp inputs.sh start-service-${PW_JOB_ID}.sh
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: dev-emed
+          sparse_checkout:
+            - workflows/jupyterlab/app
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH.
+          # This platform has no session subdomains: --no-subdomain gives a
+          # path-based endpoint under /me/session/<user>/<name>/.
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_notebook_dir="${{ inputs.service.notebook_dir_tag_existing }}"
+          service_load_env="${{ inputs.service.load_env_tag_existing }}"
+          service_conda_install="${{ inputs.service.conda_install_tag_cloud }}"
+          service_parent_install_dir="${{ inputs.service.parent_install_dir_tag_cloud }}"
+          service_conda_install_dir="${{ inputs.service.conda_install_dir_tag_cloud }}"
+          service_conda_env="${{ inputs.service.conda_env_tag_cloud }}"
+          service_load_env="${{ inputs.service.load_env_tag_cloud }}"
+          service_install_instructions="${{ inputs.service.install_instructions_tag_cloud }}"
+          service_yaml="${{ inputs.service.yaml_tag_cloud }}"
+          service_install_kernels="${{ inputs.service.install_kernels_tag_cloud }}"
+          pw_endpoints_args="--no-subdomain --name ${{ inputs.service.name }}-${PW_RUN_SLUG} --slug lab"
+          EOF
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh # remove var=""
+          # Prepend 'export ' to each VAR= assignment line only, not to the
+          # continuation lines of a multi-line (editor) value
+          sed -i -E 's/^([A-Za-z_][A-Za-z0-9_]*=)/export \1/' inputs.sh
+          # Copy conda environment YAMLs to the job directory
+          cp workflows/jupyterlab/app/*.yaml .
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/jupyterlab/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
 
-            # Write code common to all services
-            cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
 
-            cleanup() {
-                trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
-                echo "::notice::Cleaning up..."
-                if [ -f cancel.sh ]; then
-                    mv cancel.sh cancel.sh.submitted
-                    echo "echo Cleanup script was already executed" > cancel.sh
-                    bash cancel.sh.submitted
-                fi
-                kill -- -$$
-            }
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
 
-            trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
 
-            echo "::notice::Starting service"
-            EOF
-            cat workflows/openvscode/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
-            echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
-            echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/jupyterlab/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
 
   session_runner:
     needs:
@@ -166,8 +174,8 @@ jobs:
           slurm:
             type: group
             label: SLURM Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm'  || inputs.cluster.scheduler == false  }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm'  || inputs.cluster.scheduler == false  }}
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
               slurm_options:
                 type: dropdown
@@ -287,30 +295,96 @@ jobs:
 
       service:
         type: group
-        label: Service
-        hidden: true
+        label: Jupyter Lab Settings
         items:
           name:
             type: string
             hidden: true
-            default: openvscode
-          download_url:
-            label: Download URL
+            default: jupyterlab-host
+          notebook_dir_tag_existing:
+            label: Directory to start Jupyter Lab GUI
             type: string
-            default: https://github.com/coder/code-server/releases/download/v4.105.1/code-server-4.105.1-linux-amd64.tar.gz
-            tooltip: Downloads or uses the code-server server version specified in the URL
-          password:
-            label: Password for IDE session
-            type: password
-            optional: true
-            tooltip: Enter password or leave blank for no password
-          directory:
-            label: Directory to open in VS Code
-            type: string
-            default: /gs/gsfs0/users/${USER}/pw/
-            tooltip: Directory to open in VS code
-          load_singularity:
-            type: string
-            label: Load Singularity
-            default: "module load singularity"
+            default: ${HOME}/pw/
+            tooltip: This is the directory that you start with when the Jupyter graphical user interface starts. The default value here is your home directory.
             ignore: ${{ 'existing' != inputs.cluster.resource.provider }}
+            hidden: ${{ .ignore }}
+            optional: ${{ .ignore }}
+          load_env_tag_existing:
+            label: Command to load Jupyter Lab to the PATH
+            type: string
+            default: source /gs/gsfs0/hpc01/rhel8/apps/conda3/etc/profile.d/conda.sh; conda activate base; module load cuda
+            tooltip: Use a bash command
+            ignore: ${{ 'existing' != inputs.cluster.resource.provider }}
+            hidden: ${{ .ignore }}
+            optional: ${{ .ignore }}
+          conda_install_tag_cloud:
+            label: Install miniconda environment if not there?
+            ignore: ${{ 'existing' == inputs.cluster.resource.provider }}
+            optional: ${{ .ignore }}
+            hidden: ${{ .ignore }}
+            type: boolean
+            default: true
+            tooltip: Select Yes to install Jupyter in miniconda environment and No to load an existing python environment
+          parent_install_dir_tag_cloud:
+            label: Parent Install Directory
+            type: string
+            default: ${HOME}/pw/software
+            ignore: ${{ inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}
+            hidden: ${{ .ignore }}
+            tooltip: Software dependencies are installed in this directory. Ensure the directory has sufficient space!
+          conda_install_dir_tag_cloud:
+            label: Name of the Conda Installation Directory
+            type: string
+            default: .miniconda3c
+            ignore: ${{ inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}
+            hidden: ${{ .ignore }}
+            tooltip: Ensure the directory has sufficient space for Conda and its packages.
+          conda_env_tag_cloud:
+            label: Conda environment
+            type: string
+            default: base
+            ignore: "${{ inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}"
+            optional: ${{ .ignore }}
+            hidden: ${{ .ignore }}
+            tooltip: Environment to active. The base environment enables changing kernel to other environments!
+          load_env_tag_cloud:
+            label: Command to load Jupyter Notebook to the PATH
+            type: string
+            default: source ${HOME}/pw/software/.miniconda3c/etc/profile.d/conda.sh; conda activate base
+            ignore: ${{ inputs.service.conda_install_tag_cloud == true || 'existing' == inputs.cluster.resource.provider }}
+            optional: ${{ .ignore }}
+            hidden: ${{ .ignore }}
+            tooltip: Use a bash command
+          install_instructions_tag_cloud:
+            label: Select Jupyter Lab Installation
+            type: dropdown
+            ignore: ${{ inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}
+            hidden: ${{ .ignore }}
+            default: jupyterlab4.1.5-python3.11.5
+            options:
+              - value: jupyterlab4.1.5-python3.11.5
+                label: Jupyter Lab 4.1.5 with Python 3.11.5
+              - value: latest
+                label: Latest versions of Jupyter Lab and Python (not thoroughly tested)
+              - value: dask-extension-jupyterlab
+                label: Dask dependencies for PW
+              - value: yaml
+                label: Provide custom Conda environment YAML file
+          yaml_tag_cloud:
+            label: Paste Conda Environment Defition YAML
+            type: editor
+            ignore: ${{ inputs.service.install_instructions_tag_cloud != yaml ||  inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}
+            optional: ${{ .ignore }}
+            hidden: ${{ .ignore }}
+            tooltip: Copy and paste a custom Conda environment definition YAML file
+          install_kernels_tag_cloud:
+            label: Select additional kernels to install
+            type: multi-dropdown
+            optional: true
+            ignore: ${{ inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}
+            hidden: ${{ .ignore }}
+            options:
+              - value: julia-kernel
+                label: Julia Kernel
+              - value: R-kernel
+                label: R Kernel

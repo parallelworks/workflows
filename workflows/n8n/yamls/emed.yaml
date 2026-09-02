@@ -4,74 +4,74 @@ permissions:
 
 jobs:
   preprocessing:
-      ssh:
-        remoteHost: ${{ inputs.cluster.resource.ip }}
-      steps:
-        - name: Checkout
-          uses: parallelworks/checkout
-          with:
-            repo: https://github.com/parallelworks/workflows.git
-            branch: dev-emed
-            sparse_checkout:
-              - workflows/openvscode/app
-        - name: Create Inputs
-          run: |
-            set -x
-            # Write PW variables
-            env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
-            # Encase values between quotes
-            sed -i 's/=\(.*\)/="\1"/' inputs.sh
-            # Write input form variables and ensure the pw agent is in the PATH.
-            # This platform has no session subdomains: --no-subdomain gives a
-            # path-based endpoint under /me/session/<user>/<name>/, and code-server
-            # serves relative URLs, so --strip-path removes that prefix before
-            # forwarding instead of configuring a base path.
-            cat <<'EOF' >> inputs.sh
-            PATH=$HOME/pw:$PATH
-            service_download_url="${{ inputs.service.download_url }}"
-            service_password="${{ inputs.service.password }}"
-            service_directory="${{ inputs.service.directory }}"
-            pw_endpoints_args="--no-subdomain --strip-path --name ${{ inputs.service.name }}-${PW_RUN_SLUG} --slug ?folder=${{ inputs.service.directory }}"
-            EOF
-            # Remove empty variables
-            sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
-            sed -i '/=""/d' inputs.sh # remove var=""
-            # Add export= to all lines
-            sed -i 's/^/export /' inputs.sh
-        - name: Controller Preprocessing
-          run: |
-            set -x
-            # This script prepares the target host and always runs in the controller node
-            cp inputs.sh controller-${PW_JOB_ID}.sh
-            cat workflows/openvscode/app/controller.sh >> controller-${PW_JOB_ID}.sh
-            bash controller-${PW_JOB_ID}.sh
-        - name: Create Service Script
-          run: |
-            rm -f HOSTNAME SESSION_PORT job.ended job.started
-            # This script starts the service
-            cp inputs.sh start-service-${PW_JOB_ID}.sh
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Checkout ${{ inputs.service.container_runtime }}
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: dev-emed
+          sparse_checkout:
+            - workflows/n8n/${{ inputs.service.container_runtime }}
+            - tools/oras
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH.
+          # This platform has no session subdomains: --no-subdomain gives a
+          # path-based endpoint under /me/session/<user>/<name>/.
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
+          n8n_image_tag="${{ inputs.service.n8n_image_tag }}"
+          n8n_data_dir="${{ inputs.service.n8n_data_dir }}"
+          pw_endpoints_args="--no-subdomain --name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          EOF
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh # remove var=""
+          # Prepend 'export ' to each VAR= assignment line only, not to the
+          # continuation lines of a multi-line (editor) value
+          sed -i -E 's/^([A-Za-z_][A-Za-z0-9_]*=)/export \1/' inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/n8n/${{ inputs.service.container_runtime }}/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
 
-            # Write code common to all services
-            cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
 
-            cleanup() {
-                trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
-                echo "::notice::Cleaning up..."
-                if [ -f cancel.sh ]; then
-                    mv cancel.sh cancel.sh.submitted
-                    echo "echo Cleanup script was already executed" > cancel.sh
-                    bash cancel.sh.submitted
-                fi
-                kill -- -$$
-            }
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
 
-            trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
 
-            echo "::notice::Starting service"
-            EOF
-            cat workflows/openvscode/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
-            echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
-            echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/n8n/${{ inputs.service.container_runtime }}/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
 
   session_runner:
     needs:
@@ -108,6 +108,12 @@ jobs:
           pbs:
             is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
             scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+        cleanup: |
+          set -x
+          if [ -d tools/oras ]; then
+            echo "Removing tools/oras"
+            rm -rf tools/oras
+          fi
       - name: Cancel Wait for Endpoint
         uses: parallelworks/cancel-jobs
         with:
@@ -166,8 +172,8 @@ jobs:
           slurm:
             type: group
             label: SLURM Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm'  || inputs.cluster.scheduler == false  }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm'  || inputs.cluster.scheduler == false  }}
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
               slurm_options:
                 type: dropdown
@@ -287,30 +293,29 @@ jobs:
 
       service:
         type: group
-        label: Service
-        hidden: true
+        label: n8n Settings
         items:
           name:
             type: string
             hidden: true
-            default: openvscode
-          download_url:
-            label: Download URL
+            default: n8n
+          parent_install_dir:
             type: string
-            default: https://github.com/coder/code-server/releases/download/v4.105.1/code-server-4.105.1-linux-amd64.tar.gz
-            tooltip: Downloads or uses the code-server server version specified in the URL
-          password:
-            label: Password for IDE session
-            type: password
-            optional: true
-            tooltip: Enter password or leave blank for no password
-          directory:
-            label: Directory to open in VS Code
+            hidden: true
+            default: /public/codelab/singularity
+          container_runtime:
             type: string
-            default: /gs/gsfs0/users/${USER}/pw/
-            tooltip: Directory to open in VS code
-          load_singularity:
+            hidden: true
+            default: n8n-singularity
+          n8n_image_tag:
+            label: n8n Image Tag
             type: string
-            label: Load Singularity
-            default: "module load singularity"
-            ignore: ${{ 'existing' != inputs.cluster.resource.provider }}
+            default: '1.123.4'
+            hidden: ${{ inputs.service.container_runtime == 'n8n-singularity' }}
+            ignore: ${{ .hidden }}
+            tooltip: n8n Docker image version tag (e.g. 1.123.4 or latest). The Singularity runtime uses the prebuilt ghcr.io/parallelworks/n8n:2.0 image instead.
+          n8n_data_dir:
+            label: n8n Data Directory
+            type: string
+            default: ${HOME}/pw/n8n
+            tooltip: Directory where n8n stores its data (workflows, credentials). Persists between sessions if on a shared filesystem.

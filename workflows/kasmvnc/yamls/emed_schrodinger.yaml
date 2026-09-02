@@ -4,74 +4,94 @@ permissions:
 
 jobs:
   preprocessing:
-      ssh:
-        remoteHost: ${{ inputs.cluster.resource.ip }}
-      steps:
-        - name: Checkout
-          uses: parallelworks/checkout
-          with:
-            repo: https://github.com/parallelworks/workflows.git
-            branch: dev-emed
-            sparse_checkout:
-              - workflows/openvscode/app
-        - name: Create Inputs
-          run: |
-            set -x
-            # Write PW variables
-            env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
-            # Encase values between quotes
-            sed -i 's/=\(.*\)/="\1"/' inputs.sh
-            # Write input form variables and ensure the pw agent is in the PATH.
-            # This platform has no session subdomains: --no-subdomain gives a
-            # path-based endpoint under /me/session/<user>/<name>/, and code-server
-            # serves relative URLs, so --strip-path removes that prefix before
-            # forwarding instead of configuring a base path.
-            cat <<'EOF' >> inputs.sh
-            PATH=$HOME/pw:$PATH
-            service_download_url="${{ inputs.service.download_url }}"
-            service_password="${{ inputs.service.password }}"
-            service_directory="${{ inputs.service.directory }}"
-            pw_endpoints_args="--no-subdomain --strip-path --name ${{ inputs.service.name }}-${PW_RUN_SLUG} --slug ?folder=${{ inputs.service.directory }}"
-            EOF
-            # Remove empty variables
-            sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
-            sed -i '/=""/d' inputs.sh # remove var=""
-            # Add export= to all lines
-            sed -i 's/^/export /' inputs.sh
-        - name: Controller Preprocessing
-          run: |
-            set -x
-            # This script prepares the target host and always runs in the controller node
-            cp inputs.sh controller-${PW_JOB_ID}.sh
-            cat workflows/openvscode/app/controller.sh >> controller-${PW_JOB_ID}.sh
-            bash controller-${PW_JOB_ID}.sh
-        - name: Create Service Script
-          run: |
-            rm -f HOSTNAME SESSION_PORT job.ended job.started
-            # This script starts the service
-            cp inputs.sh start-service-${PW_JOB_ID}.sh
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Checkout ${{ inputs.container_runtime }}
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: dev-emed
+          sparse_checkout:
+            - workflows/kasmvnc/${{ inputs.container_runtime }}
+            - tools/oras
+      - name: Create Inputs
+        run: |
+          set -x
+          if [ -z "${PW_PLATFORM_HOST}" ]; then
+            echo "::warning::PW_PLATFORM_HOST is unset; defaulting to cluster.einsteinmed.edu"
+            PW_PLATFORM_HOST=cluster.einsteinmed.edu
+          fi
+          PW_PLATFORM_HOST="${PW_PLATFORM_HOST#https://}"
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Password (vestigial: the container disables VNC auth, but the viewer
+          # accepts it in the URL, so keep v4 parity)
+          password=$(openssl rand -base64 12 | head -c 12)
+          # This platform has no session subdomains, so the endpoint is path-based
+          # (--no-subdomain) and the platform forwards requests with the full
+          # /me/session/<user>/<name>/ prefix. The container's nginx must serve
+          # under that prefix, and the noVNC client needs host+prefix to open its
+          # websocket there instead of at the platform root.
+          endpoint_name=kasmvnc-${PW_RUN_SLUG}
+          basepath=/me/session/${PW_USER}/${endpoint_name}
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_parent_install_dir=/public/codelab/singularity
+          kasmvnc_os="${{ inputs.desktop.kasmvnc_os }}"
+          startup_command="${{ inputs.desktop.startup_command }}"
+          container_mount_paths="${{ inputs.desktop.container_mount_paths }}"
+          pw_endpoints_args="--no-subdomain"
+          EOF
+          echo basepath=${basepath} >> inputs.sh
+          echo password=${password} >> inputs.sh
+          echo "endpoint_name=${endpoint_name}" >> inputs.sh
+          echo "endpoint_slug=\"vnc.html?resize=remote&autoconnect=true&show_dot=true&path=websockify&password=${password}&host=${PW_PLATFORM_HOST}${basepath}/&dt=0\"" >> inputs.sh
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh # remove var=""
+          # Prepend 'export ' to each VAR= assignment line only -- NOT to the
+          # continuation lines of a multi-line value. container_mount_paths is an
+          # 'editor' input written one path per line; a blanket 's/^/export /' would
+          # turn each extra path into 'export /path' and corrupt inputs.sh.
+          sed -i -E 's/^([A-Za-z_][A-Za-z0-9_]*=)/export \1/' inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/kasmvnc/${{ inputs.container_runtime }}/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
 
-            # Write code common to all services
-            cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
 
-            cleanup() {
-                trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
-                echo "::notice::Cleaning up..."
-                if [ -f cancel.sh ]; then
-                    mv cancel.sh cancel.sh.submitted
-                    echo "echo Cleanup script was already executed" > cancel.sh
-                    bash cancel.sh.submitted
-                fi
-                kill -- -$$
-            }
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
 
-            trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
 
-            echo "::notice::Starting service"
-            EOF
-            cat workflows/openvscode/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
-            echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
-            echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/kasmvnc/${{ inputs.container_runtime }}/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
 
   session_runner:
     needs:
@@ -108,6 +128,12 @@ jobs:
           pbs:
             is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
             scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+        cleanup: |
+          set -x
+          if [ -d tools/oras ]; then
+            echo "Removing tools/oras"
+            rm -rf tools/oras
+          fi
       - name: Cancel Wait for Endpoint
         uses: parallelworks/cancel-jobs
         with:
@@ -127,7 +153,7 @@ jobs:
       - name: Wait for endpoint
         early-cancel: any-job-failed
         run: |
-          endpoint_name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          endpoint_name="kasmvnc-${PW_RUN_SLUG}"
           echo "::notice::Waiting for endpoint ${endpoint_name} to come online"
           until pw endpoints list | grep -qw "${endpoint_name}"; do
             echo "$(date) Endpoint ${endpoint_name} not found yet; retrying in 10 seconds"
@@ -145,6 +171,10 @@ jobs:
 'on':
   execute:
     inputs:
+      container_runtime:
+        type: string
+        hidden: true
+        default: kasmvnc-singularity
       cluster:
         type: group
         label: Compute Cluster Settings
@@ -166,8 +196,8 @@ jobs:
           slurm:
             type: group
             label: SLURM Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm'  || inputs.cluster.scheduler == false  }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm'  || inputs.cluster.scheduler == false  }}
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
               slurm_options:
                 type: dropdown
@@ -285,32 +315,31 @@ jobs:
                   #PBS -l mem=16gb
                   #PBS -l ngpus=1
 
-      service:
+      desktop:
         type: group
-        label: Service
-        hidden: true
+        label: Desktop Settings
+        collapsed: true
         items:
-          name:
-            type: string
+          kasmvnc_os:
+            type: dropdown
+            label: Operating System
             hidden: true
-            default: openvscode
-          download_url:
-            label: Download URL
+            default: rocky9
+            tooltip: Choose the operating system for the KasmVNC container
+            options:
+              - label: Rocky Linux 9
+                value: rocky9
+          startup_command:
             type: string
-            default: https://github.com/coder/code-server/releases/download/v4.105.1/code-server-4.105.1-linux-amd64.tar.gz
-            tooltip: Downloads or uses the code-server server version specified in the URL
-          password:
-            label: Password for IDE session
-            type: password
+            label: Command to start Schrodinger Maestro
+            default: module load schrodinger; maestro
+            tooltip: Runs on the compute node after the desktop starts. Loads the Schrodinger module and launches Maestro.
             optional: true
-            tooltip: Enter password or leave blank for no password
-          directory:
-            label: Directory to open in VS Code
-            type: string
-            default: /gs/gsfs0/users/${USER}/pw/
-            tooltip: Directory to open in VS code
-          load_singularity:
-            type: string
-            label: Load Singularity
-            default: "module load singularity"
-            ignore: ${{ 'existing' != inputs.cluster.resource.provider }}
+          container_mount_paths:
+            type: editor
+            label: Additional Mount Paths
+            optional: true
+            tooltip: |
+              Extra directories to bind-mount into the container, one per line.
+              Each path is mounted if it exists on the host; if it does not, a warning is logged and the path is skipped.
+              Your home directory and /scratch are mounted automatically when present.

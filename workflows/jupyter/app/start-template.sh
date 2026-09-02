@@ -44,9 +44,11 @@ echo "::notice::Jupyter version:"
 jupyter notebook --version
 
 # START SERVICE
-# Subdomain endpoints serve the app at the root URL, so the v3 nginx proxy
-# (notebook >= 7) and the pw_jupyter_proxy base-path plugin (notebook < 7) are
-# not needed. The endpoint requires platform login unless made public.
+# The base URL comes from pw endpoints run's {path} token: "/" on a subdomain
+# endpoint (the default), the /me/session/<user>/<name>/ prefix on a path-based
+# one (--no-subdomain). The v3 nginx proxy (notebook >= 7) and the
+# pw_jupyter_proxy base-path plugin (notebook < 7) are not needed either way.
+# The endpoint requires platform login unless made public.
 echo "::group::Start Service"
 set -x
 
@@ -63,6 +65,7 @@ if [ "${jupyter_major_version}" -lt 7 ]; then
     # {port} is replaced by pw endpoints run with the local port it forwards to
     pw endpoints run ${pw_endpoints_args} -- jupyter-notebook \
         --port={port} \
+        --NotebookApp.base_url={path} \
         --NotebookApp.iopub_data_rate_limit=10000000000 \
         --NotebookApp.token= \
         --NotebookApp.password=$sha \
@@ -89,6 +92,7 @@ PYEOF
     # {port} is replaced by pw endpoints run with the local port it forwards to
     pw endpoints run ${pw_endpoints_args} -- jupyter-notebook \
         --port {port} \
+        --ServerApp.base_url={path} \
         --no-browser \
         --config ${PWD}/jupyter_notebook_config.py
 

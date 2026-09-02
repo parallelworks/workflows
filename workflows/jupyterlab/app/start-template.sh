@@ -35,8 +35,10 @@ if [ -z ${service_notebook_dir} ]; then
     service_notebook_dir=${HOME}
 fi
 
-# Subdomain endpoints serve the app at the root URL, so no base_url or reverse
-# proxy is needed. The endpoint requires platform login unless made public.
+# The base_url comes from pw endpoints run's {path} token below: "/" on a
+# subdomain endpoint (the default), the /me/session/<user>/<name>/ prefix on a
+# path-based one (--no-subdomain). No reverse proxy is needed either way. The
+# endpoint requires platform login unless made public.
 cat > jupyter_lab_config.py <<EOF
 c.ServerApp.root_dir = '${service_notebook_dir}'
 c.ServerApp.allow_remote_access = True
@@ -53,12 +55,13 @@ fi
 
 # START SERVICE
 echo "::group::Start Service"
-echo "::notice::Starting JupyterLab: pw endpoints run ${pw_endpoints_args} -- jupyter-lab --port {port}"
+echo "::notice::Starting JupyterLab: pw endpoints run ${pw_endpoints_args} -- jupyter-lab --port {port} --ServerApp.base_url={path}"
 
 set -x
 # {port} is replaced by pw endpoints run with the local port it forwards to
 pw endpoints run ${pw_endpoints_args} -- jupyter-lab \
     --port {port} \
+    --ServerApp.base_url={path} \
     --no-browser \
     --allow-root \
     --config ${PWD}/jupyter_lab_config.py

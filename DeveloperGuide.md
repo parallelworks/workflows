@@ -15,6 +15,15 @@ tooling stay outside it.
 
 The controller node always has internet access. The compute node may not.
 
+The platform docs are the source of truth — consult them when anything here is
+unclear or behaves differently:
+[building workflows](https://parallelworks.com/docs/run/workflows/building-workflows)
+([YAML fields](https://parallelworks.com/docs/run/workflows/building-workflows/yaml-fields) ·
+[inputs & expressions](https://parallelworks.com/docs/run/workflows/building-workflows/inputs-and-expressions) ·
+[actions](https://parallelworks.com/docs/run/workflows/building-workflows/actions)) ·
+[endpoint sessions](https://parallelworks.com/docs/run/sessions/endpoints) ·
+[`pw endpoints` CLI](https://parallelworks.com/docs/cli/pw/endpoints).
+
 Working with an AI assistant? The repo ships a Claude Code skill —
 `.claude/skills/activate-workflows/` — that encodes this process plus the platform
 reference. In Claude Code: *"Using the activate-workflows skill, create a new

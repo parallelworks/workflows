@@ -17,6 +17,15 @@ A typical workflow consists of:
 - Support files (conda env YAMLs, container defs, helper scripts), `README.md`, and
   marketplace thumbnails in `thumbnails/`
 
+## Official platform documentation (authoritative — consult when in doubt)
+
+- Building workflows: <https://parallelworks.com/docs/run/workflows/building-workflows>
+  — with the [YAML fields](https://parallelworks.com/docs/run/workflows/building-workflows/yaml-fields),
+  [inputs & expressions](https://parallelworks.com/docs/run/workflows/building-workflows/inputs-and-expressions),
+  and [actions](https://parallelworks.com/docs/run/workflows/building-workflows/actions) subpages
+- Endpoint sessions: <https://parallelworks.com/docs/run/sessions/endpoints>
+- `pw endpoints` CLI: <https://parallelworks.com/docs/cli/pw/endpoints> (full CLI: <https://parallelworks.com/docs/cli>)
+
 ## Repository structure
 
 ```

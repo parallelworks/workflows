@@ -15,7 +15,11 @@ anything below conflicts with the docs, or a CLI flag / YAML field doesn't behav
 documented here, **trust the docs and fix this file** (Step 5 of the methodology):
 
 - Building workflows — <https://parallelworks.com/docs/run/workflows/building-workflows>
-- Sessions — <https://parallelworks.com/docs/run/sessions>
+  (subpages: [YAML fields](https://parallelworks.com/docs/run/workflows/building-workflows/yaml-fields) ·
+  [inputs & expressions](https://parallelworks.com/docs/run/workflows/building-workflows/inputs-and-expressions) ·
+  [actions](https://parallelworks.com/docs/run/workflows/building-workflows/actions))
+- Endpoint sessions — <https://parallelworks.com/docs/run/sessions/endpoints>
+- `pw endpoints` CLI — <https://parallelworks.com/docs/cli/pw/endpoints>
 - `pw` CLI — <https://parallelworks.com/docs/cli>
 
 ---

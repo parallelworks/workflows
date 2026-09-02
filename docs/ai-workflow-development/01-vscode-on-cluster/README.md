@@ -45,6 +45,10 @@ pattern + `script_submitter`, matching the deployment variant) → deliver code 
   (`pw endpoints delete <name>`) and cancel lingering runs
   (`pw workflows runs cancel <slug>`).
 - The platform docs are the source of truth and may be newer than this skill:
-  [workflows](https://parallelworks.com/docs/run/workflows/building-workflows) ·
-  [sessions](https://parallelworks.com/docs/run/sessions) ·
+  [workflows](https://parallelworks.com/docs/run/workflows/building-workflows)
+  ([YAML fields](https://parallelworks.com/docs/run/workflows/building-workflows/yaml-fields) ·
+  [inputs & expressions](https://parallelworks.com/docs/run/workflows/building-workflows/inputs-and-expressions) ·
+  [actions](https://parallelworks.com/docs/run/workflows/building-workflows/actions)) ·
+  [endpoint sessions](https://parallelworks.com/docs/run/sessions/endpoints) ·
+  [`pw endpoints` CLI](https://parallelworks.com/docs/cli/pw/endpoints) ·
   [CLI](https://parallelworks.com/docs/cli).

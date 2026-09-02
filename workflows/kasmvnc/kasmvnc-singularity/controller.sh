@@ -14,7 +14,7 @@ else
 fi
 
 mkdir -p ${service_parent_install_dir}/containers ${service_parent_install_dir}/tools
-chmod a+rX ${service_parent_install_dir}/containers ${service_parent_install_dir}/tools
+chmod a+rX ${service_parent_install_dir}/containers ${service_parent_install_dir}/tools 2>/dev/null || true
 
 container_sif=${service_parent_install_dir}/containers/kasmvnc-${kasmvnc_os}-gpu.sif
 

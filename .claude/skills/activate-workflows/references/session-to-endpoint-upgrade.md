@@ -1,8 +1,9 @@
 > **Historical guide — intentionally uses pre-consolidation names.** It documents
 > converting a session-generation workflow (session_runner + platform tunnel) to the
 > endpoint generation (`pw endpoints`). The variants that still need this conversion
-> were **left behind in `parallelworks/interactive_session`** (the emed files,
-> kasmvnc general-rstudio/northrop, librechat-singularity-manager's own YAMLs,
+> were **left behind in `parallelworks/interactive_session`** (the emed files — except
+> kasmvnc's, converted 2026-09-02 as `workflows/kasmvnc/yamls/emed.yaml`, the
+> reference **path-based** conversion described below —, kasmvnc general-rstudio/northrop, librechat-singularity-manager's own YAMLs,
 > webshell hsp, langflow-singularity general, rag-vllm emed — see MIGRATION.md), so
 > the `_v4`/`-v3` file names below refer to files in THAT repo. The converted result
 > lands here as `workflows/<name>/yamls/<variant>.yaml` + unsuffixed scripts —
@@ -59,6 +60,45 @@
 > ignored `parent_install_dir` NOT appearing in `inputs.sh` on `existing` clusters is
 > by design — ignored fields interpolate empty and the `sed '/=""/d'` removes them; the
 > "Set Up Install Parent Directory" step appends `/contrib/pw` right after.
+>
+> **emed variant (`emed.yaml`, verified live on `cluster.einsteinmed.edu` 2026-09-02 with
+> kasmvnc):** same steps, but start from the legacy `emed.yaml` form — keep the nested
+> `cluster.resource` input and the emed `slurm` group (`slurm_options` Default/HPC4,
+> `partition_default`/`partition_hpc4`, `cpus_per_task`, `mem`, `gres_gpu_default`/
+> `gres_gpu_hpc4`, `time`, `scheduler_directives`) and pass them all through to
+> `workflows/script_submitter/v3.6/emed.yaml` (copy the `with:` block from
+> `workflows/openvscode/yamls/emed.yaml`). Fix the legacy form's `inputs.scheduler`
+> references to `inputs.cluster.scheduler`. Drop the Juice lines and the `rendering`
+> input (the current start template auto-detects the GPU). **The emed platform has no
+> session subdomains**, so the endpoint must be path-based: pass `--no-subdomain`
+> (`pw_endpoints_args="--no-subdomain"`), and the service is then served under
+> `/me/session/${PW_USER}/<endpoint name>/` — the platform forwards the full path, so an
+> app that needs a base path gets exactly that prefix (kasmvnc: `basepath=/me/session/
+> ${PW_USER}/kasmvnc-${PW_RUN_SLUG}` → the container's `BASE_PATH`). Keep the
+> `PW_PLATFORM_HOST` fallback only when the slug needs the host (kasmvnc's noVNC slug
+> carries `host=${PW_PLATFORM_HOST}${basepath}/` so the websocket opens under the
+> prefix; both `…/websockify` and `…//websockify` answer 101 through the platform). Two
+> catches: (1) a **stale ghcr login in `~/.docker/config.json`** on the cluster made
+> `oras pull` answer `denied` for a public package — `tools/oras/libs.sh` now pulls
+> anonymously first; (2) **curl is a bad websocket probe** — it reported 404 on
+> `/websockify` while a raw HTTP/1.1 upgrade request (python socket) got 101; test the
+> handshake with a raw request, not `curl -H Upgrade`; (3) **two desktops of one user
+> starting on the same node killed each other**: the image entrypoint runs
+> `pkill -u $(id -u) -f Xvnc` in the shared host PID namespace. The start template now
+> runs the container with `--pid` (probed) and anchors its own `pkill -f` patterns —
+> verified with two runs pinned to one node via `#SBATCH --nodelist`, both online,
+> deleting one leaves the other serving.
+>
+> All five emed services follow this recipe (verified live 2026-09-02, all six
+> endpoints online at once): kasmvnc passes the base path to the container's nginx;
+> jupyter/jupyterlab pass the **`{path}` token** as `base_url` in the `pw endpoints
+> run` command (it renders `/` on subdomain endpoints, so the shared start template
+> change is safe for every variant); n8n's launcher sets `N8N_PATH` from
+> `PW_ENDPOINT_PATH` (same `/` default); code-server serves relative URLs, so its
+> variant uses `--strip-path` instead of a base path. The legacy vncserver emed
+> desktop apps (rstudio/schrodinger/firefox) became kasmvnc variants whose
+> `startup_command` loads the site module and runs the app on the host node —
+> no vncserver conversion needed.
 
 ## What changes conceptually
 
@@ -107,9 +147,11 @@ Contract differences vs v3:
       exit 1
   fi
   ```
-- **Delete base-path handling.** Jupyter's config shrinks to root_dir +
-  `allow_remote_access` + auth; no `basepath`, no nginx. (Path-based endpoints via
-  `--no-subdomain` would use the `{path}` token instead — not used by the repo's v5s.)
+- **Delete base-path handling** on subdomain platforms. Jupyter's config shrinks to
+  root_dir + `allow_remote_access` + auth; no `basepath`, no nginx. Path-based
+  endpoints (`--no-subdomain`, required on emed) keep a base path equal to
+  `/me/session/${PW_USER}/<endpoint name>` (or the `{path}` token /
+  `PW_ENDPOINT_PATH` when the app is launched by `pw endpoints run`).
 - **Apps that build absolute URLs** (n8n's `N8N_EDITOR_BASE_URL`/`WEBHOOK_URL`) read
   the public URL from **`PW_ENDPOINT_URL`**, exported by `pw endpoints run` to the
   wrapped command (also exported: `PORT`, `PW_ENDPOINT_HOST`, `PW_ENDPOINT_PATH`).

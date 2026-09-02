@@ -18,14 +18,14 @@ How this repo was assembled, and where anything older lives, is recorded in
 |---|---|---|
 | [agent-orchestrator](workflows/agent-orchestrator/) | Multi-agent orchestrator service | general |
 | [hermes-agent](workflows/hermes-agent/) | Hermes agent with auth/TCP proxies | general |
-| [jupyter](workflows/jupyter/) | Jupyter Notebook (classic) | general, noaa |
-| [jupyterlab](workflows/jupyterlab/) | JupyterLab | general, hsp, noaa, general_k8s, k8s |
-| [kasmvnc](workflows/kasmvnc/) | KasmVNC desktop (Singularity) | general, general_rstudio, hsp, noaa, noaa_rstudio, general_k8s, k8s |
+| [jupyter](workflows/jupyter/) | Jupyter Notebook (classic) | general, emed, noaa |
+| [jupyterlab](workflows/jupyterlab/) | JupyterLab | general, emed, hsp, noaa, general_k8s, k8s |
+| [kasmvnc](workflows/kasmvnc/) | KasmVNC desktop (Singularity) | general, general_rstudio, emed, emed_{rstudio, matlab, firefox, fsl, schrodinger, vmd}, hsp, noaa, noaa_rstudio, general_k8s, k8s |
 | [langflow-singularity](workflows/langflow-singularity/) | Langflow (Singularity) | hsp |
 | [librechat](workflows/librechat/) | LibreChat (+ `-all` stacks with manager & Langflow) | general, hsp, general-all, hsp-all |
 | [lite-agent](workflows/lite-agent/) | Lightweight agent worker | general |
 | [mlflow](workflows/mlflow/) | MLFlow on Kubernetes | k8s |
-| [n8n](workflows/n8n/) | n8n automation (Docker/Singularity) | general, hsp, noaa |
+| [n8n](workflows/n8n/) | n8n automation (Docker/Singularity) | general, emed, hsp, noaa |
 | [ollama](workflows/ollama/) | Ollama GGUF model server (native/container) | general, hsp, noaa |
 | [ollama-openwebui](workflows/ollama-openwebui/) | Ollama + OpenWebUI on Kubernetes | k8s |
 | [open-notebook](workflows/open-notebook/) | Open Notebook (Docker) | general |

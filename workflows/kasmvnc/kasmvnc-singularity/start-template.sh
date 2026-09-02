@@ -4,10 +4,14 @@
 # It uses resources prepared by controller.sh which runs on the controller.
 # Serves the desktop through a pw endpoint instead of a platform session:
 #   - endpoint_name / endpoint_slug: pw endpoints registration (from inputs.sh)
-#   - basepath: any non-root path; the container's nginx template renders a
-#     duplicate `location /` (and fails) when BASE_PATH is "/", while any other
-#     value is harmless because the template also proxies the root location,
-#     which is where the subdomain endpoint serves from.
+#   - pw_endpoints_args: extra flags for pw endpoints http; platforms without
+#     session subdomains (emed) pass --no-subdomain for a path-based URL
+#   - basepath: the prefix the container's nginx serves under. Subdomain
+#     endpoints serve at the root, so those variants pass any non-root value
+#     (the nginx template renders a duplicate `location /` and fails when
+#     BASE_PATH is "/", while any other value is harmless because the template
+#     also proxies the root location). Path-based endpoints pass the real
+#     /me/session/<user>/<name> prefix the platform forwards unchanged.
 
 set -ex
 
@@ -93,9 +97,21 @@ find_available_display() {
         if pgrep -f "(Xvnc|Xorg|Xvfb) :${XdisplayNumber}( |$)" > /dev/null 2>&1; then
             continue
         fi
+        # The container ports are derived from the display number, in ranges
+        # below the kernel's ephemeral window (32768+): a port from
+        # 'pw agent open-port' sat unbound for the ~1 min the entrypoint spends
+        # converting the SIF, and busy siblings (MATLAB services) stole it in
+        # that window -- three retries collided in a row on a loaded node.
+        # Derived ports cannot be stolen by ephemeral allocation and cannot
+        # collide between desktops (the display number is node-unique).
+        if netstat -aln | grep -qE "LISTEN.*:($((25900 + XdisplayNumber))|$((26900 + XdisplayNumber)))\b" 2>/dev/null; then
+            continue
+        fi
 
         export displayPort=${port}
         export DISPLAY=":${XdisplayNumber}"
+        export kasm_ws_port=$((25900 + XdisplayNumber))
+        export service_port=$((26900 + XdisplayNumber))
         return 0
     done
     return 1
@@ -103,8 +119,8 @@ find_available_display() {
 
 find_available_display || { echo "::error::No available display found"; exit 1; }
 
-# The container's nginx listens on this port; pw endpoints http exposes it below.
-service_port=$(pw agent open-port)
+# The container's nginx listens on ${service_port} (derived by
+# find_available_display); pw endpoints http exposes it below.
 
 echo "::notice::Starting KasmVNC Container..."
 
@@ -339,6 +355,19 @@ fi
 echo "::notice::Using ${CONTAINER} with image ${container_image}"
 
 USERNS_FLAG=$(runtime_userns_flag "${CONTAINER}")
+
+# The image entrypoint runs 'pkill -u $(id -u) -f Xvnc' (and killall on the XFCE
+# processes) as "stale session cleanup". In the host PID namespace that kills this
+# user's other desktops on the node: two desktops starting on one emed node killed
+# each other's Xvnc. A private PID namespace confines the cleanup to this container.
+# Probed because some sites disable PID namespaces in the runtime config.
+PID_NS_FLAG=""
+if "${CONTAINER}" exec ${USERNS_FLAG} --pid "${container_image}" /bin/true >/dev/null 2>&1; then
+    PID_NS_FLAG="--pid"
+else
+    echo "::warning::${CONTAINER} cannot create a PID namespace on this node; starting another desktop on it as the same user may kill this one"
+fi
+
 WRITABLE_TMPFS_FLAG=""
 if [ -n "${USERNS_FLAG}" ]; then
     echo "::notice::${CONTAINER} has no setuid bit, enabling --userns"
@@ -369,7 +398,7 @@ while [ ${_try} -lt ${display_tries} ]; do
     echo "::notice::Starting KasmVNC container on display :${XdisplayNumber} (image: ${container_image}, try ${_try}/${display_tries})..."
     set -x
     ${CONTAINER} run \
-        ${WRITABLE_TMPFS_FLAG} ${USERNS_FLAG} ${ETC_ENV_FLAG} \
+        ${WRITABLE_TMPFS_FLAG} ${USERNS_FLAG} ${PID_NS_FLAG} ${ETC_ENV_FLAG} \
         ${GPU_FLAG} \
         ${NV_GL_BIND_FLAGS} \
         ${MOUNT_FLAGS} \
@@ -377,7 +406,7 @@ while [ ${_try} -lt ${display_tries} ]; do
         --env DISPLAY=":${XdisplayNumber}" \
         --env BASE_PATH="${basepath}" \
         --env NGINX_PORT="${service_port}" \
-        --env KASM_PORT=$(pw agent open-port) \
+        --env KASM_PORT="${kasm_ws_port}" \
         --env VNC_DISPLAY="${XdisplayNumber}" \
         --bind /etc/passwd:/etc/passwd:ro \
         --bind /etc/group:/etc/group:ro \
@@ -391,12 +420,29 @@ while [ ${_try} -lt ${display_tries} ]; do
     kasmvnc_container_pid=$!
     echo "::notice::KasmVNC container started with PID ${kasmvnc_container_pid} (image: ${container_image})"
 
-    sleep 20
-    if kill -0 "${kasmvnc_container_pid}" 2>/dev/null; then
+    # Wait for the container's web server or its death before deciding. The
+    # entrypoint converts the SIF for about a minute before Xvnc binds its
+    # sockets, and a concurrent desktop starting on the same node can take the
+    # allocated port in that window ("vncExtInit: failed to bind socket") -- a
+    # late death like that must retry on fresh display and ports, not only an
+    # exit within the first seconds.
+    _web_up=""
+    for _i in $(seq 1 36); do
+        if ! kill -0 "${kasmvnc_container_pid}" 2>/dev/null; then
+            break
+        fi
+        if curl -s -o /dev/null "http://localhost:${service_port}/health"; then
+            _web_up=1
+            break
+        fi
+        sleep 5
+    done
+    if [ -n "${_web_up}" ] || kill -0 "${kasmvnc_container_pid}" 2>/dev/null; then
+        # Healthy, or alive but slow -- the wait loop below keeps polling it
         started=1
         break
     fi
-    echo "::warning::Container exited within 20s on display :${XdisplayNumber}"
+    echo "::warning::Container exited before its web server answered on display :${XdisplayNumber}"
 done
 
 if [ -z "${started}" ]; then
@@ -407,9 +453,9 @@ echo "::notice::KasmVNC running (image: ${container_image}, PID ${kasmvnc_contai
 
 # Register cleanup for the running container and its display.
 echo "kill ${kasmvnc_container_pid} #kasmvnc_container_pid" >> cancel.sh
-echo "pkill -TERM -f \"Xvnc :${XdisplayNumber}\"" >> cancel.sh
+echo "pkill -TERM -f \"Xvnc :${XdisplayNumber}( |\$)\"" >> cancel.sh
 echo "sleep 3" >> cancel.sh
-echo "pkill -KILL -f \"Xvnc :${XdisplayNumber}\"" >> cancel.sh
+echo "pkill -KILL -f \"Xvnc :${XdisplayNumber}( |\$)\"" >> cancel.sh
 
 sleep 5
 
@@ -465,11 +511,37 @@ run_xterm_loop | tee -a ${PW_PARENT_JOB_DIR}/xterm.out &
 run_xterm_pid=$!
 echo "kill ${run_xterm_pid} || true # run_xterm_loop" >> cancel.sh
 
+# Run a command inside the desktop's container image, attached to its display.
+# For apps the host nodes do not ship (e.g. firefox on the emed compute nodes)
+# but the image does: the running Xvnc's socket and .Xauthority live in the
+# shared container_tmp bind, so a second exec of the same image reaches the
+# same desktop.
+run_in_container() {
+    ${CONTAINER} exec ${USERNS_FLAG} ${MOUNT_FLAGS} \
+        --env DISPLAY=":${XdisplayNumber}" \
+        --env XAUTHORITY=/tmp/.Xauthority \
+        --bind $PWD/container_tmp:/tmp \
+        "${container_image}" "$@"
+}
+
+# App variants (emed_rstudio, emed_matlab, ...) pass a visible "command to load
+# the app" plus a hidden binary instead of a raw startup_command; compose them
+# here so an empty load command doesn't leave a leading ";" (a syntax error
+# under eval).
+if [ -z "${startup_command}" ] && [ -n "${service_bin}" ]; then
+    startup_command="${service_load_env:+${service_load_env}; }${service_bin}"
+fi
+
 if [ -n "${startup_command}" ]; then
     echo "::notice::Running startup command: ${startup_command}"
-    eval ${startup_command} &
+    # stdin is a read-write FIFO, which never blocks on open and never returns
+    # EOF: a console-driven GUI app (vmd) otherwise sees EOF on the backgrounded
+    # job's stdin and exits normally right after starting (verified on emed).
+    mkfifo startup-stdin.fifo 2>/dev/null || true
+    eval ${startup_command} 0<> startup-stdin.fifo &
     startup_command_pid=$!
     echo "kill ${startup_command_pid} || true # startup_command" >> cancel.sh
+    echo "rm -f $PWD/startup-stdin.fifo" >> cancel.sh
 fi
 
 # Wait for the container's nginx to answer before registering the endpoint, so
@@ -492,7 +564,7 @@ if [ -z "${web_up}" ]; then
 fi
 
 echo "::notice::Registering endpoint ${endpoint_name}"
-pw endpoints http --name "${endpoint_name}" --slug "${endpoint_slug}" --output text ${service_port} &
+pw endpoints http ${pw_endpoints_args} --name "${endpoint_name}" --slug "${endpoint_slug}" --output text ${service_port} &
 endpoint_pid=$!
 echo "kill ${endpoint_pid} || true # pw endpoints http" >> cancel.sh
 

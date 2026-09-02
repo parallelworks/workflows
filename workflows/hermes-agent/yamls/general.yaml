@@ -20,7 +20,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: app-subdir
+          branch: canary
           sparse_checkout:
             - workflows/hermes-agent/app
             - tools/utils

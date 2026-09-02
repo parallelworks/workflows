@@ -48,7 +48,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: app-subdir
+          branch: canary
           sparse_checkout:
             - workflows/librechat/${{ inputs.container_runtime }}
             - tools/oras
@@ -62,7 +62,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: app-subdir
+          branch: canary
           sparse_checkout:
             - workflows/librechat/${{ inputs.container_runtime }}
             - tools/oras
@@ -75,7 +75,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: app-subdir
+          branch: canary
           sparse_checkout:
             - tools/oras
             - workflows/langflow-singularity/app

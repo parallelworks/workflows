@@ -183,7 +183,7 @@ if [ "${langflow_enable_proxy}" = "true" ] && [ -n "${langflow_proxy_dir}" ]; th
     # Everything is merged into one directory so a single LANGFLOW_LOAD_FLOWS_PATH imports it;
     # imported flows are owned by the superuser, so the proxy discovers them as models.
     proxy_flows_import_dir="${PW_PARENT_JOB_DIR}/langflow/import-flows"
-    repo_flows_dir="${PW_PARENT_JOB_DIR}/workflows/langflow-singularity/flows"
+    repo_flows_dir="${PW_PARENT_JOB_DIR}/workflows/langflow-singularity/app/flows"
     mkdir -p "${proxy_flows_import_dir}"
     [ -d "${langflow_proxy_dir}/flows" ] && cp -f "${langflow_proxy_dir}/flows/"*.json "${proxy_flows_import_dir}/" 2>/dev/null || true
     if [ "${langflow_import_bundled_flows}" = "true" ] && [ -d "${repo_flows_dir}" ]; then

@@ -26,6 +26,11 @@ Consolidation performed 2026-08-31, revised the same day after review feedback
    `fractal-demo`→`tutorials/demo-app`, `pw_endpoints`→`tutorials/endpoint-workflows`,
    `hsp`→`tutorials/session-workflows-hsp` (all internal paths, the demo venv dir, and
    the AI-skill references re-pointed).
+6a. **Runtime files grouped under `app/`** (later review): single-implementation
+   workflows sparse-checkout `workflows/<name>/app` (scripts + support files) so runs
+   stop materializing `yamls/`, `thumbnails/`, and READMEs; multi-implementation
+   workflows already had this property via their impl subdirs. Build tooling (defs,
+   `build-container.sh`) and docs stay outside `app/`.
 6. **Session pattern dropped entirely**: `workflows/vncserver`, `workflows/langflow-host`,
    and `workflows/session_runner` were removed — legacy, no `pw` endpoints (they
    registered platform tunnel sessions). They remain in `parallelworks/interactive_session`

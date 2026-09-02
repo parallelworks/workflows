@@ -53,7 +53,7 @@ jobs:
             - workflows/librechat/${{ inputs.container_runtime }}
             - tools/oras
             - workflows/librechat/librechat-singularity-manager
-            - workflows/langflow-singularity
+            - workflows/langflow-singularity/app
       - name: Librechat Checkout
         early-cancel: any-job-failed
         if: ${{ inputs.librechat_resource.ip != inputs.langflow_resource.ip }}
@@ -78,7 +78,7 @@ jobs:
           branch: canary
           sparse_checkout:
             - tools/oras
-            - workflows/langflow-singularity
+            - workflows/langflow-singularity/app
 
   librechat_preprocessing:
     needs:
@@ -445,7 +445,7 @@ jobs:
         run: |
           set -x
           cp inputs.sh controller-${PW_JOB_ID}.sh
-          cat ${PW_PARENT_JOB_DIR}/workflows/langflow-singularity/controller.sh >> controller-${PW_JOB_ID}.sh
+          cat ${PW_PARENT_JOB_DIR}/workflows/langflow-singularity/app/controller.sh >> controller-${PW_JOB_ID}.sh
           bash controller-${PW_JOB_ID}.sh
       - name: Create Service Script
         early-cancel: any-job-failed
@@ -472,7 +472,7 @@ jobs:
 
           echo "::notice::Starting service"
           EOF
-          cat ${PW_PARENT_JOB_DIR}/workflows/langflow-singularity/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          cat ${PW_PARENT_JOB_DIR}/workflows/langflow-singularity/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
           echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
           echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
 

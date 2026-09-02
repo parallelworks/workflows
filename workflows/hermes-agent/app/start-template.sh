@@ -28,7 +28,7 @@
 ################################################################################
 set -x
 
-AGENT_DIR="${PW_PARENT_JOB_DIR}/workflows/${service_name:-hermes-agent}"
+AGENT_DIR="${PW_PARENT_JOB_DIR}/workflows/${service_name:-hermes-agent}/app"
 export PATH="${HOME}/.local/bin:${HOME}/pw:${PATH}"   # hermes + pw on PATH
 
 # Private venv python for the small resolve_model helper (see tools/utils/agent_env.sh).

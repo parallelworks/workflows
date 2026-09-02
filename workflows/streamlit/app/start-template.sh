@@ -43,7 +43,7 @@ if ! [ -f "${container_sif}" ]; then
     exit 1
 fi
 
-app_script=${app_script:-${PW_PARENT_JOB_DIR}/workflows/streamlit/demo/app.py}
+app_script=${app_script:-${PW_PARENT_JOB_DIR}/workflows/streamlit/app/demo/app.py}
 if ! [ -f "${app_script}" ]; then
     echo "::error title=Error::Streamlit app script ${app_script} not found"
     exit 1

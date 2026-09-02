@@ -19,7 +19,7 @@
 ################################################################################
 set -x
 
-AGENT_DIR="${PW_PARENT_JOB_DIR}/workflows/${service_name:-lite-agent}"
+AGENT_DIR="${PW_PARENT_JOB_DIR}/workflows/${service_name:-lite-agent}/app"
 
 export PATH="${HOME}/pw:${PATH}"
 # Shared resolve_model utility, sparse-checked-out to tools/utils (see the YAML).

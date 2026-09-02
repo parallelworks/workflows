@@ -58,6 +58,16 @@ f_set_up_conda_from_yaml() {
     echo "::notice::Sourcing Conda SH <${CONDA_SH}>"
     source ${CONDA_SH}
 
+    # A conda installation staged in a shared software directory is read-only for
+    # accounts that cannot write there; activate the staged environment as it is
+    # instead of failing to update it (the jupyter check below still fails loud
+    # when the staged environment cannot serve)
+    if [ ! -w "${CONDA_DIR}" ]; then
+        echo "::notice::${CONDA_DIR} is not writable by this account; using the staged environment <${CONDA_ENV}> as is"
+        conda activate ${CONDA_ENV}
+        return
+    fi
+
     if ! conda env list | grep -q "${CONDA_ENV}"; then
         echo "::notice::Creating Conda Environment <${CONDA_ENV}>"
         conda create --name ${CONDA_ENV}

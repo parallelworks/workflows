@@ -51,10 +51,44 @@ jobs:
         run: |
           source inputs.sh
           set -x
-          # This script prepares the target host and always runs in the controller node
-          if [ -z "${service_parent_install_dir}" ] && [ -d /contrib/pw ]; then
-            echo "::notice title=Install Directory::Using Install Directory: /contrib/pw"
-            echo "service_parent_install_dir=/contrib/pw" >> inputs.sh
+          # This script prepares the target host and always runs in the controller node.
+          # Large downloads can exceed the ${HOME} quota on the NOAA systems, so the
+          # default install directory is a shared per-cluster software directory where
+          # one staged copy serves every user. Only Alvaro.Vidal may write there: that
+          # account always targets the shared directory, every other account reuses it
+          # read-only when the files are already staged there and falls back to
+          # ${HOME}/pw otherwise.
+          if [ -n "${service_parent_install_dir}" ]; then
+            echo "::notice title=Install Directory::Using Install Directory from the input form: ${service_parent_install_dir}"
+          else
+            if [ "existing" != "${{ inputs.resource.provider }}" ]; then
+              # Cloud clusters have no shared software directory
+              PROJECTS_HOME="${HOME}/pw"
+            else
+              case "${{ inputs.resource.ip }}" in
+                hfe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Hera
+                mfe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Mercury
+                ufe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Ursa
+                gaea[0-9]*.ncrc.gov) PROJECTS_HOME=/usw/rdhpcs/software/pw ;; # Gaea
+                an[0-9]*.princeton.rdhpcs.noaa.gov) PROJECTS_HOME="${HOME}/pw" ;; # PPAN
+                # Unknown host: keep the old default of /contrib/pw when present
+                *) [ -d /contrib/pw ] && PROJECTS_HOME=/contrib/pw || PROJECTS_HOME="${HOME}/pw" ;;
+              esac
+            fi
+            if [ "$(whoami)" = "Alvaro.Vidal" ]; then
+              if mkdir -p "${PROJECTS_HOME}" 2> /dev/null; then
+                chmod a+rX "${PROJECTS_HOME}" 2> /dev/null || true
+              else
+                echo "::warning title=Install Directory::Cannot create ${PROJECTS_HOME}; falling back to ${HOME}/pw"
+                PROJECTS_HOME="${HOME}/pw"
+              fi
+            elif ! [ -f "${PROJECTS_HOME}/${service_conda_install_dir}/etc/profile.d/conda.sh" ]; then
+              # Not staged in the shared directory yet and only Alvaro.Vidal can put it there
+              PROJECTS_HOME="${HOME}/pw"
+            fi
+            echo "::notice title=Install Directory::Using Install Directory: ${PROJECTS_HOME}"
+            echo "export PROJECTS_HOME=\"${PROJECTS_HOME}\"" >> inputs.sh
+            echo "export service_parent_install_dir=\"${PROJECTS_HOME}\"" >> inputs.sh
           fi
       - name: Controller Preprocessing
         run: |
@@ -290,10 +324,10 @@ jobs:
           parent_install_dir:
             label: Parent Install Directory
             type: string
-            default: ${HOME}/pw/software
+            optional: true
             hidden: ${{ inputs.service.conda_install == false || ('existing' == inputs.resource.provider &&  inputs.service.use_conda == false) }}
             ignore: ${{ .hidden }}
-            tooltip: Software dependencies are installed in this directory. Defaults to ~/pw/software. Ensure the directory has sufficient space!
+            tooltip: 'Software dependencies are installed in this directory. Default: the shared cluster software directory (/contrib/pw on Hera, Mercury, and Ursa; /usw/rdhpcs/software/pw on Gaea) when the conda installation is already staged there or your account maintains it; otherwise ${HOME}/pw. Ensure the directory has sufficient space!'
           conda_install_dir:
             label: Name of the Conda Installation Directory
             type: string
@@ -312,7 +346,7 @@ jobs:
           load_env_tag_cloud:
             label: Command to load Jupyter Notebook to the PATH
             type: string
-            default: source ${HOME}/pw/software/.miniconda3cn/etc/profile.d/conda.sh; conda activate base
+            default: source ${HOME}/pw/.miniconda3cn/etc/profile.d/conda.sh; conda activate base
             hidden: ${{ inputs.service.conda_install == true || ('existing' == inputs.resource.provider &&  inputs.service.use_conda == false) }}
             optional: ${{ .hidden }}
             ignore: ${{ .hidden }}

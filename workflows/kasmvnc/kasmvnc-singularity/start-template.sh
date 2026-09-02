@@ -523,9 +523,14 @@ fi
 
 if [ -n "${startup_command}" ]; then
     echo "::notice::Running startup command: ${startup_command}"
-    eval ${startup_command} &
+    # stdin is a read-write FIFO, which never blocks on open and never returns
+    # EOF: a console-driven GUI app (vmd) otherwise sees EOF on the backgrounded
+    # job's stdin and exits normally right after starting (verified on emed).
+    mkfifo startup-stdin.fifo 2>/dev/null || true
+    eval ${startup_command} 0<> startup-stdin.fifo &
     startup_command_pid=$!
     echo "kill ${startup_command_pid} || true # startup_command" >> cancel.sh
+    echo "rm -f $PWD/startup-stdin.fifo" >> cancel.sh
 fi
 
 # Wait for the container's nginx to answer before registering the endpoint, so

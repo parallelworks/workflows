@@ -54,14 +54,12 @@ if ! which singularity &> /dev/null; then
         echo "::notice::Loaded singularity module"
     else
         echo "::error title=Error::singularity/apptainer not found in PATH and could not be loaded via module"
-        pw workflows runs cancel ${PW_RUN_SLUG}
         exit 1
     fi
 fi
 
 if ! [ -f "${container_sif}" ]; then
     echo "::error title=Error::Missing container image ${container_sif} -- controller.sh did not run?"
-    pw workflows runs cancel ${PW_RUN_SLUG}
     exit 1
 fi
 
@@ -83,7 +81,7 @@ else
     if ! [ -d "${sandbox_dir}" ]; then
         # Offline-safe: pure local unpack of the already-downloaded SIF
         singularity build --fakeroot --force --sandbox "${sandbox_dir}" "${container_sif}" || \
-            { echo "::error title=Error::sandbox build failed"; pw workflows runs cancel ${PW_RUN_SLUG}; exit 1; }
+            { echo "::error title=Error::sandbox build failed"; exit 1; }
     fi
     container_ref="${sandbox_dir}"
 fi
@@ -125,7 +123,6 @@ sleep 5
 if ! kill -0 ${INDEXER_PID} 2>/dev/null; then
     echo "::error title=Indexer died::indexer exited at startup; last log lines follow"
     tail -20 "${INDEXER_LOG}"
-    pw workflows runs cancel ${PW_RUN_SLUG}
     exit 1
 fi
 
@@ -137,8 +134,5 @@ pw endpoints run ${pw_endpoints_args} -- ${CONTAINER_RUN} python3 "${SERVICE_DIR
 
 if [ $? -ne 0 ]; then
     echo "::error title=Error::pw endpoints command failed"
-    # Fail loud: without this, wait_for_endpoint polls forever for an endpoint
-    # that will never register
-    pw workflows runs cancel ${PW_RUN_SLUG}
     exit 1
 fi

@@ -60,8 +60,5 @@ if [ $? -ne 0 ]; then
         exit 0
     fi
     echo "::error title=Error::pw endpoints command failed"
-    # Fail loud: without this, wait_for_endpoint polls forever for an endpoint
-    # that will never register
-    pw workflows runs cancel ${PW_RUN_SLUG}
     exit 1
 fi

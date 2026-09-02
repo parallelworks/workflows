@@ -488,9 +488,6 @@ for i in $(seq 1 60); do
 done
 if [ -z "${web_up}" ]; then
     echo "::error title=Error::KasmVNC web server never answered on port ${service_port}"
-    # Fail loud: without this, wait_for_endpoint polls forever for an endpoint
-    # that will never register
-    pw workflows runs cancel ${PW_RUN_SLUG}
     exit 1
 fi
 
@@ -509,8 +506,5 @@ echo "::warning::Container or endpoint client exited; tearing down"
 # trap finds nothing left to run.
 bash cancel.sh || true
 echo "::endgroup::"
-# No-op if the run already completed (endpoint was up); cancels it if the
-# endpoint client died before ever registering.
-pw workflows runs cancel ${PW_RUN_SLUG} || true
 exit 1
 

@@ -88,6 +88,17 @@
 > runs the container with `--pid` (probed) and anchors its own `pkill -f` patterns —
 > verified with two runs pinned to one node via `#SBATCH --nodelist`, both online,
 > deleting one leaves the other serving.
+>
+> All five emed services follow this recipe (verified live 2026-09-02, all six
+> endpoints online at once): kasmvnc passes the base path to the container's nginx;
+> jupyter/jupyterlab pass the **`{path}` token** as `base_url` in the `pw endpoints
+> run` command (it renders `/` on subdomain endpoints, so the shared start template
+> change is safe for every variant); n8n's launcher sets `N8N_PATH` from
+> `PW_ENDPOINT_PATH` (same `/` default); code-server serves relative URLs, so its
+> variant uses `--strip-path` instead of a base path. The legacy vncserver emed
+> desktop apps (rstudio/schrodinger/firefox) became kasmvnc variants whose
+> `startup_command` loads the site module and runs the app on the host node —
+> no vncserver conversion needed.
 
 ## What changes conceptually
 

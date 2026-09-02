@@ -147,9 +147,10 @@ generations are architecturally incompatible — the old ones serve the injected
 so these stay in `interactive_session` until converted; the conversion guide is the
 skill's `references/session-to-endpoint-upgrade.md`):
 
-- `jupyter-host/emed_v4.yaml`, `jupyterlab-host/emed_v4.yaml`, `n8n/emed_v4.yaml`,
-  `webshell/hsp_v4.yaml`, (`kasmvnc-container/emed.yaml` was converted 2026-09-02 →
-  `workflows/kasmvnc/yamls/emed.yaml`; see the per-workflow map),
+- `webshell/hsp_v4.yaml` (the emed variants were all converted 2026-09-02: kasmvnc,
+  jupyter-host, jupyterlab-host, n8n, openvscode → `workflows/<name>/yamls/emed.yaml`,
+  and the vncserver emed desktop apps → kasmvnc `emed_{rstudio,schrodinger,firefox}.yaml`;
+  see the per-workflow map),
   `kasmvnc-container/general-rstudio.yaml`, `kasmvnc-container/northrop.yaml`
   (air-gapped local-copy variant), `langflow-singularity/general_v4.yaml`,
   `librechat-singularity-manager/{general,hsp}.yaml` (the standalone manager
@@ -282,10 +283,10 @@ ollama on awsgpu as regressions. All PASS with HTTP verified and endpoints torn 
 rag-service still fails at its pre-existing private ghcr package — after the `app/`
 controller path resolved and the pull retried 3 times.
 
-Static-only (cannot run from here): all `hsp`/`noaa` variants and the `emed` variants
-except `kasmvnc/yamls/emed.yaml` (run live on `cluster.einsteinmed.edu`, 2026-09-02:
-endpoint online, HTTP + websocket verified through the platform, delete and cancel
-teardowns clean),
+Static-only (cannot run from here): all `hsp`/`noaa` variants (the `emed` variants
+were all run live on `cluster.einsteinmed.edu`, 2026-09-02: endpoints online, HTTP +
+websocket verified through the platform; kasmvnc additionally had delete and cancel
+teardowns verified clean),
 `langflow-singularity/hsp.yaml` (its scripts were exercised live by general-all),
 and the k8s variants incl. `mlflow`/`ollama-openwebui` (no kubernetes cluster
 attached) — YAML parse + path-existence + reference checks only. n8n-docker and
@@ -298,6 +299,13 @@ ollama-gguf-container implementation paths not separately exercised.
 2. Migrate `workflow/batch/` in a follow-up?
 3. Thumbnail guesses in judgment call 6 — confirm against the actual registrations.
 4. Converting the left-behind legacy variants (emed etc.) to the endpoint pattern so
-   they can join this repo — who/when? **In progress (2026-09-02):** the emed variants
-   are being converted one at a time and tested on `cluster.einsteinmed.edu`; kasmvnc
-   is done (`workflows/kasmvnc/yamls/emed.yaml`, the reference path-based conversion).
+   they can join this repo — who/when? **emed done (2026-09-02):** kasmvnc (+ the
+   rstudio/schrodinger/firefox desktop-app variants replacing the legacy vncserver
+   emed YAMLs), jupyter, jupyterlab, n8n, and openvscode all converted to path-based
+   endpoints (`--no-subdomain`) and verified live on `cluster.einsteinmed.edu`
+   (schrodinger by module/binary check; it is mechanically identical to the other two
+   desktop variants). The emed marketplace registrations still point at
+   `interactive_session` and must be re-pointed at `workflows/<name>/yamls/emed*.yaml`
+   here once this lands on canary. Legacy `vncserver/emed_{fsl,matlab,vmd}_v4.yaml` and
+   the plain-desktop `emed_v4.yaml` have no replacement yet — same recipe: a kasmvnc
+   variant with the right `startup_command` (fsl/matlab/vmd modules exist on the cluster).

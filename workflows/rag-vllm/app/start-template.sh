@@ -195,14 +195,12 @@ until curl -sf -o /dev/null --max-time 5 "${gate_url}"; do
         stop_log_stream
         echo "::error title=Error::service exited during startup; last log lines:"
         tail -50 "${svc_log}"
-        pw workflows runs cancel ${PW_RUN_SLUG}
         exit 1
     fi
     if [ ${elapsed} -ge 3600 ]; then
         stop_log_stream
         echo "::error title=Error::service did not start within 60 minutes; last log lines:"
         tail -50 "${svc_log}"
-        pw workflows runs cancel ${PW_RUN_SLUG}
         exit 1
     fi
     sleep 10
@@ -220,9 +218,6 @@ pw endpoints http --link ${pw_endpoints_args} -o text ${endpoint_port}
 
 if [ $? -ne 0 ]; then
     echo "::error title=Error::pw endpoints command failed"
-    # Fail loud: without this, wait_for_endpoint polls forever for an
-    # endpoint that will never register
-    pw workflows runs cancel ${PW_RUN_SLUG}
     exit 1
 fi
 echo "::endgroup::"

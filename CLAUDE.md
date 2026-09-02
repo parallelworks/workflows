@@ -110,6 +110,11 @@ those platforms — validate them statically.
   and its URL answers. The run completes while the service keeps running.
 - **Tear down:** `pw endpoints delete <name>` kills the remote process tree; verify
   with `ps -x` (daemonizing apps that re-parent to PID 1 can survive).
+- **Verify cancel cleanup when developing a workflow:** cancel a run mid-flight
+  (`pw workflows runs cancel <slug>`) and confirm `cancel.sh` ran — no leftover
+  processes (`ps -x`), scheduler jobs (`squeue`/`qstat`), or container instances
+  (`singularity instance list`, `docker ps`). Write `cancel.sh` first thing in the
+  start script so a cancel at any moment finds it.
 - **Debug from the job dir** on the execution node — `~/pw/jobs/<run-slug>/` for
   CLI file runs, `~/pw/jobs/<workflow-name>/<run-number, 5 digits>/` for registered
   workflows:

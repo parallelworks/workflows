@@ -173,6 +173,13 @@ pw workflows run /abs/path/workflows/<name>/yamls/general.yaml \
 - **Tear down when done:** `pw endpoints delete <name>` kills the whole remote
   process tree; verify with `ps -x | grep <service>`. Beware daemonizing apps that
   re-parent to PID 1 (e.g. RStudio's `rsession`) — they can survive the tree kill.
+- **Verify cleanup on CANCEL — a required test, not an afterthought:** cancel one run
+  mid-flight (`pw workflows runs cancel <slug>` while the service is starting or
+  serving) and confirm `cancel.sh` actually ran: no service processes (`ps -x`), no
+  scheduler job left (`squeue`/`qstat` when `scheduler:true`), no container instances
+  (`singularity instance list`, `docker ps`), no stray listeners. If anything
+  survives, fix `cancel.sh` (and write it at the very top of the start script so a
+  cancel at any moment finds it) before calling the workflow done.
 
 ## Step 4 — Debug from the job directory and processes
 

@@ -72,6 +72,10 @@ pw workflows run "$PWD/workflows/webshell/yamls/general.yaml" -i '{"cluster":{"r
 
 (Pass the YAML as an **absolute path** — the CLI parses relative paths as git hosts.)
 
+When testing a workflow, also verify cleanup: cancel a run mid-flight and confirm
+nothing is left behind (processes, scheduler jobs, containers), and delete test
+endpoints when done — see [DeveloperGuide.md](DeveloperGuide.md).
+
 Every workflow registers a **`pw` endpoint** (check `pw endpoints list`).
 Note that workflow YAMLs pull this repo from GitHub at runtime
 (`parallelworks/checkout` + subworkflow `uses:`), so local YAML edits only take full

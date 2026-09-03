@@ -77,7 +77,13 @@
 > ${PW_USER}/kasmvnc-${PW_RUN_SLUG}` → the container's `BASE_PATH`). Keep the
 > `PW_PLATFORM_HOST` fallback only when the slug needs the host (kasmvnc's noVNC slug
 > carries `host=${PW_PLATFORM_HOST}${basepath}/` so the websocket opens under the
-> prefix; both `…/websockify` and `…//websockify` answer 101 through the platform). Two
+> prefix; both `…/websockify` and `…//websockify` answer 101 through the platform).
+> Emed's shared install root is **/public/codelab** (the counterpart of hsp's
+> `${PROJECTS_HOME}/hsp` and noaa's `/contrib/pw`): variants that download software
+> resolve it in a "Set Up Install Parent Directory" step (present → use it, absent →
+> home default); jupyter/jupyterlab keep installing under the user's home. The dir
+> lists as root:root without group write but IS user-writable (ACLs) — trust a touch
+> probe, not `ls -ld`. Two
 > catches: (1) a **stale ghcr login in `~/.docker/config.json`** on the cluster made
 > `oras pull` answer `denied` for a public package — `tools/oras/libs.sh` now pulls
 > anonymously first; (2) **curl is a bad websocket probe** — it reported 404 on

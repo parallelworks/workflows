@@ -26,6 +26,14 @@ service_tgz_path=${service_parent_install_dir}/${service_tgz_basename}
 service_install_dir=${service_parent_install_dir}/${service_tgz_stem}
 service_exec=${service_install_dir}/bin/code-server
 
+# Mirror the controller's fallback so both resolve the same install when the
+# shared parent dir is not writable and holds no cached install
+if [ ! -f "${service_exec}" ] && [ ! -w "${service_parent_install_dir}" ]; then
+    service_parent_install_dir=${HOME}/pw/software
+    service_tgz_path=${service_parent_install_dir}/${service_tgz_basename}
+    service_install_dir=${service_parent_install_dir}/${service_tgz_stem}
+    service_exec=${service_install_dir}/bin/code-server
+fi
 
 # SET DEFAULTS:
 if [ -z ${service_directory} ]; then

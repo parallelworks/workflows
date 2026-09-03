@@ -20,5 +20,4 @@ service keeps running; stop it with `pw endpoints delete`.
   conda environment YAML. Optional Julia and R kernels.
 - Or skip installation and point at an existing environment.
 
-Variants in `yamls/`: `general`, `emed`, `noaa`. NOAA on-prem notes:
-[noaa-onprem.md](noaa-onprem.md).
+NOAA on-prem notes: [noaa-onprem.md](noaa-onprem.md).

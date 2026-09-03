@@ -19,5 +19,3 @@ existing one.
 
 Canceling the run deletes the Deployment and Service. A new PVC is also
 deleted unless you set **Persist PVC After Completion**.
-
-Only variant: `yamls/k8s.yaml`.

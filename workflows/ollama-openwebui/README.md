@@ -24,5 +24,3 @@ from both deployments.
 Canceling the run deletes both Deployments and Services. A new PVC is also
 deleted unless you set **Persist PVC After Completion** — persist it to avoid
 re-downloading models on the next run.
-
-Only variant: `yamls/k8s.yaml`.

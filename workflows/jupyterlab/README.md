@@ -22,5 +22,4 @@ service keeps running; stop it with `pw endpoints delete`.
   or paste your own conda environment YAML.
 - Or skip installation and point at an existing environment.
 
-Variants in `yamls/`: `general`, `emed`, `hsp`, `noaa`, plus Kubernetes
-variants — see [README_k8s.md](README_k8s.md) for those.
+For running JupyterLab on Kubernetes, see [README_k8s.md](README_k8s.md).

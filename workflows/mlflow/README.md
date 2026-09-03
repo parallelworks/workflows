@@ -1,10 +1,23 @@
-## MLFlow on Kubernetes 
-This workflow launches MLFlow on a Kubernetes cluster using a user-specified image and resource settings. 
+# MLflow on Kubernetes
 
-### Quick Start
-- **Select a Kubernetes Cluster:** Choose your target K8s cluster.
-- **Set Namespace:** Specify a namespace (e.g., default).
-- **Choose an Image:** Default is `ubuntu/mlflow:2.1.1_1.0-22.04`.
-- **Configure Resources:** Set CPU, memory, and optional GPU requests/limits.
-- **Run the Workflow:** Deploy MLFlow and access it via a web interface.
+Deploys the MLflow tracking UI on a Kubernetes cluster and exposes it through
+a platform session.
 
+## How it works
+
+The workflow authenticates `kubectl` against the selected cluster, creates a
+Deployment and Service from the chosen image (default
+`ubuntu/mlflow:2.1.1_1.0-22.04`, running `mlflow ui`), waits for the pod to be
+ready, and attaches the session to the service port (default 5000). Logs
+stream into the run for the life of the deployment.
+
+Storage: a PersistentVolumeClaim is mounted at the configured mount path
+(default `/mnt`) — create a new PVC (size, storage class) or select an
+existing one.
+
+## Cleanup
+
+Canceling the run deletes the Deployment and Service. A new PVC is also
+deleted unless you set **Persist PVC After Completion**.
+
+Only variant: `yamls/k8s.yaml`.

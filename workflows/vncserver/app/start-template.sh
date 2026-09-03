@@ -16,6 +16,8 @@
 #   - password: vestigial (web basic auth is disabled; the endpoint already
 #     requires platform login), but the viewer accepts it in the URL
 #   - service_desktop: -select-de value for the vncserver wrapper (gnome)
+#   - service_load_env / service_bin (app variants): command that puts the app
+#     on the PATH (module load ...) and the binary to run on the desktop
 
 set -o pipefail
 set -x
@@ -115,6 +117,28 @@ if [ -z "${web_up}" ]; then
     bash cancel.sh || true
     pw workflows runs cancel ${PW_RUN_SLUG}
     exit 1
+fi
+
+# App variants (emed_rstudio, emed_matlab, ...) pass a "command to load the
+# app" plus a binary; both run natively on this node against the desktop's
+# display. Composed so an empty load command doesn't leave a leading ";".
+if [ -n "${service_bin}" ]; then
+    startup_command="${service_load_env:+${service_load_env}; }${service_bin}"
+    # X can accept connections slightly after the web server answers
+    for _i in $(seq 1 12); do
+        xset q >/dev/null 2>&1 && break
+        sleep 5
+    done
+    echo "::notice::Running startup command: ${startup_command}"
+    # stdin is a read-write FIFO, which never returns EOF: a console-driven GUI
+    # app (vmd) otherwise sees EOF on the backgrounded job's stdin and exits
+    # normally right after starting. A missing binary only logs an error in
+    # run.out; the desktop itself keeps serving.
+    mkfifo startup-stdin.fifo 2>/dev/null || true
+    eval ${startup_command} 0<> startup-stdin.fifo &
+    startup_command_pid=$!
+    echo "kill ${startup_command_pid} || true # startup_command" >> cancel.sh
+    echo "rm -f $PWD/startup-stdin.fifo" >> cancel.sh
 fi
 
 echo "::notice::Registering endpoint ${endpoint_name}"

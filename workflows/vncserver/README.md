@@ -41,9 +41,22 @@ workflows; the password in the URL is vestigial. Xvnc listens on
 
 ## Variants
 
-| YAML | Platform |
+| YAML | What it starts |
 |---|---|
-| `yamls/emed.yaml` | `cluster.einsteinmed.edu` (path-based endpoint, `--no-subdomain --strip-path`) |
+| `yamls/emed.yaml` | plain GNOME desktop |
+| `yamls/emed_rstudio.yaml` | `module load rstudio; rstudio` |
+| `yamls/emed_matlab.yaml` | `module load matlab; matlab -desktop` |
+| `yamls/emed_firefox.yaml` | `firefox` (must exist on the node) |
+| `yamls/emed_fsl.yaml` | `module load fsl/6.0.5_cpu; fsl` |
+| `yamls/emed_schrodinger.yaml` | `module load schrodinger; maestro` |
+| `yamls/emed_vmd.yaml` | `module load vmd; vmd` |
+
+All target `cluster.einsteinmed.edu` (path-based endpoint, `--no-subdomain
+--strip-path`). The app variants expose a visible "Command to load X" form
+field plus a hidden binary; the app runs natively on the compute node against
+the desktop's display, with stdin on a FIFO so console-driven GUIs (vmd)
+survive backgrounding. A missing binary only logs an error; the desktop keeps
+serving.
 
 The legacy multi-platform generation of this workflow (TigerVNC/TurboVNC
 detection, noVNC proxy, nginx, rootless docker) lives on in

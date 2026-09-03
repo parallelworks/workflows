@@ -33,7 +33,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [rag-service](workflows/rag-service/) | RAG search/index service | general |
 | [rag-vllm](workflows/rag-vllm/) | vLLM inference server + optional RAG stack | general, hsp, noaa |
 | [streamlit](workflows/streamlit/) | Streamlit apps (Singularity) | general, hsp |
-| [vncserver](workflows/vncserver/) | Host desktop (KasmVNC, no container) | emed |
+| [vncserver](workflows/vncserver/) | Host desktop (KasmVNC, no container) | emed, emed_{rstudio, matlab, firefox, fsl, schrodinger, vmd} |
 | [webshell](workflows/webshell/) | Web terminal (ttyd) | general, noaa |
 
 `librechat-singularity-manager` is a component of the librechat `-all` workflows

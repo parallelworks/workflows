@@ -711,7 +711,7 @@ configurations:
           qos: gpu
           # DefaultTime is 5 minutes on every Ursa partition, so an explicit
           # walltime is mandatory
-          time: '08:00:00'
+          time: '02:00:00'
       model:
         source: local
         # gpt-oss-120b ships mxfp4-quantized (~64GiB of weights), so it fits

@@ -77,7 +77,7 @@ jobs:
             echo "${{ inputs.slurm.scheduler_directives }}" >> headers.sh
           fi
 
-          if [[ ${{ inputs.resource.provider }} == 'existing' ]]; then
+          if [[ ${{ inputs.resource.provider }} == 'existing' || ${{ inputs.resource.provider }} == 'managed-cluster' ]]; then
             echo "#SBATCH --mem=${{ inputs.slurm.mem }}" >> headers.sh
             echo "#SBATCH --cpus-per-task=${{ inputs.slurm.cpus_per_task }}" >> headers.sh
           fi
@@ -591,8 +591,8 @@ jobs:
       slurm:
         type: group
         label: SLURM Directives
-        hidden: ${{ inputs.resource.provider == 'existing' && inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
-        ignore: ${{ inputs.resource.provider == 'existing' && inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
+        hidden: ${{ (inputs.resource.provider == 'existing' || inputs.resource.provider == 'managed-cluster') && inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
+        ignore: ${{ (inputs.resource.provider == 'existing' || inputs.resource.provider == 'managed-cluster') && inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
         items:
           slurm_options:
             type: dropdown
@@ -644,14 +644,14 @@ jobs:
             max: 32
             default: 1
             tooltip: '--cpus-per-task=value slurm directive'
-            ignore: ${{ 'existing' != inputs.resource.provider }}
+            ignore: ${{ ('existing' != inputs.resource.provider && 'managed-cluster' != inputs.resource.provider) }}
             hidden: ${{ .ignore }}
           mem:
             type: dropdown
             label: Minimum total memory required
             default: 8GB
             tooltip: '--mem=value slurm directive'
-            hidden: ${{ 'existing' != inputs.resource.provider }}
+            hidden: ${{ ('existing' != inputs.resource.provider && 'managed-cluster' != inputs.resource.provider) }}
             ignore: ${{ .hidden }}
             options:
                - 8GB
@@ -664,7 +664,7 @@ jobs:
           gres_gpu_default:
             type: number
             label: Number of GPUs
-            ignore: ${{ ( inputs.slurm.partition_default != 'gpu' && inputs.slurm.partition_default != 'gpu-quick' ) || 'existing' != inputs.resource.provider  }}
+            ignore: ${{ ( inputs.slurm.partition_default != 'gpu' && inputs.slurm.partition_default != 'gpu-quick' ) || ('existing' != inputs.resource.provider && 'managed-cluster' != inputs.resource.provider)  }}
             hidden: ${{ .ignore }}
             min: 1
             max: 4
@@ -673,7 +673,7 @@ jobs:
           gres_gpu_hpc4:
             type: number
             label: Number of GPUs
-            hidden: ${{ ( inputs.slurm.partition_hpc4 != 'gpu' && inputs.slurm.partition_hpc4 != 'gpu-quick' && inputs.slurm.partition_hpc4 != 'gpu-h200' ) || 'existing' != inputs.resource.provider  }}
+            hidden: ${{ ( inputs.slurm.partition_hpc4 != 'gpu' && inputs.slurm.partition_hpc4 != 'gpu-quick' && inputs.slurm.partition_hpc4 != 'gpu-h200' ) || ('existing' != inputs.resource.provider && 'managed-cluster' != inputs.resource.provider)  }}
             ignore: ${{ .hidden }}
             optional: ${{ .hidden }}
             min: 1

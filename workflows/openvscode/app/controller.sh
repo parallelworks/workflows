@@ -112,6 +112,19 @@ service_exec=${service_install_dir}/bin/code-server
 
 service_copilot_vsix_path=${service_parent_install_dir}/GitHub.copilot-latest.vsix
 
+# A shared parent dir (emed's /public/codelab) can be readable but not writable:
+# use it when the install is already cached there, otherwise fall back to the
+# user's home like the container controllers do.
+if [ ! -f "${service_exec}" ] && [ ! -w "${service_parent_install_dir}" ]; then
+    echo "::warning::${service_exec} not found and no write permission to ${service_parent_install_dir}. Resetting to ${HOME}/pw/software."
+    service_parent_install_dir=${HOME}/pw/software
+    mkdir -p ${service_parent_install_dir}
+    service_tgz_path=${service_parent_install_dir}/${service_tgz_basename}
+    service_install_dir=${service_parent_install_dir}/${service_tgz_stem}
+    service_exec=${service_install_dir}/bin/code-server
+    service_copilot_vsix_path=${service_parent_install_dir}/GitHub.copilot-latest.vsix
+fi
+
 echo "::group::Code Server Installation"
 if [ ! -f ${service_exec} ]; then
     echo "::warning::Executable ${service_exec} not found"

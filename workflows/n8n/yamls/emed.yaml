@@ -27,7 +27,6 @@ jobs:
           # path-based endpoint under /me/session/<user>/<name>/.
           cat <<'EOF' >> inputs.sh
           PATH=$HOME/pw:$PATH
-          service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
           n8n_image_tag="${{ inputs.service.n8n_image_tag }}"
           n8n_data_dir="${{ inputs.service.n8n_data_dir }}"
           pw_endpoints_args="--no-subdomain --name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
@@ -38,6 +37,24 @@ jobs:
           # Prepend 'export ' to each VAR= assignment line only, not to the
           # continuation lines of a multi-line (editor) value
           sed -i -E 's/^([A-Za-z_][A-Za-z0-9_]*=)/export \1/' inputs.sh
+      - name: Set Up Install Parent Directory
+        run: |
+          set -x
+          # emed clusters share installed software under /public/codelab -- the
+          # emed counterpart of hsp's ${PROJECTS_HOME}/hsp (jupyter and
+          # jupyterlab keep their installs under the user's home instead). Fall
+          # back to the home default when the directory is absent (a non-emed
+          # cluster); the controller and start scripts additionally fall back
+          # per artifact when it is not writable and the artifact is not
+          # already cached in it.
+          if [ -d /public/codelab ]; then
+            emed_install_dir=/public/codelab
+          else
+            echo "::warning title=Install Directory::/public/codelab not found - falling back to ${HOME}/pw/software"
+            emed_install_dir=${HOME}/pw/software
+          fi
+          echo "::notice title=Install Directory::Using Install Directory: ${emed_install_dir}"
+          echo "export service_parent_install_dir=${emed_install_dir}" >> inputs.sh
       - name: Controller Preprocessing
         run: |
           set -x
@@ -299,10 +316,6 @@ jobs:
             type: string
             hidden: true
             default: n8n
-          parent_install_dir:
-            type: string
-            hidden: true
-            default: /public/codelab/singularity
           container_runtime:
             type: string
             hidden: true

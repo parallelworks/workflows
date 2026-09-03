@@ -1,15 +1,25 @@
-## JupyterLab Interactive Session
-This workflow starts a JupyterLab server [interactive session](../../README.md).
+# JupyterLab
 
+Starts a JupyterLab server on a compute cluster and serves it through a `pw`
+endpoint named `jupyterlab-host-<run-slug>`. The run stays green while the
+service keeps running; stop it with `pw endpoints delete`.
 
-### Dask Integration on Parallel Works
-Refer to the included Jupyter notebook at `jupyterlab-host/dask-extension-jupyterlab-demo.ipynb` for a practical guide illustrating:
+## How it works
 
-1. Deployment of Dask on a SLURM cluster using the [SLURMCluster](https://jobqueue.dask.org/en/latest/generated/dask_jobqueue.SLURMCluster.html) object.
-2. Data transfer to and from a PW storage resource, corresponding to an AWS S3 bucket. Authentication is streamlined through short-term credentials.
-3. Integration of the [Dask extension for JupyterLab](https://github.com/dask/dask-labextension)
+1. `app/controller.sh` runs on the login node: installs Miniconda and
+   JupyterLab under the parent install directory (default `${HOME}/pw/software`)
+   if missing, or loads an existing environment via the command you provide.
+2. `app/start-template.sh` runs on the login node or a scheduler job
+   (SLURM/PBS, your choice in the form) and launches `jupyter-lab` behind
+   `pw endpoints run`.
 
-A sample YAML file outlining Dask dependencies for PW is provided at `jupyterlab-host/dask-extension-jupyterlab.yaml`. These dependencies are automatically installed by selecting the input form parameters displayed in the screenshot below. Alternatively, you have the option to use your own YAML file.
+## Form options
 
-![Parallel Works ACTIVATE input form](dask-input-form.png)
+- Start directory for the lab UI (default `${HOME}`).
+- Installation: pinned JupyterLab release, latest versions, Dask dependencies
+  for PW (from `app/dask-extension-jupyterlab.yaml`, including the
+  [Dask JupyterLab extension](https://github.com/dask/dask-labextension)),
+  or paste your own conda environment YAML.
+- Or skip installation and point at an existing environment.
 
+For running JupyterLab on Kubernetes, see [README_k8s.md](README_k8s.md).

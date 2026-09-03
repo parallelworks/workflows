@@ -1,7 +1,16 @@
 # Script Submitter
 
-The script submitter is a subworkflow that handles script submission to compute clusters.
+Runs a user-supplied script on a compute cluster over SSH, either directly on
+the login node or submitted through SLURM/PBS. It works standalone (with its
+own input form) but its main role in this repo is as the shared **subworkflow**
+every endpoint workflow submits its service script through.
 
-Each version of the script submitter is stored in its own directory (e.g., `v3.5/`, `v3.6/`). A new version directory is created whenever an update introduces a breaking change that is not backward compatible with the previous version.
+Full documentation — submission modes, monitoring, cleanup scripts,
+`skip_cleanups_file`, subworkflow examples: [v3.6/README.md](v3.6/README.md).
 
-Always use the latest version when setting up new workflows.
+## Versioning
+
+Unlike the rest of this repo, each version keeps its own directory (`v3.6/`)
+because marketplace registrations and callers reference the path directly. A
+new directory is only created for breaking, non-backward-compatible changes.
+Always use the latest version in new workflows.

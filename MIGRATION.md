@@ -309,5 +309,6 @@ ollama-gguf-container implementation paths not separately exercised.
    here once this lands on canary. All six vncserver app variants
    (rstudio, matlab, firefox, fsl, schrodinger, vmd) are replaced by kasmvnc
    `emed_<app>.yaml` variants carrying the legacy `load_env`/`bin` form fields; only
-   the plain-desktop `vncserver/emed_v4.yaml` has no dedicated replacement (the
-   kasmvnc `emed.yaml` desktop covers it).
+   the plain-desktop `vncserver/emed_v4.yaml` is replaced by a clean emed-only
+   rewrite at `workflows/vncserver/yamls/emed.yaml` (host kasmvncserver + GNOME
+   behind `pw endpoints https`, no noVNC/nginx/sudo; verified live 2026-09-03).

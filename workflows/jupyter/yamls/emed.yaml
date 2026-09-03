@@ -160,6 +160,7 @@ jobs:
             autoselect: true
             provider:
               - existing
+              - managed-cluster
           scheduler:
             type: boolean
             default: true
@@ -223,14 +224,14 @@ jobs:
                 max: 32
                 default: 1
                 tooltip: '--cpus-per-task=value slurm directive'
-                ignore: ${{ 'existing' != inputs.cluster.resource.provider }}
+                ignore: ${{ ('existing' != inputs.cluster.resource.provider && 'managed-cluster' != inputs.cluster.resource.provider) }}
                 hidden: ${{ .ignore }}
               mem:
                 type: dropdown
                 label: Minimum total memory required
                 default: 8GB
                 tooltip: '--mem=value slurm directive'
-                hidden: ${{ 'existing' != inputs.cluster.resource.provider }}
+                hidden: ${{ ('existing' != inputs.cluster.resource.provider && 'managed-cluster' != inputs.cluster.resource.provider) }}
                 ignore: ${{ .hidden }}
                 options:
                    - 8GB
@@ -243,7 +244,7 @@ jobs:
               gres_gpu_default:
                 type: number
                 label: Number of GPUs
-                ignore: ${{ ( inputs.cluster.slurm.partition_default != 'gpu' && inputs.cluster.slurm.partition_default != 'gpu-quick' ) || 'existing' != inputs.cluster.resource.provider  }}
+                ignore: ${{ ( inputs.cluster.slurm.partition_default != 'gpu' && inputs.cluster.slurm.partition_default != 'gpu-quick' ) || ('existing' != inputs.cluster.resource.provider && 'managed-cluster' != inputs.cluster.resource.provider)  }}
                 hidden: ${{ .ignore }}
                 min: 1
                 max: 4
@@ -252,7 +253,7 @@ jobs:
               gres_gpu_hpc4:
                 type: number
                 label: Number of GPUs
-                hidden: ${{ ( inputs.cluster.slurm.partition_hpc4 != 'gpu' && inputs.cluster.slurm.partition_hpc4 != 'gpu-quick' && inputs.cluster.slurm.partition_hpc4 != 'gpu-h200' ) || 'existing' != inputs.cluster.resource.provider  }}
+                hidden: ${{ ( inputs.cluster.slurm.partition_hpc4 != 'gpu' && inputs.cluster.slurm.partition_hpc4 != 'gpu-quick' && inputs.cluster.slurm.partition_hpc4 != 'gpu-h200' ) || ('existing' != inputs.cluster.resource.provider && 'managed-cluster' != inputs.cluster.resource.provider)  }}
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
                 min: 1

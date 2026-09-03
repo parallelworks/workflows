@@ -230,14 +230,14 @@ jobs:
                 max: 32
                 default: 1
                 tooltip: '--cpus-per-task=value slurm directive'
-                ignore: ${{ 'existing' != inputs.cluster.resource.provider }}
+                ignore: ${{ ('existing' != inputs.cluster.resource.provider && 'managed-cluster' != inputs.cluster.resource.provider) }}
                 hidden: ${{ .ignore }}
               mem:
                 type: dropdown
                 label: Minimum total memory required
                 default: 8GB
                 tooltip: '--mem=value slurm directive'
-                hidden: ${{ 'existing' != inputs.cluster.resource.provider }}
+                hidden: ${{ ('existing' != inputs.cluster.resource.provider && 'managed-cluster' != inputs.cluster.resource.provider) }}
                 ignore: ${{ .hidden }}
                 options:
                    - 8GB
@@ -250,7 +250,7 @@ jobs:
               gres_gpu_default:
                 type: number
                 label: Number of GPUs
-                ignore: ${{ ( inputs.cluster.slurm.partition_default != 'gpu' && inputs.cluster.slurm.partition_default != 'gpu-quick' ) || 'existing' != inputs.cluster.resource.provider  }}
+                ignore: ${{ ( inputs.cluster.slurm.partition_default != 'gpu' && inputs.cluster.slurm.partition_default != 'gpu-quick' ) || ('existing' != inputs.cluster.resource.provider && 'managed-cluster' != inputs.cluster.resource.provider)  }}
                 hidden: ${{ .ignore }}
                 min: 1
                 max: 4
@@ -259,7 +259,7 @@ jobs:
               gres_gpu_hpc4:
                 type: number
                 label: Number of GPUs
-                hidden: ${{ ( inputs.cluster.slurm.partition_hpc4 != 'gpu' && inputs.cluster.slurm.partition_hpc4 != 'gpu-quick' && inputs.cluster.slurm.partition_hpc4 != 'gpu-h200' ) || 'existing' != inputs.cluster.resource.provider  }}
+                hidden: ${{ ( inputs.cluster.slurm.partition_hpc4 != 'gpu' && inputs.cluster.slurm.partition_hpc4 != 'gpu-quick' && inputs.cluster.slurm.partition_hpc4 != 'gpu-h200' ) || ('existing' != inputs.cluster.resource.provider && 'managed-cluster' != inputs.cluster.resource.provider)  }}
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
                 min: 1
@@ -310,7 +310,7 @@ jobs:
             type: string
             default: ${HOME}/pw/
             tooltip: This is the directory that you start with when the Jupyter graphical user interface starts. The default value here is your home directory.
-            ignore: ${{ 'existing' != inputs.cluster.resource.provider }}
+            ignore: ${{ ('existing' != inputs.cluster.resource.provider && 'managed-cluster' != inputs.cluster.resource.provider) }}
             hidden: ${{ .ignore }}
             optional: ${{ .ignore }}
           load_env_tag_existing:
@@ -318,12 +318,12 @@ jobs:
             type: string
             default: source /gs/gsfs0/hpc01/rhel8/apps/conda3/etc/profile.d/conda.sh; conda activate base; module load cuda
             tooltip: Use a bash command
-            ignore: ${{ 'existing' != inputs.cluster.resource.provider }}
+            ignore: ${{ ('existing' != inputs.cluster.resource.provider && 'managed-cluster' != inputs.cluster.resource.provider) }}
             hidden: ${{ .ignore }}
             optional: ${{ .ignore }}
           conda_install_tag_cloud:
             label: Install miniconda environment if not there?
-            ignore: ${{ 'existing' == inputs.cluster.resource.provider }}
+            ignore: ${{ ('existing' == inputs.cluster.resource.provider || 'managed-cluster' == inputs.cluster.resource.provider) }}
             optional: ${{ .ignore }}
             hidden: ${{ .ignore }}
             type: boolean
@@ -333,21 +333,21 @@ jobs:
             label: Parent Install Directory
             type: string
             default: ${HOME}/pw/software
-            ignore: ${{ inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}
+            ignore: ${{ inputs.service.conda_install_tag_cloud == false || ('existing' == inputs.cluster.resource.provider || 'managed-cluster' == inputs.cluster.resource.provider) }}
             hidden: ${{ .ignore }}
             tooltip: Software dependencies are installed in this directory. Ensure the directory has sufficient space!
           conda_install_dir_tag_cloud:
             label: Name of the Conda Installation Directory
             type: string
             default: .miniconda3c
-            ignore: ${{ inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}
+            ignore: ${{ inputs.service.conda_install_tag_cloud == false || ('existing' == inputs.cluster.resource.provider || 'managed-cluster' == inputs.cluster.resource.provider) }}
             hidden: ${{ .ignore }}
             tooltip: Ensure the directory has sufficient space for Conda and its packages.
           conda_env_tag_cloud:
             label: Conda environment
             type: string
             default: base
-            ignore: "${{ inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}"
+            ignore: "${{ inputs.service.conda_install_tag_cloud == false || ('existing' == inputs.cluster.resource.provider || 'managed-cluster' == inputs.cluster.resource.provider) }}"
             optional: ${{ .ignore }}
             hidden: ${{ .ignore }}
             tooltip: Environment to active. The base environment enables changing kernel to other environments!
@@ -355,14 +355,14 @@ jobs:
             label: Command to load Jupyter Notebook to the PATH
             type: string
             default: source ${HOME}/pw/software/.miniconda3c/etc/profile.d/conda.sh; conda activate base
-            ignore: ${{ inputs.service.conda_install_tag_cloud == true || 'existing' == inputs.cluster.resource.provider }}
+            ignore: ${{ inputs.service.conda_install_tag_cloud == true || ('existing' == inputs.cluster.resource.provider || 'managed-cluster' == inputs.cluster.resource.provider) }}
             optional: ${{ .ignore }}
             hidden: ${{ .ignore }}
             tooltip: Use a bash command
           install_instructions_tag_cloud:
             label: Select Jupyter Lab Installation
             type: dropdown
-            ignore: ${{ inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}
+            ignore: ${{ inputs.service.conda_install_tag_cloud == false || ('existing' == inputs.cluster.resource.provider || 'managed-cluster' == inputs.cluster.resource.provider) }}
             hidden: ${{ .ignore }}
             default: jupyterlab4.1.5-python3.11.5
             options:
@@ -377,7 +377,7 @@ jobs:
           yaml_tag_cloud:
             label: Paste Conda Environment Defition YAML
             type: editor
-            ignore: ${{ inputs.service.install_instructions_tag_cloud != yaml ||  inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}
+            ignore: ${{ inputs.service.install_instructions_tag_cloud != yaml ||  inputs.service.conda_install_tag_cloud == false || ('existing' == inputs.cluster.resource.provider || 'managed-cluster' == inputs.cluster.resource.provider) }}
             optional: ${{ .ignore }}
             hidden: ${{ .ignore }}
             tooltip: Copy and paste a custom Conda environment definition YAML file
@@ -385,7 +385,7 @@ jobs:
             label: Select additional kernels to install
             type: multi-dropdown
             optional: true
-            ignore: ${{ inputs.service.conda_install_tag_cloud == false || 'existing' == inputs.cluster.resource.provider }}
+            ignore: ${{ inputs.service.conda_install_tag_cloud == false || ('existing' == inputs.cluster.resource.provider || 'managed-cluster' == inputs.cluster.resource.provider) }}
             hidden: ${{ .ignore }}
             options:
               - value: julia-kernel

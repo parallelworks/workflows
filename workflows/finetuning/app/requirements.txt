@@ -1,0 +1,20 @@
+# Version floor from HANDOFF.md sec3.5 (verified against the OpenAI gpt-oss
+# cookbook + cross-checked tutorials, Aug-Sep 2026). triton-kernels is pinned
+# separately in finetune.def's %post (not here) -- it's the fragile piece,
+# kept visible rather than buried in this list.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.8.0
+transformers==4.56.2
+trl==0.23.0
+triton==3.4.0
+accelerate==1.10.1
+peft>=0.17.0
+tokenizers==0.22.1
+datasets>=2.18.0
+huggingface_hub>=0.22.0
+bitsandbytes>=0.43.0
+tensorboard>=2.16.0
+matplotlib>=3.7.0
+scipy>=1.11.0
+sentencepiece>=0.1.99
+protobuf<=4.25.3

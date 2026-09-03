@@ -1,0 +1,46 @@
+Bootstrap: docker
+From: nvidia/cuda:12.4.1-devel-ubuntu22.04
+# NOTE: HANDOFF.md sec3.5's anchor set targets CUDA 12.9; 12.4.1-devel is used
+# here as a widely-available, publicly pullable Docker Hub tag with a matching
+# devel toolchain (nvcc/ptxas) for Triton's JIT compilation. torch/triton
+# themselves come from the cu128 pip wheels pinned in requirements.txt, which
+# is what actually determines the CUDA runtime used at training time -- bump
+# this base tag if a newer public one becomes available, it is not
+# load-bearing for correctness the way the pip pins are.
+#
+# Target host for TRUE MXFP4 execution (gpt-oss profiles): Hopper-class GPU
+# (compute capability >= 9.0: H100/H200/B100) with a CUDA 12.x driver.
+# On older cards (e.g. this repo's T4 dev box, capability 7.5) transformers
+# dequantizes MXFP4 to bf16 automatically -- training still works, see
+# app/train.py's gpu_supports_hopper_mxfp4() check. Building this image does
+# NOT require a GPU.
+#
+# singularity and apptainer are interchangeable here.
+
+%files
+    requirements.txt /opt/finetune/requirements.txt
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-dev git git-lfs ca-certificates
+    rm -rf /var/lib/apt/lists/*
+    python3 -m pip install --no-cache-dir --upgrade pip
+    python3 -m pip install --no-cache-dir -r /opt/finetune/requirements.txt
+    # Fragile piece (HANDOFF sec3.5): install explicitly, separately from the
+    # pinned requirements.txt, so a version bump here stays easy to spot.
+    python3 -m pip install --no-cache-dir triton-kernels==0.1.0
+
+%test
+    python3 -c "import torch, transformers, peft, trl, accelerate; print('deps ok')"
+    python3 -c "import torch; print('cuda available (build host, expected False unless GPU-visible):', torch.cuda.is_available())"
+
+%labels
+    org.opencontainers.image.source https://github.com/parallelworks/workflows
+    org.opencontainers.image.description Singularity image for the generalized LoRA/QLoRA finetuning ACTIVATE workflow (dense + MoE, gpt-oss MXFP4-aware)
+
+%help
+    Training entrypoint:
+      singularity exec --nv finetune.sif python3 /path/to/app/train.py --help
+    Built by app/build-container.sh (standalone, no workflow dependency).

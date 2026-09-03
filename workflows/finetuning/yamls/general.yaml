@@ -1,0 +1,658 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+---
+# ==============================================================================
+# Generalized LoRA / QLoRA Fine-tuning Workflow  (single node, 1+ GPUs)
+# ==============================================================================
+# Endpoint pattern (preprocessing -> script_submitter/v3.6 -> wait_for_endpoint),
+# scaffolding ported from workflows/streamlit/yamls/general.yaml per HANDOFF.md
+# sec1.5/1.6. Model matrix / resolver / container-mode / evaluation design carry
+# over verbatim from the pre-port draft (HANDOFF sec2-5).
+#
+# TensorBoard is reachable at the endpoint's port only while training runs
+# (app/start-template.sh); a persistent offline report (loss/eval-loss plots +
+# metrics.json + report.html) is written under output_dir/report once training
+# completes, and the run then completes on its own -- no endpoint left running
+# to remember to tear down.
+#
+# TESTING: checkout branch below points at add-finetuning while iterating.
+# Flip to canary before merging to canary.
+# ==============================================================================
+
+permissions:
+  - "*"
+
+jobs:
+  preprocessing:
+    needs:
+      - resolve_strategy
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Checkout finetuning
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: add-finetuning
+          sparse_checkout:
+            - workflows/finetuning/app
+            - tools/oras
+        cleanup: |
+          set -x
+          if [ -d tools/oras ]; then
+            echo "Removing tools/oras"
+            rm -rf tools/oras
+          fi
+      - name: Create Inputs
+        run: |
+          set -x
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
+          container_mode="${{ inputs.container.container_mode }}"
+          finetune_registry="${{ inputs.container.container_registry_uri }}"
+          container_sif_path="${{ inputs.container.container_sif_path }}"
+          model_profile="${{ inputs.model_profile }}"
+          base_model_id="${{ inputs.model_source == 'local' ? inputs.local_model_path : inputs.base_model_id }}"
+          hf_token="${{ inputs.hf_token }}"
+          model_cache_dir="${{ inputs.model_cache_dir }}"
+          local_dataset_path="${{ inputs.dataset_config.local_dataset_path }}"
+          dataset_format="${{ inputs.dataset_config.dataset_format }}"
+          eval_split_fraction="${{ inputs.dataset_config.eval_split_fraction }}"
+          prompt_field="${{ inputs.dataset_config.prompt_field }}"
+          num_epochs="${{ inputs.training.num_epochs }}"
+          learning_rate="${{ inputs.training.learning_rate }}"
+          micro_batch_size="${{ inputs.training.micro_batch_size }}"
+          gradient_accumulation="${{ inputs.training.gradient_accumulation }}"
+          max_seq_length="${{ inputs.training.max_seq_length }}"
+          lora_r="${{ inputs.lora.lora_r }}"
+          lora_alpha="${{ inputs.lora.lora_alpha }}"
+          lora_dropout="${{ inputs.lora.lora_dropout }}"
+          quantization="${{ inputs.lora.quantization }}"
+          eval_steps="${{ inputs.evaluation.eval_steps }}"
+          quality_eval_type="${{ inputs.evaluation.quality_eval_type }}"
+          quality_eval_command="${{ inputs.evaluation.quality_eval_command }}"
+          tensorboard_enabled="${{ inputs.tensorboard_enabled }}"
+          output_dir="${{ inputs.output_dir }}"
+          merge_full_weights="${{ inputs.merge_full_weights }}"
+          strategy="${{ needs.resolve_strategy.outputs.STRATEGY }}"
+          launcher="${{ needs.resolve_strategy.outputs.LAUNCHER }}"
+          lora_targets_override="${{ inputs.advanced.lora_targets_override }}"
+          chat_template_override="${{ inputs.advanced.chat_template_override }}"
+          optim="${{ inputs.advanced.optim }}"
+          gradient_checkpointing="${{ inputs.advanced.gradient_checkpointing }}"
+          bf16="${{ inputs.advanced.bf16 }}"
+          pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          EOF
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh
+          sed -i 's/^/export /' inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/finetuning/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/finetuning/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  # ==========================================================================
+  # Resolve strategy  (footprint x GPUs -> precision/parallelism/launcher)
+  # Not yet consumed by app/train-entrypoint.sh (single-GPU `python` launch
+  # only, this pass) -- emitted as job outputs so `strategy`/`launcher` land
+  # in inputs.sh ahead of the FSDP/ZeRO work in HANDOFF sec6 steps 5-7.
+  # ==========================================================================
+  resolve_strategy:
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    outputs:
+      STRATEGY: ${{ needs.resolve_strategy.steps.calc.outputs.STRATEGY }}
+      LAUNCHER: ${{ needs.resolve_strategy.steps.calc.outputs.LAUNCHER }}
+      PRECISION: ${{ needs.resolve_strategy.steps.calc.outputs.PRECISION }}
+    steps:
+      - name: Compute training strategy
+        id: calc
+        early-cancel: any-job-failed
+        run: |
+          set -euo pipefail
+          NUM_GPUS=${{ inputs.num_gpus }}
+          VRAM=${{ inputs.vram_gb_per_gpu }}
+          PROFILE="${{ inputs.model_profile }}"
+          OVERRIDE="${{ inputs.advanced.parallelism_override }}"
+
+          # Frozen base-weight footprint (GB), 4-bit/native basis.
+          # TODO(stub): for 'custom', estimate from config.json param count.
+          case "$PROFILE" in
+            olmo2-1b-dev)     FOOTPRINT=2  ;;
+            olmoe-1b-7b-dev)  FOOTPRINT=4  ;;
+            gemma-1.1-7b)     FOOTPRINT=5  ;;
+            gemma-4-31b)      FOOTPRINT=18 ;;
+            gpt-oss-20b)      FOOTPRINT=13 ;;
+            gpt-oss-120b)     FOOTPRINT=63 ;;
+            *)                FOOTPRINT=20 ;;
+          esac
+
+          NEED_PER_GPU=$(python3 -c "print(int($FOOTPRINT*1.6)+8)")
+
+          if [ "$OVERRIDE" != "auto" ]; then
+            STRATEGY="$OVERRIDE"
+          elif [ "$NUM_GPUS" -eq 1 ]; then
+            STRATEGY="single"
+          elif [ "$FOOTPRINT" -lt "$VRAM" ] && [ "$NEED_PER_GPU" -lt "$VRAM" ]; then
+            STRATEGY="ddp"
+          else
+            STRATEGY="fsdp"
+          fi
+
+          case "$STRATEGY" in
+            single) LAUNCHER="python" ;;
+            *)      LAUNCHER="accelerate launch --num_processes ${NUM_GPUS}" ;;  # TODO(stub): + FSDP/ZeRO config for fsdp
+          esac
+
+          PRECISION="${{ inputs.lora.quantization }}"
+
+          echo "STRATEGY=$STRATEGY"   >> $OUTPUTS
+          echo "LAUNCHER=$LAUNCHER"   >> $OUTPUTS
+          echo "PRECISION=$PRECISION" >> $OUTPUTS
+          echo "::notice::profile=$PROFILE footprint=${FOOTPRINT}GB gpus=${NUM_GPUS}x${VRAM}GB -> ${STRATEGY} (${LAUNCHER}), precision=${PRECISION}"
+
+  session_runner:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.cluster.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            time: ${{ inputs.cluster.slurm.time }}
+            gpus: ${{ inputs.cluster.slurm.gpus }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::Session runner failed before the endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        run: |
+          endpoint_name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          echo "::notice::Waiting for endpoint ${endpoint_name} to come online"
+          until pw endpoints list | grep -qw "${endpoint_name}"; do
+            echo "$(date) Endpoint ${endpoint_name} not found yet; retrying in 10 seconds"
+            sleep 10
+          done
+          echo "::notice::Endpoint ${endpoint_name} is online"
+          touch ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          sleep 2
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
+'on':
+  execute:
+    inputs:
+
+      # ----------------------------------------------------------------------
+      # 1. HARDWARE PROFILE
+      # ----------------------------------------------------------------------
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          resource:
+            type: compute-clusters
+            label: Service host
+            include-workspace: false
+            tooltip: Resource to host the service
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Job?
+            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            ignore: ${{ .hidden }}
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM Enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.cluster.resource }}
+              time:
+                label: Walltime
+                type: string
+                default: '01:00:00'
+              gpus:
+                label: Number of GPUs
+                type: number
+                optional: true
+                min: 0
+                default: 1
+                tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
+              scheduler_directives:
+                type: editor
+                optional: true
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                optional: true
+
+      num_gpus:
+        label: GPUs on this node
+        type: number
+        default: 1
+        min: 1
+        tooltip: >
+          Number of GPUs to use on the single allocated node. Drives the
+          parallelism decision (see the Advanced group for the resolved
+          strategy). This pass only exercises single-GPU (strategy=single).
+
+      vram_gb_per_gpu:
+        label: VRAM per GPU (GB)
+        type: number
+        default: 94
+        tooltip: >
+          Usable HBM per GPU in GB (e.g. H100 NVL = 94, A100 80GB = 80).
+          Used together with the model footprint to pick a training strategy.
+
+      # ----------------------------------------------------------------------
+      # 2. MODEL PROFILE
+      # ----------------------------------------------------------------------
+      model_profile:
+        label: Model
+        type: dropdown
+        default: olmo2-1b-dev
+        tooltip: Pre-filled profiles carry template + LoRA-target + arch metadata.
+        options:
+          - { value: olmo2-1b-dev,     label: "OLMo 2 1B (DEV / dense smoke test)" }
+          - { value: olmoe-1b-7b-dev,  label: "OLMoE 1B-7B (DEV / MoE smoke test)" }
+          - { value: gemma-1.1-7b,     label: "Gemma 1.1 7B IT (dense)" }
+          - { value: gemma-4-31b,      label: "Gemma 4 31B IT (dense, multimodal)" }
+          - { value: gpt-oss-20b,      label: "gpt-oss-20b (MoE, MXFP4)" }
+          - { value: gpt-oss-120b,     label: "gpt-oss-120b (MoE, MXFP4)" }
+          - { value: custom,           label: "Custom (enter HF ID below)" }
+
+      base_model_id:
+        label: HuggingFace Model ID
+        type: string
+        default: >-
+          ${{ inputs.model_profile == 'olmo2-1b-dev'    ? 'allenai/OLMo-2-0425-1B'
+            : inputs.model_profile == 'olmoe-1b-7b-dev'  ? 'allenai/OLMoE-1B-7B-0924-Instruct'
+            : inputs.model_profile == 'gemma-1.1-7b'     ? 'google/gemma-1.1-7b-it'
+            : inputs.model_profile == 'gemma-4-31b'      ? 'google/gemma-4-31B-it'
+            : inputs.model_profile == 'gpt-oss-20b'      ? 'openai/gpt-oss-20b'
+            : inputs.model_profile == 'gpt-oss-120b'     ? 'openai/gpt-oss-120b'
+            : '' }}
+        tooltip: >
+          Auto-filled from the profile. For "Custom", paste any HF causal-LM
+          ID. Ignored when Model Source is "Local path" below.
+
+      model_source:
+        label: Model Source
+        type: dropdown
+        default: huggingface
+        options:
+          - { value: huggingface, label: "HuggingFace (downloaded by train.py at load time)" }
+          - { value: local,       label: "Local path (pre-staged weights, e.g. a prior run's merged/ output)" }
+
+      local_model_path:
+        label: Local Model Path
+        type: string
+        default: ""
+        optional: true
+        hidden: ${{ inputs.model_source != 'local' }}
+        ignore: ${{ inputs.model_source != 'local' }}
+        tooltip: >
+          Path to a model directory on the cluster. Also how you fine-tune a
+          previously fine-tuned model: point here at a prior run's merged/ output.
+
+      hf_token:
+        label: HuggingFace Token
+        type: password
+        default: ${{ org.HF_TOKEN }}
+        optional: true
+        hidden: ${{ inputs.model_source != 'huggingface' }}
+        ignore: ${{ inputs.model_source != 'huggingface' }}
+        tooltip: Needed for gated models (Gemma, etc.). gpt-oss & OLMo are ungated.
+
+      model_cache_dir:
+        label: Model Cache Directory
+        type: string
+        default: ~/pw/models
+        hidden: ${{ inputs.model_source != 'huggingface' }}
+        ignore: ${{ inputs.model_source != 'huggingface' }}
+
+      # ----------------------------------------------------------------------
+      # 3. DATASET (on disk)
+      # ----------------------------------------------------------------------
+      dataset_config:
+        type: group
+        label: Dataset
+        collapsed: false
+        items:
+          local_dataset_path:
+            label: Dataset Path (on cluster)
+            type: string
+            optional: false
+            tooltip: File on the node -- jsonl/json/csv/parquet/arrow, or an HF dataset directory.
+          dataset_format:
+            label: Format
+            type: dropdown
+            default: json
+            options:
+              - { value: json,    label: "JSON / JSONL" }
+              - { value: csv,     label: "CSV" }
+              - { value: parquet, label: "Parquet" }
+              - { value: arrow,   label: "Arrow" }
+              - { value: dataset, label: "HF dataset directory" }
+          eval_split_fraction:
+            label: Held-out Fraction (eval loss)
+            type: number
+            default: 0.05
+            min: 0
+            max: 0.5
+            step: 0.01
+            tooltip: >
+              Fraction reserved as the validation set for held-out loss --
+              same loss objective, unseen rows, plotted live next to training
+              loss and saved in the offline report. 0 disables held-out loss.
+          prompt_field:
+            label: Prompt Field
+            type: string
+            default: prompt
+            optional: true
+
+      # ----------------------------------------------------------------------
+      # 4. TRAINING HYPERPARAMETERS
+      # ----------------------------------------------------------------------
+      training:
+        type: group
+        label: Training Hyperparameters
+        collapsed: true
+        items:
+          num_epochs:            { type: number, label: Epochs,                default: 1.0,    optional: true }
+          learning_rate:         { type: number, label: Learning Rate,         default: 0.0002, optional: true }
+          micro_batch_size:      { type: number, label: Micro Batch (per GPU), default: 1,       optional: true }
+          gradient_accumulation: { type: number, label: Grad Accumulation,     default: 16,      optional: true }
+          max_seq_length:        { type: number, label: Max Seq Length,        default: 2048,    optional: true }
+
+      # ----------------------------------------------------------------------
+      # 5. LoRA / PEFT
+      # ----------------------------------------------------------------------
+      lora:
+        type: group
+        label: LoRA / PEFT
+        collapsed: true
+        items:
+          lora_r:       { type: number, label: LoRA Rank (r), default: 16,   optional: true }
+          lora_alpha:   { type: number, label: LoRA Alpha,    default: 16,   optional: true }
+          lora_dropout: { type: number, label: LoRA Dropout,  default: 0.05, optional: true }
+          quantization:
+            label: Quantization
+            type: dropdown
+            default: >-
+              ${{ (inputs.model_profile == 'gpt-oss-20b' || inputs.model_profile == 'gpt-oss-120b') ? 'native'
+                : inputs.model_profile == 'gemma-4-31b' ? '4bit'
+                : 'none' }}
+            options:
+              - { value: none,   label: "None (bf16 LoRA)" }
+              - { value: 4bit,   label: "4-bit (QLoRA)" }
+              - { value: 8bit,   label: "8-bit" }
+              - { value: native, label: "Native (MXFP4 as shipped -- gpt-oss; dequantizes to bf16 for training)" }
+
+      # ----------------------------------------------------------------------
+      # 6. EVALUATION
+      # ----------------------------------------------------------------------
+      evaluation:
+        type: group
+        label: Evaluation
+        collapsed: false
+        items:
+          eval_steps:
+            label: Eval-loss Interval (steps)
+            type: number
+            default: 50
+            tooltip: Run held-out loss every N steps (needs eval_split_fraction > 0 above).
+          quality_eval_type:
+            label: Quality Eval (optional)
+            type: dropdown
+            default: none
+            tooltip: >
+              Held-out ANSWER quality, distinct from loss. Not implemented
+              this pass (HANDOFF sec5/sec7) -- the selector exists so a future
+              evaluator (incl. a refusal check) can plug in without a schema
+              change.
+            options:
+              - { value: none,    label: "None (held-out loss only)" }
+              - { value: overlap, label: "Reference overlap (ROUGE/BLEU)" }
+              - { value: task,    label: "Task metric (exact-match / accuracy)" }
+              - { value: judge,   label: "LLM-as-judge (rubric)" }
+          quality_eval_command:
+            label: Quality Eval Command / Endpoint
+            type: string
+            default: ""
+            optional: true
+            hidden: ${{ inputs.evaluation.quality_eval_type == 'none' }}
+            ignore: ${{ inputs.evaluation.quality_eval_type == 'none' }}
+
+      # ----------------------------------------------------------------------
+      # 7. DASHBOARD
+      # ----------------------------------------------------------------------
+      tensorboard_enabled:
+        label: Live TensorBoard Dashboard
+        type: boolean
+        default: true
+        tooltip: >
+          Serve TensorBoard on the endpoint's port WHILE TRAINING RUNS. Once
+          training completes, TensorBoard is stopped and a persistent offline
+          report (plots + metrics.json + report.html) is written under
+          Output Directory / report -- the endpoint then retires itself.
+
+      # ----------------------------------------------------------------------
+      # 8. OUTPUT
+      # ----------------------------------------------------------------------
+      output_dir:
+        label: Output Directory
+        type: string
+        default: "~/pw/models/ft-${PW_JOB_ID}"
+      merge_full_weights:
+        label: Merge LoRA into Full Weights
+        type: boolean
+        default: true
+        tooltip: >
+          Produce a standalone merged model dir (vLLM-ready, and reusable as
+          a base for another run). For very large MoE (gpt-oss-120b) prefer
+          leaving adapters separate (HANDOFF sec8).
+
+      # ----------------------------------------------------------------------
+      # 9. CONTAINER SOURCE  (Singularity/.sif -- three mutually-exclusive modes)
+      #    One .sif serves all 6 models (HANDOFF sec3.5). Build logic lives in
+      #    app/build-container.sh; "build" mode calls that script, never
+      #    duplicates it.
+      # ----------------------------------------------------------------------
+      container:
+        type: group
+        label: Container (Singularity)
+        collapsed: false
+        items:
+          container_mode:
+            label: Container Source
+            type: dropdown
+            default: sif_path
+            tooltip: >
+              How to obtain the Singularity image. "Build" runs
+              app/build-container.sh on-the-fly on the login node -- slow but
+              self-contained.
+            options:
+              - { value: registry, label: "Pull from registry (ghcr.io, via oras)" }
+              - { value: sif_path, label: "Use existing .sif on disk" }
+              - { value: build,    label: "Build on-the-fly (calls app/build-container.sh)" }
+          container_registry_uri:
+            label: Registry URI
+            type: string
+            default: "ghcr.io/parallelworks/finetune:latest"
+            optional: true
+            hidden: ${{ inputs.container.container_mode != 'registry' }}
+            ignore: ${{ inputs.container.container_mode != 'registry' }}
+            tooltip: Pulled via tools/oras/libs.sh:oras_pull_file (anonymous-first, retried).
+          container_sif_path:
+            label: Existing .sif Path
+            type: string
+            default: "~/pw/singularity/finetune.sif"
+            optional: true
+            hidden: ${{ inputs.container.container_mode != 'sif_path' }}
+            ignore: ${{ inputs.container.container_mode != 'sif_path' }}
+            tooltip: Absolute path to a prebuilt .sif on the cluster.
+
+      # ----------------------------------------------------------------------
+      # 10. ADVANCED (overrides for the resolver / LoRA targets / template)
+      # ----------------------------------------------------------------------
+      advanced:
+        type: group
+        label: Advanced
+        collapsed: true
+        items:
+          parallelism_override:
+            label: Parallelism Strategy (override)
+            type: dropdown
+            default: auto
+            options:
+              - { value: auto,   label: "Auto (resolve from footprint x GPUs)" }
+              - { value: single, label: "Single-GPU" }
+              - { value: ddp,    label: "DDP (replica per GPU)" }
+              - { value: fsdp,   label: "FSDP / ZeRO-3 (shard model) -- not yet implemented, see HANDOFF sec6" }
+          lora_targets_override:
+            label: LoRA Target Modules (override)
+            type: string
+            default: ""
+            optional: true
+            tooltip: >
+              Blank = auto-detected by app/train.py from the loaded model
+              (dense target list, or gpt-oss-style fused target_parameters
+              when the model exposes fused expert Parameter tensors).
+          chat_template_override:
+            label: Chat Template (override)
+            type: string
+            default: ""
+            optional: true
+            tooltip: >
+              Blank = profile default (gemma / gemma4 / harmony / olmo).
+              Not yet consumed by app/train.py this pass (flat prompt-field
+              path only) -- reserved for chat-formatted dataset support.
+          optim:
+            label: Optimizer
+            type: dropdown
+            default: adamw_torch
+            tooltip: >
+              adamw_bnb_8bit cuts optimizer-state memory ~4x, which matters
+              when many adapters are trained. Avoid the paged_* variants:
+              their unified-memory state buffers fail with an illegal memory
+              access on some GPUs (observed on a T4).
+            options:
+              - { value: adamw_torch,       label: "AdamW (torch, default)" }
+              - { value: adamw_bnb_8bit,    label: "AdamW 8-bit (bitsandbytes, lower memory)" }
+              - { value: adamw_torch_fused, label: "AdamW (torch, fused)" }
+          gradient_checkpointing:
+            label: Gradient Checkpointing
+            type: boolean
+            default: false
+            tooltip: >
+              Trades compute for activation memory. Recommended for the large
+              profiles; unnecessary for the 1B/7B dev models.
+          bf16:
+            label: Use bf16
+            type: boolean
+            default: false
+            tooltip: >
+              bf16 instead of fp16 for the compute dtype. Required for the
+              gpt-oss profiles (HANDOFF sec3); needs an Ampere-or-newer GPU
+              to be fast (it runs, slowly, on older cards).
+
+      service:
+        type: group
+        label: Service Settings
+        collapsed: true
+        items:
+          name:
+            type: string
+            hidden: true
+            default: finetune
+          parent_install_dir:
+            type: string
+            hidden: true
+            default: ${HOME}/pw/software
+            tooltip: The finetune container image is stored in this directory. Ensure sufficient space.

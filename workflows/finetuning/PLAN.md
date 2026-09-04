@@ -13,6 +13,13 @@
 >    Read it before touching the PEFT/quantization wiring.
 > 3. `HANDOFF.md` §2/§3/§3.5 for the model matrix, gpt-oss specifics, and the
 >    one-container decision, then §6 for the remaining priority order.
+> 4. **`README.md` → "Dataset format requirements"** before generating,
+>    swapping or pointing at any training data. Loss is computed on the
+>    response only, which makes the row format load-bearing: the wrong
+>    delimiter is a hard error, a partly-matching dataset drops rows with only
+>    a warning, and multi-turn data is not handled correctly. That section is
+>    the canonical statement of those rules; this file only records the
+>    measurements behind them.
 
 Written and executed 2026-09-03 on a single **Tesla T4** (compute capability
 7.5, 15 GB VRAM, Apptainer 1.4.5, driver 595.45.04). Branch: `add-finetuning`.
@@ -92,6 +99,12 @@ needs a human to re-authenticate).
 Pass criterion throughout is HANDOFF sec8.5a's: **falling `eval_loss` AND
 non-zero `grad_norm`**, plus merge/reload actually working.
 
+> **NOTE — the eval_loss numbers in this table are the pre-completion-only
+> baseline** (loss over the whole sequence, prompt included). All four
+> configurations were re-run after completion-only masking landed; see
+> "Completion-only loss" below for the current numbers. The strategy,
+> trainable-param and VRAM figures here are unaffected.
+
 | step | config | strategy | trainable | eval_loss | peak VRAM | result |
 |---|---|---|---|---|---|---|
 | 1 | `olmo2-1b-dev`, no quant, fp16 | single (1 GPU) | 12.1M (0.81%) | 2.86 -> 0.19 | not sampled | **PASS**, merge+reload generated the trained answer |
@@ -106,7 +119,121 @@ non-zero `grad_norm`**, plus merge/reload actually working.
 - The resolver, with the fixed constant, auto-selects `ddp` for gemma-1.1-7b on
   4x15GB (verified by evaluating the same arithmetic).
 
-### Open issue: Gemma-1.1-7B trains at an implausible loss scale
+### RESOLVED: the Gemma "implausible loss" was one token, not a numerics bug
+
+**Root cause: the training loss includes predicting the first content token
+from `<bos>` alone, and for Gemma that single token costs ~647 nats.**
+Diagnosed by forward-pass only (no training), per-token loss breakdown:
+
+```
+loss= 647.0   ctx='<bos>' -> target='###' (id=6176)      <-- one per sequence
+```
+
+gemma-1.1-7b-it assigns essentially zero probability to a document opening
+with `###`. Over ~28 valid tokens that one position contributes ~23 of the
+~31 total loss — it *is* the entire anomaly. Everything else is healthy:
+**median per-token loss 0.19-0.69.**
+
+Why Gemma and not OLMo: Gemma's logit scale is far larger (abs max 880,
+std 179) than OLMo-2's (48.5 / 6.17), so the same structurally-improbable
+prediction produces a 647-nat spike where OLMo's worst token is only 12.
+Gemma 1.1 has no `final_logit_softcapping` to tame it.
+
+Ruled out by measurement — **do not re-test these**:
+- **Not precision.** bf16 single-GPU reproduces fp16 almost exactly.
+- **Not quantization.** Unquantized bf16 is the same (loss 30.5, logit max
+  844, std 179) as 4-bit (31.5 / 880 / 180).
+- **Not ddp/fsdp.** Reproduces single-process, single-GPU.
+- **Not the chat template.** Applying Gemma's real
+  `<start_of_turn>` template made it slightly *worse* (36.6), because the
+  `<bos>`->first-token problem is unchanged by reformatting.
+- **Not our pad masking.** `labels[attention_mask==0] = -100` is correct,
+  and OLMo is healthy through the identical pipeline. (Note Gemma's
+  tokenizer defaults to `padding_side='left'`, which *would* add a second
+  bogus target — predicting `<bos>` from pure `<pad>` context, 137 nats —
+  but `build_base_model()` already forces `padding_side="right"`.)
+
+**Consequences.** The four validated runs were genuinely learning: falling
+eval_loss, non-zero grad_norm, and correct post-merge generation all stand.
+This is a *training-objective* gap, not a correctness bug. But it does mean
+(a) absolute loss values are not comparable across models, and (b) a slice
+of gradient signal is spent on an impossible prediction — a large slice for
+short sequences.
+
+**Fix: completion-only loss masking — IMPLEMENTED AND REVALIDATED.**
+See "Completion-only loss" below. It removes the `<bos>`->prompt-start
+prediction from the objective entirely, and the measured effect on Gemma is
+decisive: initial train loss **25.9 -> 1.25**, eval **27.5->19.5 becomes
+0.68->0.0025**.
+
+## Completion-only loss (2026-09-04, after the diagnosis above)
+
+`app/train.py` gained `--response-template` (env `RESPONSE_TEMPLATE`, form
+input `advanced.response_template`, default `"### Response:\n"`). When set,
+`split_prompt_completion()` converts the single-text dataset into TRL's
+prompt-completion format (prompt = everything up to and including the
+template; completion = the rest) and `SFTConfig(completion_only_loss=True)`
+scores the completion only. Blank preserves the old whole-sequence
+behavior. Rows missing the template are dropped with a warning; if none
+match, it raises rather than silently training on nothing.
+
+**The dataset-format rules this imposes live in `README.md` → "Dataset format
+requirements"** (delimiter must appear literally in every row; no-match is a
+hard error; partial matches drop rows with only a warning; single-turn only).
+That is the canonical, user-facing statement — do not restate the rules here,
+or the two will drift. What follows is only the implementation and the
+evidence.
+
+Implementation notes worth keeping:
+- The split has to happen in our data prep because trl 0.23 supports
+  `completion_only_loss` **only for prompt-completion datasets**, and it
+  **removed `DataCollatorForCompletionOnlyLM`** (the older response-template
+  collator), so there is no in-collator option.
+- `dataset_text_field` is now passed only in the whole-sequence case: a
+  prompt-completion dataset has no `text` column.
+
+### Second bug this work exposed: concurrent `login()` corrupts the HF token store
+
+The first ddp revalidation attempt died with
+`ValueError: Token <name> not found in ~/.cache/huggingface/stored_tokens`.
+Cause: `maybe_login()` ran on **all four ranks at once**, and the
+interleaved writes left `stored_tokens` holding an INI-style fragment
+(`[<token-name>]`) instead of JSON, which then broke every subsequent run.
+`maybe_login()` is now main-process-only. Nothing is lost by that: the token
+is passed explicitly to every `from_pretrained` call, so `login()` only
+populates the credential store. (The corrupted file was moved aside; the
+next `login()` rewrote it cleanly.)
+
+### Revalidated results — all four configurations, completion-only loss
+
+Same pass criterion as before (falling `eval_loss`, non-zero `grad_norm`),
+all exit 0 with zero tracebacks/OOM:
+
+| step | config | strategy | trainable | eval_loss (completion-only) | eval_loss (previous, prompt-included) |
+|---|---|---|---|---|---|
+| 1 | `olmo2-1b-dev`, no quant, fp16 | single | 12.06M (0.81%) | **1.04 -> 0.0011** | 2.86 -> 0.19 |
+| 2 | `olmoe-1b-7b-dev` MoE, 4-bit, fp16 | single | 4.19M (0.06%) | **0.87 -> 0.0039** | 2.31 -> 0.62 |
+| 3 | `gemma-1.1-7b`, 4-bit, fp16 | ddp (4 GPUs) | 50.0M (0.58%) | **0.68 -> 0.0025** | 27.5 -> 19.5 |
+| 4 | OLMo-2-32B, 4-bit, bf16 | fsdp (4 GPUs) | 134.2M (0.41%) | **0.28 -> 0.00021** | 1.12 -> 0.13 |
+
+- **Gemma is now in line with every other model** — the ~26-loss anomaly is
+  gone, confirming the single-token diagnosis end to end.
+- Merge + reload re-verified after the change: step 1 and step 3 merged
+  models both reload and generate the trained answer; step 4's gathered
+  adapter is still 536,991,984 bytes (= the full 134,217,728 params, not a
+  rank shard), so the FSDP collective save is unaffected.
+- Absolute losses are now much lower across the board because the objective
+  is the short response only. **These numbers are not comparable to the
+  prompt-included column** — they measure a different objective, not a
+  better model.
+- Memory behavior is unchanged by loss masking, so the `NEED_PER_GPU`
+  calibration recorded in `general.yaml` still stands.
+
+Still not built (unchanged): `advanced.chat_template_override` remains
+plumbed-but-unconsumed. Completion-only masking is the natural place to wire
+it in later, but it is deliberately not part of this change.
+
+### Superseded notes on the same issue (kept for the reasoning trail)
 
 Step 3 ran at loss ~26 and eval_loss 27.5 -> 19.5 — falling and with rising
 token accuracy (0.57 -> 0.86), so it *is* learning and the DDP mechanics are

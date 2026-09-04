@@ -75,6 +75,9 @@ fi
 if [[ -n "${OPTIM:-}" ]]; then
     CMD+=(--optim "${OPTIM}")
 fi
+if [[ -n "${RESPONSE_TEMPLATE:-}" ]]; then
+    CMD+=(--response-template "${RESPONSE_TEMPLATE}")
+fi
 
 # Dataset-specific parameters
 if [[ "${DATASET_SOURCE}" == "huggingface" ]]; then

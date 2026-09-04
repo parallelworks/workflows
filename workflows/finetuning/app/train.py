@@ -137,6 +137,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-split-fraction", type=float, default=0.0,
                          help="Held-out fraction for always-on eval loss. 0 disables.")
     parser.add_argument("--eval-steps", type=int, default=50)
+    parser.add_argument("--response-template", default="",
+                         help="Delimiter that separates prompt from response inside the "
+                              "prompt field (e.g. '### Response:\\n'). When set, loss is "
+                              "computed on the response only. Blank = loss on the whole "
+                              "sequence (the pre-2026-09-04 behavior).")
     parser.add_argument("--strategy", choices=["single", "ddp", "fsdp"], default="single",
                          help="Set by train-entrypoint.sh from resolve_strategy's output. Drives "
                               "device placement (device_map is wrong for both ddp and fsdp -- see "
@@ -145,9 +150,21 @@ def parse_args() -> argparse.Namespace:
 
 
 def maybe_login(token: Optional[str]) -> None:
-    if token:
-        login(token=token, add_to_git_credential=True)
-        LOG.info("Logged in to Hugging Face Hub.")
+    """Main process only: login() writes the shared HF token store, and four
+    ranks doing it at once corrupts it. Observed under ddp -- concurrent
+    writes left ~/.cache/huggingface/stored_tokens holding an INI-style
+    fragment instead of JSON, after which every run failed with
+    "Token <name> not found in .../stored_tokens". Nothing is lost by
+    skipping it on the other ranks: the token is passed explicitly to every
+    from_pretrained call, so login() only populates the credential store.
+    """
+    if not token:
+        return
+    local_rank = os.environ.get("LOCAL_RANK")
+    if local_rank not in (None, "0"):
+        return
+    login(token=token, add_to_git_credential=True)
+    LOG.info("Logged in to Hugging Face Hub.")
 
 
 def load_training_dataset(args: argparse.Namespace) -> Dataset:
@@ -214,6 +231,41 @@ def load_training_dataset(args: argparse.Namespace) -> Dataset:
     dataset = dataset.shuffle(seed=args.seed)
     LOG.info("Final dataset size: %d samples", len(dataset))
     return dataset
+
+
+def split_prompt_completion(dataset: Dataset, template: str) -> Dataset:
+    """Convert a single-text dataset into TRL's prompt-completion format.
+
+    This is what enables completion-only loss: TRL computes it only for
+    prompt-completion datasets (trl 0.23 removed
+    DataCollatorForCompletionOnlyLM), so the split has to happen here.
+    Everything up to and including `template` becomes the prompt, which is
+    masked out of the loss; the rest is the completion.
+
+    Why it matters beyond tidiness: with loss over the whole sequence the
+    model is also asked to predict the very first content token from `<bos>`
+    alone, which is near-impossible and can dominate the objective. Measured
+    on gemma-1.1-7b-it: that single token cost 647 nats while the median
+    token was 0.69, inflating the reported loss to ~31 (see PLAN.md).
+    """
+    n_before = len(dataset)
+    dataset = dataset.filter(lambda row: template in row["text"])
+    dropped = n_before - len(dataset)
+    if dropped:
+        LOG.warning("::warning::%d/%d rows do not contain the response template %r "
+                    "and were dropped.", dropped, n_before, template)
+    if len(dataset) == 0:
+        raise ValueError(
+            f"No dataset rows contain the response template {template!r}, so "
+            "completion-only loss cannot be applied. Check --response-template "
+            "against the dataset's actual formatting."
+        )
+
+    def _split(row):
+        head, _, tail = row["text"].partition(template)
+        return {"prompt": head + template, "completion": tail}
+
+    return dataset.map(_split, remove_columns=["text"])
 
 
 def resolve_quantization(args: argparse.Namespace) -> str:
@@ -448,6 +500,8 @@ def write_report(output_dir: Path, args: argparse.Namespace, trainer: SFTTrainer
         "lora_alpha": args.lora_alpha,
         "lora_dropout": args.lora_dropout,
         "quantization": resolve_quantization(args),
+        "response_template": args.response_template,
+        "completion_only_loss": bool(args.response_template),
         "num_epochs": args.num_epochs,
         "learning_rate": args.learning_rate,
         "micro_batch_size": args.micro_batch_size,
@@ -509,6 +563,16 @@ def train(args: argparse.Namespace) -> Path:
         dataset = dataset.map(lambda x: {"text": x[args.prompt_field]}, remove_columns=[args.prompt_field])
         LOG.info("Renamed '%s' field to 'text'", args.prompt_field)
 
+    completion_only = bool(args.response_template)
+    if completion_only:
+        dataset = split_prompt_completion(dataset, args.response_template)
+        LOG.info("Completion-only loss enabled; split on %r -> %d rows",
+                 args.response_template, len(dataset))
+    else:
+        LOG.warning("::warning::No --response-template given: loss is computed over the "
+                    "whole sequence, including the prompt and the near-impossible "
+                    "first-token-from-<bos> prediction (see PLAN.md).")
+
     eval_dataset = None
     if args.eval_split_fraction and args.eval_split_fraction > 0:
         split = dataset.train_test_split(test_size=args.eval_split_fraction, seed=args.seed)
@@ -525,6 +589,13 @@ def train(args: argparse.Namespace) -> Path:
     if args.tensorboard:
         tensorboard_dir.mkdir(parents=True, exist_ok=True)
         LOG.info("TensorBoard logging enabled. Logs will be saved to: %s", tensorboard_dir)
+
+    # dataset_text_field applies to single-text datasets only; a
+    # prompt-completion dataset has no "text" column and is what makes
+    # completion_only_loss possible at all.
+    dataset_kwargs = (
+        {"completion_only_loss": True} if completion_only else {"dataset_text_field": "text"}
+    )
 
     training_args = SFTConfig(
         output_dir=str(adapter_dir),
@@ -547,9 +618,9 @@ def train(args: argparse.Namespace) -> Path:
         seed=args.seed,
         max_length=args.max_seq_length,
         packing=args.packing,
-        dataset_text_field="text",
         eval_strategy="steps" if eval_dataset is not None else "no",
         eval_steps=args.eval_steps if eval_dataset is not None else None,
+        **dataset_kwargs,
     )
 
     trainer = SFTTrainer(

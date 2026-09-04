@@ -81,6 +81,7 @@ jobs:
           num_gpus="${{ inputs.num_gpus }}"
           lora_targets_override="${{ inputs.advanced.lora_targets_override }}"
           chat_template_override="${{ inputs.advanced.chat_template_override }}"
+          response_template="${{ inputs.advanced.response_template }}"
           optim="${{ inputs.advanced.optim }}"
           gradient_checkpointing="${{ inputs.advanced.gradient_checkpointing }}"
           bf16="${{ inputs.advanced.bf16 }}"
@@ -644,6 +645,21 @@ jobs:
               Blank = profile default (gemma / gemma4 / harmony / olmo).
               Not yet consumed by app/train.py this pass (flat prompt-field
               path only) -- reserved for chat-formatted dataset support.
+          response_template:
+            label: Response Template (completion-only loss)
+            type: string
+            default: "### Response:\n"
+            optional: true
+            tooltip: >
+              Delimiter separating prompt from response inside the prompt
+              field; matched literally, not as a regex. When set, loss is
+              computed on the response ONLY (standard SFT practice). It must
+              appear in every row of your dataset -- rows without it are
+              dropped with a warning, and a dataset where none match is an
+              error. Single-turn data only. Blank = loss over the whole
+              sequence, which also trains on the prompt and is not
+              recommended. Full rules: the workflow's README.md, "Dataset
+              format requirements".
           optim:
             label: Optimizer
             type: dropdown

@@ -137,6 +137,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-split-fraction", type=float, default=0.0,
                          help="Held-out fraction for always-on eval loss. 0 disables.")
     parser.add_argument("--eval-steps", type=int, default=50)
+    parser.add_argument("--strategy", choices=["single", "ddp", "fsdp"], default="single",
+                         help="Set by train-entrypoint.sh from resolve_strategy's output. Drives "
+                              "device placement (device_map is wrong for both ddp and fsdp -- see "
+                              "resolve_device_map) and how adapters/merged weights are saved.")
     return parser.parse_args()
 
 
@@ -307,6 +311,25 @@ def resolve_lora_config(args: argparse.Namespace, model) -> LoraConfig:
     )
 
 
+def resolve_device_map(strategy: str):
+    """device_map="auto" (HF's own model-parallel placement) is wrong for
+    both distributed strategies:
+    - ddp: every process would independently spread the SAME model across
+      ALL visible GPUs (accelerate's multi_gpu launch does not restrict
+      CUDA_VISIBLE_DEVICES per process), instead of each process owning one
+      full replica on its own GPU. It also makes HF Trainer treat the model
+      as already parallelized and skip DDP-wrapping it entirely.
+    - fsdp: device_map pre-places weights before FSDP ever sees the model;
+      FSDP needs to own placement itself (it shards the model across ranks
+      during accelerator.prepare()), so no device_map at all.
+    """
+    if strategy == "ddp":
+        return {"": int(os.environ.get("LOCAL_RANK", 0))}
+    if strategy == "fsdp":
+        return None
+    return "auto"
+
+
 def build_base_model(args: argparse.Namespace):
     quantization = resolve_quantization(args)
     compute_dtype = torch.bfloat16 if args.bf16 else torch.float16
@@ -334,10 +357,18 @@ def build_base_model(args: argparse.Namespace):
                         "loading without quantization_config.")
         model_kwargs["attn_implementation"] = "eager"
     elif quantization == "4bit":
-        quant_config = BitsAndBytesConfig(
+        bnb_kwargs = dict(
             load_in_4bit=True, bnb_4bit_compute_dtype=compute_dtype,
             bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4",
         )
+        if args.strategy == "fsdp":
+            # FSDP's flatten-parameter sharding needs a real float-viewable
+            # storage tensor, not bnb's default opaque uint8 packing -- this
+            # is the documented QLoRA+FSDP requirement (bf16 storage,
+            # independent of bnb_4bit_compute_dtype above, which still
+            # follows --bf16/fp16 as normal).
+            bnb_kwargs["bnb_4bit_quant_storage"] = torch.bfloat16
+        quant_config = BitsAndBytesConfig(**bnb_kwargs)
     elif quantization == "8bit":
         quant_config = BitsAndBytesConfig(load_in_8bit=True)
 
@@ -357,13 +388,22 @@ def build_base_model(args: argparse.Namespace):
     else:
         model_cls = AutoModelForCausalLM
 
+    if args.strategy == "fsdp":
+        # No device_map -- FSDP/accelerate owns placement. low_cpu_mem_usage
+        # plus the fsdp_config.yaml's fsdp_cpu_ram_efficient_loading make
+        # only the main process materialize the full model (in CPU RAM, not
+        # a single GPU's VRAM), then broadcast+shard it across ranks --
+        # necessary here since gemma-4-31b's ~15-18GB footprint doesn't fit
+        # on one 15GB T4 pre-sharding.
+        model_kwargs["low_cpu_mem_usage"] = True
+
     model = model_cls.from_pretrained(
         args.base_model_id,
         trust_remote_code=args.trust_remote_code,
-        use_auth_token=None if is_local else args.hf_token,
+        token=None if is_local else args.hf_token,
         local_files_only=is_local,
-        device_map="auto",
-        torch_dtype=compute_dtype,
+        device_map=resolve_device_map(args.strategy),
+        dtype=compute_dtype,
         **model_kwargs,
     )
     # Deliberately NOT calling prepare_model_for_kbit_training() or
@@ -382,7 +422,7 @@ def build_base_model(args: argparse.Namespace):
         args.base_model_id,
         trust_remote_code=args.trust_remote_code,
         use_fast=True,
-        use_auth_token=None if is_local else args.hf_token,
+        token=None if is_local else args.hf_token,
         local_files_only=is_local,
     )
     if tokenizer.pad_token is None:
@@ -536,33 +576,132 @@ def train(args: argparse.Namespace) -> Path:
 
     trainer.train()
     trainer.save_state()
-    peft_model.save_pretrained(adapter_dir)
-    tokenizer.save_pretrained(adapter_dir)
-    LOG.info("Saved LoRA adapters to %s", adapter_dir)
+    # trainer.save_model() (not peft_model.save_pretrained() directly) on
+    # purpose: under FSDP, gathering a full state dict is a COLLECTIVE
+    # operation -- every rank must call in, even though only the main
+    # process ends up writing to disk. Trainer.save_model() goes through the
+    # accelerator-aware path that does this correctly on all three
+    # strategies; calling peft_model.save_pretrained() directly would either
+    # hang (only main process participating in the collective) or, if
+    # guarded to run on all ranks, write once per rank.
+    trainer.save_model(str(adapter_dir))
 
-    write_report(output_dir, args, trainer, started_at)
+    if trainer.is_world_process_zero():
+        tokenizer.save_pretrained(adapter_dir)
+        LOG.info("Saved LoRA adapters to %s", adapter_dir)
 
-    if args.push_to_hub:
-        hub_target = args.hub_model_id or f"{Path(args.base_model_id).name}-finetuned"
-        peft_model.push_to_hub(hub_target)
-        tokenizer.push_to_hub(hub_target)
+        write_report(output_dir, args, trainer, started_at)
 
-    if args.merge_full_weights:
+        if args.push_to_hub:
+            hub_target = args.hub_model_id or f"{Path(args.base_model_id).name}-finetuned"
+            peft_model.push_to_hub(hub_target)
+            tokenizer.push_to_hub(hub_target)
+
+    if args.merge_full_weights and trainer.is_world_process_zero():
         merged_dir = output_dir / "merged"
         merged_dir.mkdir(parents=True, exist_ok=True)
-        merged_model = peft_model.merge_and_unload()
-        merged_model.save_pretrained(
-            merged_dir, safe_serialization=args.merged_save_format == "safetensors",
-        )
-        tokenizer.save_pretrained(merged_dir)
+        if args.strategy == "fsdp":
+            merge_adapters_standalone(args, adapter_dir, merged_dir)
+        else:
+            # Safe here (unlike the fsdp branch above) because trainer.model
+            # is a plain, unsharded PeftModel under single/ddp -- ddp gives
+            # each rank a full replica on its own GPU (see
+            # resolve_device_map), not FSDP flatparam shards.
+            merged_model = peft_model.merge_and_unload()
+            merged_model.save_pretrained(
+                merged_dir, safe_serialization=args.merged_save_format == "safetensors",
+            )
+            tokenizer.save_pretrained(merged_dir)
         LOG.info("Saved merged weights to %s", merged_dir)
 
     return adapter_dir
 
 
+def merge_adapters_standalone(args: argparse.Namespace, adapter_dir: Path, merged_dir: Path) -> None:
+    """FSDP-safe merge, run only on the main process after training has
+    exited the distributed job's parameter-sharded state.
+
+    trainer.model's parameters are FSDP flatparam shards at the Python-object
+    level regardless of fsdp_state_dict_type -- that setting only governs the
+    collective gather inside .state_dict()/save_model() calls, not direct
+    attribute access. Calling merge_and_unload() on the live FSDP-wrapped
+    module would merge whatever shard happens to live on this rank, not the
+    full model. Instead, reload the base model fresh, single-process, from
+    the correctly-gathered adapter checkpoint trainer.save_model() already
+    wrote to disk -- sidesteps FSDP entirely for this step.
+    """
+    from peft import PeftModel
+
+    LOG.info("FSDP run: merging via a fresh single-process reload, not the live sharded model.")
+    compute_dtype = torch.bfloat16 if args.bf16 else torch.float16
+    is_local = os.path.isdir(args.base_model_id)
+    # Must mirror build_base_model's class/auth choices: the profiles that
+    # reach the fsdp path are the large ones, which include the multimodal
+    # and gated checkpoints -- reloading them as a plain causal LM, or
+    # without the token, fails outright.
+    if args.model_profile in MULTIMODAL_PROFILES:
+        from transformers import AutoModelForImageTextToText
+        model_cls = AutoModelForImageTextToText
+    else:
+        model_cls = AutoModelForCausalLM
+    base = model_cls.from_pretrained(
+        args.base_model_id,
+        trust_remote_code=args.trust_remote_code,
+        token=None if is_local else args.hf_token,
+        local_files_only=is_local,
+        dtype=compute_dtype,
+        device_map="auto",
+    )
+    merged = PeftModel.from_pretrained(base, adapter_dir)
+    merged = merged.merge_and_unload()
+    merged.save_pretrained(merged_dir, safe_serialization=args.merged_save_format == "safetensors")
+    AutoTokenizer.from_pretrained(adapter_dir).save_pretrained(merged_dir)
+
+
+def init_distributed_for_loading(strategy: str) -> None:
+    """Prepare per-rank device + distributed state BEFORE the model loads.
+
+    Two distinct things, both needed only because build_base_model() runs
+    before SFTTrainer builds its Accelerator:
+
+    1. Pin the CUDA device. `accelerate launch` hands each rank a
+       LOCAL_RANK but does not set the process's device, so every rank's
+       current device is cuda:0 and all of them allocate there --
+       transformers' caching_allocator_warmup then OOMs GPU 0 while the
+       other GPUs idle (measured: 14707MiB on GPU 0, 3MiB on GPUs 1-3).
+       The ddp path was spared only by its explicit device_map.
+
+    2. Initialize the process group (fsdp only). transformers gates its
+       rank0-only / meta-device efficient load on is_fsdp_enabled(), which
+       requires torch.distributed to be INITIALIZED -- not merely
+       ACCELERATE_USE_FSDP=true. At load time no Accelerator exists yet, so
+       that check returned False and every rank materialized the FULL model
+       instead of a shard: measured 14833MiB on all four T4s (a whole ~17GB
+       4-bit copy each) before OOM. PartialState() initializes the group and
+       is a singleton, so the Trainer's later Accelerator reuses it.
+    """
+    local_rank = os.environ.get("LOCAL_RANK")
+    if local_rank is None:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.set_device(int(local_rank))
+        LOG.info("Pinned process to cuda:%s (LOCAL_RANK)", local_rank)
+    if strategy == "fsdp":
+        from accelerate import PartialState
+
+        PartialState()
+        try:
+            from transformers.modeling_utils import is_fsdp_enabled
+            LOG.info("Distributed initialized for fsdp load; is_fsdp_enabled()=%s",
+                     is_fsdp_enabled())
+        except ImportError:
+            pass
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s :: %(message)s")
     args = parse_args()
+    init_distributed_for_loading(args.strategy)
     if not args.hf_token:
         args.hf_token = os.environ.get("HF_TOKEN")
     train(args)

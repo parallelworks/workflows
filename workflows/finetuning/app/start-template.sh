@@ -148,6 +148,9 @@ export HF_TOKEN="${hf_token:-}"
 export OPTIM="${optim:-}"
 export GRADIENT_CHECKPOINTING="${gradient_checkpointing:-false}"
 export BF16="${bf16:-false}"
+export STRATEGY="${strategy:-single}"
+export NUM_GPUS="${num_gpus:-1}"
+export FSDP_CONFIG="${app_dir}/fsdp_config.yaml"
 
 set +e
 singularity exec --nv --writable-tmpfs \\

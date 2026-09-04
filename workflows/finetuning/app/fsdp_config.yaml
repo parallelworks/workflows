@@ -1,0 +1,41 @@
+# Generic accelerate FSDP config for the finetuning workflow's fsdp strategy.
+# Deliberately model-agnostic (SIZE_BASED_WRAP, no hardcoded decoder-layer
+# class name) -- matches the workflow's "each model is a configuration, not
+# a code path" design. num_processes below is a placeholder: train-entrypoint.sh
+# always overrides it via `accelerate launch --num_processes`.
+#
+# mixed_precision is deliberately 'no' here (fp32 FSDP all-gather/reduce-
+# scatter communication): this hardware's job is validating sharding
+# CORRECTNESS, not throughput (4x T4 is PCIe-only, not NVLink -- see
+# HANDOFF.md). Actual compute precision is controlled uniformly across all
+# strategies by train.py's --bf16/fp16 (SFTConfig), not by this file.
+#
+# fsdp_state_dict_type: FULL_STATE_DICT makes Trainer.save_model() gather a
+# full (unsharded) state dict via a collective all-rank call before the main
+# process writes it -- required for the adapter checkpoint that
+# merge_adapters_standalone() (train.py) reloads after training exits.
+compute_environment: LOCAL_MACHINE
+distributed_type: FSDP
+downcast_bf16: 'no'
+fsdp_config:
+  fsdp_auto_wrap_policy: SIZE_BASED_WRAP
+  fsdp_min_num_params: 100000000
+  fsdp_backward_prefetch: BACKWARD_PRE
+  fsdp_cpu_ram_efficient_loading: true
+  fsdp_forward_prefetch: false
+  fsdp_offload_params: false
+  fsdp_sharding_strategy: FULL_SHARD
+  fsdp_state_dict_type: FULL_STATE_DICT
+  fsdp_sync_module_states: true
+  fsdp_use_orig_params: true
+machine_rank: 0
+main_training_function: main
+mixed_precision: 'no'
+num_machines: 1
+num_processes: 4
+rdzv_backend: static
+same_network: true
+tpu_env: []
+tpu_use_cluster: false
+tpu_use_sudo: false
+use_cpu: false

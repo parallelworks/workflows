@@ -14,9 +14,34 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 : "${BASE_MODEL_ID:?BASE_MODEL_ID must be provided}"
 : "${DATASET_SOURCE:=huggingface}"
 : "${OUTPUT_DIR:=outputs}"
+: "${STRATEGY:=single}"
+: "${NUM_GPUS:=1}"
+
+# STRATEGY/NUM_GPUS come from resolve_strategy's job outputs (yamls/general.yaml).
+# single stays plain python3 (unchanged); ddp/fsdp launch one process per GPU
+# via accelerate -- train.py itself branches its device placement on
+# --strategy (device_map="auto" is wrong for both distributed cases, see
+# resolve_device_map() there).
+case "${STRATEGY}" in
+    single)
+        LAUNCH_PREFIX=(python3)
+        ;;
+    ddp)
+        LAUNCH_PREFIX=(accelerate launch --multi_gpu --num_processes "${NUM_GPUS}")
+        ;;
+    fsdp)
+        : "${FSDP_CONFIG:?FSDP_CONFIG must be provided when STRATEGY=fsdp}"
+        LAUNCH_PREFIX=(accelerate launch --num_processes "${NUM_GPUS}" --config_file "${FSDP_CONFIG}")
+        ;;
+    *)
+        echo "::error title=Error::unknown STRATEGY=${STRATEGY}" >&2
+        exit 1
+        ;;
+esac
 
 CMD=(
-    python3 "${SCRIPT_DIR}/train.py"
+    "${LAUNCH_PREFIX[@]}" "${SCRIPT_DIR}/train.py"
+    --strategy "${STRATEGY}"
     --model-profile "${MODEL_PROFILE:-custom}"
     --base-model-id "${BASE_MODEL_ID}"
     --dataset-source "${DATASET_SOURCE}"

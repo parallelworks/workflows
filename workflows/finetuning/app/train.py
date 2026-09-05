@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import torch
+import transformers
 from datasets import Dataset, load_dataset
 from huggingface_hub import login
 from peft import LoraConfig
@@ -343,6 +344,28 @@ def resolve_lora_config(args: argparse.Namespace, model) -> LoraConfig:
     # ~3000 adapters and 8.2% trainable params, ~13x the dense model's count,
     # which both defeats the point of LoRA and OOMs a 16GB card. Attention
     # projections are shared per layer, so they stay.
+    # Multimodal model, text-only training: keep LoRA off the vision tower.
+    # Two independent reasons. (a) PEFT cannot adapt it -- gemma-4's vision
+    # tower wraps its projections in Gemma4ClippableLinear, which PEFT
+    # rejects outright ("Target module ... is not supported"), while all 410
+    # text-tower layers are plain nn.Linear. (b) This workflow's dataset path
+    # is text-only, so the vision pathway would receive no training signal
+    # regardless. The tower stays loaded and frozen, so the model keeps its
+    # pretrained vision capability -- only *adapting* it is excluded.
+    # A str target_modules is a regex to PEFT (a list is suffix-matched),
+    # which is what lets us express the exclusion at all.
+    if args.model_profile in MULTIMODAL_PROFILES:
+        suffixes = "|".join(t.strip() for t in DENSE_DEFAULT_TARGETS.split(",") if t.strip())
+        pattern = r"(?!.*vision).*\.(" + suffixes + ")"
+        n_matched = sum(1 for name, mod in model.named_modules()
+                        if re.fullmatch(pattern, name) and isinstance(mod, torch.nn.Linear))
+        LOG.info("Multimodal profile %s: restricting LoRA to non-vision modules "
+                 "(%d matched) via %s", args.model_profile, n_matched, pattern)
+        return LoraConfig(
+            r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout,
+            bias="none", target_modules=pattern, task_type="CAUSAL_LM",
+        )
+
     expert_re = re.compile(r"\.experts\.\d+\.")
     n_expert_linear = sum(
         1 for name, mod in model.named_modules()
@@ -379,6 +402,17 @@ def resolve_device_map(strategy: str):
         return {"": int(os.environ.get("LOCAL_RANK", 0))}
     if strategy == "fsdp":
         return None
+    # single: pin to the one visible GPU rather than asking for "auto".
+    # transformers 5.x's _get_device_map decides to offload part of a
+    # *quantized* model to CPU even when it fits comfortably (measured:
+    # 4-bit OLMoE-1B-7B, ~4GB, on an otherwise-free 15GB T4), then refuses
+    # because offloading a quantized model needs an explicit opt-in --
+    # "Some modules are dispatched on the CPU or the disk". Pinning skips
+    # the dispatcher. "auto" is still right when several GPUs are visible,
+    # where its model-parallel spreading is the whole point (that is how a
+    # 32B model is loaded for the standalone merge).
+    if torch.cuda.is_available() and torch.cuda.device_count() == 1:
+        return {"": 0}
     return "auto"
 
 
@@ -449,15 +483,45 @@ def build_base_model(args: argparse.Namespace):
         # on one 15GB T4 pre-sharding.
         model_kwargs["low_cpu_mem_usage"] = True
 
-    model = model_cls.from_pretrained(
-        args.base_model_id,
-        trust_remote_code=args.trust_remote_code,
-        token=None if is_local else args.hf_token,
-        local_files_only=is_local,
-        device_map=resolve_device_map(args.strategy),
-        dtype=compute_dtype,
-        **model_kwargs,
-    )
+    if args.strategy == "fsdp" and int(transformers.__version__.split(".")[0]) >= 5:
+        LOG.warning(
+            "::warning::strategy=fsdp on transformers %s. 5.x moved weight "
+            "materialization into core_model_loading.py, which does not honor "
+            "fsdp_cpu_ram_efficient_loading -- every rank materializes the whole "
+            "model and OOMs unless it fits per-rank. If this run dies at load, "
+            "use parallelism_override=single (model-parallel) instead. Not a hard "
+            "error: it is fine where the model fits on one GPU, and a future "
+            "release may restore the sharded path.", transformers.__version__,
+        )
+
+    try:
+        model = model_cls.from_pretrained(
+            args.base_model_id,
+            trust_remote_code=args.trust_remote_code,
+            token=None if is_local else args.hf_token,
+            local_files_only=is_local,
+            device_map=resolve_device_map(args.strategy),
+            dtype=compute_dtype,
+            **model_kwargs,
+        )
+    except (KeyError, ValueError) as exc:
+        # An architecture the installed transformers does not know surfaces as
+        # a bare KeyError('<model_type>') or "does not recognize this
+        # architecture" -- neither of which says what to do about it. The
+        # concrete case is gemma-4-31b (model_type `gemma4`), which exists in
+        # no transformers 4.x release and needs an image built from
+        # app/requirements-tf5.txt.
+        text = str(exc)
+        if "does not recognize this architecture" in text or type(exc) is KeyError:
+            raise RuntimeError(
+                f"{args.base_model_id} needs a transformers release that knows its "
+                f"architecture; this container has transformers {transformers.__version__}. "
+                f"For the gemma-4-31b profile, build/select an image from "
+                f"app/requirements-tf5.txt (workflow input container.requirements_file "
+                f"in build mode, or container_sif_path pointing at a 5.x image). "
+                f"Original error: {text}"
+            ) from exc
+        raise
     # Deliberately NOT calling prepare_model_for_kbit_training() or
     # get_peft_model() here: SFTTrainer is handed the raw model plus a
     # peft_config and does both itself, in the right order
@@ -585,10 +649,17 @@ def train(args: argparse.Namespace) -> Path:
     adapter_dir = output_dir / "adapters"
     adapter_dir.mkdir(parents=True, exist_ok=True)
 
-    tensorboard_dir = output_dir / "tensorboard"
     if args.tensorboard:
-        tensorboard_dir.mkdir(parents=True, exist_ok=True)
-        LOG.info("TensorBoard logging enabled. Logs will be saved to: %s", tensorboard_dir)
+        # No logging_dir: transformers 5.x removed that field entirely (no
+        # replacement), and with it unset BOTH 4.x and 5.x write events to
+        # <SFTConfig.output_dir>/runs/<timestamp>/ -- i.e. under adapter_dir.
+        # Letting the default apply is therefore version-agnostic, where
+        # passing logging_dir would break on 5.x and pointing it at a
+        # `tensorboard/` subdir would leave that directory conspicuously
+        # empty on 5.x while TensorBoard reported "no dashboards active".
+        # app/start-template.sh serves output_dir itself and lets
+        # TensorBoard find the events by recursive scan.
+        LOG.info("TensorBoard logging enabled; events written under %s/runs/", adapter_dir)
 
     # dataset_text_field applies to single-text datasets only; a
     # prompt-completion dataset has no "text" column and is what makes
@@ -614,7 +685,6 @@ def train(args: argparse.Namespace) -> Path:
         optim=args.optim,
         lr_scheduler_type="cosine",
         report_to="tensorboard" if args.tensorboard else "none",
-        logging_dir=str(tensorboard_dir) if args.tensorboard else None,
         seed=args.seed,
         max_length=args.max_seq_length,
         packing=args.packing,

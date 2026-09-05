@@ -1,0 +1,48 @@
+# ALTERNATE pin set: transformers 5.x. NOT the default -- requirements.txt is.
+#
+# Exists for exactly one reason: the `gemma-4-31b` profile. Its checkpoint
+# declares model_type `gemma4`, which NO 4.x release recognizes, so that
+# profile needs an image built from this file. Everything else should use
+# requirements.txt.
+#
+# Select it with the `container.requirements_file` workflow input (or pass it
+# as the 3rd argument to app/build-container.sh).
+#
+# The bump is not just transformers -- it cascades:
+#   transformers 5.x requires tokenizers>=0.23.1,<0.24  (4.x-era pin was 0.22.1)
+#   transformers 5.x requires huggingface-hub>=1.5,<2   (a MAJOR bump from 0.x)
+# peft/trl/accelerate/datasets permit hub 1.x only via open-ended lower bounds;
+# none were tested against it upstream. Keeping trl/peft/accelerate at the same
+# pins as requirements.txt is deliberate -- they were verified working with
+# transformers 5.16.1 on the dense path.
+#
+# KNOWN REGRESSIONS on this pin set, measured on 4x T4 (see PLAN.md):
+#   - FSDP sharded loading is BROKEN. transformers 5.x moved weight
+#     materialization into core_model_loading.py, which does not honor
+#     fsdp_cpu_ram_efficient_loading, so every rank materializes the whole
+#     model. Use parallelism_override=single (model-parallel) instead.
+#   - MoE forward uses >2x the memory of 4.x (OLMoE 4-bit: 6.35 -> >14.3 GiB).
+#     Do not use this image for MoE profiles.
+# Dense-path memory is unchanged (10.43 GiB on both).
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.8.0
+transformers==5.16.1
+trl==0.23.0
+triton==3.4.0
+accelerate==1.10.1
+# Load-bearing pins: exact. peft is the critical one here -- the gemma-4 fix
+# depends on PEFT 0.20.0's supported-module list (it rejects
+# Gemma4ClippableLinear) AND on a str target_modules being treated as a regex,
+# which is what lets resolve_lora_config() exclude the vision tower. A rebuild
+# resolving a different peft could change either, silently.
+# Exact resolution of everything else: app/requirements-tf5.lock.
+peft==0.20.0
+tokenizers==0.23.1
+datasets==5.0.1
+huggingface_hub==1.30.0
+bitsandbytes==0.50.2
+tensorboard>=2.16.0
+matplotlib>=3.7.0
+scipy>=1.11.0
+sentencepiece>=0.1.99
+protobuf<=4.25.3

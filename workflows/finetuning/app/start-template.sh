@@ -29,6 +29,16 @@ fi
 container_sif=${service_parent_install_dir}/containers/${registry_slug}/finetune.sif
 sandbox_dir=${service_parent_install_dir}/containers/${registry_slug}/finetune-sandbox
 
+# Must mirror controller.sh's build-mode path exactly: that mode keys the
+# cached image on the pin set, so an image built from requirements-tf5.txt is
+# a distinct artifact. Recomputing it differently here would look for a file
+# the controller never wrote.
+if [ "${container_mode}" = "build" ]; then
+    req_slug=$(printf '%s' "${container_requirements_file:-requirements.txt}" | tr -c 'a-zA-Z0-9._-' '_')
+    container_sif=${service_parent_install_dir}/containers/${registry_slug}/finetune-${req_slug}.sif
+    sandbox_dir=${service_parent_install_dir}/containers/${registry_slug}/finetune-${req_slug}-sandbox
+fi
+
 if [ "${container_mode}" = "sif_path" ]; then
     container_sif=${container_sif_path/#\~/$HOME}
 fi
@@ -104,7 +114,7 @@ singularity exec --writable-tmpfs \\
     --bind "${output_dir_resolved}:${output_dir_resolved}" \\
     --bind "${PWD}/container_tmp:/tmp" \\
     "${container_ref}" \\
-    tensorboard --logdir "${output_dir_resolved}/tensorboard" --port 6007 --bind_all \\
+    tensorboard --logdir "${output_dir_resolved}" --port 6007 --bind_all \\
     > "${PWD}/tb.log" 2>&1 &
 echo \$! > "${PWD}/tb.pid"
 

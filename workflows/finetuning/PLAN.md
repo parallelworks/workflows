@@ -166,6 +166,288 @@ prediction from the objective entirely, and the measured effect on Gemma is
 decisive: initial train loss **25.9 -> 1.25**, eval **27.5->19.5 becomes
 0.68->0.0025**.
 
+## gemma-4-31b text-only fine-tuning — WORKING (2026-09-05)
+
+**Validated on 4x Tesla T4. No Hopper, and no >15GB GPU, is required.** The
+"needs Hopper" framing recorded earlier was wrong on two counts: the cc>=9.0
+requirement belongs to gpt-oss MXFP4, not gemma-4, and VRAM was never the
+blocker either.
+
+| metric | result |
+|---|---|
+| load | `device_map="auto"` model-parallel across 4x T4 (aggregate 60GB) |
+| targeting | 410 non-vision modules; vision tower excluded |
+| trainable | 122,429,440 / 31,395,515,952 (**0.39%**) |
+| eval_loss | **2.083 -> 0.00028** over 18 evals |
+| grad_norm | non-zero throughout | 
+| adapter | 489,840,816 bytes, reloads and generates the trained answer |
+| exit | 0, zero tracebacks/OOM; report + plots written |
+
+### What actually blocked it (not hardware)
+
+1. **PEFT could not adapt the vision tower.** gemma-4 wraps its *vision*
+   projections in `Gemma4ClippableLinear`, which PEFT rejects outright:
+   *"Target module ... is not supported."* Meanwhile **all 410 text-tower
+   layers are plain `nn.Linear`**. Our suffix-based target matching
+   (`q_proj`, ...) reached into the vision tower and hit the wrapper.
+2. **FSDP is unusable for this model on 5.x** (see the migration section
+   below), so the sharded path is not the route. Model-parallel is.
+
+### The fix
+
+`resolve_lora_config()` gained a branch for `MULTIMODAL_PROFILES`: it targets
+via a **regex** (PEFT treats a str `target_modules` as a regex; a list is
+suffix-matched, which is why a list cannot express the exclusion)
+`(?!.*vision).*\.(q_proj|k_proj|...)`. Verified against the module tree
+before use: 410 supported `nn.Linear` matched, **0 unsupported, 0 in the
+vision tower**. The branch is gated on the profile, so dense/MoE targeting
+is structurally untouched.
+
+**Vision capability is retained, not removed.** LoRA freezes the base model;
+excluding the tower from *targeting* only means no adapter deltas on that
+path. Confirmed empirically after training: **299,731,248 vision-tower
+parameters still present** in the reloaded model. What is given up is the
+ability to further *train* the vision pathway — which this workflow could
+not do anyway, since its dataset path is text-only and would supply no
+image gradient.
+
+### Pins and lock files (2026-09-05)
+
+The first cut of `requirements-tf5.txt` was written from the pins that had
+been *edited in* before the build, not from the image that actually ran —
+so it was never checked against reality. It is now, and the check found a
+real weakness: the exact pins held, but **8 packages were loose `>=` and
+their validated versions were unrecorded**, so a rebuild could silently
+resolve differently.
+
+- **Load-bearing pins are now exact in both requirements files**: `peft`,
+  `bitsandbytes`, `datasets`, `huggingface_hub` (plus the already-exact
+  torch/transformers/trl/triton/accelerate/tokenizers). `peft==0.20.0` is
+  the critical one: the gemma-4 fix depends on *both* its supported-module
+  list (which rejects `Gemma4ClippableLinear`) and its treatment of a str
+  `target_modules` as a regex. HANDOFF sec8.5a/8.5c were also diagnosed
+  against it.
+- **`app/requirements.lock` and `app/requirements-tf5.lock`** record the
+  full `pip freeze` of each validated image (85 and 93 packages). Reference
+  artifacts, not build inputs — `finetune.def` still installs the `.txt`.
+  They also capture `triton-kernels==0.1.0`, which is installed by
+  `finetune.def`'s `%post` and appears in neither `.txt`.
+- Verified: every exact pin in each file matches its image (10 per file,
+  0 mismatches), and both sets resolve cleanly (`pip install --dry-run`,
+  exit 0). `torch==2.8.0` legitimately installs as `2.8.0+cu128` from the
+  cu128 extra index — not a mismatch.
+- Still intentionally loose: tensorboard, matplotlib, scipy, sentencepiece
+  (reporting/tokenizer peripherals). The locks pin them exactly if needed.
+- The load-bearing versions are **identical across both images** except the
+  three that had to move: transformers (4.56.2/5.16.1), tokenizers
+  (0.22.1/0.23.1), huggingface_hub (0.36.2/1.30.0).
+
+### End-to-end reproducibility, verified from scratch (2026-09-05)
+
+Both images were **rebuilt from the committed requirements files** and the
+whole matrix re-run against the rebuilds. This is the check that turns "the
+pins match what is installed" into "the pins reproduce the image".
+
+| built from | packages | vs committed lock |
+|---|---|---|
+| `app/requirements.txt` | 85 | **byte-identical** |
+| `app/requirements-tf5.txt` | 93 | **byte-identical** |
+
+Identical including every unpinned transitive, so the locks will not drift
+under a rebuild and the loose peripheral pins are not a reproducibility risk
+in practice.
+
+All five configurations re-run on the rebuilt images, all exit 0, zero errors:
+
+| test | rebuilt | previously recorded |
+|---|---|---|
+| olmo2-1b-dev, single (4.x) | 1.0452 -> 0.00112 | 1.0424 -> 0.00117 |
+| olmoe-1b-7b-dev MoE, single (4.x) | 0.8806 -> 0.00424 | 0.8819 -> 0.01816 |
+| gemma-1.1-7b, ddp x4 (4.x) | 0.6833 -> 0.00246 | 0.6787 -> 0.00252 |
+| OLMo-2-32B, fsdp x4 (4.x) | 0.2754 -> 0.00017 | 0.2777 -> 0.00021 |
+| gemma-4-31b, text-only (5.x) | 2.083 -> 0.00127 | 2.083 -> 0.00028 |
+
+**Every structural invariant reproduced exactly** — trainable counts
+(12,058,624 / 4,194,304 / 50,003,968 / 134,217,728 / 122,429,440), 3072 MoE
+expert Linears detected, 410 non-vision modules matched for gemma-4, and the
+FSDP adapter at 536,991,984 bytes. Only loss values differ, in the last
+digits: ordinary nondeterminism from GPU kernel scheduling and dataset
+shuffling, not drift. Treat the loss figures throughout this file as
+reproducible to ~2 significant figures, not exactly.
+
+No repository file changed as a result of the rebuild or the re-runs.
+
+**Operational note for whoever repeats this:** run the multi-GPU
+configurations *serially*. The first gemma-4 attempt OOM'd purely because it
+was launched (model-parallel across all 4 GPUs) while the 32B fsdp run still
+held them; re-run on free GPUs it passed. That OOM was a scheduling mistake,
+not a reproducibility failure.
+
+### Container story (implemented 2026-09-05)
+
+The 5.x image was previously an untracked binary whose recipe existed only as
+prose in this file — if it were deleted, rebuilding meant a human re-doing a
+hand-edit of `requirements.txt`. Now both pin sets are tracked build inputs:
+
+- `app/requirements-tf5.txt` — the 5.x set, with its regressions in the header.
+- `app/build-container.sh` takes a 3rd arg (or `REQUIREMENTS_FILE` env) and
+  **stages** the chosen file into a temp build dir as `requirements.txt`, so
+  one unmodified `finetune.def` serves both and the repo file is never edited.
+- `container.requirements_file` input drives build mode. **The built image is
+  cached per pin set** (`finetune-<req_slug>.sif`); `controller.sh` and
+  `start-template.sh` derive that path identically, so build mode cannot
+  silently hand back the wrong stack.
+- Deliberately **no profile-based container routing in the YAML** — that
+  couples a library-version workaround to the workflow definition and has been
+  fragile here before. Selection stays manual, with the guards below.
+
+### Guards against picking the wrong image
+
+- Wrong stack: `build_base_model()` converts the bare `KeyError('gemma4')` /
+  "does not recognize this architecture" into a message naming the installed
+  transformers version and `app/requirements-tf5.txt`. Verified: running
+  gemma-4 on the 4.x image now says exactly that.
+- `strategy=fsdp` on transformers >= 5 logs a loud warning pointing at
+  `parallelism_override=single`. A warning, not an error, because FSDP is fine
+  where the model fits per-rank and a future release may restore the path.
+
+### How to run it
+
+- **Requires the transformers 5.x image** (`~/pw/singularity/finetune-tf5.sif`)
+  — `gemma4` exists in no 4.x release. `requirements.txt` stays on 4.x for
+  every other profile, so this is the two-image split that
+  `container_mode`/`container_sif_path` already supports (HANDOFF sec3.5).
+- **Set `advanced.parallelism_override=single`.** The resolver picks `fsdp`
+  from the footprint, but FSDP cannot load this model on 5.x. With `single`
+  and several GPUs visible, `resolve_device_map()` returns `"auto"` and
+  spreads the model across them. This is a library-bug workaround, so it is
+  documented rather than special-cased in the resolver.
+- Caveat: heavy text-only adaptation can still drift the LM away from
+  interpreting vision tokens well (ordinary catastrophic forgetting). The
+  tower is intact; multimodal *performance* is not guaranteed preserved.
+
+## transformers 5.x migration — ATTEMPTED AND REVERTED (2026-09-04)
+
+**Verdict: do not migrate on this hardware. `requirements.txt` is back on the
+4.x pins.** 5.x supplies the `gemma4` architecture but simultaneously breaks
+the sharded loading needed to fit such a model on 4x15GB, so the bump has no
+payoff here — it is strictly a capability loss.
+
+| test | 4.x (validated) | 5.16.1 |
+|---|---|---|
+| OLMo-2-1B dense, single, unquantized | PASS | **PASS** (eval 1.042 -> 0.00094) |
+| dense 7B peak memory, 4-bit fwd+bwd | 10.43 GiB | **10.43 GiB** (identical) |
+| OLMoE-1B-7B **MoE**, 4-bit, single | PASS (6.35 GiB) | **OOM** (>14.3 GiB) |
+| OLMo-2-32B, **fsdp**, 4-bit | PASS | **OOM at load** |
+| gemma-4-31B, fsdp, 4-bit | arch unsupported | **OOM at load** |
+
+### Two independent regressions, both measured
+
+1. **FSDP sharded loading is broken.** 5.x moved weight materialization into
+   a new `transformers/core_model_loading.py`, which contains **zero**
+   references to `is_fsdp_enabled` (`modeling_utils.py` still has 3, but is
+   no longer the path taken). So `fsdp_cpu_ram_efficient_loading` is not
+   honored and **every rank materializes the whole model**. Our early
+   `PartialState()` fix still reports `is_fsdp_enabled()=True` — the gate
+   opens, the new loader just does not consult it. Both the 32B case that
+   passes on 4.x and gemma-4-31B die identically at
+   `core_model_loading.py::convert_and_load_state_dict_in_model`, never
+   reaching training.
+   *Caveat:* this only bites when a model does not fit per-rank. On
+   80GB-class GPUs each rank could materialize the full model, so 5.x +
+   gemma-4 may well work on Hopper. It is unusable on 15GB cards.
+2. **MoE forward uses >2x the memory.** OLMoE-1B-7B 4-bit: 6.35 GiB on 4.x
+   vs >14.3 GiB on 5.x for an identical workload (same batch/seq/LoRA),
+   OOMing inside the loss. Localized to the MoE path by control: a *dense*
+   7B at the same settings peaks at exactly 10.43 GiB on **both** versions.
+   This matters beyond OLMoE itself, since OLMoE is the stand-in for the
+   gpt-oss MoE path (HANDOFF sec2).
+
+### Kept from the attempt: two portable fixes (they work on 4.x, and landed)
+
+Both are improvements independent of the version question, and were
+re-verified on the 4.x image after reverting:
+
+1. **`logging_dir` removed from `SFTConfig`.** 5.x deleted the field with no
+   replacement; with it unset, *both* versions write events to
+   `<SFTConfig.output_dir>/runs/<timestamp>/`. `app/start-template.sh` now
+   serves `${output_dir}` and lets TensorBoard find events by recursive
+   scan. This also removes the trap where the old code created an empty
+   `tensorboard/` directory that made a blank dashboard look like "nothing
+   logged yet".
+2. **`device_map="auto"` no longer used for single-GPU runs.** Pinning
+   `{"": 0}` when exactly one GPU is visible; `"auto"` retained when several
+   are, where the model-parallel spread is the point. Motivated by 5.x
+   (whose `_get_device_map` refuses a quantized model with *"Some modules
+   are dispatched on the CPU or the disk"* even when it fits), but correct
+   on 4.x too.
+
+### If this is revisited
+
+- The 5.x image is kept at `~/pw/singularity/finetune-tf5.sif` and the
+  validated 4.x one at `~/pw/singularity/finetune-tf4.56.2.sif`, so neither
+  needs a rebuild.
+- Re-applying is: `transformers==5.16.1`, `tokenizers==0.23.1`,
+  `huggingface_hub>=1.5.0,<2.0`. Note the hub **major** bump — `peft`/`trl`/
+  `accelerate`/`datasets` only permit it via open-ended lower bounds and
+  none were tested against it upstream.
+- Retest both regressions above first; they are the blockers, not the
+  three API edits.
+- `container_mode`/`container_sif_path` already allow shipping two images
+  (HANDOFF sec3.5 contemplates splitting at a dependency boundary), so a
+  5.x image could serve gemma-4 on Hopper while 4.x serves the matrix.
+
+## Superseded: transformers 5.x migration notes (kept for the reasoning trail)
+
+Motivation: `gemma-4-31b` declares `model_type: gemma4`, which **no 4.x
+release recognizes**. `transformers==5.16.1` does.
+
+### CORRECTION to the earlier cost estimate
+
+An earlier note in this file put the migration at "three edits" based on a
+`pip install --target` probe. **That probe was wrong** — `--target` bypasses
+dependency resolution, so it ran transformers 5.16.1 against
+`tokenizers 0.22.1` and `huggingface_hub 0.x`, a combination 5.x forbids. It
+happened to work for the one path exercised. A real install is
+`ResolutionImpossible`. The actual cascade:
+
+| package | was | 5.x requires |
+|---|---|---|
+| transformers | 4.56.2 | 5.16.1 |
+| tokenizers | 0.22.1 | `>=0.23.1,<0.24` |
+| huggingface_hub | 0.x (`>=0.22.0`) | **`>=1.5,<2` — major bump** |
+
+`peft`/`trl`/`accelerate`/`datasets` permit hub 1.x only because they use
+open-ended lower bounds; none were tested against it upstream. Resolved
+stack now in the image: transformers 5.16.1, tokenizers 0.23.1, hub 1.30.0,
+with trl 0.23.0 / peft 0.20.0 / accelerate 1.10.1 unchanged.
+
+**Rollback:** the validated 4.x image is preserved at
+`~/pw/singularity/finetune-tf4.56.2.sif`; the 5.x one is
+`~/pw/singularity/finetune-tf5.sif`. Reverting is `requirements.txt` +
+either image, no rebuild needed.
+
+### Code changes (both version-agnostic — they work on 4.x too)
+
+1. **`logging_dir` removed from `SFTConfig`.** 5.x deleted the field with no
+   replacement. With it unset, *both* 4.x and 5.x write events to
+   `<SFTConfig.output_dir>/runs/<timestamp>/` (i.e. under `adapters/`), so
+   the default is now the portable choice. `app/start-template.sh` serves
+   `${output_dir}` itself and lets TensorBoard find events by recursive
+   scan. **Verified on 5.x:** events landed at
+   `<output_dir>/adapters/runs/<ts>/events.out.tfevents...` (22KB) — inside
+   the served tree. This closes the silent-blank-dashboard trap recorded
+   earlier.
+2. **`device_map="auto"` is no longer used for single-GPU runs.** 5.x's
+   `_get_device_map` decides to offload part of a *quantized* model to CPU
+   even when it fits comfortably, then refuses: *"Some modules are
+   dispatched on the CPU or the disk."* Measured on 4-bit OLMoE-1B-7B
+   (~4GB) on an otherwise-free 15GB T4 — `'auto'` raises, `{"": 0}` loads
+   fine. `resolve_device_map()` now pins `{"": 0}` when exactly one GPU is
+   visible and keeps `"auto"` for the multi-GPU-visible case, where the
+   model-parallel spreading is the point. Unquantized models are
+   unaffected, which is why the dense smoke test passed before this fix.
+
 ## Completion-only loss (2026-09-04, after the diagnosis above)
 
 `app/train.py` gained `--response-template` (env `RESPONSE_TEMPLATE`, form

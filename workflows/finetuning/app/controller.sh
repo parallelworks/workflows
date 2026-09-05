@@ -53,9 +53,19 @@ case "${container_mode}" in
         # (a maintainer-run build for the same target lands in the same spot,
         # so a later switch to registry/sif_path mode never silently reuses a
         # stale local build under a mismatched key).
+        #
+        # The pin set is part of the cache key: an image built from
+        # requirements-tf5.txt is a different artifact from the default 4.x
+        # one, and reusing the wrong one is exactly the silent failure this
+        # mode should not produce (4.x + gemma-4 = KeyError 'gemma4';
+        # 5.x + a MoE profile = the memory regression).
+        requirements_file=${container_requirements_file:-requirements.txt}
+        req_slug=$(printf '%s' "${requirements_file}" | tr -c 'a-zA-Z0-9._-' '_')
+        container_sif=${service_parent_install_dir}/containers/${registry_slug}/finetune-${req_slug}.sif
         if ! [ -f "${container_sif}" ]; then
-            echo "::group::Building finetune.sif on-the-fly"
-            bash ${PW_PARENT_JOB_DIR}/workflows/finetuning/app/build-container.sh "${container_sif}"
+            echo "::group::Building finetune.sif on-the-fly (pins: ${requirements_file})"
+            bash ${PW_PARENT_JOB_DIR}/workflows/finetuning/app/build-container.sh \
+                "${container_sif}" "" "${requirements_file}"
             echo "::endgroup::"
         fi
         ;;

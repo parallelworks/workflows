@@ -53,6 +53,7 @@ jobs:
           container_mode="${{ inputs.container.container_mode }}"
           finetune_registry="${{ inputs.container.container_registry_uri }}"
           container_sif_path="${{ inputs.container.container_sif_path }}"
+          container_requirements_file="${{ inputs.container.requirements_file }}"
           model_profile="${{ inputs.model_profile }}"
           base_model_id="${{ inputs.model_source == 'local' ? inputs.local_model_path : inputs.base_model_id }}"
           hf_token="${{ inputs.hf_token }}"
@@ -609,6 +610,25 @@ jobs:
             hidden: ${{ inputs.container.container_mode != 'sif_path' }}
             ignore: ${{ inputs.container.container_mode != 'sif_path' }}
             tooltip: Absolute path to a prebuilt .sif on the cluster.
+          requirements_file:
+            label: Pin Set (build mode)
+            type: dropdown
+            default: requirements.txt
+            optional: true
+            hidden: ${{ inputs.container.container_mode != 'build' }}
+            ignore: ${{ inputs.container.container_mode != 'build' }}
+            options:
+              - value: requirements.txt
+                label: "requirements.txt (transformers 4.x -- default, all profiles except gemma-4-31b)"
+              - value: requirements-tf5.txt
+                label: "requirements-tf5.txt (transformers 5.x -- REQUIRED for gemma-4-31b only)"
+            tooltip: >
+              Which pin set app/build-container.sh installs. gemma-4-31b needs
+              the 5.x set because no 4.x release recognizes its `gemma4`
+              architecture. Do NOT use the 5.x set for MoE profiles or for
+              fsdp: both are known-regressed there (see the header of
+              app/requirements-tf5.txt). The built image is cached per pin
+              set, so switching this rebuilds rather than reusing the other.
 
       # ----------------------------------------------------------------------
       # 10. ADVANCED (overrides for the resolver / LoRA targets / template)

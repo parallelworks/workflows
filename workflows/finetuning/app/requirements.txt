@@ -8,11 +8,21 @@ transformers==4.56.2
 trl==0.23.0
 triton==3.4.0
 accelerate==1.10.1
-peft>=0.17.0
+# Load-bearing pins: exact, because documented findings depend on these exact
+# versions, and a looser bound lets a rebuild silently change behavior.
+#   peft         -- LoRA target resolution. HANDOFF sec8.5a (TRL/PEFT kbit
+#                   double-prepare) and sec8.5c (per-expert MoE targeting) were
+#                   both diagnosed against 0.20.0.
+#   bitsandbytes -- the 4-bit path those same findings run through.
+#   datasets     -- dataset load + the completion-only prompt/completion split.
+#   huggingface_hub -- auth and download; 1.x is a breaking major (see
+#                   requirements-tf5.txt), so the 0.x line is pinned here.
+# Exact resolution of everything else: app/requirements.lock.
+peft==0.20.0
 tokenizers==0.22.1
-datasets>=2.18.0
-huggingface_hub>=0.22.0
-bitsandbytes>=0.43.0
+datasets==5.0.1
+huggingface_hub==0.36.2
+bitsandbytes==0.50.2
 tensorboard>=2.16.0
 matplotlib>=3.7.0
 scipy>=1.11.0

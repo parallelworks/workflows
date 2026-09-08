@@ -26,6 +26,7 @@ jobs:
           ./demo-app/install.sh
       - name: Select Port
         run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           PORT=$(pw agent open-port)
           echo "PORT=${PORT}" | tee -a $OUTPUTS
           echo "::notice::Fractal will be served on port ${PORT}"

@@ -42,6 +42,7 @@ jobs:
           # The endpoint dials OUT from whichever node this script lands on —
           # controller or compute node — so no hostname or port bookkeeping is
           # needed: pw picks a free port and exports it as PORT for run.sh.
+          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
           pw endpoints run --name ${endpoint_name} -- ${PWD}/demo-app/run.sh
           EOF
           chmod +x script.sh
@@ -111,6 +112,7 @@ jobs:
           max-retries: 180
           interval: 10s
         run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           # Exit non-zero until the endpoint registers, so the retry above keeps
           # polling — for a queued SLURM/PBS job that may be minutes later. The
           # endpoint registers itself from wherever the script runs.

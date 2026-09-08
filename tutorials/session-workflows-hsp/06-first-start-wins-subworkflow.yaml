@@ -31,6 +31,7 @@ jobs:
           cat <<EOF >> script.sh
           # The session needs to know the hostname and PORT for the tunnel
           hostname > HOSTNAME
+          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
           export PORT=\$(pw agent open-port)
           echo \${PORT} > PORT
           # Bake RESOLUTION into the script (expanded now). The workflow-level
@@ -122,6 +123,7 @@ jobs:
           max-retries: 8640
           interval: 10s
         run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           # Decide whether this worker keeps its session or stands down, looking
           # only at THIS run's fractal sessions (workflowRun.slug == PW_RUN_SLUG,
           # name ends in _fractal). "First start wins" = the first session that is
@@ -183,7 +185,7 @@ jobs:
           jobs:
             - script_submitter
             - session
-        cleanup: pw sessions stop "${{ sessions.fractal }}" || true
+        cleanup: PATH="${PATH}:${HOME}/pw" pw sessions stop "${{ sessions.fractal }}" || true
 
 
 'on':

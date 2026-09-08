@@ -249,6 +249,7 @@ jobs:
       - name: Wait for endpoint
         early-cancel: any-job-failed
         run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           # An endpoint name becomes a DNS label, so pw endpoints rejects anything
           # outside [a-z0-9-] - one uppercase letter is enough to fail the launch.
           # Fold it here rather than leaving that to the operator, with the same

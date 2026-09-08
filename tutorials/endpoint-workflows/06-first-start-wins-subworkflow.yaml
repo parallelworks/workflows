@@ -38,6 +38,7 @@ jobs:
           # that runs this script, and PW_RUN_SLUG may not be exported on a
           # compute node.
           export RESOLUTION=${{ inputs.resolution }}
+          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
           pw endpoints run --name ${endpoint_name} -- ${PWD}/demo-app/run.sh
           EOF
           chmod +x script.sh
@@ -104,6 +105,7 @@ jobs:
           max-retries: 8640
           interval: 10s
         run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           # Decide whether this worker keeps its endpoint or stands down, looking
           # only at THIS run's fractal endpoints (name starts with
           # fractal-<run-slug>-, status running). "First start wins" = the first
@@ -162,7 +164,7 @@ jobs:
         with:
           jobs:
             - script_submitter
-        cleanup: test -f ${{ needs.install.outputs.SKIP_CLEANUP_PATH }} || pw endpoints delete "${{ needs.install.outputs.ENDPOINT_NAME }}" || true
+        cleanup: test -f ${{ needs.install.outputs.SKIP_CLEANUP_PATH }} || PATH="${PATH}:${HOME}/pw" pw endpoints delete "${{ needs.install.outputs.ENDPOINT_NAME }}" || true
 
 
 'on':

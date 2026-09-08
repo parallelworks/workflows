@@ -34,7 +34,9 @@ jobs:
       - name: Render and Serve
         # No --port: pw picks a free local port and exports it as PORT, which
         # run.sh reads. RESOLUTION comes from the workflow-level env block.
-        run: pw endpoints run --name fractal-${PW_RUN_SLUG} -- ./demo-app/run.sh
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          pw endpoints run --name fractal-${PW_RUN_SLUG} -- ./demo-app/run.sh
 
 'on':
   execute:

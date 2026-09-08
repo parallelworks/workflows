@@ -10,7 +10,9 @@ jobs:
     steps:
       - name: Authenticate kubectl
         early-cancel: any-job-failed
-        run: pw kube auth ${{ inputs.k8s.cluster }}
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          pw kube auth ${{ inputs.k8s.cluster }}
   prepare_k8s_pvc:
     needs:
       - auth_k8s

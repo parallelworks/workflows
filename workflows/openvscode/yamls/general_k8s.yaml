@@ -123,6 +123,7 @@ jobs:
       - name: Wait for endpoint
         early-cancel: any-job-failed
         run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           endpoint_name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
           echo "::notice::Waiting for endpoint ${endpoint_name} to come online"
           until pw endpoints list | grep -qw "${endpoint_name}"; do
@@ -143,7 +144,9 @@ jobs:
     steps:
       - name: Authenticate kubectl
         early-cancel: any-job-failed
-        run: pw kube auth ${{ inputs.resource.name }}
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          pw kube auth ${{ inputs.resource.name }}
   prepare_k8s_pvc:
     if: ${{ inputs.resource.type == 'kubernetes' }}
     needs:
@@ -464,6 +467,7 @@ jobs:
       - name: Wait for endpoint
         early-cancel: any-job-failed
         run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           endpoint_name="${{ inputs.service_k8s.name }}-${PW_RUN_SLUG}"
           echo "::notice::Waiting for endpoint ${endpoint_name} to come online"
           until pw endpoints list | grep -qw "${endpoint_name}"; do

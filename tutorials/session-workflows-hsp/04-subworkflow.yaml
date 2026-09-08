@@ -79,6 +79,7 @@ jobs:
           cat <<EOF >> script.sh
           # The session needs to know the hostname and PORT for the tunnel
           hostname > HOSTNAME
+          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
           export PORT=\$(pw agent open-port)
           echo \${PORT} > PORT
           # Bake RESOLUTION into the script (expanded now). The workflow-level

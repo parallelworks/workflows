@@ -47,6 +47,7 @@ jobs:
           max-retries: 60
           interval: 5s
         run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           # Exit non-zero until the endpoint registers, so the retry above
           # keeps polling: the run can only complete once the page is live.
           endpoint_name="fractal-${PW_RUN_SLUG}"

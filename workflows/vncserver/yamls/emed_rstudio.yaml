@@ -141,6 +141,7 @@ jobs:
       - name: Wait for endpoint
         early-cancel: any-job-failed
         run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           endpoint_name="vncserver-${PW_RUN_SLUG}"
           echo "::notice::Waiting for endpoint ${endpoint_name} to come online"
           until pw endpoints list | grep -qw "${endpoint_name}"; do

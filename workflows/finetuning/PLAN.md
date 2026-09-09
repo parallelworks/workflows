@@ -261,6 +261,45 @@ RAM), and no amount of `MEM_MON_INTERVAL` tuning changes that. Until a 4-GPU
 box is available, gpt-oss-120b should be considered **not runnable** on
 2x80GB/459GB, with or without CPU offload.
 
+### Full remaining matrix (5 of 6 profiles) re-validated on Hopper, post-commit
+
+After the LoRA-dropout fix and `memmon.log` poller landed in a commit, all
+five profiles other than gpt-oss-120b were run on this same 2x H100 box to
+confirm the committed code (not just the working tree) is good end-to-end.
+Same 20-row smoke dataset throughout; pass criterion is HANDOFF sec8.5a's
+(falling `eval_loss`, non-zero `grad_norm`) unless noted. All five **PASS**,
+zero tracebacks in any of the five logs.
+
+| profile | strategy | quant | trainable / total params | eval_loss trajectory | grad_norm | notes |
+|---|---|---|---|---|---|---|
+| olmo2-1b-dev | single (1 GPU) | none | 12.06M / 1.50B (0.81%) | 0.890 -> 0.893 -> 0.885 -> 0.870 -> 0.838 -> **0.766** | 0.85-1.23 | merge OK |
+| olmoe-1b-7b-dev (MoE) | single (1 GPU) | none | 4.19M / 6.92B (0.06%) | 0.913 -> 0.930 -> 0.899 -> 0.823 -> 0.685 -> **0.520** | 2.24-5.69 | per-expert-Linear MoE detected (3072 expert Linears), attention-only targeting engaged (HANDOFF sec8.5c) -- first time this path is exercised unquantized |
+| gpt-oss-20b | single (1 GPU) | native (MXFP4->bf16) | 15.04M / 20.93B (0.07%) | 0.876 -> 0.863 -> 0.833 -> 0.762 -> 0.631 -> **0.432** | 4.40-7.67 | confirms the committed lora_dropout=0 fix live (warning logged, no crash); numbers match the pre-commit run to ~2 sig figs |
+| gemma-1.1-7b | **ddp x2** (both H100s) | none | 50.00M / 8.59B (0.58%) | 0.949 -> 0.833 -> **0.655** | 6.0-7.9 | first HF_TOKEN-gated download+run this session (see below); merge OK |
+| gemma-4-31b (multimodal) | single, `device_map=auto` x2 GPUs | 4bit | 122.43M / 31.40B (0.39%) | 7.063 -> 7.046 -> 6.913 -> 6.154 -> 4.643 -> **3.052** | 15.2-28.4 | needs the transformers 5.x image (`finetune-tf5.sif`); 410 non-vision modules matched via the vision-excluding regex (HANDOFF), trainable-param count identical to the 2026-09-05 4xT4 result (122,429,440); `merge_full_weights=false` (adapter-only, per HANDOFF sec8) |
+
+**Two real, HF-gating-related things worth recording (operational, not code bugs):**
+
+- **`google/gemma-1.1-7b-it` is a genuinely gated repo** (`GatedRepoError` when
+  downloaded/loaded anonymously) — it needed a real `HF_TOKEN` with the
+  license accepted. **`google/gemma-4-31B-it` was anonymously downloadable**
+  on this account/network with no token at all. Don't assume "gemma" implies
+  gated; check per-repo.
+- **First attempt at gemma-1.1-7b in this batch failed** with
+  `GatedRepoError`/401 on `added_tokens.json` — not a real blocker, a mistake
+  in the ad hoc run script: `HF_TOKEN` was read via `${HF_TOKEN:-}` shell
+  expansion, but this environment's shell state does not persist between
+  tool calls, so the variable was empty at invocation time even though it
+  had been exported moments earlier in what looked like the same session.
+  Fixed by reading the token from a file at invocation time
+  (`HF_TOKEN="$(cat token_file)" bash run-model.sh ...`) rather than relying
+  on an inherited env var. Re-run after the fix is the PASS recorded above.
+
+gpt-oss-120b remains the only unvalidated/non-viable profile on this
+hardware (see Attempt 4 above). All other five profiles in
+`yamls/general.yaml`'s `model_profile` matrix are now confirmed working on
+2x H100 80GB, on the committed code.
+
 ---
 
 ## Session 2026-09-04 — multi-GPU (4x T4)

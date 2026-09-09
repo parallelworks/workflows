@@ -13,6 +13,10 @@ browser — on a cluster, exposed through a platform endpoint.
   password.
 - **Directory to open** — the folder the IDE opens, encoded in the endpoint
   URL.
+- **Subdomain of the IDE URL** — the label in `https://<subdomain>.<sessions
+  domain>/`; defaults to `openvscode-<cluster>-<user>`. Keep it the same across
+  runs (see below). Not offered on platforms without session subdomains (emed),
+  where the IDE URL is path-based and already stable.
 
 ## Lifecycle
 
@@ -23,3 +27,21 @@ running on the resource. Find it with `pw endpoints list` (named
 
 The code-server installation persists under `<parent_install_dir>` (default
 `${HOME}/pw/software`), so subsequent runs skip the download.
+
+## What persists between runs
+
+Settings, keybindings and installed extensions live on the cluster under
+`~/.local/share/code-server` and survive every run. Everything VS Code keeps on
+the browser side — GitHub and Copilot sign-ins, which extensions are disabled,
+trusted folders, UI layout — is stored by the browser per URL, so it only comes
+back when the IDE is served at the same URL again. That is why the workflow pins
+the endpoint subdomain instead of taking a random one: open the IDE from the same
+browser and that state is still there.
+
+Consequences:
+
+- A second IDE on the same cluster needs a different **Subdomain**. If the URL is
+  already served, the run fails naming the endpoint that holds it; delete that
+  endpoint with `pw endpoints delete <name>` to take the URL back.
+- Another browser, a cleared browser profile, or a changed subdomain starts from
+  scratch: sign in again, re-disable extensions, re-trust folders.

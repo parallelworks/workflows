@@ -11,6 +11,9 @@
 #   - service_download_url: Download URL for code-server
 #   - service_password: Access password (optional, auth=none if not set)
 #   - service_directory: Working directory to open (default: ~/)
+#   - service_subdomain: Subdomain label of the IDE URL (optional, default
+#     <service_name>-<resource_name>-<PW_USER>; ignored with --no-subdomain)
+#   - service_name, resource_name: Used to build the default subdomain
 ################################################################################
 
 if [ -z ${service_parent_install_dir} ]; then
@@ -37,6 +40,25 @@ if [ -z ${service_password} ]; then
 else
     export PASSWORD=${service_password}
     password_flag="--auth=password"
+fi
+
+# code-server keeps VS Code's browser-side state (GitHub/Copilot sign-in, disabled
+# extensions, trusted folders) in the browser, keyed by page origin, so a new
+# random subdomain per run throws that state away. Pin the subdomain instead;
+# path-based endpoints (--no-subdomain) already have a stable origin.
+if ! printf '%s' "${pw_endpoints_args}" | grep -q -- '--no-subdomain'; then
+    if [ -z "${service_subdomain}" ] || [ "${service_subdomain}" = "undefined" ]; then
+        service_subdomain="${service_name:-openvscode}-${resource_name}-${PW_USER}"
+    fi
+    service_subdomain=$(printf '%s' "${service_subdomain}" | tr '[:upper:]' '[:lower:]' \
+        | sed 's/[^a-z0-9-]/-/g; s/-\{2,\}/-/g' | cut -c1-63 | sed 's/^-//; s/-$//')
+    in_use=$(pw endpoints list 2>/dev/null | awk -v host="https://${service_subdomain}." \
+        '{ for (i = 2; i <= NF; i++) if (index($i, host) == 1) { print $1, $2; break } }' | head -n 1)
+    if [ -n "${in_use}" ]; then
+        echo "::error title=Error::https://${service_subdomain}.* is already served by endpoint ${in_use%% *} (status: ${in_use#* }). Open that session, delete it with 'pw endpoints delete ${in_use%% *}', or run again with another subdomain"
+        exit 1
+    fi
+    pw_endpoints_args="${pw_endpoints_args} --subdomain ${service_subdomain}"
 fi
 
 
@@ -79,6 +101,9 @@ if [ $? -ne 0 ]; then
         exit 0
     fi
     echo "::error title=Error::pw endpoints command failed"
+    if [ -n "${service_subdomain}" ]; then
+        echo "::error title=Error::If this is a subdomain conflict, another endpoint (possibly another user's) holds https://${service_subdomain}.*; run again with a different subdomain"
+    fi
     exit 1
 fi
 echo "::endgroup::"

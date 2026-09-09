@@ -11,7 +11,7 @@ jobs:
           uses: parallelworks/checkout
           with:
             repo: https://github.com/parallelworks/workflows.git
-            branch: canary
+            branch: vscode-dev
             sparse_checkout:
               - workflows/openvscode/app
         - name: Create Inputs
@@ -27,6 +27,9 @@ jobs:
             service_download_url="${{ inputs.service.download_url }}"
             service_password="${{ inputs.service.password }}"
             service_directory="${{ inputs.service.directory }}"
+            service_name="${{ inputs.service.name }}"
+            service_subdomain="${{ inputs.service.subdomain }}"
+            resource_name="${{ inputs.cluster.resource.name }}"
             pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG} --slug ?folder=${{ inputs.service.directory }}"
             EOF
             # Remove empty variables
@@ -238,4 +241,13 @@ jobs:
             type: string
             default: ${HOME}
             tooltip: Directory to open in VS code
+          subdomain:
+            label: Subdomain of the IDE URL
+            type: string
+            optional: true
+            tooltip: |
+              The IDE is served at https://<subdomain>.<sessions domain>/. Reuse the same subdomain
+              every run: the browser keeps VS Code's sign-ins (GitHub, Copilot), disabled extensions
+              and trusted folders per URL, and a new URL starts from scratch. Default:
+              openvscode-<cluster>-<user>. Pick another label to run a second IDE on the same cluster.
 

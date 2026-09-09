@@ -307,6 +307,15 @@ non-repetitive; point at an existing tutorial instead.
 - **No session subdomains on emed:** register endpoints with `--no-subdomain` there
   (the platform then serves `/me/session/<PW_USER>/<name>/` and forwards the full
   path — give the app that base path). See `workflows/kasmvnc/yamls/emed.yaml`.
+- **Browser-side app state dies with a random subdomain:** web IDEs (code-server,
+  JupyterLab) keep sign-ins, disabled-extension lists, workspace trust and UI state in
+  the browser (localStorage/IndexedDB), keyed by page origin — a new random subdomain
+  per run resets all of it (openvscode, 2026-09: Copilot logout, extensions re-enabled,
+  folders untrusted every run). Pin the origin with `pw endpoints run --subdomain
+  <label>` (a platform-wide DNS label: lowercase `[a-z0-9-]`, ≤63 chars — build it from
+  service, cluster and `PW_USER`), keep `--name <service>-${PW_RUN_SLUG}` for lookup,
+  and check `pw endpoints list` for an endpoint already serving `https://<label>.`
+  before launching (see `workflows/openvscode/app/start-template.sh`).
 - **`oras pull` says `denied` for a public package:** a stale ghcr login in the
   user's `~/.docker/config.json` on the cluster is being sent. `tools/oras/libs.sh`
   pulls anonymously first for this reason — reuse it instead of calling oras directly.

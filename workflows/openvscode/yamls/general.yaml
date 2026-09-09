@@ -79,7 +79,7 @@ jobs:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:
       - name: Session Runner
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@vscode-dev
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml

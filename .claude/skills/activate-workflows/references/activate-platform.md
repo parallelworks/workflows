@@ -449,6 +449,20 @@ session (batch compute). Use **`session_runner`** when you also need a live web 
 
 ---
 
+### Failure path of a submitted script (verified 2026-09-09, openvscode on gcpsmall)
+`script_submitter` does **not** forward the script's exit code: "Wait for Script" only polls
+the pid, then "Cancel Streaming" stops the `stream_output` `tail -f` job and the
+subworkflow *completes*. A workflow's error handling therefore lives in the parent's
+steps after the `uses:` step (`Cancel Wait for Endpoint` + `Exit Workflow with Error`).
+**Every job that runs a script (`ssh_job`, `slurm_job`, `pbs_job`, `scheduler_agent_job`)
+must end with the `Cancel Streaming` step** — without it a script that exits before its
+endpoint registers leaves `tail -f` alive and the run sits in `running` forever (the
+success path hides this because `wait_for_endpoint` cancels the whole subworkflow). The
+setsid rewrite (#4) had dropped it from `general`/`emed` `ssh_job` and `noaa`
+`scheduler_agent_job`; restored on 2026-09-09. Symptom to recognize: error annotation in
+`pw workflows runs errors` but the run never leaves `running`, and `ps` on the node shows
+`tail -f run.<job>.out` under `subworkflows/session_runner/`.
+
 ## 6. `pw` CLI reference (verified)
 
 Global flags: `--context`, `--platform-host`, `-v/--verbose`. Assume already

@@ -344,6 +344,11 @@ non-repetitive; point at an existing tutorial instead.
 - **Forgot `cancel.sh` or `sleep inf`:** the service is killed immediately or the
   job exits before the session registers.
 - **Missing `permissions: ['*']`:** in-workflow `pw` calls fail to authenticate.
+- **Run stuck in `running` after the start script failed (error annotation present):**
+  the `script_submitter` job that ran the script is missing its `Cancel Streaming` step,
+  so `stream_output`'s `tail -f` never ends (reference §5 "Failure path"). Test the failure
+  path on purpose (make the start script `exit 1` before `pw endpoints run`) — the success
+  path never exercises it.
 - **`pw sessions stop` 404s** if the run was already canceled (cancel tears the
   session down). Not an error.
 - **Always `--dry-run`** before a real run; it catches schema/YAML problems cheaply.

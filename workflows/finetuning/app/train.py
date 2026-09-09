@@ -331,8 +331,23 @@ def resolve_lora_config(args: argparse.Namespace, model) -> LoraConfig:
         )
         LOG.info("MoE fused-expert-parameter targeting engaged: %d tensors across layers %s",
                  len(target_params), layers)
+        # PEFT's ParamWrapper (the dispatcher for target_parameters, i.e. this
+        # fused-expert path) hard-rejects any nonzero dropout: "lora.ParamWrapper
+        # does not work with lora_dropout != 0" -- raised unconditionally in
+        # its __init__ regardless of r/alpha. A single LoraConfig applies one
+        # dropout value to both target_modules and target_parameters, so it
+        # cannot be kept nonzero for "all-linear" while zeroed only for the
+        # expert params. Verified live on gpt-oss-20b: the workflow's own
+        # form default (advanced.lora_dropout=0.05) crashes every default-
+        # settings gpt-oss run at SFTTrainer construction without this.
+        if args.lora_dropout:
+            LOG.warning(
+                "::warning::lora_dropout=%s requested but gpt-oss-style fused-expert "
+                "target_parameters LoRA (peft's ParamWrapper) does not support dropout "
+                "!= 0; forcing lora_dropout=0 for this run.", args.lora_dropout,
+            )
         return LoraConfig(
-            r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout,
+            r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=0.0,
             bias="none", target_modules="all-linear", target_parameters=target_params,
             task_type="CAUSAL_LM",
         )

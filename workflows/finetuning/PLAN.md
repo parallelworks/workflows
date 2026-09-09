@@ -29,6 +29,238 @@ Extended 2026-09-04 on a **4x Tesla T4** node (4x 15360MiB, compute capability
 24 CPU / 186GB RAM). See "Session 2026-09-04" below; it supersedes the
 2026-09-03 status where they differ.
 
+Extended again 2026-09-09 on a **2x H100 80GB** node (cc 9.0 — **first Hopper
+hardware this workflow has run on**, driver 595.45.04, CUDA 13.2, Apptainer
+1.4.5, 26 CPU / 459GB RAM). See "Session 2026-09-09" below — this is where
+gpt-oss-20b/120b, the two profiles that needed Hopper, are finally exercised.
+
+---
+
+## Session 2026-09-09 — Hopper (2x H100 80GB)
+
+Model weights staged to `/aitmp` (large local scratch disk, not the
+persistent home dir). Container prebuilt from `app/requirements.txt` (4.x
+pin) at `/aitmp/finetune-tf4.56.2.sif` — verified inside: torch 2.8.0+cu128,
+transformers 4.56.2, peft 0.20.0, trl 0.23.0, accelerate 1.10.1, triton
+3.4.0, triton_kernels importable, `Mxfp4Config` available, both GPUs report
+compute capability (9, 0). Ran via direct `singularity exec --nv` +
+`train-entrypoint.sh` (PLAN.md's own documented playbook, not through `pw` —
+no authenticated `pw` session was available this session either).
+
+Pass criterion unchanged from HANDOFF sec8.5a: falling `eval_loss` and
+non-zero `grad_norm`.
+
+**Sanity check first:** `olmo2-1b-dev`, single GPU, no quant, bf16 — PASS
+(eval_loss 2.75 -> 2.48 over 6 evals, grad_norm ~1.2-1.5 throughout, full
+`model.safetensors` merge). Confirms the box/container/pipeline before
+touching gpt-oss.
+
+### gpt-oss-20b — PASS (first-ever real run of this profile, any hardware)
+
+Single GPU, `--response-template` set (completion-only loss), `lora_r=8`,
+`max_seq_length=1024`, 3 epochs over the 20-row synthetic smoke dataset.
+
+| metric | result |
+|---|---|
+| quantization | `native` (`Mxfp4Config(dequantize=True)`) -> bf16 for train |
+| LoRA targeting | fused-expert `target_parameters`, 6 tensors across layers [7, 15, 23] (cookbook default, unchanged from HANDOFF sec3) |
+| eval_loss | 0.852 -> 0.860 -> 0.832 -> 0.746 -> 0.634 -> **0.435** (6 evals) |
+| grad_norm | non-zero throughout (4.3 - 8.1) |
+| wall clock | 137.6s train + ~4min merge |
+| merge | full bf16 model (9 shards, ~42GB) written and reloadable |
+| exit | 0, zero tracebacks (after the fix below) |
+
+#### REAL BUG FOUND AND FIXED: `target_parameters` LoRA rejects the form's own default dropout
+
+First attempt crashed at `SFTTrainer.__init__` -> `get_peft_model()`:
+`ValueError: lora.ParamWrapper does not work with lora_dropout != 0`. PEFT's
+`ParamWrapper` (the dispatcher `target_parameters` resolves to) hard-rejects
+any nonzero dropout unconditionally. **This is not a test-config mistake** —
+`yamls/general.yaml`'s own form default is `advanced.lora_dropout=0.05`
+(line ~496), so this crashed with *default* settings and would have blocked
+every gpt-oss run through the real workflow, not just a custom one.
+
+Fixed in `app/train.py`'s `resolve_lora_config()`: the fused-expert-params
+branch (gpt-oss profiles) now forces `lora_dropout=0.0` in the `LoraConfig`
+it builds, and logs a warning if the caller asked for nonzero. A single
+`LoraConfig` applies one dropout value to both `target_modules="all-linear"`
+and `target_parameters` — there's no way to keep dropout on the attention/MLP
+adapters while zeroing it only for the expert-parameter adapters within one
+config, so the whole run's dropout is zeroed rather than partially honored.
+Re-ran after the fix: PASS (table above). **Not yet committed** as of this
+writing — do it in the same change as this PLAN.md update.
+
+### gpt-oss-120b — inconclusive, interrupted by node preemption; needs re-run
+
+FSDP across both GPUs (resolver: `FOOTPRINT=63GB`, `NEED_PER_GPU=63*1.6+6=106.8GB`
+vs 80GB/GPU -> `fsdp`, matches HANDOFF's own "borderline; needs FSDP across
+>=2" expectation). `merge_full_weights=false` (HANDOFF sec8: prefer
+base+adapter serving over a single-process merge at this scale).
+
+**Known concern going in, worth recording regardless of outcome:** gpt-oss-120b
+is 116.8B total params. Training never happens in native MXFP4 (HANDOFF
+sec3) -- `Mxfp4Config(dequantize=True)` unpacks *all* weights to bf16 before
+the forward pass, not just the ~63GB on-disk MXFP4-packed footprint. Full
+bf16 materialization is ~234GB; `fsdp_config.yaml`'s `FULL_SHARD` divides
+that across ranks, so **steady-state per-GPU shard alone is ~117GB** on a
+2-rank job — already over each H100's 80GB before activations, gradients or
+optimizer state are counted. HANDOFF sec3 itself flagged this as unvalidated
+and named "2x94GB" as the borderline case; 2x80GB is meaningfully below that.
+
+**Attempt 1 (plain FSDP, `fsdp_offload_params: false`, resolver default) —
+OOM, precisely diagnosed.** Rank0 CPU-materializes the ~227GB bf16-dequantized
+model over ~8.5min (rank1 correctly stays on meta-device, ~5GB); LoRA applies
+fine (50.2M/116.9B trainable, 0.043%). Dies in `accelerator.prepare(model)` ->
+FSDP `_recursive_wrap` -> `FlatParamHandle.shard()` -> `chunk.clone()`:
+`torch.OutOfMemoryError: CUDA out of memory. GPU has 79.18GB total, 77.31GB
+already in use, tried to allocate 2.99GB more.` Both GPUs climbed steadily
+19GB->79GB during the broadcast-then-shard step. Confirms the back-of-envelope
+math above: even a perfect 2-way `FULL_SHARD` split is ~117GB/GPU, over
+budget before the broadcast overshoot that actually triggered the OOM.
+Log: `/aitmp/outputs/gpt-oss-120b-run1.log`.
+
+**Attempt 2 (FSDP + `fsdp_offload_params: true`, scratch config
+`/aitmp/fsdp_config_offload.yaml`, not a repo file) — interrupted before
+producing a result; the node was preempted/rebooted mid-run.** Model load,
+LoRA apply, and tokenizer alignment all completed normally (identical trainable
+param count/log lines as attempt 1). GPU memory stayed low and rose slowly
+and steadily this time — ~20GB/GPU after several minutes, well under the
+80GB budget — which is the behavior you'd expect if parameter/optimizer
+sharding is actually landing on CPU RAM (459GB available) instead of GPU.
+**But no training step ever logged** (no `loss` line reached in
+`/aitmp/outputs/gpt-oss-120b-run2.log`; last line is the tokenizer PAD/BOS/EOS
+alignment notice at 16:32:19), and `gpt-oss-120b-run2-gpumon.log` has one
+last sample at 16:43:06 before going silent — no OOM, no traceback, no
+adapters/checkpoint written. The box came back up with a fresh boot at
+17:26 (`uptime`/`dmesg` both confirm), consistent with a preemption sometime
+in that ~43min gap, most likely during a very slow CPU-offloaded first
+optimizer step rather than a crash caused by the code itself. **This is not
+a result — do not read "GPU memory stayed low" as a pass.** It only shows
+offload avoids the attempt-1 OOM signature long enough to start stepping;
+whether it actually completes a step (and how slow) is still unmeasured.
+Re-run needed to get an actual pass/OOM/other verdict before this paragraph
+can be replaced.
+
+**Attempt 3 (same offload config, re-run) — reproduced the identical silent
+hang, and this time it was diagnosed live: system (CPU) RAM OOM, not GPU.**
+Same signature as attempt 2 (GPU memory flat ~20GB/GPU, log/gpumon go silent
+with no step, no traceback) while the node was actually thrashing on host
+RAM: the platform's centralized memory monitor showed the box climbing to
+100% system RAM, and an SSH session that connected mid-freeze accepted the
+connection but couldn't run any command — consistent with the kernel
+reclaiming/swapping so aggressively nothing could schedule, not a crash. No
+in-run evidence existed to confirm this directly, because nothing in this
+workflow watched CPU RAM — `gpumon` (an ad hoc script from this session, not
+a repo file) only ever polled `nvidia-smi`.
+
+Root cause read: `fsdp_cpu_ram_efficient_loading` is meant to keep only
+rank0 materializing the full bf16-dequantized model (~227GB) while other
+ranks stay meta-device until sharding, but with `fsdp_offload_params: true`
+on a 116.8B-param model the transient broadcast-then-shard step (same code
+path that OOM'd the GPU in attempt 1, see `FlatParamHandle.shard()` above)
+looks to be landing full or near-full copies in host RAM on more than one
+rank before freeing the non-owned shard — two ranks each briefly near
+~227GB would exceed the 459GB box. Unconfirmed in detail (no CPU-RAM samples
+exist from attempts 2/3), but consistent with everything observed.
+
+**Fix, not yet re-validated:** added a system-RAM poller to
+`app/train-entrypoint.sh` (`free -m` every `MEM_MON_INTERVAL` sec, default
+5s, to `${OUTPUT_DIR}/memmon.log`), backgrounded before the training command
+with an `EXIT` trap to kill it — this required dropping `train-entrypoint.sh`'s
+`exec "${CMD[@]}"` in favor of a plain foreground call so the trap survives.
+Purpose is diagnostic only: next gpt-oss-120b FSDP+offload attempt will have
+a host-RAM timeline to actually confirm the OOM (and see the climb rate/
+headroom) instead of inferring it from a silent log. **Does not fix the
+underlying OOM risk** — gpt-oss-120b FSDP+CPU-offload on this 2x80GB/459GB
+box is still unvalidated; next step is watching `memmon.log` on a re-run
+(expect it to climb toward 459GB and correlate with the hang), then deciding
+whether to pursue offload tuning (e.g. `fsdp_offload_params` alone, without
+also relying on the model being small enough to double-materialize) or mark
+gpt-oss-120b unsupported on 2x80GB/459GB hardware.
+
+### Attempt 4 (same offload config, re-run with `memmon.log` finally exercised) — VERDICT: sustained climb, not a transient. Watchdog-killed before the box could freeze again.
+
+Same command/config as attempts 2/3 (`fsdp_offload_params: true`,
+`/aitmp/fsdp_config_offload.yaml`, gpt-oss-120b, lora_r=8, 512 max_seq_len).
+Run directly (no `pw` session again), this time under a small watchdog:
+the training process ran in its own process group (`setsid`, no cgroup cap
+available — this box has no active login session, so `systemd-run --user`
+fails with "Failed to connect to bus" and could not be used as a second
+backstop), polled every 10s against `memmon.log`, and was killed outright if
+`mem_avail` fell under a 100GiB floor with no training step yet logged. This
+is a deliberate change from attempts 2/3: manual "watch and react" is not
+viable once the box starts thrashing (that's exactly what made attempt 3's
+SSH session unresponsive), so the kill decision has to be automatic and
+happen well before the ceiling, not after.
+
+**Full timeline, read directly from this run's `memmon.log`/`gpumon.log`:**
+
+| phase | wall time | mem_used | mem_avail | GPU mem/GPU |
+|---|---|---|---|---|
+| start | 18:32:34 | 1.7GB | 461GB | 0MiB |
+| checkpoint-shard load (rank0 only, rank1 meta-device) | 18:32:34 -> 18:41:55 (~9.3min, matches attempts 1-3's ~8.5min) | climbs steadily to ~228GB | falls to ~230GB | flat ~4.7GB (meta-device placeholder) |
+| LoRA applied, FSDP wrap (`accelerator.prepare`) | 18:42:01 -> 18:42:06 | ~228GB | ~230GB | jumps to ~19.9GB and holds |
+| **post-wrap plateau** | 18:42:01 -> 18:45:13 (~3.2min) | flat, oscillating 224-234GB | flat, oscillating 226-234GB | flat ~19.9GB |
+| **second climb (pre-first-step)** | 18:45:18 -> 18:46:34 (76s, when killed) | ~flat, 230->240GB (+~10GB only) | **collapses 226GB -> 83.6GB** (-142.5GB in 76s, ~112GB/min) | flat ~20.0GB (barely moves) |
+
+**This directly answers PLAN.md's open question, and the answer is not the
+hoped-for one.** The plateau after model-load *is* a genuine, safe transient
+— ~3 minutes flat at ~230GB/459GB (50%), which would have supported the
+"CPU offload is viable here" reading if the run had stopped there. But a
+**second, distinct, much faster phase starts afterward, before any training
+step lands**, and it shows no sign of leveling off: at the moment of the
+kill it was still accelerating, on pace to exhaust the remaining ~84GB within
+well under a minute. This is the sustained/near-ceiling case, not a
+load-time transient.
+
+**Refinement of the root-cause hypothesis, directly visible in the numbers
+above (not previously observable — attempts 2/3 had no memmon.log at all):**
+the second-phase collapse is overwhelmingly in `mem_avail`, not `mem_used`
+— `mem_used` barely moves (+~10GB) while `mem_avail` falls ~142GB in the same
+76s. That gap has to be landing in the portion of `free -m`'s accounting that
+`mem_avail` treats as non-reclaimable (buffer/cache or, more likely given
+FSDP/NCCL's use of pinned staging buffers and `/dev/shm`, shared memory) —
+`free -h` taken manually right after the kill still showed `shared=68GB` and
+`buff/cache=131GB` mid-drain. This is consistent with (and sharpens) the
+PLAN.md hypothesis about the broadcast-then-shard step landing full/near-full
+copies in host RAM on more than one rank: **the mechanism looks like it isn't
+classic process-RSS growth on two ranks, but a rapid buildup in
+shared/pinned memory**, timed to start only after the FSDP wrap has already
+settled — i.e. it starts with whatever happens next (the first forward
+pass under CPU-offloaded FSDP, unsharding one decoder layer at a time),
+not with the wrap itself. Still not confirmed at the mechanism level (no
+per-segment `/proc/meminfo` breakdown was collected, only the one manual
+`free -h` snapshot and memmon.log's used/avail split), but no longer purely
+inferred from a silent log either.
+
+**No training step ever logged** (`grep "'loss':"` — zero matches, same as
+attempts 2/3), so **HANDOFF sec8.5a's pass criterion (falling eval_loss,
+non-zero grad_norm) cannot be evaluated for this profile+config** — there is
+nothing to judge pass/fail on. The watchdog's SIGTERM landed cleanly
+(`torch.distributed.elastic` logged the shutdown, `squashfuse_ll` timed out
+tearing down as expected); no traceback, no OOM exception — this was a kill,
+not a crash.
+
+**The box survived.** Immediately after the kill: both GPUs back to 0MiB, no
+leftover `singularity`/`accelerate`/`train.py` processes, host RAM already
+draining (155GB used within seconds of the kill, 17GB used ~10 minutes
+later, matching the pre-run baseline). Unlike attempts 2/3, this session
+ended with a live, responsive node.
+
+**Recommendation, per the transient-vs-sustained decision this run was run
+to make:** this is the sustained case, so pursuing further CPU-offload
+tuning on this 2x80GB/459GB box is not recommended — the climb was still
+accelerating at kill time with no evidence it would plateau before hitting
+the ceiling. **Switch to 4x H100 80GB with plain FSDP and no CPU offload**
+for gpt-oss-120b: ~234GB bf16-dequantized model / 4 ranks ≈ 59GB/GPU shard,
+comfortably under 80GB with headroom for LoRA-sized activations/gradients,
+and it sidesteps the CPU-offload risk class entirely rather than trying to
+out-provision it with more system RAM. **This should not be re-attempted on
+the current 2-GPU box** — it needs different hardware (more GPUs, not more
+RAM), and no amount of `MEM_MON_INTERVAL` tuning changes that. Until a 4-GPU
+box is available, gpt-oss-120b should be considered **not runnable** on
+2x80GB/459GB, with or without CPU offload.
+
 ---
 
 ## Session 2026-09-04 — multi-GPU (4x T4)

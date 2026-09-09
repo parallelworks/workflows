@@ -115,5 +115,26 @@ export TRANSFORMERS_NO_ADVISORY_WARNINGS=1
 export TRANSFORMERS_VERBOSITY=error
 export TOKENIZERS_PARALLELISM=false
 
+# System (CPU) RAM watcher, separate from any GPU-VRAM monitoring the caller
+# may run: FSDP with fsdp_offload_params moves parameters/optimizer state to
+# host RAM, and a full-precision dequant of a large MoE model can exhaust
+# hundreds of GB of it with GPU memory staying flat and no Python-level
+# OOM traceback -- the box just thrashes and goes unreachable. Logged here so
+# a repeat leaves evidence instead of only a silent training log.
+: "${MEM_MON_INTERVAL:=5}"
+MEM_LOG="${OUTPUT_DIR}/memmon.log"
+mkdir -p "${OUTPUT_DIR}"
+(
+    while true; do
+        free -m | awk -v ts="$(date +%H:%M:%S)" \
+            'NR==2{printf "%s mem_total=%dMiB mem_used=%dMiB mem_avail=%dMiB", ts, $2, $3, $7}
+             NR==3{printf " swap_used=%dMiB\n", $3}'
+        sleep "${MEM_MON_INTERVAL}"
+    done
+) >>"${MEM_LOG}" &
+MEM_MON_PID=$!
+trap 'kill "${MEM_MON_PID}" 2>/dev/null || true' EXIT
+
 echo "::notice::Running: ${CMD[*]}"
-exec "${CMD[@]}"
+echo "::notice::System-RAM monitor PID ${MEM_MON_PID} logging to ${MEM_LOG} every ${MEM_MON_INTERVAL}s"
+"${CMD[@]}"

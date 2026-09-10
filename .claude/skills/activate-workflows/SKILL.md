@@ -154,8 +154,11 @@ Numbers from `integer` inputs arrive as **strings**; guard with `${var:-default}
 
 ## Step 3 — Test end-to-end with the `pw` client
 
-**Push first.** The YAML's checkout and `uses:` steps fetch the repo from GitHub at
-run time, so an untested local edit is invisible until it is on the referenced branch.
+**Push first, unless only the YAML changed.** The YAML's checkout and `uses:` steps
+fetch the repo from GitHub at run time, so a local edit to anything they fetch (`app/`
+scripts, the subworkflow) is invisible until it is on the referenced branch. The YAML
+itself is read from the absolute path you pass, so a YAML-only edit tests without a
+push (verified 2026-09-10 with the ollama endpoint-name change).
 
 ```bash
 # always validate first — catches YAML/schema/variant errors without executing
@@ -307,6 +310,10 @@ non-repetitive; point at an existing tutorial instead.
 - **No session subdomains on emed:** register endpoints with `--no-subdomain` there
   (the platform then serves `/me/session/<PW_USER>/<name>/` and forwards the full
   path — give the app that base path). See `workflows/kasmvnc/yamls/emed.yaml`.
+- **Endpoint names must be lowercase `[a-z0-9-]`** (undocumented; one uppercase letter
+  fails the launch). `<service>-${PW_RUN_SLUG}` is safe; a name typed into a form is not:
+  fold it before it reaches `pw endpoints`, and make the wait step look for the same
+  folded name (`workflows/ollama/yamls/general.yaml`, input `endpoint_name`).
 - **Browser-side app state dies with a random subdomain:** web IDEs (code-server,
   JupyterLab) keep sign-ins, disabled-extension lists, workspace trust and UI state in
   the browser (localStorage/IndexedDB), keyed by page origin — a new random subdomain

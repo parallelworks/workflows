@@ -835,7 +835,11 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
 - **The endpoint name is a registry key, not the subdomain**: a random subdomain is
   assigned by default (`-s/--subdomain` pins one). Names are how you *find* endpoints —
   `pw endpoints list | grep -w <name>` — so build them from `${PW_RUN_SLUG}` (plus the
-  resource name when several workers share a run). Killing the client process (cancel
+  resource name when several workers share a run). Names must be lowercase `[a-z0-9-]`
+  (undocumented; one uppercase letter fails the launch): when a form input feeds the
+  name, fold it before it reaches `pw endpoints` and make the wait step look for the
+  same folded name (`workflows/ollama/yamls/general.yaml`, input `endpoint_name`).
+  Killing the client process (cancel
   the run/step) deregisters the endpoint within seconds; racing/fan-out over a shared
   name prefix is shown in `tutorials/endpoint-workflows/` (verified two-resource
   first-start-wins race).

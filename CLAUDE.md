@@ -94,6 +94,9 @@ To convert a legacy session-pattern workflow to this pattern, follow
   (service-specific); values read as `${{ inputs.cluster.* }}` / `${{ inputs.service.* }}`.
 - The hidden `service.name` input is the **endpoint/session name prefix** — it is not
   a checkout path. Keep its value stable; renaming it changes endpoint names.
+- Endpoint names must be lowercase `[a-z0-9-]`. `<service.name>-${PW_RUN_SLUG}` already
+  is; a name that comes from a form input must be folded before it reaches
+  `pw endpoints` — see the `endpoint_name` input in `workflows/ollama/yamls/general.yaml`.
 - Multi-implementation workflows select their script subdir via a runtime input
   (`container_runtime`, `service.container_runtime`, `service.name`): the input
   **values must match the impl subdirectory names** under `workflows/<name>/`.
@@ -111,8 +114,9 @@ those platforms — validate them statically.
 
 ## Testing and debugging
 
-- **Push before testing.** Checkout and `uses:` steps fetch this repo from GitHub at
-  run time; local edits are invisible until they are on the referenced branch.
+- **Push before testing** anything the run fetches (`app/` scripts, subworkflows):
+  checkout and `uses:` steps pull this repo from GitHub at run time. The YAML itself
+  is read from the absolute path you pass, so a YAML-only edit tests without a push.
 - Run with the **absolute** YAML path (a relative path is parsed as a git host):
   `pw workflows run /abs/path/workflows/<name>/yamls/general.yaml -i '{"cluster":{"resource":"<cluster>","scheduler":false}}'`
 - **Pass = the endpoint serves:** `pw endpoints list` shows `<service.name>-<run-slug>`

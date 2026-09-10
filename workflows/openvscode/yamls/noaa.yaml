@@ -9,7 +9,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: vscode-dev
           sparse_checkout:
             - workflows/openvscode/app
       - name: Create Inputs
@@ -121,7 +121,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Session Runner
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@vscode-dev
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/noaa.yaml

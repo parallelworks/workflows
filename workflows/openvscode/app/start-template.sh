@@ -12,8 +12,8 @@
 #   - service_password: Access password (optional, auth=none if not set)
 #   - service_directory: Working directory to open (default: ~/)
 #   - service_subdomain: Subdomain label of the IDE URL (optional, default
-#     <service_name>-<resource_name>-<PW_USER>; ignored with --no-subdomain)
-#   - service_name, resource_name: Used to build the default subdomain
+#     vscode-<resource_namespace>-<resource_name>-<PW_USER>; ignored with --no-subdomain)
+#   - resource_namespace, resource_name: Used to build the default subdomain
 ################################################################################
 
 if [ -z ${service_parent_install_dir} ]; then
@@ -48,7 +48,7 @@ fi
 # path-based endpoints (--no-subdomain) already have a stable origin.
 if ! printf '%s' "${pw_endpoints_args}" | grep -q -- '--no-subdomain'; then
     if [ -z "${service_subdomain}" ] || [ "${service_subdomain}" = "undefined" ]; then
-        service_subdomain="${service_name:-openvscode}-${resource_name}-${PW_USER}"
+        service_subdomain="vscode-${resource_namespace}-${resource_name}-${PW_USER}"
     fi
     service_subdomain=$(printf '%s' "${service_subdomain}" | tr '[:upper:]' '[:lower:]' \
         | sed 's/[^a-z0-9-]/-/g; s/-\{2,\}/-/g' | cut -c1-63 | sed 's/^-//; s/-$//')

@@ -843,7 +843,7 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   Needed when the app keeps state in the browser, which is per origin: code-server's
   sign-ins (localStorage `secrets.provider`), disabled extensions and workspace trust
   (IndexedDB `vscode-web-state-db-*`) all vanish under a new random subdomain. Labels
-  are platform-wide DNS labels, so derive them from service + cluster + `PW_USER`
+  are platform-wide DNS labels, so derive them from `vscode` + namespace + cluster + `PW_USER`
   (`workflows/openvscode`), and fail loud if `pw endpoints list` already shows an
   endpoint at that host — the name stays `<service>-${PW_RUN_SLUG}`.
 - **Base-path apps need no base_url and no nginx on a subdomain endpoint**

@@ -313,7 +313,7 @@ non-repetitive; point at an existing tutorial instead.
   per run resets all of it (openvscode, 2026-09: Copilot logout, extensions re-enabled,
   folders untrusted every run). Pin the origin with `pw endpoints run --subdomain
   <label>` (a platform-wide DNS label: lowercase `[a-z0-9-]`, ≤63 chars — build it from
-  service, cluster and `PW_USER`), keep `--name <service>-${PW_RUN_SLUG}` for lookup,
+  the resource namespace, cluster and `PW_USER`), keep `--name <service>-${PW_RUN_SLUG}` for lookup,
   and check `pw endpoints list` for an endpoint already serving `https://<label>.`
   before launching (see `workflows/openvscode/app/start-template.sh`).
 - **`oras pull` says `denied` for a public package:** a stale ghcr login in the

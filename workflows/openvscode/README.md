@@ -14,7 +14,7 @@ browser — on a cluster, exposed through a platform endpoint.
 - **Directory to open** — the folder the IDE opens, encoded in the endpoint
   URL.
 - **Subdomain of the IDE URL** — the label in `https://<subdomain>.<sessions
-  domain>/`; defaults to `openvscode-<cluster>-<user>`. Keep it the same across
+  domain>/`; defaults to `vscode-<namespace>-<cluster>-<user>`. Keep it the same across
   runs (see below). Not offered on platforms without session subdomains (emed),
   where the IDE URL is path-based and already stable.
 

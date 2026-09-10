@@ -108,6 +108,11 @@ running on the resource. Find it with `pw endpoints list` (named
 `ollama-gguf-<run-slug>`) and tear it down with
 `pw endpoints delete ollama-gguf-<run-slug>`.
 
+The **Endpoint name** form field replaces that default with a fixed name, which
+keeps the chat model ids stable across relaunches. Endpoint names must be
+lowercase letters, digits and dashes, so the workflow folds whatever is typed:
+`My Model` is registered as `my-model`.
+
 Model weights and the Ollama installation persist under
 `<parent_install_dir>/ollama-gguf`, so subsequent runs skip completed
 downloads.

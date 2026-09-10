@@ -307,6 +307,10 @@ non-repetitive; point at an existing tutorial instead.
 - **No session subdomains on emed:** register endpoints with `--no-subdomain` there
   (the platform then serves `/me/session/<PW_USER>/<name>/` and forwards the full
   path — give the app that base path). See `workflows/kasmvnc/yamls/emed.yaml`.
+- **Endpoint names must be lowercase `[a-z0-9-]`** (undocumented; one uppercase letter
+  fails the launch). `<service>-${PW_RUN_SLUG}` is safe; a name typed into a form is not:
+  fold it once in preprocessing, publish it as a job output, and read that output in the
+  wait step so both sides use the exact registered name (`workflows/ollama/yamls/general.yaml`).
 - **Browser-side app state dies with a random subdomain:** web IDEs (code-server,
   JupyterLab) keep sign-ins, disabled-extension lists, workspace trust and UI state in
   the browser (localStorage/IndexedDB), keyed by page origin — a new random subdomain

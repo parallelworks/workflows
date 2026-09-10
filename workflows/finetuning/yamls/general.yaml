@@ -84,6 +84,7 @@ jobs:
           container_sif_path="${{ inputs.container.container_sif_path }}"
           container_requirements_file="${{ inputs.container.requirements_file }}"
           model_profile="${{ inputs.model_profile }}"
+          model_source="${{ inputs.model_source }}"
           hf_token="${{ inputs.hf_token }}"
           model_cache_dir="${{ inputs.model_cache_dir }}"
           local_dataset_path="${{ inputs.dataset_config.local_dataset_path }}"
@@ -560,7 +561,7 @@ jobs:
       model_cache_dir:
         label: Model Cache Directory
         type: string
-        default: ~/pw/models
+        default: ${HOME}/pw/models
         tooltip: >
           Directory to download the model into. The prepare_model job
           downloads it once, as a plain <cache_dir>/<model-name>/ directory
@@ -702,7 +703,7 @@ jobs:
       output_dir:
         label: Output Directory
         type: string
-        default: "~/pw/models/ft-${PW_JOB_ID}"
+        default: "${HOME}/pw/models/ft-${PW_JOB_ID}"
       merge_full_weights:
         label: Merge LoRA into Full Weights
         type: boolean
@@ -746,7 +747,7 @@ jobs:
           container_sif_path:
             label: Existing .sif Path
             type: string
-            default: "~/pw/singularity/finetune.sif"
+            default: "${HOME}/pw/singularity/finetune.sif"
             optional: true
             hidden: ${{ inputs.container.container_mode != 'sif_path' }}
             ignore: ${{ inputs.container.container_mode != 'sif_path' }}

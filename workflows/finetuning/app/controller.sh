@@ -9,6 +9,7 @@ finetune_registry=${finetune_registry:-ghcr.io/parallelworks/finetune:latest}
 # cannot silently reuse an image downloaded from another reference
 registry_slug=$(printf '%s' "${finetune_registry}" | tr -c 'a-zA-Z0-9._-' '_')
 
+service_parent_install_dir=${service_parent_install_dir/#\~/$HOME}
 mkdir -p "${service_parent_install_dir}" || true
 if [ -n "${service_parent_install_dir}" ]; then
     container_sif=${service_parent_install_dir}/containers/${registry_slug}/finetune.sif

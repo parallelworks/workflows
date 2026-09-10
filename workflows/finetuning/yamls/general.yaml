@@ -45,6 +45,35 @@ jobs:
       - name: Create Inputs
         run: |
           set -x
+          # base_model_id is resolved here, in bash, rather than via the YAML
+          # input's own chained-ternary `default:` (model_profile == 'x' ? 'id'
+          # : ...): that computed default was found (2026-09-10, first real
+          # pw run of this workflow) to silently return garbage when the field
+          # isn't explicitly supplied -- the runtime substitution engine
+          # appears to fall back to the LAST quoted string literal in the raw
+          # expression text (openai/gpt-oss-120b, the final profile branch)
+          # regardless of model_profile. This is the risk HANDOFF.md sec8
+          # flagged ("the parser fails SILENTLY on malformed expressions") --
+          # confirmed, not theoretical. Simple (non-ternary) `${{ inputs.X }}`
+          # references, like model_profile below, are unaffected -- only this
+          # field's own computed default is broken, and only when relied upon.
+          if [ "${{ inputs.model_source }}" = "local" ]; then
+              resolved_base_model_id="${{ inputs.local_model_path }}"
+          else
+              case "${{ inputs.model_profile }}" in
+                  olmo2-1b-dev)     resolved_base_model_id=allenai/OLMo-2-0425-1B ;;
+                  olmoe-1b-7b-dev)  resolved_base_model_id=allenai/OLMoE-1B-7B-0924-Instruct ;;
+                  gemma-1.1-7b)     resolved_base_model_id=google/gemma-1.1-7b-it ;;
+                  gemma-4-31b)      resolved_base_model_id=google/gemma-4-31B-it ;;
+                  gpt-oss-20b)      resolved_base_model_id=openai/gpt-oss-20b ;;
+                  gpt-oss-120b)     resolved_base_model_id=openai/gpt-oss-120b ;;
+                  *)                resolved_base_model_id="${{ inputs.base_model_id }}" ;;
+              esac
+              if [ -z "${resolved_base_model_id}" ] || printf '%s' "${resolved_base_model_id}" | grep -q "'"; then
+                  echo "::error title=Error::base_model_id resolved to an empty/malformed value ('${resolved_base_model_id}') for model_profile=${{ inputs.model_profile }}. For model_profile=custom, base_model_id must be supplied explicitly (see HANDOFF.md sec8 on the chained-ternary default bug)."
+                  exit 1
+              fi
+          fi
           env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
           sed -i 's/=\(.*\)/="\1"/' inputs.sh
           cat <<'EOF' >> inputs.sh
@@ -55,7 +84,6 @@ jobs:
           container_sif_path="${{ inputs.container.container_sif_path }}"
           container_requirements_file="${{ inputs.container.requirements_file }}"
           model_profile="${{ inputs.model_profile }}"
-          base_model_id="${{ inputs.model_source == 'local' ? inputs.local_model_path : inputs.base_model_id }}"
           hf_token="${{ inputs.hf_token }}"
           model_cache_dir="${{ inputs.model_cache_dir }}"
           local_dataset_path="${{ inputs.dataset_config.local_dataset_path }}"
@@ -88,6 +116,7 @@ jobs:
           bf16="${{ inputs.advanced.bf16 }}"
           pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
           EOF
+          echo "base_model_id=\"${resolved_base_model_id}\"" >> inputs.sh
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
           sed -i '/=""/d' inputs.sh
           sed -i 's/^/export /' inputs.sh
@@ -234,7 +263,22 @@ jobs:
         run: |
           set -o pipefail
           set -x
-          MODEL_ID="${{ inputs.base_model_id }}"
+          # See preprocessing's "Create Inputs" step for why this is a bash
+          # case on model_profile rather than a reference to base_model_id's
+          # own (broken) chained-ternary default -- same fix, same reason.
+          case "${{ inputs.model_profile }}" in
+              olmo2-1b-dev)     MODEL_ID=allenai/OLMo-2-0425-1B ;;
+              olmoe-1b-7b-dev)  MODEL_ID=allenai/OLMoE-1B-7B-0924-Instruct ;;
+              gemma-1.1-7b)     MODEL_ID=google/gemma-1.1-7b-it ;;
+              gemma-4-31b)      MODEL_ID=google/gemma-4-31B-it ;;
+              gpt-oss-20b)      MODEL_ID=openai/gpt-oss-20b ;;
+              gpt-oss-120b)     MODEL_ID=openai/gpt-oss-120b ;;
+              *)                MODEL_ID="${{ inputs.base_model_id }}" ;;
+          esac
+          if [ -z "${MODEL_ID}" ] || printf '%s' "${MODEL_ID}" | grep -q "'"; then
+              echo "::error title=Error::base_model_id resolved to an empty/malformed value ('${MODEL_ID}') for model_profile=${{ inputs.model_profile }}. For model_profile=custom, base_model_id must be supplied explicitly (see HANDOFF.md sec8 on the chained-ternary default bug)."
+              exit 1
+          fi
           HF_TOKEN="${{ inputs.hf_token }}"
           CACHE_DIR="${{ inputs.model_cache_dir }}"
           CACHE_DIR="${CACHE_DIR/#\~/$HOME}"

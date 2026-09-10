@@ -64,6 +64,49 @@ working tree. Verified so far, all off real hardware:
   `train.py` with a genuinely download-staged directory. `pw auth` token
   expired this session before that step; resume there next.
 
+### REAL BUG FOUND AND FIXED (first `pw` run, 2026-09-10): `base_model_id`'s chained-ternary default returns garbage
+
+First real `pw workflows run` (`model_profile=olmo2-1b-dev`, no explicit
+`base_model_id` in `-i` inputs — relying on the field's computed default, the
+normal path) failed at the new `prepare_model` job: `hf download` errored on
+**`openai/gpt-oss-120b`** (with stray literal single-quote characters baked
+into the string) despite `model_profile=olmo2-1b-dev`. Confirmed via the
+rendered job script (`~/pw/jobs/<slug>/controller-*.sh`): `model_profile`
+correctly resolved to `olmo2-1b-dev` (a **simple** `${{ inputs.model_profile }}`
+reference), but `base_model_id` — computed via `yamls/general.yaml`'s chained
+ternary (`model_profile == 'olmo2-1b-dev' ? 'allenai/...' : model_profile ==
+'olmoe-1b-7b-dev' ? '...' : ... : ''`) — did not. This is exactly the risk
+HANDOFF.md §8 flagged and never validated ("the parser fails SILENTLY on
+malformed expressions (returns garbage, no error)") — **now confirmed for
+real**, not theoretical. The garbage value (`openai/gpt-oss-120b`, the *last*
+profile branch in the chain) strongly suggests the runtime `${{ }}`
+substitution engine, when it can't evaluate a chained ternary, falls back to
+the last quoted string literal appearing anywhere in the raw expression text.
+
+**Fix:** stopped relying on `base_model_id`'s computed default inside job
+bodies. Both `preprocessing`'s "Create Inputs" step and `prepare_model`'s
+"Download Model" step now resolve the profile → HF-ID mapping via a plain
+bash `case` on `${{ inputs.model_profile }}` (a simple reference, proven
+reliable — mirrors the already-working `FOOTPRINT` case in `resolve_strategy`),
+falling back to `${{ inputs.base_model_id }}` only for `model_profile=custom`,
+with a sanity check (empty or containing a stray `'`) that fails loudly
+instead of downloading garbage. The YAML input schema's own `default:` ternary
+on `base_model_id` was left untouched (may still be fine for the interactive
+Build-tab form preview, which could use a different, client-side evaluator —
+untested either way); job bodies simply no longer depend on it.
+
+**Related, NOT fixed this pass — same root cause, currently masked:**
+`lora.quantization`'s default is also a chained ternary
+(`(gpt-oss-20b || gpt-oss-120b) ? 'native' : gemma-4-31b ? '4bit' : 'none'`).
+By the same "last literal wins" failure mode, its default would always
+resolve to `'none'` (the last literal) regardless of profile — which happens
+to be the *correct* value for every non-gpt-oss/non-gemma-4 profile, so
+`olmo2-1b-dev`/`olmoe-1b-7b-dev` testing here never surfaced it (and the
+OLMoE test in this session explicitly overrides `lora.quantization=4bit`
+anyway). **Any future gpt-oss or gemma-4-31b run must explicitly set
+`lora.quantization`** until this is fixed the same way (a `case` in
+`resolve_strategy`, which already computes `PRECISION`).
+
 ### Problem found (start of this session)
 
 `model_cache_dir` (`yamls/general.yaml` input, default `~/pw/models`) is

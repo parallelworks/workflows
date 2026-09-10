@@ -154,8 +154,11 @@ Numbers from `integer` inputs arrive as **strings**; guard with `${var:-default}
 
 ## Step 3 — Test end-to-end with the `pw` client
 
-**Push first.** The YAML's checkout and `uses:` steps fetch the repo from GitHub at
-run time, so an untested local edit is invisible until it is on the referenced branch.
+**Push first, unless only the YAML changed.** The YAML's checkout and `uses:` steps
+fetch the repo from GitHub at run time, so a local edit to anything they fetch (`app/`
+scripts, the subworkflow) is invisible until it is on the referenced branch. The YAML
+itself is read from the absolute path you pass, so a YAML-only edit tests without a
+push (verified 2026-09-10 with the ollama endpoint-name change).
 
 ```bash
 # always validate first — catches YAML/schema/variant errors without executing

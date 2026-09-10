@@ -115,8 +115,9 @@ those platforms — validate them statically.
 
 ## Testing and debugging
 
-- **Push before testing.** Checkout and `uses:` steps fetch this repo from GitHub at
-  run time; local edits are invisible until they are on the referenced branch.
+- **Push before testing** anything the run fetches (`app/` scripts, subworkflows):
+  checkout and `uses:` steps pull this repo from GitHub at run time. The YAML itself
+  is read from the absolute path you pass, so a YAML-only edit tests without a push.
 - Run with the **absolute** YAML path (a relative path is parsed as a git host):
   `pw workflows run /abs/path/workflows/<name>/yamls/general.yaml -i '{"cluster":{"resource":"<cluster>","scheduler":false}}'`
 - **Pass = the endpoint serves:** `pw endpoints list` shows `<service.name>-<run-slug>`

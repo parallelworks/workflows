@@ -76,6 +76,18 @@ app_dir=${PW_PARENT_JOB_DIR}/workflows/finetuning/app
 output_dir_resolved=${output_dir/#\~/$HOME}
 mkdir -p "${output_dir_resolved}"
 
+# base_model_id is a real local directory by this point for BOTH sources:
+# controller.sh resolves model_source=huggingface to the flat directory the
+# (already-completed, session_runner waited on it) prepare_model job
+# downloaded into; model_source=local is already a directory the user
+# pointed at. Fail fast with a clear error here rather than letting train.py
+# fail deep inside the container with a less obvious traceback.
+model_dir_resolved=${base_model_id/#\~/$HOME}
+if [ ! -s "${model_dir_resolved}/config.json" ]; then
+    echo "::error title=Error::model directory ${model_dir_resolved} is missing or incomplete (model_source=${model_source:-huggingface})"
+    exit 1
+fi
+
 if singularity exec "${container_sif}" /bin/true > /dev/null 2>&1; then
     echo "::notice::SIF image is runnable on this node"
     container_ref="${container_sif}"
@@ -134,7 +146,7 @@ echo \$! > "${PWD}/tbproxy.pid"
 # unchanged); inputs.sh (sourced ahead of this script, see yamls/general.yaml)
 # exports lowercase snake_case vars (streamlit's convention) -- bridge here.
 export MODEL_PROFILE="${model_profile}"
-export BASE_MODEL_ID="${base_model_id}"
+export BASE_MODEL_ID="${model_dir_resolved}"
 export DATASET_SOURCE="local"
 export LOCAL_DATASET_PATH="${local_dataset_path}"
 export DATASET_FORMAT="${dataset_format}"
@@ -167,6 +179,7 @@ set +e
 singularity exec --nv --writable-tmpfs \\
     --bind "${app_dir}:${app_dir}" \\
     --bind "${output_dir_resolved}:${output_dir_resolved}" \\
+    --bind "${model_dir_resolved}:${model_dir_resolved}" \\
     --bind "${PWD}/container_tmp:/tmp" \\
     "${container_ref}" \\
     bash "${app_dir}/train-entrypoint.sh" \\

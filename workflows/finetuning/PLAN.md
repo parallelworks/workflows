@@ -34,6 +34,159 @@ hardware this workflow has run on**, driver 595.45.04, CUDA 13.2, Apptainer
 1.4.5, 26 CPU / 459GB RAM). See "Session 2026-09-09" below — this is where
 gpt-oss-20b/120b, the two profiles that needed Hopper, are finally exercised.
 
+Extended again 2026-09-10 — **wiring pass, no new hardware.** Model
+download/caching brought into parity with `workflows/rag-vllm`. See "Session
+2026-09-10" immediately below; it is a **plan recorded ahead of
+implementation**, not yet-executed work — read its "Status" line first.
+
+---
+
+## Session 2026-09-10 — model download/cache wiring (rag-vllm parity)
+
+**Status: WIRING IMPLEMENTED, static/dry-run verified, NOT YET run through
+`pw`.** The four changes below (§"Planned changes") are committed to the
+working tree. Verified so far, all off real hardware:
+- `bash -n` clean on `app/controller.sh` and `app/start-template.sh`;
+  `yaml.safe_load` clean on `yamls/general.yaml`.
+- `app/start-template.sh` dry-run rendered with stubbed `singularity`/`pw`
+  binaries and a fake `PW_PARENT_JOB_DIR` (no `pw` session, mirrors the
+  "fake inputs" render this file records for 2026-09-03): (a) a model
+  directory missing `config.json` correctly hits the new fail-fast check and
+  exits 1 with a clear `::error::`; (b) a model directory with a `config.json`
+  present correctly produces a `launch-service.sh` whose training
+  `singularity exec` now bind-mounts the resolved model directory (previously
+  absent — the pre-existing gap this session found) and whose
+  `export BASE_MODEL_ID=` carries the resolved path; both generated
+  `launch-service.sh`/`cancel.sh` pass `bash -n`.
+- **Not yet exercised**: the actual `prepare_model` YAML job (needs a real
+  `pw` session — see below), the `controller.sh` path-override append in a
+  real `preprocessing` run, and therefore the `is_local` load path in
+  `train.py` with a genuinely download-staged directory. `pw auth` token
+  expired this session before that step; resume there next.
+
+### Problem found (start of this session)
+
+`model_cache_dir` (`yamls/general.yaml` input, default `~/pw/models`) is
+threaded into `inputs.sh` and then **never read again** — not exported into
+the training container, never mapped to `HF_HOME`/`HF_HUB_CACHE`, never passed
+as `cache_dir=`. `app/train.py` calls `from_pretrained(base_model_id)` directly
+on the compute node for `model_source=huggingface`, which falls through to
+`huggingface_hub`'s own default cache (`~/.cache/huggingface/hub`) using its
+standard `models--org--name/blobs/refs/snapshots/<hash>/` layout. That
+hash-named layout is intrinsic to the library, not something this workflow
+builds, and it is **not** wired to the `/aitmp/hf-cache` location used ad hoc
+in the 2026-09-09 session (that path was set by hand via `HF_HOME` in the
+shell, not by any committed script).
+
+### Decision: mirror `workflows/rag-vllm`'s model-management design exactly
+
+`rag-vllm` (sibling workflow, same repo) already solves "stage HF weights
+once, reuse across runs, no re-download, human-readable path" with a
+login-node `prepare_model` job that runs `hf download <id> --local-dir
+<cache_dir>/<repo-basename>` — a flat directory (`config.json`,
+`*.safetensors`, tokenizer files directly inside it), no hash dirs. Reference
+locations: `workflows/rag-vllm/yamls/general.yaml:118-194` (the job),
+`workflows/rag-vllm/app/controller.sh:139-145,177-190` (independently
+recomputes the same path, re-exports it into `./inputs.sh`),
+`workflows/rag-vllm/app/start-template.sh:32-45` (recomputes it a third time,
+hard-fails if `config.json` is missing, explicitly bind-mounts the model dir
+into the container). The path formula is deliberately recomputed in three
+places rather than threaded as a job output, because the download job and the
+login-node preprocessing job run in parallel with no `needs` edge between
+them — only the job that actually launches the service waits on both.
+
+Adopting this for `finetuning` retires the `model_source=huggingface`
+"downloaded by train.py at load time" behavior entirely: both `huggingface`
+and `local` sources will resolve to a real on-disk directory **before**
+`train-entrypoint.sh` ever runs. `app/train.py` already branches on
+`is_local = os.path.isdir(args.base_model_id)` (lines 479, 793) and already
+does the right thing when that's `True` (`local_files_only=True`,
+`token=None`) — **so `train.py` needs no code changes**, only real exercise of
+a path that, per the 2026-09-09 session, has so far only ever been hit
+implicitly via ad hoc `HF_HOME` overrides that kept `base_model_id` looking
+like a bare repo ID. This is also therefore the first genuine end-to-end test
+of that code path.
+
+### Planned changes (this session, in order)
+
+1. **`yamls/general.yaml`**
+   - Add a `prepare_model` job (adapted from rag-vllm's, same script body,
+     finetuning's flat input names instead of rag-vllm's nested `model:`
+     group): `if: ${{ inputs.model_source == 'huggingface' }}`, downloads
+     `${{ inputs.base_model_id }}` via `hf download --local-dir` into
+     `${{ inputs.model_cache_dir }}/<repo-basename>`, using
+     `${{ inputs.hf_token }}` for gated repos (Gemma). No checkout step
+     needed, same as rag-vllm's.
+   - `session_runner`: add `prepare_model` to `needs:` (alongside the
+     existing `preprocessing`) so training never starts before the model is
+     staged.
+   - Update the `model_source` dropdown's `huggingface` option label/tooltip
+     (currently "downloaded by train.py at load time") and
+     `model_cache_dir`'s tooltip to describe the new one-time
+     download-and-reuse behavior, matching rag-vllm's wording.
+2. **`app/controller.sh`** — at the end, when `model_source=huggingface`,
+   resolve `base_model_id` to `${model_cache_dir}/${base_model_id##*/}` (same
+   formula as the `prepare_model` job) and re-export it by appending `export
+   base_model_id="..."` to `./inputs.sh`, so the override reaches
+   `start-template.sh` → `train-entrypoint.sh` → `train.py` as a plain
+   directory path. `model_source=local` is left untouched (already a real
+   path).
+3. **`app/start-template.sh`**
+   - Add a fail-fast check that `base_model_id/config.json` exists and is
+     non-empty, regardless of `model_source`, before constructing
+     `launch-service.sh` — mirrors rag-vllm's check.
+   - **Bind-mount the resolved model directory explicitly** into the training
+     `singularity exec` call, the same way `app_dir`/`output_dir_resolved`
+     already are. Real pre-existing gap found while designing this: neither
+     `model_source` path has ever explicitly bound the model directory — it
+     only worked by accident via Singularity's default `$HOME` auto-bind,
+     which silently breaks once `model_cache_dir`/`local_model_path` points
+     outside `$HOME` (e.g. `/aitmp`, as in the 2026-09-09 session).
+4. **`app/train.py`** — no changes planned; confirm during testing rather
+   than assume.
+
+Explicitly **out of scope this pass**: gpt-oss-120b FSDP/offload validation
+(Attempt 4's conclusion above stands unchanged) and any other model-matrix
+behavior. This is wiring only.
+
+### How to test this (next step after implementation — use `pw`, not manual `singularity exec`)
+
+Every session so far has validated training by hand (`singularity exec --nv`
++ `train-entrypoint.sh` directly), because no authenticated `pw` session was
+available. **That is not how this wiring should be validated** — it
+specifically needs the real job graph (`prepare_model` running in parallel
+with `preprocessing`, `session_runner` waiting on both, `controller.sh`'s
+path-override trick actually reaching `start-template.sh`), none of which a
+manual `singularity exec` invocation exercises. Per the top-level
+`CLAUDE.md` "Testing and debugging" section:
+
+```
+pw workflows run /abs/path/to/workflows/finetuning/yamls/general.yaml -i inputs.json
+```
+
+(absolute YAML path — a relative path is parsed as a git host). Build
+`inputs.json` with a real `cluster.resource`, `cluster.scheduler=false`, and
+for the first pass `model_profile=olmo2-1b-dev` / `model_source=huggingface`
+(smallest, ungated, ~2GB — fastest signal). Then:
+
+1. Confirm `<model_cache_dir>/OLMo-2-0425-1B/` contains flat files
+   (`config.json`, `*.safetensors`, tokenizer files) directly — **no**
+   `models--*` / hash-named subdirectories.
+2. Re-run the same inputs; confirm `prepare_model`'s idempotency check
+   short-circuits (no re-download).
+3. Confirm the run reaches a served `pw endpoints list` entry
+   (`finetune-<run-slug>`) — i.e. training actually started and `train.py`
+   loaded the model from the local directory with no error. This validates
+   the `is_local` path for the first time through the real workflow, and
+   validates the new bind mount in `start-template.sh`.
+4. Statically spot-check the gated-model path (`gemma-1.1-7b`): confirm
+   `hf_token` flows into the `prepare_model` job's download command. A live
+   run of this profile is not required to validate the wiring if time is
+   limited.
+5. `pw workflows runs errors <slug>` / the job-dir logs (`CLAUDE.md`
+   "Debug from the job dir") are the way to diagnose a failure at any of
+   the three jobs (`prepare_model`, `preprocessing`, `session_runner`).
+
 ---
 
 ## Session 2026-09-09 — Hopper (2x H100 80GB)

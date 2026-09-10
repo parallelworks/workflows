@@ -212,9 +212,100 @@ jobs:
           echo "PRECISION=$PRECISION" >> $OUTPUTS
           echo "::notice::profile=$PROFILE footprint=${FOOTPRINT}GB gpus=${NUM_GPUS}x${VRAM}GB -> ${STRATEGY} (${LAUNCHER}), precision=${PRECISION}"
 
+  # ==========================================================================
+  # Prepare model  (login-node HF download -> flat, human-named cache dir)
+  # Ported from workflows/rag-vllm/yamls/general.yaml's prepare_model job so
+  # both workflows manage HuggingFace weights the same way: a plain
+  # <cache_dir>/<repo-basename>/ directory (config.json, *.safetensors,
+  # tokenizer files directly inside it), not huggingface_hub's own hashed
+  # models--org--name/blobs/refs/snapshots/<hash>/ cache layout. Runs in
+  # parallel with `preprocessing` (no needs edge between them -- see
+  # app/controller.sh, which independently recomputes this same path); only
+  # `session_runner` waits on both, so the model is always fully staged
+  # before start-template.sh tries to load it.
+  # ==========================================================================
+  prepare_model:
+    if: ${{ inputs.model_source == 'huggingface' }}
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Download Model
+        early-cancel: any-job-failed
+        run: |
+          set -o pipefail
+          set -x
+          MODEL_ID="${{ inputs.base_model_id }}"
+          HF_TOKEN="${{ inputs.hf_token }}"
+          CACHE_DIR="${{ inputs.model_cache_dir }}"
+          CACHE_DIR="${CACHE_DIR/#\~/$HOME}"
+          TARGET_DIR="${CACHE_DIR}/${MODEL_ID##*/}"
+
+          validate_model() {
+              [ -s "${TARGET_DIR}/config.json" ] || return 1
+              local f
+              f=$(find "${TARGET_DIR}" -maxdepth 1 \( -name '*.safetensors' -o -name '*.bin' \) -size +1M 2>/dev/null | head -1)
+              [ -n "$f" ]
+          }
+
+          if validate_model; then
+              echo "Model already cached at ${TARGET_DIR}"
+              exit 0
+          fi
+          # hf download is incremental: it resumes a partial download in place
+          # and only fetches files that are missing or changed
+          mkdir -p "${CACHE_DIR}"
+
+          VENV_BASE="${{ inputs.service.parent_install_dir }}"
+          if [ -z "${VENV_BASE}" ] || [ "${VENV_BASE}" = "undefined" ]; then
+              VENV_BASE=${HOME}/pw/software
+          fi
+          VENV="${VENV_BASE/#\~/$HOME}/.hfcli"
+          HF_BIN="${VENV}/bin/hf"
+          [ -x "${HF_BIN}" ] || HF_BIN="${VENV}/bin/huggingface-cli"
+          if [ ! -x "${HF_BIN}" ]; then
+              if ! python3 -m venv "${VENV}"; then
+                  echo "::error title=Error::python3 -m venv failed; install python3/python3-venv on the cluster"
+                  exit 1
+              fi
+              "${VENV}/bin/pip" install --quiet --upgrade 'huggingface_hub[hf_transfer]'
+              HF_BIN="${VENV}/bin/hf"
+              [ -x "${HF_BIN}" ] || HF_BIN="${VENV}/bin/huggingface-cli"
+          fi
+
+          if [ -n "${HF_TOKEN}" ] && [ "${HF_TOKEN}" != "undefined" ]; then
+              export HF_TOKEN
+          fi
+          export HF_HUB_ENABLE_HF_TRANSFER=1
+          for attempt in 1 2 3; do
+              if "${HF_BIN}" download "${MODEL_ID}" --local-dir "${TARGET_DIR}" \
+                  --exclude "original/*" --exclude "metal/*" --exclude "*.bin" \
+                  --exclude "*.gguf" --exclude "*.onnx" --exclude "consolidated*.pth"; then
+                  break
+              fi
+              if [ "${attempt}" = 3 ]; then
+                  echo "::error title=Error::model download failed after 3 attempts"
+                  exit 1
+              fi
+              # hf_transfer can be flaky on some networks; retry without it
+              unset HF_HUB_ENABLE_HF_TRANSFER
+              sleep $((attempt * 5))
+          done
+
+          # Some models only ship bin weights
+          if ! ls "${TARGET_DIR}"/*.safetensors >/dev/null 2>&1; then
+              "${HF_BIN}" download "${MODEL_ID}" --local-dir "${TARGET_DIR}" --include "*.bin"
+          fi
+
+          if ! validate_model; then
+              echo "::error title=Error::downloaded model at ${TARGET_DIR} is incomplete"
+              exit 1
+          fi
+          echo "Model ready at ${TARGET_DIR}"
+
   session_runner:
     needs:
       - preprocessing
+      - prepare_model
     ssh:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:
@@ -399,7 +490,7 @@ jobs:
         type: dropdown
         default: huggingface
         options:
-          - { value: huggingface, label: "HuggingFace (downloaded by train.py at load time)" }
+          - { value: huggingface, label: "HuggingFace (downloaded once by the prepare_model job, reused after)" }
           - { value: local,       label: "Local path (pre-staged weights, e.g. a prior run's merged/ output)" }
 
       local_model_path:
@@ -426,6 +517,12 @@ jobs:
         label: Model Cache Directory
         type: string
         default: ~/pw/models
+        tooltip: >
+          Directory to download the model into. The prepare_model job
+          downloads it once, as a plain <cache_dir>/<model-name>/ directory
+          (config.json, *.safetensors, tokenizer files directly inside it --
+          not HuggingFace's hashed hub-cache layout); subsequent runs reuse
+          it. Ensure sufficient disk space.
         hidden: ${{ inputs.model_source != 'huggingface' }}
         ignore: ${{ inputs.model_source != 'huggingface' }}
 

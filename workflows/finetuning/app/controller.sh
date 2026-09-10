@@ -74,3 +74,17 @@ case "${container_mode}" in
         exit 1
         ;;
 esac
+
+# Resolve base_model_id to the flat cache directory the (parallel, no needs
+# edge to this job) prepare_model job downloads into -- same formula as that
+# job's TARGET_DIR (yamls/general.yaml). Re-exported into ./inputs.sh so
+# preprocessing's "Create Service Script" step (which runs after this one,
+# in the same job) picks up the resolved directory instead of the bare HF ID:
+# start-template.sh/train-entrypoint.sh/train.py all consume base_model_id as
+# whatever this exports last. model_source=local is left untouched -- it is
+# already a real path.
+if [ "${model_source}" = "huggingface" ]; then
+    resolved_model_cache_dir="${model_cache_dir/#\~/$HOME}"
+    base_model_id="${resolved_model_cache_dir}/${base_model_id##*/}"
+    echo "export base_model_id=\"${base_model_id}\"" >> ./inputs.sh
+fi

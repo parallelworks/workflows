@@ -194,6 +194,12 @@ jobs:
             sleep 15
           done
           echo "::notice::Process ${pid} finished"
+      - name: Cancel Streaming
+        if: ${{ inputs.submit_and_exit != true }}
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - stream_output
 
   pbs_job:
     needs:

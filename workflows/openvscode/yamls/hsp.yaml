@@ -27,8 +27,11 @@ jobs:
             service_download_url="${{ inputs.service.download_url }}"
             service_password="${{ inputs.service.password }}"
             service_directory="${{ inputs.service.directory }}"
+            service_subdomain="${{ inputs.service.subdomain }}"
+            resource_name="${{ inputs.resource.name }}"
+            resource_namespace="${{ inputs.resource.namespace }}"
             service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
-            pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG} --slug ?folder=${{ inputs.service.directory }}"
+            pw_endpoints_args="--name openvscode-${PW_RUN_SLUG} --slug ?folder=${{ inputs.service.directory }}"
             EOF
             # Remove empty variables
             sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
@@ -125,7 +128,7 @@ jobs:
         early-cancel: any-job-failed
         run: |
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          endpoint_name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          endpoint_name="openvscode-${PW_RUN_SLUG}"
           echo "::notice::Waiting for endpoint ${endpoint_name} to come online"
           until pw endpoints list | grep -qw "${endpoint_name}"; do
             echo "$(date) Endpoint ${endpoint_name} not found yet; retrying in 10 seconds"
@@ -301,10 +304,6 @@ jobs:
         type: group
         label: VS Code Settings
         items:
-          name:
-            type: string
-            hidden: true
-            default: openvscode
           download_url:
             label: Download URL
             type: string
@@ -320,6 +319,15 @@ jobs:
             type: string
             default: ${HOME}
             tooltip: Directory to open in VS code
+          subdomain:
+            label: Subdomain of the IDE URL
+            type: string
+            optional: true
+            tooltip: |
+              The IDE is served at https://<subdomain>.<sessions domain>/. Reuse the same subdomain
+              every run: the browser keeps VS Code's sign-ins (GitHub, Copilot), disabled extensions
+              and trusted folders per URL, and a new URL starts from scratch. Default:
+              vscode-<namespace>-<cluster>-<user>. Pick another label to run a second IDE on the same cluster.
           parent_install_dir:
             label: Parent Install Directory
             type: string

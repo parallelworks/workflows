@@ -16,6 +16,11 @@ set -o pipefail
 init_code_server_settings() {
     local settings_dir=${HOME}/.local/share/code-server/User
     local settings_json=${settings_dir}/settings.json
+    # A new download_url installs into a new directory and comes through here
+    # again; the user's settings.json must survive that.
+    if [ -f "${settings_json}" ]; then
+        return
+    fi
     mkdir -p ${settings_dir}
 
 cat > "${settings_json}" <<EOL

@@ -468,6 +468,12 @@ jobs:
             nohup ./run.sh > run.${PW_JOB_ID}.out 2>&1 < /dev/null &
           fi
           echo "::notice::Script launched; it will keep running on the compute node after the workflow exits."
+      - name: Cancel Streaming
+        if: ${{ inputs.submit_and_exit != true }}
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - stream_output
 
 'on':
   execute:

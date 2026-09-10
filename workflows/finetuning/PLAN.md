@@ -34,18 +34,22 @@ hardware this workflow has run on**, driver 595.45.04, CUDA 13.2, Apptainer
 1.4.5, 26 CPU / 459GB RAM). See "Session 2026-09-09" below — this is where
 gpt-oss-20b/120b, the two profiles that needed Hopper, are finally exercised.
 
-Extended again 2026-09-10 — **wiring pass, no new hardware.** Model
-download/caching brought into parity with `workflows/rag-vllm`. See "Session
-2026-09-10" immediately below; it is a **plan recorded ahead of
-implementation**, not yet-executed work — read its "Status" line first.
+Extended again 2026-09-10 — **wiring pass, then validated end-to-end via a
+real `pw workflows run`** on the `gce` cluster (google-slurm, cloud-bursted,
+preemptible single-GPU `gpu` partition). Model download/caching brought into
+parity with `workflows/rag-vllm`; three further real bugs found and fixed by
+actually running it through `pw`, not just dry-run. See "Session 2026-09-10"
+immediately below — read its "Status" line first.
 
 ---
 
 ## Session 2026-09-10 — model download/cache wiring (rag-vllm parity)
 
-**Status: WIRING IMPLEMENTED, static/dry-run verified, NOT YET run through
-`pw`.** The four changes below (§"Planned changes") are committed to the
-working tree. Verified so far, all off real hardware:
+**Status: VALIDATED end-to-end on real hardware via `pw workflows run` —
+PASS.** See "Real `pw` runs, 2026-09-10 (gce cluster)" below for the three
+further bugs this surfaced and the passing run that confirmed the fixes. The
+four changes below (§"Planned changes") are committed to the working tree.
+Verified before the real run, all off real hardware:
 - `bash -n` clean on `app/controller.sh` and `app/start-template.sh`;
   `yaml.safe_load` clean on `yamls/general.yaml`.
 - `app/start-template.sh` dry-run rendered with stubbed `singularity`/`pw`
@@ -229,6 +233,105 @@ for the first pass `model_profile=olmo2-1b-dev` / `model_source=huggingface`
 5. `pw workflows runs errors <slug>` / the job-dir logs (`CLAUDE.md`
    "Debug from the job dir") are the way to diagnose a failure at any of
    the three jobs (`prepare_model`, `preprocessing`, `session_runner`).
+
+### Real `pw` runs, 2026-09-10 (gce cluster) — three more bugs found, then PASS
+
+Test config throughout: `gce` (google-slurm, cloud-bursted, **preemptible**
+single-node `gpu` partition — powers down when idle, can be destroyed anytime;
+not an issue for this dev/smoke-test use), `cluster.scheduler=true`,
+`slurm.partition=gpu`, `model_profile=olmo2-1b-dev`,
+`model_source=huggingface` (deliberately **no** prestaged weights — the point
+was to exercise a genuine fresh download). All workflow-managed files staged
+under `~/finetuning-tests/{data,models,outputs,software}` on the cluster;
+`/aitmp` used only for the two prebuilt `.sif` containers, left untouched.
+Both `/home` and `/aitmp` are confirmed NFS-exported from the mgmt node, so
+this split is visible from the compute node too.
+
+**Attempt 1 (`special-manatee`) — FAILED**: `model directory
+allenai/OLMo-2-0425-1B is missing or incomplete`. Root cause: **`model_source`
+was never exported into `inputs.sh`** — the "Create Inputs" step reads
+`${{ inputs.model_source }}` at render time (to pick `resolved_base_model_id`)
+but never writes `model_source=` into the file itself, so `controller.sh`'s
+`if [ "${model_source}" = "huggingface" ]` (the check that rewrites
+`base_model_id` to the resolved cache-dir path) and `start-template.sh`'s
+equivalent both silently saw an empty variable and no-op'd. Fixed by adding
+`model_source="${{ inputs.model_source }}"` to the "Create Inputs" heredoc.
+Same run also surfaced a second, non-fatal bug: `service_parent_install_dir`
+was used without tilde-expansion in both `controller.sh` and
+`start-template.sh` (every other path input there — `container_sif_path`,
+`model_cache_dir`, `output_dir`, `base_model_id` — already did
+`${var/#\~/$HOME}`); with our `~`-prefixed test value this created a literal
+`~` directory in the job dir and tripped a spurious writability warning. Fixed
+the same way in both scripts. Separately, all three `~`-based YAML input
+defaults (`model_cache_dir`, `output_dir`, `container_sif_path`) were changed
+to `${HOME}`-based instead: `$HOME` expands via ordinary parameter expansion
+(works any time bash evaluates the variable, including inside the
+double-quoted values these scripts assemble), whereas `~` only expands via
+shell tilde-expansion, which is suppressed inside quotes — the root cause
+class behind both bugs above. The traps stay in the scripts for user-supplied
+`~` values; only the workflow's own defaults were converted.
+
+**Attempt 2 (`organic-duck`) — reached training, then FAILED**: with the
+`model_source`/tilde fixes in place, `prepare_model`, `base_model_id`
+resolution, the bind-mount, and SLURM placement on the `gpu` partition (not
+the head node) all worked correctly for the first time. Training itself then
+crashed 14s in: `ValueError: No dataset rows contain the response template
+'### Response:\nexport '` — note the corrupted literal `export ` baked into
+the middle of the delimiter. **Root cause: `advanced.response_template`'s own
+default, `"### Response:\n"`, is a YAML double-quoted scalar, so YAML parses
+`\n` as a real embedded newline character** — not two literal characters. When
+substituted into the "Create Inputs" heredoc's single-line
+`response_template="${{ inputs.advanced.response_template }}"`, the result
+splits into two physical lines in the assembled `inputs.sh`. The step's final
+cleanup, a blanket `sed -i 's/^/export /' inputs.sh`, prefixes `export ` onto
+**every** line — including that orphaned continuation line — injecting it into
+the middle of the value. This is a general hazard (any input value containing
+a literal newline would corrupt the same way), not specific to
+`response_template`, though that field's default is the only one that
+currently has one. Fixed by anchoring the sed to genuine assignment lines only
+(`sed -i -E 's/^([A-Za-z_][A-Za-z0-9_]*=)/export \1/'`), verified locally by
+reproducing both the corruption and the fix against a multi-line value before
+re-running.
+
+**Also this session**: added `workflows/finetuning/app/sample-dataset.jsonl`
+— the 20-row capital-city Q&A smoke dataset used throughout this file's manual
+testing, now a tracked, checked-out repo file rather than only ever hand-built
+ad hoc on whatever machine was being used — and set it as
+`dataset_config.local_dataset_path`'s default, so a first run works out of the
+box and doubles as a working example of the row format README.md documents.
+
+**Attempt 3 (`cute-mallard`) — PASS.** All of the above fixes pushed to
+`add-finetuning` first (checkout steps pull from GitHub, not local disk).
+SLURM job COMPLETED (exit 0:0, 1m20s, `gpu` partition). `response_template`
+confirmed clean in both `inputs.sh` and the rendered training command (no
+injected text); "Completion-only loss enabled; split on '### Response:\n' ->
+20 rows" — all 20 rows matched, none dropped. Trainable params 12.06M/1.50B
+(0.81%), matching this file's known-good OLMo-2-1B figures elsewhere.
+`eval_loss` 0.699 → **0.450** (falling), `grad_norm` 1.03 (non-zero) — passes
+HANDOFF sec8.5a's criterion. Adapters + merged weights saved, offline report
+written, endpoint `finetune-cute-mallard` came online, workflow completed
+cleanly. This is the first fully-passing real `pw workflows run` of this
+workflow, on any profile.
+
+**Remaining from this session's test plan:**
+- Step 4 (statically spot-check `gemma-1.1-7b`'s `hf_token` flow into
+  `prepare_model`) was not done — not required to validate the wiring, per the
+  original plan, but still open.
+- `model_source=local` (pointing at a pre-staged/prior-run directory) has
+  still never been exercised through the real `pw` pipeline — only
+  `huggingface` source has now been run end-to-end this way.
+- The other five model profiles validated in "Session 2026-09-09" were all
+  validated via direct manual `singularity exec`, never through the real `pw`
+  job graph. Given how many real bugs (`model_source` export,
+  `service_parent_install_dir` tilde-expansion, the export-corrupting sed)
+  this session found that manual testing had never surfaced, re-running at
+  least one non-trivial profile (e.g. `olmoe-1b-7b-dev` MoE, or a
+  DDP/FSDP-strategy profile) through `pw workflows run` is the natural next
+  step before treating the wiring as fully proven across the model matrix.
+- The known-open `lora.quantization` chained-ternary default bug (documented
+  above, "Related, NOT fixed this pass") is still unfixed — any future
+  gpt-oss or gemma-4-31b `pw` run must still explicitly set
+  `lora.quantization`.
 
 ---
 

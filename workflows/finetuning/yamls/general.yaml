@@ -120,7 +120,15 @@ jobs:
           echo "base_model_id=\"${resolved_base_model_id}\"" >> inputs.sh
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
           sed -i '/=""/d' inputs.sh
-          sed -i 's/^/export /' inputs.sh
+          # Only prefix genuine "VAR=" assignment lines, not a blanket
+          # per-line sed: a value containing a literal embedded newline
+          # (e.g. advanced.response_template's default "### Response:\n" --
+          # YAML double-quoted \n is a real newline, not two characters)
+          # splits across two physical lines here, and a blanket 's/^/export /'
+          # would inject "export " into the orphaned continuation line,
+          # corrupting the value (found 2026-09-10, first real pw run:
+          # response_template silently became "### Response:\nexport ").
+          sed -i -E 's/^([A-Za-z_][A-Za-z0-9_]*=)/export \1/' inputs.sh
       - name: Controller Preprocessing
         run: |
           set -x
@@ -582,8 +590,15 @@ jobs:
           local_dataset_path:
             label: Dataset Path (on cluster)
             type: string
+            default: "${PW_PARENT_JOB_DIR}/workflows/finetuning/app/sample-dataset.jsonl"
             optional: false
-            tooltip: File on the node -- jsonl/json/csv/parquet/arrow, or an HF dataset directory.
+            tooltip: >
+              File on the node -- jsonl/json/csv/parquet/arrow, or an HF
+              dataset directory. Defaults to the workflow's bundled 20-row
+              example dataset (capital-city Q&A, already formatted with the
+              "### Response:" delimiter below) so a first run works out of
+              the box and shows the expected row shape -- see README.md
+              "Dataset format requirements" before pointing at your own data.
           dataset_format:
             label: Format
             type: dropdown

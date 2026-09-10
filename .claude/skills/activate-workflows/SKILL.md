@@ -312,8 +312,8 @@ non-repetitive; point at an existing tutorial instead.
   path — give the app that base path). See `workflows/kasmvnc/yamls/emed.yaml`.
 - **Endpoint names must be lowercase `[a-z0-9-]`** (undocumented; one uppercase letter
   fails the launch). `<service>-${PW_RUN_SLUG}` is safe; a name typed into a form is not:
-  fold it once in preprocessing, publish it as a job output, and read that output in the
-  wait step so both sides use the exact registered name (`workflows/ollama/yamls/general.yaml`).
+  fold it before it reaches `pw endpoints`, and make the wait step look for the same
+  folded name (`workflows/ollama/yamls/general.yaml`, input `endpoint_name`).
 - **Browser-side app state dies with a random subdomain:** web IDEs (code-server,
   JupyterLab) keep sign-ins, disabled-extension lists, workspace trust and UI state in
   the browser (localStorage/IndexedDB), keyed by page origin — a new random subdomain

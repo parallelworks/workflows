@@ -95,9 +95,8 @@ To convert a legacy session-pattern workflow to this pattern, follow
 - The hidden `service.name` input is the **endpoint/session name prefix** — it is not
   a checkout path. Keep its value stable; renaming it changes endpoint names.
 - Endpoint names must be lowercase `[a-z0-9-]`. `<service.name>-${PW_RUN_SLUG}` already
-  is; a name that comes from a form input must be folded once in preprocessing and
-  published as a job output (`ENDPOINT_NAME`) that the wait step reads — see
-  `workflows/ollama/yamls/general.yaml`.
+  is; a name that comes from a form input must be folded before it reaches
+  `pw endpoints` — see the `endpoint_name` input in `workflows/ollama/yamls/general.yaml`.
 - Multi-implementation workflows select their script subdir via a runtime input
   (`container_runtime`, `service.container_runtime`, `service.name`): the input
   **values must match the impl subdirectory names** under `workflows/<name>/`.

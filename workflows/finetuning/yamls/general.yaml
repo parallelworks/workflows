@@ -594,7 +594,7 @@ jobs:
             optional: false
             tooltip: >
               File on the node -- jsonl/json/csv/parquet/arrow, or an HF
-              dataset directory. Defaults to the workflow's bundled 20-row
+              dataset directory. Defaults to the workflow's bundled 90-row
               example dataset (capital-city Q&A, already formatted with the
               "### Response:" delimiter below) so a first run works out of
               the box and shows the expected row shape -- see README.md
@@ -634,7 +634,7 @@ jobs:
         label: Training Hyperparameters
         collapsed: true
         items:
-          num_epochs:            { type: number, label: Epochs,                default: 1.0,    optional: true }
+          num_epochs:            { type: number, label: Epochs,                default: 3.0,    optional: true }
           learning_rate:         { type: number, label: Learning Rate,         default: 0.0002, optional: true }
           micro_batch_size:      { type: number, label: Micro Batch (per GPU), default: 1,       optional: true }
           gradient_accumulation: { type: number, label: Grad Accumulation,     default: 16,      optional: true }
@@ -675,7 +675,7 @@ jobs:
           eval_steps:
             label: Eval-loss Interval (steps)
             type: number
-            default: 50
+            default: 5
             tooltip: Run held-out loss every N steps (needs eval_split_fraction > 0 above).
           quality_eval_type:
             label: Quality Eval (optional)

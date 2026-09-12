@@ -41,6 +41,178 @@ parity with `workflows/rag-vllm`; three further real bugs found and fixed by
 actually running it through `pw`, not just dry-run. See "Session 2026-09-10"
 immediately below — read its "Status" line first.
 
+Extended again 2026-09-11 — **smoke-test matrix pass on `gce`** (same cluster/
+partition as 2026-09-10), verifying the bundled dataset against the other
+validated profiles via real `pw workflows run`. Found and fixed a real gap
+(pure defaults never produced an observable eval_loss/grad_norm signal);
+all 5 non-gpt-oss-120b profiles now PASS end-to-end this way. See "Session
+2026-09-11" below — read its "Status" line first; it supersedes
+2026-09-10's dataset/hyperparameter defaults where they differ.
+
+---
+
+## Session 2026-09-11 — gce smoke-test matrix (90-row dataset, revised defaults)
+
+**Status: all 5 non-gpt-oss-120b profiles fully PASS end-to-end via real
+`pw workflows run` (olmo2-1b-dev, olmoe-1b-7b-dev, gemma-1.1-7b,
+gpt-oss-20b, gemma-4-31b). gpt-oss-120b remains unexercised (needs ≥2 GPUs,
+out of scope for the single-GPU `gpu` partition used throughout).**
+
+Test config throughout: `gce` (google-slurm, cloud-bursted, **preemptible
+single-GPU `gpu` partition — worker nodes have exactly 1x H100 80GB each**,
+`num_gpus=1` so `resolve_strategy` always picks `single`), `cluster.
+scheduler=true`, `slurm.partition=gpu`, `model_source=huggingface` (fresh
+download each run, no prestaging), all workflow-managed files staged under
+`$HOME/finetuning-tests/{models,outputs,software}` per this session's brief
+(`$HOME` and `/aitmp` are both NFS-exported from the `gce` head node and
+visible from the compute node; `/aitmp` reserved for its two prebuilt `.sif`
+containers only, never for staged model weights). Containers used as-is from
+`/aitmp`, never rebuilt: `/aitmp/finetune-tf4.56.2.sif` (transformers 4.x —
+olmo2/olmoe/gemma-1.1-7b/gpt-oss-20b) and `/aitmp/finetune-tf5.sif`
+(transformers 5.x — gemma-4-31b only, not yet exercised this session). Goal:
+verify the workflow's bundled smoke dataset (`app/sample-dataset.jsonl`)
+works out of the box across the 5 non-gpt-oss-120b profiles already
+validated for finetuning.
+
+### REAL FINDING: pure defaults never produced an observable eval_loss/grad_norm signal
+
+First real run this session (`olmo2-1b-dev`, run `wise-platypus`, every input
+at its then-committed default including the then-20-row dataset) completed
+with zero errors — dataset loaded, all 20 rows matched the `### Response:`
+delimiter, trainable params nonzero (12.06M/1.50B), merged weights saved,
+endpoint retired cleanly. **But** `trainer_state.json` showed `max_steps=2`
+(`micro_batch_size=1` x `gradient_accumulation=16` against 19 train rows, 1
+epoch) — below both the hardcoded `logging_steps=10` (a `train.py` argparse
+default; **not a YAML input at all**) and the form's then-`eval_steps=50`
+default. Result: **no `grad_norm` was ever logged and eval never fired** —
+HANDOFF sec8.5a's actual pass criterion (falling `eval_loss`, non-zero
+`grad_norm`) was structurally unobservable from an out-of-the-box run,
+independent of whether training was actually working. This is a weaker
+result than 2026-09-10's `cute-mallard` run, which reported an eval_loss
+trend under what it describes as the same defaults — that entry's exact
+`-i` inputs aren't fully spelled out, and this session could not reproduce
+its trend from the then-current committed defaults alone.
+
+Also newly noted, not previously documented anywhere in this file:
+`--warmup-steps 50` is **hardcoded** in `app/train.py`'s argparse (no YAML
+input exists for it). Any run under ~50 total steps trains entirely inside
+the LR warmup ramp — a ceiling on how "clean" any smoke-test signal can be
+without also touching code, not just YAML defaults. Not addressed this
+session (out of scope of what was asked); left as a known limitation.
+
+**Fix, agreed with the user and committed** (`51aa7ce`, "Make dataset bigger
+and adjust default params"): grew `app/sample-dataset.jsonl` from 20 -> **90
+rows** (same capital-city Q&A format/delimiter), lowered `evaluation.
+eval_steps` default 50 -> **5**, raised `training.num_epochs` default 1.0 ->
+**3.0**. Deliberately left `training.gradient_accumulation` at 16 — unlike
+eval_steps/num_epochs, it directly sets the effective batch size, a real
+training-quality knob that would change convergence behavior for every
+future *real* (non-smoke) dataset on this workflow, not just this test;
+growing the dataset was preferred over touching it. With the new numbers: 86
+train rows / (1x16) = 6 steps/epoch x 3 epochs = 18 total steps — clears
+`logging_steps=10` once and `eval_steps=5` three times (steps 5/10/15),
+giving a real falling-eval-loss trend instead of one opaque final-summary
+line.
+
+### olmo2-1b-dev — PASS (run `key-jay`, re-run after the dataset/defaults fix)
+
+All 90 rows matched the response template (85 train / 5 eval). `eval_loss`:
+0.587 -> 0.376 -> **0.099** (falling). `grad_norm`: 0.883 (non-zero) at step
+10. Trainable params 12,058,624 / 1,496,975,360 (0.8055%) — matches this
+file's known-good OLMo-2-1B figures elsewhere. Adapters + merged weights
+saved, offline report written, endpoint `finetune-key-jay` came online then
+retired cleanly (the workflow's TensorBoard-then-retire design), `squeue`
+empty afterward. Zero tracebacks.
+
+### olmoe-1b-7b-dev — PASS (run `enhanced-toucan`)
+
+Per-expert-Linear MoE correctly detected (3072 expert Linear modules);
+attention-only LoRA targeting engaged (`['q_proj','k_proj','v_proj',
+'o_proj']`), per HANDOFF sec8.5c. `eval_loss`: 0.438 -> 0.203 -> **0.049**
+(falling). `grad_norm`: 2.575 (non-zero) at step 10. Trainable 4,194,304 /
+6,923,356,160 (0.0606%) — matches this file's known-good OLMoE figures
+elsewhere. Merged weights saved, endpoint retired cleanly, zero tracebacks.
+
+### gemma-1.1-7b — PASS (run `stirred-mongoose`)
+
+First attempt this session hit the same gap noted elsewhere in this file:
+`hf_token`'s default (`${{ org.HF_TOKEN }}`) resolved empty — no `HF_TOKEN`
+org secret is configured for this `pw` context/org — so a fresh download of
+the gated `google/gemma-1.1-7b-it` repo failed immediately with `Error:
+Access denied. This repository requires approval.` Re-run with a valid
+per-user HF token (license accepted) supplied explicitly via the `hf_token`
+input succeeded. All 90 rows matched. `eval_loss`: 0.227 -> 0.152 ->
+**0.063** (falling). `grad_norm`: 1.134 (non-zero) at step 10. Trainable
+params 50,003,968 / 8,587,684,864 (0.5823%) — matches this file's
+known-good gemma-1.1-7b figures elsewhere. Merged weights saved (4
+safetensors shards), endpoint retired cleanly, `squeue` empty, zero
+tracebacks.
+
+No org-level `HF_TOKEN` secret exists for gated-model downloads on this
+`pw` context; any future run of this profile needs a real per-user token
+supplied via `hf_token`.
+
+### gpt-oss-20b — PASS (run `neutral-dragon`, re-run with more `$HOME` headroom)
+
+Explicit overrides required and passed (same known chained-ternary
+default-resolution bug documented above/2026-09-10, still unfixed):
+`lora.quantization=native`, `advanced.bf16=true`. All 90 rows matched.
+Fused-expert `target_parameters` LoRA correctly forced `lora_dropout=0`
+(warning logged, matches the 2026-09-09 Hopper fix). `eval_loss`: 0.732 ->
+0.416 -> **0.127** (falling). `grad_norm`: 4.654 (non-zero) at step 10.
+Trainable params 30,081,024 / 20,944,838,208 (0.1436%) — consistent with
+the first attempt's training numbers below. **Training PASS.**
+
+The full-weight merge (`merge_full_weights` default `true`, 9 bf16 shards)
+also completed cleanly this time. `squeue` empty and the endpoint retired
+afterward. **First attempt (run `modest-rooster`) had crashed at this same
+merge step** with `safetensors._safetensors_rust.SafetensorError: ... No
+space left on device (os error 28)` writing into `$HOME/finetuning-tests/
+outputs/.../merged/` — an environment/capacity issue (`$HOME` on `gce` is
+NFS-exported from the head node with much less free space than `/aitmp`'s
+local scratch disk, which is where this same profile's merge ran in the
+2026-09-09 Hopper session), not a code defect; that attempt's `squeue`/
+endpoint were both still confirmed clean afterward (the crash's `EXIT` trap
+still ran `cancel.sh`). Freeing space on `$HOME` (deleting other validated
+profiles' model weights) before re-running was sufficient to get a clean
+merge — no `merge_full_weights=false` fallback was needed.
+
+### gemma-4-31b — PASS (run `blessed-sloth`)
+
+Explicit overrides required and passed (same chained-ternary bug):
+`lora.quantization=4bit`, `container.container_sif_path=/aitmp/
+finetune-tf5.sif` (transformers 5.x — `gemma4` doesn't exist in any 4.x
+release), `merge_full_weights=false` (adapter-only — matches this file's
+existing 2026-09-05 working config for this profile; a 31B full merge
+would be far too large for `$HOME`'s free space on this cluster anyway).
+Multimodal loader path engaged (expected — `gemma-4-31b` is text+image;
+this workflow still emits its "not run/verified on this hardware" warning
+for that path, unchanged from earlier sessions). All 90 rows matched.
+`eval_loss`: 7.231 -> 4.575 -> 1.377 -> **0.170** (falling — 4 points here
+since eval also fires on the final logging step for this profile).
+`grad_norm`: 13.19 (non-zero) at step 10. Trainable params 122,429,440 /
+31,395,515,952 (0.3900%) — matches this file's known-good gemma-4-31b
+figure exactly. Adapters saved, endpoint retired cleanly, `squeue` empty,
+zero tracebacks.
+
+Download alone took ~83 minutes (full-precision weights fetched before
+4-bit quantization at load time) and left `$HOME` at 93% full (7.2GB free)
+afterward — this profile's model-cache footprint is large regardless of
+the 4-bit training-time quantization; plan disk headroom accordingly for
+any future run.
+
+**Remaining for a future session:** none from this pass — all 5
+non-gpt-oss-120b profiles (olmo2-1b-dev, olmoe-1b-7b-dev, gemma-1.1-7b,
+gpt-oss-20b, gemma-4-31b) are now PASS end-to-end via real `pw workflows
+run` with the bundled dataset. Still open:
+- Consider whether `merge_full_weights` should default to `false` for the
+  largest profiles given the gpt-oss-20b disk-footprint finding above.
+- Consider exposing `--logging-steps`/`--warmup-steps` as YAML inputs (both
+  currently hardcoded in `train.py`) now that this session found the
+  logging-steps floor matters even for a deliberately small smoke dataset.
+- gpt-oss-120b remains unexercised this session (needs ≥2 GPUs / FSDP;
+  out of scope for the single-GPU `gpu` partition used throughout).
+
 ---
 
 ## Session 2026-09-10 — model download/cache wiring (rag-vllm parity)

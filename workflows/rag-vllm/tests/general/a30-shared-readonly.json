@@ -1,0 +1,42 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "http_expect": [
+      200,
+      302,
+      307,
+      401,
+      404
+    ],
+    "setup": "S=${HOME}/pw/shared-ro; chmod -R u+w $S 2>/dev/null; rm -rf $S ${HOME}/pw/software/models/Qwen2.5-0.5B-Instruct; mkdir -p $S/containers $S/models $S/cache/tiktoken_encodings; ln -sf ${HOME}/pw/software/containers/vllm.sif $S/containers/vllm.sif; cp ${HOME}/pw/software/cache/tiktoken_encodings/o200k_base.tiktoken $S/cache/tiktoken_encodings/; chmod 555 $S/containers $S/models $S/cache/tiktoken_encodings $S/cache $S",
+    "warm_marker": [
+      "${HOME}/pw/software/containers/vllm.sif"
+    ],
+    "leftover_patterns": [
+      "vllm.entrypoints",
+      "pw endpoints"
+    ]
+  },
+  "runtype": "vllm",
+  "cluster": {
+    "resource": "pw://alvaro/a30gpuserver",
+    "scheduler": false
+  },
+  "model": {
+    "source": "huggingface",
+    "hf_model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+    "cache_dir": "${HOME}/pw/shared-ro/models"
+  },
+  "vllm": {
+    "num_gpus": "1",
+    "gpu_memory": "0.70",
+    "max_model_len": "4096",
+    "dtype": "float16",
+    "attention_backend": "TRITON_ATTN",
+    "extra_args": "--trust_remote_code"
+  },
+  "service": {
+    "parent_install_dir": "${HOME}/pw/shared-ro",
+    "container_uri": "ghcr.io/parallelworks/vllm:v1.0"
+  }
+}

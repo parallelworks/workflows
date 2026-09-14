@@ -116,24 +116,36 @@ matching variant of a similar workflow (they pass their variant's
 
 ## 5. Testing
 
-Push first — the YAML pulls this repo from GitHub at run time, so local edits are
-invisible until they are on the referenced branch. Then, with the **absolute** YAML
-path (a relative path is parsed as a git host):
+Every workflow is tested end-to-end at least once, and the test lives in the repo.
+A test is a JSON file of form inputs next to the YAML it exercises:
+
+```
+workflows/my-session/tests/general/gcp-controller.json   scheduler off: service on the login node
+workflows/my-session/tests/general/gcp-compute.json      scheduler on: service on a compute node
+```
+
+Copy both from `workflows/webshell/tests/general/` and change the `service` block.
+Push first — the YAML pulls this repo from GitHub at run time, so local edits to
+`app/` are invisible until they are on the referenced branch. Then:
 
 ```bash
-pw workflows run /abs/path/workflows/my-session/yamls/general.yaml \
-    -i '{"cluster":{"resource":"<cluster>","scheduler":false}}'
-pw endpoints list                       # pass = my-session-<run-slug> online, URL serves
-pw endpoints delete my-session-<slug>   # tear down; confirm with ps -x
+python3 tools/tests/run-workflow-test.py workflows/my-session/tests/general/gcp-controller.json \
+                                         workflows/my-session/tests/general/gcp-compute.json
 ```
+
+The runner launches the YAML with the test's inputs, waits for the run, checks that
+the endpoint is listed and its URL answers, deletes the endpoint, verifies nothing is
+left on the resource (processes, scheduler job, containers), and appends one row per
+launch to `gcp-controller.csv` / `gcp-compute.csv`. Commit the tests and the rows with
+your change; never edit a CSV by hand. Keys, pass criteria and columns:
+[`tools/tests/README.md`](tools/tests/README.md).
 
 **Verify cleanup on cancel — part of testing, every time.** Cancel a run mid-flight
 (`pw workflows runs cancel <slug>` while the service is starting or serving) and
 confirm the cleanup actually ran: no service processes left (`ps -x`), no scheduler
 job (`squeue`/`qstat` when `scheduler:true`), no container instances
-(`singularity instance list`, `docker ps`), no stray listeners. Then do the same
-check after `pw endpoints delete` on a successful run — apps that daemonize and
-re-parent to PID 1 (e.g. RStudio's `rsession`) can survive the tree kill and need
+(`singularity instance list`, `docker ps`), no stray listeners. Apps that daemonize
+and re-parent to PID 1 (e.g. RStudio's `rsession`) can survive the tree kill and need
 handling in `cancel.sh`. Write `cancel.sh` at the very top of the start script so a
 cancel at any moment finds it.
 

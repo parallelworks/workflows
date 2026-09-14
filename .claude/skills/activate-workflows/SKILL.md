@@ -152,36 +152,41 @@ query string.
 
 Numbers from `integer` inputs arrive as **strings**; guard with `${var:-default}`.
 
-## Step 3 — Test end-to-end with the `pw` client
+## Step 3 — Test end-to-end and record the test
+
+Every workflow is tested end-to-end at least once, and the test is committed with it.
+A test is a JSON file of form inputs at `workflows/<name>/tests/<variant>/<test>.json`,
+launched against `workflows/<name>/yamls/<variant>.yaml`. For a new workflow create
+two, copied from `workflows/webshell/tests/general/` with the `service` block changed:
+
+- `tests/general/gcp-controller.json` — `scheduler: false`, service on the login node
+- `tests/general/gcp-compute.json` — `scheduler: true`, service on a compute node
 
 **Push first, unless only the YAML changed.** The YAML's checkout and `uses:` steps
 fetch the repo from GitHub at run time, so a local edit to anything they fetch (`app/`
 scripts, the subworkflow) is invisible until it is on the referenced branch. The YAML
-itself is read from the absolute path you pass, so a YAML-only edit tests without a
-push (verified 2026-09-10 with the ollama endpoint-name change).
+itself is read from the local path, so a YAML-only edit tests without a push.
 
 ```bash
-# always validate first — catches YAML/schema/variant errors without executing
-pw workflows run --dry-run -i '{"cluster":{"resource":"<name>","scheduler":false}}' /abs/path/general.yaml
-
-# run a repo YAML directly (ABSOLUTE path — a relative path is parsed as a git host)
-pw workflows run /abs/path/workflows/<name>/yamls/general.yaml \
-    -i '{"cluster":{"resource":"<name>","scheduler":false}}' -o json   # note run.slug
+python3 tools/tests/run-workflow-test.py workflows/<name>/tests/general/gcp-controller.json \
+                                         workflows/<name>/tests/general/gcp-compute.json
 ```
 
-- **Pass the resource as a bare name string** (`"gcpsmall"`, `"workspace"`); the
-  platform resolves the full object. Never hardcode IPs.
-- Pick an **active** resource (`pw cluster ls`). `scheduler:false` runs the service
-  on the login node — simplest for a demo.
-- Watch progress: `pw workflows runs logs <slug>` or poll
-  `pw workflows runs view <slug> -o json`.
-- **Success = the endpoint is online and serving:** `pw endpoints list` shows
-  `<service.name>-<run-slug>` with its URL; `curl` it (expect 200, or the platform
-  auth redirect for `--openai` endpoints). The run itself completes once
-  `wait_for_endpoint` sees it — the service keeps running.
-- **Tear down when done:** `pw endpoints delete <name>` kills the whole remote
-  process tree; verify with `ps -x | grep <service>`. Beware daemonizing apps that
-  re-parent to PID 1 (e.g. RStudio's `rsession`) — they can survive the tree kill.
+The runner launches the YAML, waits for the run, checks that an endpoint named
+`*-<run-slug>` is listed and its URL answers, deletes the endpoint, verifies nothing is
+left on the resource, and appends one row per launch to the CSV next to the test
+(`result`, `cleanup`, `phase` cold/warm, git tree hashes, run slug). Pass = `pass` and
+`cleanup=ok`. On failure read `tests/<variant>/logs/<slug>.txt` and
+`pw workflows runs errors <slug>`, fix, push, re-run. Commit the test files and CSV
+rows with the change; never edit a CSV by hand. Keys (`_test`: markers, setup,
+leftover checks) and columns: `tools/tests/README.md`.
+
+Facts that still matter when running by hand (`pw workflows run /abs/path.yaml -i inputs.json`):
+- Pass the resource as its URI (`pw://alvaro/gcpsmall`) or bare name; never an IP.
+  It must be `active` in `pw cluster ls`.
+- The run completes once `wait_for_endpoint` sees the endpoint; the service keeps
+  running until `pw endpoints delete <name>`, which kills the remote process tree.
+  Daemonizing apps that re-parent to PID 1 (e.g. RStudio's `rsession`) can survive it.
 - **Verify cleanup on CANCEL — a required test, not an afterthought:** cancel one run
   mid-flight (`pw workflows runs cancel <slug>` while the service is starting or
   serving) and confirm `cancel.sh` actually ran: no service processes (`ps -x`), no

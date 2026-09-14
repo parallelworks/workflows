@@ -49,6 +49,10 @@ How this repo was assembled, and where anything older lives, is recorded in
 next to `workflows/<name>` at runtime; scripts reference them as `tools/...` relative
 to the run directory.
 
+**Tests** — `workflows/<name>/tests/<variant>/` holds each workflow's end-to-end tests:
+`<test>.json` is a form submission for `yamls/<variant>.yaml`, `<test>.csv` its results,
+one row per launch. [`tools/tests/run-workflow-test.py`](tools/tests/README.md) runs them.
+
 **Tutorials** — [`tutorials/`](tutorials/) are staged, runnable lessons that build a
 small demo app ([`demo-app/`](tutorials/demo-app/)) into a full workflow:
 [`endpoint-workflows/`](tutorials/endpoint-workflows/) (the current `pw endpoints`

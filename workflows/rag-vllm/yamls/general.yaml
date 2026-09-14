@@ -5,8 +5,8 @@
 #
 # SIF images are pulled once from ghcr.io as ORAS artifacts; nodes that cannot
 # mount squashfs images get a sandbox directory unpacked from them on demand.
-# In RAG mode the repository is cloned and its start_service.sh launches the
-# stack; the endpoint targets the RAG proxy instead of vLLM directly.
+# In RAG mode the checked-out app directory is copied to a short path and
+# its start_service.sh launches the stack; the endpoint targets the RAG proxy instead of vLLM directly.
 # The run completes once the endpoint registers and the service lives on;
 # tear it down with `pw endpoints delete <name>`.
 
@@ -21,8 +21,8 @@ jobs:
       - name: Checkout
         uses: parallelworks/checkout
         with:
-          repo: ${{ inputs.service.repository }}
-          branch: ${{ inputs.service.repository_branch }}
+          repo: https://github.com/parallelworks/workflows.git
+          branch: noaa-vllm
           sparse_checkout:
             - workflows/rag-vllm/app
       - name: Create Inputs
@@ -40,8 +40,6 @@ jobs:
           container_uri="${{ inputs.service.container_uri }}"
           rag_container_uri="${{ inputs.service.rag_container_uri }}"
           rag_rundir="${{ inputs.service.rundir }}"
-          repository="${{ inputs.service.repository }}"
-          repository_branch="${{ inputs.service.repository_branch }}"
           model_source="${{ inputs.model.source }}"
           model_local_path="${{ inputs.model.local_path }}"
           hf_model_id="${{ inputs.model.hf_model_id }}"
@@ -76,7 +74,7 @@ jobs:
         run: |
           set -x
           if [ ! -s workflows/rag-vllm/app/controller.sh ]; then
-              echo "::error title=Error::controller.sh not found in the checkout — branch '${{ inputs.service.repository_branch }}' of ${{ inputs.service.repository }} does not contain the workflow scripts"
+              echo "::error title=Error::controller.sh not found in the checkout"
               exit 1
           fi
           cp inputs.sh controller-${PW_JOB_ID}.sh
@@ -85,7 +83,7 @@ jobs:
       - name: Create Service Script
         run: |
           if [ ! -s workflows/rag-vllm/app/start-template.sh ]; then
-              echo "::error title=Error::start-template.sh not found in the checkout — branch '${{ inputs.service.repository_branch }}' of ${{ inputs.service.repository }} does not contain the workflow scripts"
+              echo "::error title=Error::start-template.sh not found in the checkout"
               exit 1
           fi
           rm -f HOSTNAME SESSION_PORT job.ended job.started
@@ -737,18 +735,9 @@ jobs:
             default: ghcr.io/parallelworks/rag:v1.0
             tooltip: ORAS artifact containing the RAG SIF image
             hidden: ${{ inputs.runtype != 'all' }}
-          repository:
-            type: string
-            label: Repository
-            default: https://github.com/parallelworks/workflows.git
-            tooltip: Repository providing the workflow scripts and RAG service code
-          repository_branch:
-            type: string
-            label: Repository Branch
-            default: canary
           rundir:
             label: RAG Run Directory
             type: string
             default: ~/pw/workflows
-            tooltip: The repository is cloned here and the RAG stack runs from it. Keep the path short.
+            tooltip: The RAG stack is copied here from the checkout and runs from it. Keep the path short.
             hidden: ${{ inputs.runtype != 'all' }}

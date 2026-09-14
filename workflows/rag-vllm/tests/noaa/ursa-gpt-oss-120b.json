@@ -53,8 +53,6 @@
   },
   "service": {
     "parent_install_dir": "/contrib/pw",
-    "container_uri": "ghcr.io/parallelworks/vllm:v1.0",
-    "repository": "https://github.com/parallelworks/workflows.git",
-    "repository_branch": "noaa-vllm"
+    "container_uri": "ghcr.io/parallelworks/vllm:v1.0"
   }
 }

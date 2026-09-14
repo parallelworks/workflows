@@ -211,17 +211,13 @@ fi
 
 if [ "${runtype}" = "all" ]; then
     # The RAG stack (start_service.sh, rag_server.py, rag_proxy.py, indexer.py)
-    # runs from a clone of this repository
+    # runs from a copy of the checked-out app directory: the same commit as
+    # this script, at a path short enough for ZMQ IPC sockets. What the stack
+    # creates beside it (docs/, cache/, .env) survives the copy.
     rag_rundir="${rag_rundir/#\~/$HOME}"
-    mkdir -p "$(dirname "${rag_rundir}")"
-    if [ -d "${rag_rundir}/.git" ]; then
-        git -C "${rag_rundir}" fetch origin
-        git -C "${rag_rundir}" checkout "${repository_branch}"
-        git -C "${rag_rundir}" reset --hard "origin/${repository_branch}"
-    else
-        git clone -b "${repository_branch}" "${repository}" "${rag_rundir}"
-    fi
     rag_appdir="${rag_rundir}/workflows/rag-vllm/app"
+    mkdir -p "${rag_appdir}"
+    cp -r "${PW_PARENT_JOB_DIR:-$PWD}/workflows/rag-vllm/app/." "${rag_appdir}/"
     rm -f "${rag_appdir}"/{jobid,SESSION_PORT,job.started,job.ended,run.out,HOSTNAME,cancel.sh}
     rm -rf "${rag_appdir}/logs"
 

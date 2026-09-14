@@ -1,0 +1,20 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "warm_marker": "${HOME}/pw/software/containers/librechat",
+    "leftover_patterns": [
+      "librechat",
+      "mongod",
+      "meilisearch",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "librechat_dir": "${HOME}/pw/LibreChat",
+    "domain_client": "ACTIVATE"
+  }
+}

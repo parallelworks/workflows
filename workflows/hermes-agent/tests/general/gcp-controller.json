@@ -1,0 +1,22 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "warm_marker": [
+      "${HOME}/pw/software/agent-venv",
+      "${HOME}/.hermes"
+    ],
+    "leftover_patterns": [
+      "hermes",
+      "pw endpoints run"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": false
+  },
+  "service": {
+    "interface": "dashboard",
+    "hermes_model": "org:glm/glm-5.1",
+    "allocation": "Owners"
+  }
+}

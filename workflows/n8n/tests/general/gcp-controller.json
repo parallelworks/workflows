@@ -1,0 +1,18 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "warm_marker": "${HOME}/pw/software/containers/n8n.sif",
+    "leftover_patterns": [
+      "n8n",
+      "pw endpoints run"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": false
+  },
+  "service": {
+    "container_runtime": "n8n-singularity",
+    "n8n_data_dir": "${HOME}/pw/n8n"
+  }
+}

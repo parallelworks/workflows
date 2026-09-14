@@ -1,0 +1,17 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "warm_marker": "${HOME}/pw/software/code-server-4.105.1-linux-amd64/bin/code-server",
+    "leftover_patterns": [
+      "code-server",
+      "pw endpoints run"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": false
+  },
+  "service": {
+    "directory": "${HOME}"
+  }
+}

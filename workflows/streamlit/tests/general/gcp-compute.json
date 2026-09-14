@@ -1,0 +1,22 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "warm_marker": "${HOME}/pw/software/containers/ghcr.io_parallelworks_streamlit_1.0/streamlit.sif",
+    "leftover_patterns": [
+      "streamlit",
+      "pw endpoints run"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "00:30:00"
+    }
+  },
+  "service": {
+    "registry": "ghcr.io/parallelworks/streamlit:1.0"
+  }
+}

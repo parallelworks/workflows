@@ -157,7 +157,8 @@ Numbers from `integer` inputs arrive as **strings**; guard with `${var:-default}
 Every workflow is tested end-to-end at least once, and the test is committed with it.
 A test is a JSON file of form inputs at `workflows/<name>/tests/<variant>/<test>.json`,
 launched against `workflows/<name>/yamls/<variant>.yaml`. For a new workflow create
-two, copied from `workflows/webshell/tests/general/` with the `service` block changed:
+two per variant, copied from `workflows/webshell/tests/<variant>/` with the `service`
+block changed:
 
 - `tests/general/gcp-controller.json` — `scheduler: false`, service on the login node
 - `tests/general/gcp-compute.json` — `scheduler: true`, service on a compute node

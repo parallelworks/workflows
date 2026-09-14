@@ -123,7 +123,7 @@ those platforms — validate them statically.
   verifies the endpoint, tears down, checks for leftovers, and appends a row to the
   CSV next to the test. Commit the test and its rows with the change. A new workflow
   gets `gcp-controller.json` (login node) and `gcp-compute.json` (scheduler) under
-  `tests/general/`; copy them from `workflows/webshell/tests/general/`. Format and
+  `tests/<variant>/`, copied from `workflows/webshell/tests/<variant>/`. Format and
   columns: `tools/tests/README.md`. Never edit a CSV by hand.
 - **Push before testing** anything the run fetches (`app/` scripts, subworkflows):
   checkout and `uses:` steps pull this repo from GitHub at run time. The YAML itself

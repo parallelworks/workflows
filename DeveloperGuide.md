@@ -124,7 +124,7 @@ workflows/my-session/tests/general/gcp-controller.json   scheduler off: service 
 workflows/my-session/tests/general/gcp-compute.json      scheduler on: service on a compute node
 ```
 
-Copy both from `workflows/webshell/tests/general/` and change the `service` block.
+Copy both from `workflows/webshell/tests/<variant>/` and change the `service` block.
 Push first — the YAML pulls this repo from GitHub at run time, so local edits to
 `app/` are invisible until they are on the referenced branch. Then:
 

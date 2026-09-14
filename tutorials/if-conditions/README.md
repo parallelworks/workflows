@@ -65,12 +65,3 @@ pw workflows runs logs --job work <slug>
 
 `permissions: ['*']` is only there for the `parallelworks/cancel-jobs` action,
 which the `work` job uses to cancel itself.
-
-### Known issue (platform, seen 2026-09-14)
-
-When a **job-level** keyword condition is false (`error`, `canceled`, `!completed`,
-even `never`), the executor records the job as `skipped-failed` instead of
-`skipped`, and the **run** ends as `error` even when no job failed (the run's
-error summary still says "0 job(s) failed"). A plain `if: ${{ false }}` job is a
-clean `skipped`. So the **succeed** outcome above shows the right jobs and steps
-but a red run status. Step-level keywords are not affected.

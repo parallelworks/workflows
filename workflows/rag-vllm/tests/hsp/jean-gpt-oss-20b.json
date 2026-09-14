@@ -1,6 +1,6 @@
 {
   "_test": {
-    "note": "Fill in before running: 'resource' must be the HSP platform's name for this system (pw cluster ls), and the SLURM 'account' (or PBS 'account') must be your subproject; both are required on an existing cluster and are not stored in the repo.",
+    "note": "Fill in before running: 'resource' must be the HSP platform's name for this system (pw cluster ls); it is not stored in the repo.",
     "timeout_s": 3600,
     "http_expect": [
       200,
@@ -29,7 +29,8 @@
       "partition": "AIML",
       "qos": "normal",
       "scheduler_directives": "#SBATCH --gres=gpu:1",
-      "time": "01:00:00"
+      "time": "01:00:00",
+      "account": "hpcmo49636prw"
     }
   },
   "model": {

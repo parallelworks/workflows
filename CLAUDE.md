@@ -121,10 +121,11 @@ those platforms — validate them statically.
   `workflows/<name>/tests/<variant>/<test>.json`. Run it with
   `python3 tools/tests/run-workflow-test.py <test.json>`: it launches the YAML,
   verifies the endpoint, tears down, checks for leftovers, and appends a row to the
-  CSV next to the test. Commit the test and its rows with the change. A new workflow
-  gets `gcp-controller.json` (login node) and `gcp-compute.json` (scheduler) under
-  `tests/<variant>/`, copied from `workflows/webshell/tests/<variant>/`. Format and
-  columns: `tools/tests/README.md`. Never edit a CSV by hand.
+  CSV next to the test. Any end-to-end test is recorded this way; commit the test and
+  its rows with the change. Start from an existing test such as
+  `workflows/webshell/tests/<variant>/gcp-controller.json` (login node) or
+  `gcp-compute.json` (scheduler). Format and columns: `tools/tests/README.md`. Never
+  edit a CSV by hand.
 - **Push before testing** anything the run fetches (`app/` scripts, subworkflows):
   checkout and `uses:` steps pull this repo from GitHub at run time. The YAML itself
   is read from the absolute path you pass, so a YAML-only edit tests without a push.

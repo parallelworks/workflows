@@ -154,14 +154,12 @@ Numbers from `integer` inputs arrive as **strings**; guard with `${var:-default}
 
 ## Step 3 — Test end-to-end and record the test
 
-Every workflow is tested end-to-end at least once, and the test is committed with it.
-A test is a JSON file of form inputs at `workflows/<name>/tests/<variant>/<test>.json`,
-launched against `workflows/<name>/yamls/<variant>.yaml`. For a new workflow create
-two per variant, copied from `workflows/webshell/tests/<variant>/` with the `service`
-block changed:
-
-- `tests/general/gcp-controller.json` — `scheduler: false`, service on the login node
-- `tests/general/gcp-compute.json` — `scheduler: true`, service on a compute node
+Every workflow is tested end-to-end at least once, and any end-to-end test is recorded
+the same way: a JSON file of form inputs at `workflows/<name>/tests/<variant>/<test>.json`,
+launched against `workflows/<name>/yamls/<variant>.yaml`, with its results in the CSV
+next to it. Start from an existing test, e.g. `workflows/webshell/tests/<variant>/`
+(`gcp-controller.json` runs the service on the login node, `gcp-compute.json` through
+the scheduler), and change the `service` block.
 
 **Push first, unless only the YAML changed.** The YAML's checkout and `uses:` steps
 fetch the repo from GitHub at run time, so a local edit to anything they fetch (`app/`
@@ -169,8 +167,7 @@ scripts, the subworkflow) is invisible until it is on the referenced branch. The
 itself is read from the local path, so a YAML-only edit tests without a push.
 
 ```bash
-python3 tools/tests/run-workflow-test.py workflows/<name>/tests/general/gcp-controller.json \
-                                         workflows/<name>/tests/general/gcp-compute.json
+python3 tools/tests/run-workflow-test.py workflows/<name>/tests/<variant>/<test>.json
 ```
 
 The runner launches the YAML, waits for the run, checks that an endpoint named

@@ -155,10 +155,10 @@ Numbers from `integer` inputs arrive as **strings**; guard with `${var:-default}
 ## Step 3 — Test end-to-end and record the test
 
 Every workflow is tested end-to-end at least once, and any end-to-end test is recorded
-the same way: a JSON file of form inputs at `workflows/<name>/tests/<variant>/<test>.json`,
-launched against `workflows/<name>/yamls/<variant>.yaml`, with its results in the CSV
-next to it. The JSON file contains the input JSON payload defining the test. Start from
-an existing test, e.g. `workflows/webshell/tests/<variant>/<test-name>.json`.
+under `workflows/<name>/tests/<variant>/`. The test layout, the `_test` keys, the pass
+criteria and the result columns are documented once, in `tools/tests/README.md`; read
+it before writing a test. Start from an existing test, e.g.
+`workflows/webshell/tests/<variant>/<test-name>.json`.
 
 **Push first, unless only the YAML changed.** The YAML's checkout and `uses:` steps
 fetch the repo from GitHub at run time, so a local edit to anything they fetch (`app/`
@@ -169,14 +169,9 @@ itself is read from the local path, so a YAML-only edit tests without a push.
 python3 tools/tests/run-workflow-test.py workflows/<name>/tests/<variant>/<test>.json
 ```
 
-The runner launches the YAML, waits for the run, checks that an endpoint named
-`*-<run-slug>` is listed and its URL answers, deletes the endpoint, verifies nothing is
-left on the resource, and appends one row per launch to the CSV next to the test
-(`result`, `cleanup`, `phase` cold/warm, git tree hashes, run slug). Pass = `pass` and
-`cleanup=ok`. On failure read `tests/<variant>/logs/<slug>.txt` and
-`pw workflows runs errors <slug>`, fix, push, re-run. Commit the test files and CSV
-rows with the change; never edit a CSV by hand. Keys (`_test`: markers, setup,
-leftover checks) and columns: `tools/tests/README.md`.
+Pass = `result=pass` and `cleanup=ok` in the row the runner appends. On failure read
+`tests/<variant>/logs/<slug>.txt` and `pw workflows runs errors <slug>`, fix, push,
+re-run. Commit the test files and CSV rows with the change; never edit a CSV by hand.
 
 Facts that still matter when running by hand (`pw workflows run /abs/path.yaml -i inputs.json`):
 - Pass the resource as its URI (`pw://alvaro/gcpsmall`) or bare name; never an IP.

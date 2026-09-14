@@ -1,7 +1,9 @@
 # End-to-end workflow tests
 
-A test is one form submission: a JSON file of workflow inputs, launched with
-`pw workflows run -i`. Tests live next to the YAML they exercise and their
+Every workflow is tested end-to-end at least once, and any end-to-end test is
+recorded the same way. A test is one form submission: a JSON file containing the
+input JSON payload that defines it, launched with `pw workflows run -i` against the
+YAML of the same variant. Tests live next to the YAML they exercise and their
 results accumulate in a CSV next to the test, one row per launch:
 
 ```
@@ -9,6 +11,10 @@ workflows/<name>/tests/<variant>/<test>.json   inputs for workflows/<name>/yamls
 workflows/<name>/tests/<variant>/<test>.csv    one row per launch (created on first run)
 workflows/<name>/tests/<variant>/logs/<slug>.txt   `pw workflows runs errors` output of failed launches
 ```
+
+Start from an existing test, e.g. `workflows/webshell/tests/<variant>/<test-name>.json`,
+and change the `service` block. Commit the test and the rows the runner appends to
+its CSV together with the workflow change; never edit a CSV by hand.
 
 Run one or more tests (sequentially, so installs on the same resource never race):
 

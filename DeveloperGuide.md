@@ -117,31 +117,20 @@ matching variant of a similar workflow (they pass their variant's
 ## 5. Testing
 
 Every workflow is tested end-to-end at least once, and any end-to-end test is recorded
-the same way: a JSON file at `workflows/<name>/tests/<variant>/<test>.json` containing
-the input JSON payload that defines the test, launched against
-`workflows/<name>/yamls/<variant>.yaml`, with its results in the CSV next to it. For
-example:
+under `workflows/my-session/tests/<variant>/`. The test layout, the test file keys, the
+pass criteria and the result columns are documented once, in
+[`tools/tests/README.md`](tools/tests/README.md). Start from an existing test, e.g.
+`workflows/webshell/tests/<variant>/<test-name>.json`.
 
-```
-workflows/my-session/tests/general/gcp-controller.json   scheduler off: service on the login node
-workflows/my-session/tests/general/gcp-compute.json      scheduler on: service on a compute node
-```
-
-Start from an existing test, e.g. `workflows/webshell/tests/<variant>/<test-name>.json`.
 Push first — the YAML pulls this repo from GitHub at run time, so local edits to
 `app/` are invisible until they are on the referenced branch. Then:
 
 ```bash
-python3 tools/tests/run-workflow-test.py workflows/my-session/tests/general/gcp-controller.json \
-                                         workflows/my-session/tests/general/gcp-compute.json
+python3 tools/tests/run-workflow-test.py workflows/my-session/tests/<variant>/<test-name>.json
 ```
 
-The runner launches the YAML with the test's inputs, waits for the run, checks that
-the endpoint is listed and its URL answers, deletes the endpoint, verifies nothing is
-left on the resource (processes, scheduler job, containers), and appends one row per
-launch to `gcp-controller.csv` / `gcp-compute.csv`. Commit the tests and the rows with
-your change; never edit a CSV by hand. Keys, pass criteria and columns:
-[`tools/tests/README.md`](tools/tests/README.md).
+Commit the test and the rows the runner appends to its CSV with your change; never
+edit a CSV by hand.
 
 **Verify cleanup on cancel — part of testing, every time.** Cancel a run mid-flight
 (`pw workflows runs cancel <slug>` while the service is starting or serving) and

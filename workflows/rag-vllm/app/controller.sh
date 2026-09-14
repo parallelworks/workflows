@@ -31,15 +31,64 @@ if [ -z "${service_parent_install_dir}" ] || [ "${service_parent_install_dir}" =
     service_parent_install_dir=${HOME}/pw/software
 fi
 service_parent_install_dir="${service_parent_install_dir/#\~/$HOME}"
-mkdir -p "${service_parent_install_dir}/containers" "${service_parent_install_dir}/tools" 2>/dev/null || true
-if [ ! -w "${service_parent_install_dir}/containers" ]; then
-    echo "::warning::${service_parent_install_dir} is not writable; using ${HOME}/pw/software"
-    service_parent_install_dir=${HOME}/pw/software
-    mkdir -p "${service_parent_install_dir}/containers" "${service_parent_install_dir}/tools"
-fi
 
-oras_bin="${service_parent_install_dir}/tools/oras/oras"
-if [ ! -x "${oras_bin}" ]; then
+# On NOAA and HSP the install directory is a store shared between accounts
+# (/contrib/pw, $PROJECTS_HOME/hsp), usually owned by whoever staged it first.
+# Whatever is already there is reused read-only by every account; what still
+# has to be downloaded goes there when this account can write it and into a
+# private directory otherwise. Each artifact decides on its own, so one
+# unwritable subdirectory never forces a re-download of everything.
+shared_root="${service_parent_install_dir}"
+private_root="${HOME}/pw/software"
+
+# Leaves what this run uses from the shared store group-writable, with setgid
+# directories, so any project member can add to or refresh it later; running
+# it on already-staged artifacts lets their owner's next run open up a tree
+# created before this rule existed. Best effort: paths another account
+# created are not ours to change.
+share() {
+    local p=$1
+    case "${p}" in "${HOME}"/*) return 0 ;; "${shared_root}"/*) ;; *) return 0 ;; esac
+    chmod -R g+rwX,o+rX "${p}" 2>/dev/null
+    find "${p}" -type d -exec chmod g+s {} + 2>/dev/null
+    while [ "${p}" != "${shared_root}" ] && [ "${p}" != "/" ]; do
+        p=$(dirname "${p}")
+        chmod g+rwx,o+rx "${p}" 2>/dev/null
+        chmod g+s "${p}" 2>/dev/null
+    done
+    return 0
+}
+
+# Sets ${dir} to where a new artifact goes: the shared subdirectory when this
+# account can write it (created if missing), the private one otherwise
+pick_writable_dir() {
+    local rel=$1 d
+    for d in "${shared_root}/${rel}" "${private_root}/${rel}"; do
+        if [ -d "${d}" ]; then
+            [ -w "${d}" ] && { dir="${d}"; return 0; }
+        elif mkdir -p "${d}" 2>/dev/null; then
+            share "${d}"
+            dir="${d}"
+            return 0
+        fi
+        [ "${d}" != "${private_root}/${rel}" ] \
+            && echo "::warning::${d} is not writable; using ${private_root}/${rel} instead"
+    done
+    return 1
+}
+
+oras_bin=""
+for d in "${shared_root}" "${private_root}"; do
+    if [ -x "${d}/tools/oras/oras" ]; then
+        oras_bin="${d}/tools/oras/oras"
+        break
+    fi
+done
+if [ -z "${oras_bin}" ]; then
+    if ! pick_writable_dir tools/oras; then
+        echo "::error title=Error::neither ${shared_root} nor ${private_root} is writable; nowhere to install oras"
+        exit 1
+    fi
     echo "::group::oras Install"
     VER=1.2.0
     case "$(uname -m)" in
@@ -49,25 +98,40 @@ if [ ! -x "${oras_bin}" ]; then
     esac
     curl -fsSL --connect-timeout 15 --max-time 300 -o oras.tar.gz \
         "https://github.com/oras-project/oras/releases/download/v${VER}/oras_${VER}_linux_${ARCH}.tar.gz"
-    mkdir -p "${service_parent_install_dir}/tools/oras"
-    tar -xzf oras.tar.gz -C "${service_parent_install_dir}/tools/oras" oras
+    tar -xzf oras.tar.gz -C "${dir}" oras
     rm -f oras.tar.gz
-    chmod -R a+rX "${service_parent_install_dir}/tools/oras"
+    chmod -R a+rX "${dir}"
+    oras_bin="${dir}/oras"
     echo "::endgroup::"
 fi
+share "${oras_bin%/*}"
 
 # v4-compatible names (vllm.sif, rag.sif) so pre-staged containers under
 # $PROJECTS_HOME/hsp/containers are found and reused; delete the file to
 # force a re-pull after changing the container URI tag
-sif_path_for() {
+sif_name_for() {
     local name="${1##*/}"
-    echo "${service_parent_install_dir}/containers/${name%%:*}.sif"
+    echo "${name%%:*}.sif"
+}
+# Sets ${sif} for a container URI: the staged copy when one is readable,
+# otherwise the path to pull it to
+resolve_sif() {
+    local name d
+    name=$(sif_name_for "$1")
+    for d in "${shared_root}" "${private_root}"; do
+        if [ -r "${d}/containers/${name}" ]; then
+            sif="${d}/containers/${name}"
+            return 0
+        fi
+    done
+    pick_writable_dir containers || return 1
+    sif="${dir}/${name}"
 }
 pull_sif() {
-    local uri=$1 sif=$2 pull_dir pulled_sif
-    [ -f "${sif}" ] && return 0
+    local uri=$1 target=$2 pull_dir pulled_sif
+    [ -f "${target}" ] && return 0
     echo "::group::SIF Download ${uri}"
-    pull_dir=$(mktemp -d -p "${service_parent_install_dir}/containers")
+    pull_dir=$(mktemp -d -p "${target%/*}")
     # ghcr.io intermittently answers "toomanyrequests" to anonymous pulls;
     # a short retry rides out the rate limit instead of failing the workflow
     local attempt pulled=""
@@ -87,30 +151,59 @@ pull_sif() {
         echo "::error title=Error::no SIF file found in ${uri}"
         exit 1
     fi
-    mv "${pulled_sif}" "${sif}"
+    mv "${pulled_sif}" "${target}"
     rm -rf "${pull_dir}"
-    chmod a+r "${sif}"
+    chmod a+r "${target}"
     echo "::endgroup::"
 }
 
-container_sif=$(sif_path_for "${container_uri}")
+if ! resolve_sif "${container_uri}"; then
+    echo "::error title=Error::neither ${shared_root} nor ${private_root} is writable; nowhere to store ${container_uri}"
+    exit 1
+fi
+container_sif="${sif}"
 pull_sif "${container_uri}" "${container_sif}"
+share "${container_sif}"
 if [ "${runtype}" = "all" ]; then
-    rag_sif=$(sif_path_for "${rag_container_uri}")
+    if ! resolve_sif "${rag_container_uri}"; then
+        echo "::error title=Error::neither ${shared_root} nor ${private_root} is writable; nowhere to store ${rag_container_uri}"
+        exit 1
+    fi
+    rag_sif="${sif}"
     pull_sif "${rag_container_uri}" "${rag_sif}"
+    share "${rag_sif}"
 fi
 
 # Tokenizer encodings for offline use (gpt-oss and tiktoken-based models)
-tiktoken_dir="${service_parent_install_dir}/cache/tiktoken_encodings"
-mkdir -p "${tiktoken_dir}"
-for enc in o200k_base cl100k_base; do
-    [ -s "${tiktoken_dir}/${enc}.tiktoken" ] && continue
-    curl -fsSL --connect-timeout 15 --max-time 300 -o "${tiktoken_dir}/${enc}.tiktoken" \
-        "https://openaipublic.blob.core.windows.net/encodings/${enc}.tiktoken" || {
-        rm -f "${tiktoken_dir}/${enc}.tiktoken"
-        echo "::warning::could not pre-download ${enc}.tiktoken"
-    }
+tiktoken_encodings="o200k_base cl100k_base"
+tiktoken_dir=""
+for d in "${shared_root}" "${private_root}"; do
+    complete=yes
+    for enc in ${tiktoken_encodings}; do
+        [ -s "${d}/cache/tiktoken_encodings/${enc}.tiktoken" ] || complete=""
+    done
+    if [ -n "${complete}" ]; then
+        tiktoken_dir="${d}/cache/tiktoken_encodings"
+        break
+    fi
 done
+if [ -z "${tiktoken_dir}" ]; then
+    if pick_writable_dir cache/tiktoken_encodings; then
+        tiktoken_dir="${dir}"
+        for enc in ${tiktoken_encodings}; do
+            [ -s "${tiktoken_dir}/${enc}.tiktoken" ] && continue
+            curl -fsSL --connect-timeout 15 --max-time 300 -o "${tiktoken_dir}/${enc}.tiktoken" \
+                "https://openaipublic.blob.core.windows.net/encodings/${enc}.tiktoken" || {
+                rm -f "${tiktoken_dir}/${enc}.tiktoken"
+                echo "::warning::could not pre-download ${enc}.tiktoken"
+            }
+        done
+    else
+        tiktoken_dir="${private_root}/cache/tiktoken_encodings"
+        echo "::warning::${tiktoken_dir} is not writable; tiktoken encodings will not be pre-downloaded"
+    fi
+fi
+share "${tiktoken_dir}"
 
 if [ -z "${model_cache_dir}" ] || [ "${model_cache_dir}" = "undefined" ]; then
     model_cache_dir=${HOME}/pw/models
@@ -136,18 +229,9 @@ if [ "${runtype}" = "all" ]; then
     mkdir -p "${rag_appdir}/cache/tiktoken_encodings"
     cp -n "${tiktoken_dir}"/*.tiktoken "${rag_appdir}/cache/tiktoken_encodings/" 2>/dev/null || true
 
-    if [ "${model_source}" = "local" ]; then
-        model_dir="${model_local_path/#\~/$HOME}"
-    elif [ "${model_source}" = "cached_model" ]; then
-        model_dir="${model_cache_dir/#\~/$HOME}/${cached_model_id##*/}"
-    else
-        model_dir="${model_cache_dir/#\~/$HOME}/${hf_model_id##*/}"
-    fi
-
-    emb_cache="${rag_embedding_cache_dir:-${model_cache_dir}}"
-    [ "${emb_cache}" = "undefined" ] && emb_cache="${model_cache_dir}"
-    emb_cache="${emb_cache/#\~/$HOME}"
-
+    # The model and embedding-model paths are appended by start-template.sh:
+    # prepare_model runs concurrently with this script and only it knows
+    # which cache the download landed in
     {
         echo "export RUNMODE=singularity"
         echo "export RUNTYPE=all"
@@ -158,16 +242,7 @@ if [ "${runtype}" = "all" ]; then
         echo "export TIKTOKEN_ENCODINGS_BASE=/root/.cache/tiktoken_encodings"
         echo "export TIKTOKEN_RS_CACHE_DIR=/root/.cache/tiktoken_encodings"
         echo "export VLLM_EXTRA_ARGS=\"${vllm_args}\""
-        echo "export MODEL_SOURCE=${model_source}"
-        echo "export MODEL_NAME=${model_dir}"
-        echo "export MODEL_PATH=${model_dir}"
         echo "export TRANSFORMERS_OFFLINE=1"
-        if [ "${rag_embedding_source}" = "local" ]; then
-            echo "export EMBEDDING_MODEL=${rag_embedding_path}"
-        else
-            echo "export EMBEDDING_MODEL=${emb_cache}/${rag_embedding_id##*/}"
-            echo "export EMBEDDING_CACHE_DIR=${emb_cache}"
-        fi
         if [ -n "${vllm_attention_backend}" ] && [ "${vllm_attention_backend}" != "undefined" ]; then
             echo "export VLLM_ATTENTION_BACKEND=${vllm_attention_backend}"
         fi

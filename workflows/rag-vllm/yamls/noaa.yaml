@@ -145,38 +145,76 @@ jobs:
               CACHE_DIR="${{ inputs.service.parent_install_dir }}/models"
           fi
           CACHE_DIR="${CACHE_DIR/#\~/$HOME}"
-          TARGET_DIR="${CACHE_DIR}/${MODEL_ID##*/}"
-          # Keep HF working caches off the small $HOME filesystem
-          export HF_HOME="${CACHE_DIR}/cache"
+          NAME="${MODEL_ID##*/}"
+          # A shared cache (/contrib/pw/models on NOAA) is usually owned by whoever
+          # staged it first: a model already there is served read-only by every
+          # account, and one that still has to be downloaded goes there only when this
+          # account can write it, otherwise into a private cache. start-template.sh
+          # looks in both.
+          PRIVATE_CACHE_DIR="${HOME}/pw/software/models"
 
           validate_model() {
-              [ -s "${TARGET_DIR}/config.json" ] || return 1
+              [ -s "$1/config.json" ] || return 1
               local f
-              f=$(find "${TARGET_DIR}" -maxdepth 1 \( -name '*.safetensors' -o -name '*.bin' \) -size +1M 2>/dev/null | head -1)
+              f=$(find "$1" -maxdepth 1 \( -name '*.safetensors' -o -name '*.bin' \) -size +1M 2>/dev/null | head -1)
               [ -n "$f" ]
           }
+          usable_dir() { # writable if it exists, creatable if it does not
+              if [ -d "$1" ]; then [ -w "$1" ]; else mkdir -p "$1" 2>/dev/null; fi
+          }
+          # Leaves what this run uses from a shared cache group-writable so any project
+          # member can refresh it; best effort, and nothing to do for a private path
+          share() {
+              case "$1" in "${HOME}"/*) return 0 ;; esac
+              chmod -R g+rwX,o+rX "$1" 2>/dev/null
+              find "$1" -type d -exec chmod g+s {} + 2>/dev/null
+              chmod g+rwx,o+rx "${1%/*}" 2>/dev/null
+              chmod g+s "${1%/*}" 2>/dev/null
+              return 0
+          }
 
-          if validate_model; then
-              echo "Model already cached at ${TARGET_DIR}"
-              exit 0
+          for d in "${CACHE_DIR}" "${PRIVATE_CACHE_DIR}"; do
+              if validate_model "${d}/${NAME}"; then
+                  share "${d}/${NAME}"
+                  echo "Model already cached at ${d}/${NAME}"
+                  exit 0
+              fi
+          done
+          if ! usable_dir "${CACHE_DIR}/${NAME}"; then
+              echo "::warning::${CACHE_DIR} is not writable; downloading ${MODEL_ID} into ${PRIVATE_CACHE_DIR}"
+              CACHE_DIR="${PRIVATE_CACHE_DIR}"
+              if ! usable_dir "${CACHE_DIR}/${NAME}"; then
+                  echo "::error title=Error::cannot create ${CACHE_DIR}/${NAME}"
+                  exit 1
+              fi
           fi
-          # hf download is incremental: it resumes a partial download in place
-          # and only fetches files that are missing or changed
-          mkdir -p "${CACHE_DIR}"
+          TARGET_DIR="${CACHE_DIR}/${NAME}"
+          # Keep HF working caches off the small $HOME filesystem where possible
+          export HF_HOME="${CACHE_DIR}/cache"
+          usable_dir "${HF_HOME}" || export HF_HOME="${PRIVATE_CACHE_DIR}/cache"
 
           VENV_BASE="${{ inputs.service.parent_install_dir }}"
           if [ -z "${VENV_BASE}" ] || [ "${VENV_BASE}" = "undefined" ]; then
               VENV_BASE=${HOME}/pw/software
           fi
-          VENV="${VENV_BASE/#\~/$HOME}/.hfcli"
-          HF_BIN="${VENV}/bin/hf"
-          [ -x "${HF_BIN}" ] || HF_BIN="${VENV}/bin/huggingface-cli"
-          if [ ! -x "${HF_BIN}" ]; then
+          HF_BIN=""
+          for d in "${VENV_BASE/#\~/$HOME}/.hfcli" "${HOME}/pw/software/.hfcli"; do
+              for b in "${d}/bin/hf" "${d}/bin/huggingface-cli"; do
+                  if [ -x "${b}" ]; then
+                      HF_BIN="${b}"
+                      break 2
+                  fi
+              done
+          done
+          if [ -z "${HF_BIN}" ]; then
+              VENV="${VENV_BASE/#\~/$HOME}/.hfcli"
+              usable_dir "${VENV}" || VENV="${HOME}/pw/software/.hfcli"
               if ! python3 -m venv "${VENV}"; then
                   echo "::error title=Error::python3 -m venv failed; install python3/python3-venv on the cluster"
                   exit 1
               fi
               "${VENV}/bin/pip" install --quiet --upgrade 'huggingface_hub[hf_transfer]'
+              share "${VENV}"
               HF_BIN="${VENV}/bin/hf"
               [ -x "${HF_BIN}" ] || HF_BIN="${VENV}/bin/huggingface-cli"
           fi
@@ -184,6 +222,8 @@ jobs:
           if [ -n "${HF_TOKEN}" ] && [ "${HF_TOKEN}" != "undefined" ]; then
               export HF_TOKEN
           fi
+          # hf download is incremental: it resumes a partial download in place
+          # and only fetches files that are missing or changed
           export HF_HUB_ENABLE_HF_TRANSFER=1
           for attempt in 1 2 3; do
               if "${HF_BIN}" download "${MODEL_ID}" --local-dir "${TARGET_DIR}" \
@@ -205,10 +245,12 @@ jobs:
               "${HF_BIN}" download "${MODEL_ID}" --local-dir "${TARGET_DIR}" --include "*.bin"
           fi
 
-          if ! validate_model; then
+          if ! validate_model "${TARGET_DIR}"; then
               echo "::error title=Error::downloaded model at ${TARGET_DIR} is incomplete"
               exit 1
           fi
+          share "${TARGET_DIR}"
+          share "${HF_HOME}"
           echo "Model ready at ${TARGET_DIR}"
 
   prepare_embedding_model:
@@ -229,29 +271,64 @@ jobs:
               CACHE_DIR="${{ inputs.service.parent_install_dir }}/models"
           fi
           CACHE_DIR="${CACHE_DIR/#\~/$HOME}"
-          TARGET_DIR="${CACHE_DIR}/${MODEL_ID##*/}"
-          # Keep HF working caches off the small $HOME filesystem
-          export HF_HOME="${CACHE_DIR}/cache"
+          NAME="${MODEL_ID##*/}"
+          # Same shared-or-private cache rule as prepare_model
+          PRIVATE_CACHE_DIR="${HOME}/pw/software/models"
 
-          if [ -s "${TARGET_DIR}/config.json" ]; then
-              echo "Embedding model already cached at ${TARGET_DIR}"
-              exit 0
+          usable_dir() { # writable if it exists, creatable if it does not
+              if [ -d "$1" ]; then [ -w "$1" ]; else mkdir -p "$1" 2>/dev/null; fi
+          }
+          share() {
+              case "$1" in "${HOME}"/*) return 0 ;; esac
+              chmod -R g+rwX,o+rX "$1" 2>/dev/null
+              find "$1" -type d -exec chmod g+s {} + 2>/dev/null
+              chmod g+rwx,o+rx "${1%/*}" 2>/dev/null
+              chmod g+s "${1%/*}" 2>/dev/null
+              return 0
+          }
+
+          for d in "${CACHE_DIR}" "${PRIVATE_CACHE_DIR}"; do
+              if [ -s "${d}/${NAME}/config.json" ]; then
+                  share "${d}/${NAME}"
+                  echo "Embedding model already cached at ${d}/${NAME}"
+                  exit 0
+              fi
+          done
+          if ! usable_dir "${CACHE_DIR}/${NAME}"; then
+              echo "::warning::${CACHE_DIR} is not writable; downloading ${MODEL_ID} into ${PRIVATE_CACHE_DIR}"
+              CACHE_DIR="${PRIVATE_CACHE_DIR}"
+              if ! usable_dir "${CACHE_DIR}/${NAME}"; then
+                  echo "::error title=Error::cannot create ${CACHE_DIR}/${NAME}"
+                  exit 1
+              fi
           fi
-          mkdir -p "${CACHE_DIR}"
+          TARGET_DIR="${CACHE_DIR}/${NAME}"
+          # Keep HF working caches off the small $HOME filesystem where possible
+          export HF_HOME="${CACHE_DIR}/cache"
+          usable_dir "${HF_HOME}" || export HF_HOME="${PRIVATE_CACHE_DIR}/cache"
 
           VENV_BASE="${{ inputs.service.parent_install_dir }}"
           if [ -z "${VENV_BASE}" ] || [ "${VENV_BASE}" = "undefined" ]; then
               VENV_BASE=${HOME}/pw/software
           fi
-          VENV="${VENV_BASE/#\~/$HOME}/.hfcli"
-          HF_BIN="${VENV}/bin/hf"
-          [ -x "${HF_BIN}" ] || HF_BIN="${VENV}/bin/huggingface-cli"
-          if [ ! -x "${HF_BIN}" ]; then
+          HF_BIN=""
+          for d in "${VENV_BASE/#\~/$HOME}/.hfcli" "${HOME}/pw/software/.hfcli"; do
+              for b in "${d}/bin/hf" "${d}/bin/huggingface-cli"; do
+                  if [ -x "${b}" ]; then
+                      HF_BIN="${b}"
+                      break 2
+                  fi
+              done
+          done
+          if [ -z "${HF_BIN}" ]; then
+              VENV="${VENV_BASE/#\~/$HOME}/.hfcli"
+              usable_dir "${VENV}" || VENV="${HOME}/pw/software/.hfcli"
               if ! python3 -m venv "${VENV}"; then
                   echo "::error title=Error::python3 -m venv failed; install python3/python3-venv on the cluster"
                   exit 1
               fi
               "${VENV}/bin/pip" install --quiet --upgrade 'huggingface_hub[hf_transfer]'
+              share "${VENV}"
               HF_BIN="${VENV}/bin/hf"
               [ -x "${HF_BIN}" ] || HF_BIN="${VENV}/bin/huggingface-cli"
           fi
@@ -267,6 +344,8 @@ jobs:
               echo "::error title=Error::embedding model at ${TARGET_DIR} is incomplete"
               exit 1
           fi
+          share "${TARGET_DIR}"
+          share "${HF_HOME}"
           echo "Embedding model ready at ${TARGET_DIR}"
 
   script_submitter:
@@ -496,7 +575,7 @@ jobs:
             type: string
             label: Model Cache Directory
             optional: true
-            tooltip: Directory to download the model into. The model is downloaded once and reused for subsequent runs. Leave empty to use <Parent Install Directory>/models.
+            tooltip: Directory to download the model into. The model is downloaded once and reused for subsequent runs by every account that can read it; when this directory is not writable the download goes to ${HOME}/pw/software/models instead. Leave empty to use <Parent Install Directory>/models.
             hidden: ${{ inputs.model.source != 'huggingface' }}
             ignore: ${{ inputs.model.source != 'huggingface' }}
 
@@ -665,7 +744,7 @@ jobs:
             type: string
             default: /contrib/pw
             prefillDefault: true
-            tooltip: Single install root — containers go to containers/, models to models/, HF caches to models/cache and tools under this directory (/contrib/pw is the NOAA persistent project space). Ensure it has sufficient space!
+            tooltip: Single install root — containers go to containers/, models to models/, HF caches to models/cache and tools under this directory (/contrib/pw is the NOAA persistent project space, shared by every account of the project). Whatever is already staged here is reused by every account; what this account cannot write here is downloaded into ${HOME}/pw/software instead. Ensure it has sufficient space!
           container_uri:
             label: vLLM Container
             type: string

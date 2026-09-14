@@ -29,14 +29,28 @@ else
     echo "::warning::nvidia-smi not found on $(hostname)"
 fi
 
+# prepare_model downloads into the cache from the form when it can write it
+# and into ${HOME}/pw/software/models otherwise (a shared cache is usually
+# owned by whoever staged it first); look in both
+private_models_dir="${HOME}/pw/software/models"
+find_model_dir() { # sets ${model_dir} to the first cache holding the model
+    local name=$1 d
+    for d in "${model_cache_dir/#\~/$HOME}" "${private_models_dir}"; do
+        model_dir="${d}/${name}"
+        [ -s "${model_dir}/config.json" ] && return 0
+    done
+    echo "::error title=Error::model ${name} not found in ${model_cache_dir/#\~/$HOME} or ${private_models_dir}"
+    exit 1
+}
+
 if [ "${model_source}" = "local" ]; then
     model_dir="${model_local_path/#\~/$HOME}"
     served_model_name=$(basename "${model_dir}")
 elif [ "${model_source}" = "cached_model" ]; then
-    model_dir="${model_cache_dir/#\~/$HOME}/${cached_model_id##*/}"
+    find_model_dir "${cached_model_id##*/}"
     served_model_name="${cached_model_id}"
 else
-    model_dir="${model_cache_dir/#\~/$HOME}/${hf_model_id##*/}"
+    find_model_dir "${hf_model_id##*/}"
     served_model_name="${hf_model_id}"
 fi
 if [ ! -s "${model_dir}/config.json" ]; then
@@ -56,8 +70,17 @@ resolve_ref() {
     export SINGULARITY_TMPDIR=${HOME}/.singularity_tmp
     export SINGULARITY_CACHEDIR=${HOME}/.singularity_cache
     mkdir -p "${SINGULARITY_TMPDIR}" "${SINGULARITY_CACHEDIR}"
-    if [ ! -d "${sandbox}" ]; then
-        "${singularity_bin}" build --fakeroot --force --sandbox "${sandbox}" "${sif}" >&2 || return 1
+    if [ ! -d "${sandbox}/usr" ]; then
+        # A shared containers directory is usually owned by whoever staged the
+        # image, so the sandbox may have to be unpacked somewhere private
+        if ! mkdir -p "${sandbox}" 2>/dev/null || [ ! -w "${sandbox}" ]; then
+            sandbox="${HOME}/pw/software/containers/${sandbox##*/}"
+            echo "::notice::Image directory is not writable; unpacking into ${sandbox}" >&2
+            mkdir -p "${sandbox}"
+        fi
+        if [ ! -d "${sandbox}/usr" ]; then
+            "${singularity_bin}" build --fakeroot --force --sandbox "${sandbox}" "${sif}" >&2 || return 1
+        fi
     fi
     echo "${sandbox}"
 }
@@ -85,6 +108,28 @@ if [ "${runtype}" = "all" ]; then
         ln -sf "${singularity_bin}" "${PWD}/bin/singularity"
         export PATH="${PWD}/bin:${PATH}"
     fi
+
+    # The embedding model follows the same shared-or-private cache rule as
+    # the LLM; the controller left these paths out of .run.env because
+    # prepare_model runs concurrently with it
+    emb_cache="${rag_embedding_cache_dir:-${model_cache_dir}}"
+    [ "${emb_cache}" = "undefined" ] && emb_cache="${model_cache_dir}"
+    emb_cache="${emb_cache/#\~/$HOME}"
+    emb_dir="${emb_cache}/${rag_embedding_id##*/}"
+    if [ ! -s "${emb_dir}/config.json" ] && [ -s "${private_models_dir}/${rag_embedding_id##*/}/config.json" ]; then
+        emb_dir="${private_models_dir}/${rag_embedding_id##*/}"
+    fi
+    {
+        echo "export MODEL_SOURCE=${model_source}"
+        echo "export MODEL_NAME=${model_dir}"
+        echo "export MODEL_PATH=${model_dir}"
+        if [ "${rag_embedding_source}" = "local" ]; then
+            echo "export EMBEDDING_MODEL=${rag_embedding_path}"
+        else
+            echo "export EMBEDDING_MODEL=${emb_dir}"
+            echo "export EMBEDDING_CACHE_DIR=${emb_dir%/*}"
+        fi
+    } >> "${rag_appdir}/.run.env"
 
     endpoint_port=$(pw agent open-port)
     svc_log="${PWD}/rag-vllm-${PW_JOB_ID}.out"
@@ -128,7 +173,9 @@ else
     # the host env through by default, and some systems (Jean) export CC=icc,
     # which Triton uses to build its CUDA driver stub but does not exist in
     # the container. TRITON_CACHE_DIR joins the other JIT caches in the
-    # per-job /tmp so runs never share ~/.triton on NFS home.
+    # per-job /tmp so runs never share ~/.triton on NFS home. The tiktoken
+    # encodings directory may be a read-only shared one, so harmony's cache
+    # goes to the per-job /tmp as well.
     cat > launch-vllm-${PW_JOB_ID}.sh <<LAUNCHEOF
 #!/bin/bash
 exec "${singularity_bin}" exec --nv --writable-tmpfs \\
@@ -139,7 +186,7 @@ exec "${singularity_bin}" exec --nv --writable-tmpfs \\
     --env TRANSFORMERS_OFFLINE=1 \\
     --env HF_HUB_OFFLINE=1 \\
     --env TIKTOKEN_ENCODINGS_BASE="${tiktoken_dir}" \\
-    --env TIKTOKEN_RS_CACHE_DIR="${tiktoken_dir}" \\
+    --env TIKTOKEN_RS_CACHE_DIR=/tmp/tiktoken_rs_cache \\
     --env TMPDIR=/tmp \\
     --env CUDA_CACHE_PATH=/tmp/cuda_cache \\
     --env TORCH_EXTENSIONS_DIR=/tmp/torch_extensions \\

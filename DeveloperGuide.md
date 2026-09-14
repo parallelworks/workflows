@@ -117,16 +117,17 @@ matching variant of a similar workflow (they pass their variant's
 ## 5. Testing
 
 Every workflow is tested end-to-end at least once, and any end-to-end test is recorded
-in the repo as a JSON file of form inputs next to the YAML it exercises, with its
-results in a CSV beside it. For example:
+the same way: a JSON file at `workflows/<name>/tests/<variant>/<test>.json` containing
+the input JSON payload that defines the test, launched against
+`workflows/<name>/yamls/<variant>.yaml`, with its results in the CSV next to it. For
+example:
 
 ```
 workflows/my-session/tests/general/gcp-controller.json   scheduler off: service on the login node
 workflows/my-session/tests/general/gcp-compute.json      scheduler on: service on a compute node
 ```
 
-Start from an existing test such as `workflows/webshell/tests/<variant>/` and change
-the `service` block.
+Start from an existing test, e.g. `workflows/webshell/tests/<variant>/<test-name>.json`.
 Push first — the YAML pulls this repo from GitHub at run time, so local edits to
 `app/` are invisible until they are on the referenced branch. Then:
 

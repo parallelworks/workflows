@@ -157,9 +157,8 @@ Numbers from `integer` inputs arrive as **strings**; guard with `${var:-default}
 Every workflow is tested end-to-end at least once, and any end-to-end test is recorded
 the same way: a JSON file of form inputs at `workflows/<name>/tests/<variant>/<test>.json`,
 launched against `workflows/<name>/yamls/<variant>.yaml`, with its results in the CSV
-next to it. Start from an existing test, e.g. `workflows/webshell/tests/<variant>/`
-(`gcp-controller.json` runs the service on the login node, `gcp-compute.json` through
-the scheduler), and change the `service` block.
+next to it. The JSON file contains the input JSON payload defining the test. Start from
+an existing test, e.g. `workflows/webshell/tests/<variant>/<test-name>.json`.
 
 **Push first, unless only the YAML changed.** The YAML's checkout and `uses:` steps
 fetch the repo from GitHub at run time, so a local edit to anything they fetch (`app/`

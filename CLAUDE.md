@@ -117,15 +117,15 @@ those platforms — validate them statically.
 ## Testing and debugging
 
 - **Test every new or changed workflow end-to-end at least once and record the test in
-  the repo.** A test is a JSON file of form inputs at
-  `workflows/<name>/tests/<variant>/<test>.json`. Run it with
+  the repo.** A test is a JSON file at `workflows/<name>/tests/<variant>/<test>.json`
+  containing the input JSON payload that defines it, launched against
+  `workflows/<name>/yamls/<variant>.yaml`. Run it with
   `python3 tools/tests/run-workflow-test.py <test.json>`: it launches the YAML,
   verifies the endpoint, tears down, checks for leftovers, and appends a row to the
   CSV next to the test. Any end-to-end test is recorded this way; commit the test and
-  its rows with the change. Start from an existing test such as
-  `workflows/webshell/tests/<variant>/gcp-controller.json` (login node) or
-  `gcp-compute.json` (scheduler). Format and columns: `tools/tests/README.md`. Never
-  edit a CSV by hand.
+  its rows with the change. Start from an existing test, e.g.
+  `workflows/webshell/tests/<variant>/<test-name>.json`. Format and columns:
+  `tools/tests/README.md`. Never edit a CSV by hand.
 - **Push before testing** anything the run fetches (`app/` scripts, subworkflows):
   checkout and `uses:` steps pull this repo from GitHub at run time. The YAML itself
   is read from the absolute path you pass, so a YAML-only edit tests without a push.

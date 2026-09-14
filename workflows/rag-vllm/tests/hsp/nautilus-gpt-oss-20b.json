@@ -1,0 +1,50 @@
+{
+  "_test": {
+    "note": "Fill in before running: 'resource' must be the HSP platform's name for this system (pw cluster ls), and the SLURM 'account' (or PBS 'account') must be your subproject; both are required on an existing cluster and are not stored in the repo.",
+    "timeout_s": 3600,
+    "http_expect": [
+      200,
+      302,
+      307,
+      401,
+      404
+    ],
+    "warm_marker": [
+      "${PROJECTS_HOME:-$HOME/pw}/hsp/containers/vllm.sif",
+      "${PROJECTS_HOME:-$HOME/pw}/hsp/models/gpt-oss-20b/config.json"
+    ],
+    "leftover_patterns": [
+      "vllm.entrypoints",
+      "pw endpoints"
+    ]
+  },
+  "resource": "nautilus",
+  "runtype": "vllm",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "cpus_per_task": 1,
+      "is_enabled": true,
+      "nodes": 1,
+      "node_type": "mla",
+      "partition": "general",
+      "qos": "hie",
+      "time": "01:00:00"
+    }
+  },
+  "model": {
+    "source": "cached_model"
+  },
+  "vllm": {
+    "dtype": "bfloat16",
+    "extra_args": "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai",
+    "gpu_memory": "0.90",
+    "max_model_len": "auto",
+    "num_gpus": "1",
+    "attention_backend": "TRITON_ATTN"
+  },
+  "rag": {
+    "embedding_model_source": "huggingface",
+    "systemprompt": "You are a careful assistant. Use ONLY the provided context blocks to answer. Each block is numbered [1], [2], … and includes source metadata. When you use information from a block, you MUST cite it inline with [n]. At the end of your response, include a 'References' section with one reference per line formatted as [n] file_path (chunk index). Do not invent citations or sources. If the context does not contain the answer, say so briefly."
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "http_expect": [200, 302, 307, 401, 404],
+    "warm_marker": [
+      "/contrib/pw/containers/vllm.sif",
+      "/contrib/pw/tools/oras/oras",
+      "/contrib/pw/models/gpt-oss-120b/config.json"
+    ],
+    "leftover_patterns": ["vllm.entrypoints", "pw endpoints"]
+  },
+  "resource": "ursa",
+  "runtype": "vllm",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "account": "pw",
+      "partition": "u1-h100",
+      "qos": "gpu",
+      "ntasks": 1,
+      "nodes": 1,
+      "time": "02:00:00"
+    }
+  },
+  "model": {
+    "source": "local",
+    "local_path": "/contrib/pw/models/gpt-oss-120b"
+  },
+  "vllm": {
+    "attention_backend": "TRITON_ATTN",
+    "dtype": "bfloat16",
+    "extra_args": "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai",
+    "gpu_memory": "0.85",
+    "max_model_len": "auto",
+    "num_gpus": "1"
+  },
+  "rag": {
+    "embedding_model_source": "huggingface",
+    "systemprompt": "You are a careful assistant. Use ONLY the provided context blocks to answer. Each block is numbered [1], [2], … and includes source metadata. When you use information from a block, you MUST cite it inline with [n]. At the end of your response, include a 'References' section with one reference per line formatted as [n] file_path (chunk index). Do not invent citations or sources. If the context does not contain the answer, say so briefly.",
+    "docsdir": "./docs",
+    "max_tokens": "8192",
+    "embedding_model_id": "sentence-transformers/all-MiniLM-L6-v2"
+  },
+  "service": {
+    "parent_install_dir": "/contrib/pw",
+    "container_uri": "ghcr.io/parallelworks/vllm:v1.0",
+    "repository": "https://github.com/parallelworks/workflows.git",
+    "repository_branch": "noaa-vllm"
+  }
+}

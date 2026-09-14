@@ -1,21 +1,30 @@
 {
   "_test": {
     "timeout_s": 3600,
-    "http_expect": [200, 302, 307, 401, 404],
+    "http_expect": [
+      200,
+      302,
+      307,
+      401,
+      404
+    ],
     "warm_marker": [
       "/contrib/pw/containers/vllm.sif",
       "/contrib/pw/tools/oras/oras",
       "/contrib/pw/models/gpt-oss-120b/config.json"
     ],
-    "leftover_patterns": ["vllm.entrypoints", "pw endpoints"]
+    "leftover_patterns": [
+      "vllm.entrypoints",
+      "pw endpoints"
+    ]
   },
-  "resource": "ursa",
+  "resource": "pw://Alvaro.Vidal/noaaursacluster",
   "runtype": "vllm",
   "cluster": {
     "scheduler": true,
     "slurm": {
       "is_enabled": true,
-      "account": "pw",
+      "account": "nesccmgmt",
       "partition": "u1-h100",
       "qos": "gpu",
       "ntasks": 1,

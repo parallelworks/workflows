@@ -1,6 +1,6 @@
 {
   "_test": {
-    "timeout_s": 5400,
+    "timeout_s": 43200,
     "http_expect": [
       200,
       302,

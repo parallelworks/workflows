@@ -1,0 +1,25 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": "/usw/rdhpcs/software/pw/noVNC-1.3.0/ttyd.x86_64",
+    "leftover_patterns": [
+      "ttyd",
+      "SCREEN",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/noaagaeac6cluster",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "account": "gfdl_y",
+      "partition": "dtn",
+      "qos": "dtn",
+      "ntasks": 1,
+      "nodes": 1,
+      "time": "00:15:00"
+    }
+  },
+  "service": {}
+}

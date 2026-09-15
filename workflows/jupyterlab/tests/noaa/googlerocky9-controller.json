@@ -1,0 +1,22 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "warm_marker": "${HOME}/pw/software/.miniconda3c",
+    "leftover_patterns": [
+      "jupyter",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/googlerocky9",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "notebook_dir": "${HOME}",
+    "conda_install": true,
+    "parent_install_dir": "${HOME}/pw/software",
+    "conda_install_dir": ".miniconda3c",
+    "conda_env": "base",
+    "install_instructions_tag_cloud": "jupyterlab4.1.5-python3.11.5"
+  }
+}

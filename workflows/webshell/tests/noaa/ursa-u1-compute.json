@@ -1,0 +1,25 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": "/contrib/pw/noVNC-1.3.0/ttyd.x86_64",
+    "leftover_patterns": [
+      "ttyd",
+      "SCREEN",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/noaaursacluster",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "account": "nesccmgmt",
+      "partition": "u1-compute",
+      "qos": "debug",
+      "ntasks": 1,
+      "nodes": 1,
+      "time": "00:15:00"
+    }
+  },
+  "service": {}
+}

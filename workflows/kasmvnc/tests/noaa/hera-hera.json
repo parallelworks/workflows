@@ -1,0 +1,27 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": "/contrib/pw/containers/kasmvnc-rocky9-gpu.sif",
+    "leftover_patterns": [
+      "Xvnc",
+      "kasmvnc",
+      "pw endpoints http"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/noaaheracluster",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "account": "nesccmgmt",
+      "partition": "hera",
+      "qos": "debug",
+      "ntasks": 1,
+      "nodes": 1,
+      "time": "00:15:00"
+    }
+  },
+  "desktop": {
+    "kasmvnc_os": "rocky9"
+  }
+}

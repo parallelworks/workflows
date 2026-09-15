@@ -1,0 +1,23 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "warm_marker": "${HOME}/pw/software/.miniconda3cn",
+    "leftover_patterns": [
+      "jupyter",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/noaappancluster",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "notebook_dir": "${HOME}",
+    "conda_install": true,
+    "use_conda": true,
+    "parent_install_dir": "${HOME}/pw/software",
+    "conda_install_dir": ".miniconda3cn",
+    "conda_env": "base",
+    "install_instructions_tag_cloud": "notebook7.2.2-python3.12.2"
+  }
+}

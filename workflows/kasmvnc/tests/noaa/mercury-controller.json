@@ -1,0 +1,18 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "warm_marker": "/contrib/pw/containers/kasmvnc-rocky9-gpu.sif",
+    "leftover_patterns": [
+      "Xvnc",
+      "kasmvnc",
+      "pw endpoints http"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/noaamercurysystem",
+  "cluster": {
+    "scheduler": false
+  },
+  "desktop": {
+    "kasmvnc_os": "rocky9"
+  }
+}

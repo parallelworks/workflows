@@ -1,0 +1,29 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": "/usw/rdhpcs/software/pw/containers/kasmvnc-rocky9-gpu.sif",
+    "leftover_patterns": [
+      "Xvnc",
+      "kasmvnc",
+      "rsession",
+      "pw endpoints http"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/noaagaeac6cluster",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "account": "gfdl_y",
+      "partition": "dtn",
+      "qos": "dtn",
+      "ntasks": 1,
+      "nodes": 1,
+      "time": "00:15:00"
+    }
+  },
+  "desktop": {
+    "kasmvnc_os": "rocky9",
+    "startup_command": "rstudio"
+  }
+}

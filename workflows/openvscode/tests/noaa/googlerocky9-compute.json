@@ -1,0 +1,23 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": "${HOME}/pw/code-server-4.105.1-linux-amd64/bin/code-server",
+    "leftover_patterns": [
+      "code-server",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/googlerocky9",
+  "password": "",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "01:00:00"
+    }
+  },
+  "service": {
+    "directory": "${HOME}"
+  }
+}

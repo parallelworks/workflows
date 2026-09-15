@@ -1,0 +1,27 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": "/contrib/pw/code-server-4.105.1-linux-amd64/bin/code-server",
+    "leftover_patterns": [
+      "code-server",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/noaaursacluster",
+  "password": "",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "account": "nesccmgmt",
+      "partition": "u1-compute",
+      "qos": "debug",
+      "ntasks": 1,
+      "nodes": 1,
+      "time": "00:15:00"
+    }
+  },
+  "service": {
+    "directory": "${HOME}"
+  }
+}

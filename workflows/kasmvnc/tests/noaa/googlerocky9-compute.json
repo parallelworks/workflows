@@ -1,0 +1,23 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": "${HOME}/pw/containers/kasmvnc-rocky9-gpu.sif",
+    "leftover_patterns": [
+      "Xvnc",
+      "kasmvnc",
+      "pw endpoints http"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/googlerocky9",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "01:00:00"
+    }
+  },
+  "desktop": {
+    "kasmvnc_os": "rocky9"
+  }
+}

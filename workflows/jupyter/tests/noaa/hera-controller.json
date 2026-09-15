@@ -1,0 +1,21 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "warm_marker": "${HOME}/.local/bin/jupyter-notebook",
+    "leftover_patterns": [
+      "jupyter",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/noaaheracluster",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "notebook_dir": "${HOME}",
+    "conda_install": true,
+    "use_conda": false,
+    "load_env_tag_existing": "export PATH=$PATH:/home/${USER}/.local/bin; module load python",
+    "install_command": "export PATH=$PATH:/home/${USER}/.local/bin; module load python; pip install --upgrade \"notebook>=7\" --no-warn-script-location"
+  }
+}

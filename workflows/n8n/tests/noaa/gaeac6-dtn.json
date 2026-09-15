@@ -1,0 +1,27 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": "/usw/rdhpcs/software/pw/containers/n8n.sif",
+    "leftover_patterns": [
+      "n8n",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/noaagaeac6cluster",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "account": "gfdl_y",
+      "partition": "dtn",
+      "qos": "dtn",
+      "ntasks": 1,
+      "nodes": 1,
+      "time": "00:15:00"
+    }
+  },
+  "service": {
+    "container_runtime": "n8n-singularity",
+    "n8n_data_dir": "${HOME}/pw/n8n"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": "${HOME}/pw/code-server-4.105.1-linux-amd64/bin/code-server",
+    "leftover_patterns": [
+      "code-server",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/noaappancluster",
+  "password": "",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "account": "gfdl_y",
+      "partition": "pptest",
+      "qos": "windfall",
+      "ntasks": 1,
+      "nodes": 1,
+      "time": "00:15:00"
+    }
+  },
+  "service": {
+    "directory": "${HOME}"
+  }
+}

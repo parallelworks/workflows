@@ -1,0 +1,18 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "warm_marker": "/contrib/pw/containers/n8n.sif",
+    "leftover_patterns": [
+      "n8n",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://Alvaro.Vidal/noaaheracluster",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "container_runtime": "n8n-singularity",
+    "n8n_data_dir": "${HOME}/pw/n8n"
+  }
+}

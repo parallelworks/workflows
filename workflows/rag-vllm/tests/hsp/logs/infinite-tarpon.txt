@@ -1,0 +1,29 @@
+Run infinite-tarpon: error (46s)
+
+Error annotations:
+
+  Error: Job submission failed: sbatch: error while loading shared libraries: libslurmfull.so: cannot open shared object file: No such file or directory.
+    in script_submitter > slurm_job → Submit SLURM Script
+
+Failed jobs/steps:
+
+  slurm_job > Submit SLURM Script (error, 0s)
+    notice: Submitting SLURM Job
+    Error: Job submission failed: sbatch: error while loading shared libraries: libslurmfull.so: cannot open shared object file: No such file or directory.
+    + echo '::notice::Submitting SLURM Job'
+    i Notice: Submitting SLURM Job
+    ++ sbatch run.sh
+    + sbatch_output='sbatch: error while loading shared libraries: libslurmfull.so: cannot open shared object file: No such file or directory'
+    ++ echo 'sbatch: error while loading shared libraries: libslurmfull.so: cannot open shared object file: No such file or directory'
+    ++ tail -1
+    ++ awk -F ' ' '{print $4}'
+    + jobid=loading
+    + [[ loading =~ ^[0-9]+$ ]]
+    + echo '::error title=Error::Job submission failed: sbatch: error while loading shared libraries: libslurmfull.so: cannot open shared object file: No such file or directory.'
+    ✗ Error: Job submission failed: sbatch: error while loading shared libraries: libslurmfull.so: cannot open shared object file: No such file or directory.
+    + exit 1
+
+  slurm_job > POST Submit SLURM Script (error, 0s)
+    scancel: error while loading shared libraries: libslurmfull.so: cannot open shared object file: No such file or directory
+
+Summary: 2 job(s) failed, 2 step(s) failed

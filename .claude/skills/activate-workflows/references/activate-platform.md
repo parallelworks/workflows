@@ -177,7 +177,7 @@ expressions (`ignore: ${{ .hidden }}` mirrors the hidden flag).
 
 | type | renders / resolves to |
 |------|----------------------|
-| `string`, `integer`, `number`, `boolean` | scalar (`number` = float, `integer` = int); numbers arrive as **strings** in `${{ }}`/shell — guard with `${v:-default}` |
+| `string`, `integer`, `number`, `boolean` | scalar (`number` = float, `integer` = int). Verified 2026-09-16: an `integer` renders as bare digits in the shell (`$(( n + 1 ))` works) and compares numerically in expressions (`inputs.n == 5`, `inputs.n > 3` true; a JSON `"7"` in `-i` behaves like `7`); an **optional integer left unset renders empty** — guard with `${v:-default}` — and `inputs.m == ''` is *false* for it; an explicit `""` for a top-level input is default-filled |
 | `editor` | multi-line text box (e.g. scheduler directives) |
 | `dropdown` | `options: [{label, value}]` |
 | `group` | container with `items:` (values at `inputs.<group>.<item>`) |

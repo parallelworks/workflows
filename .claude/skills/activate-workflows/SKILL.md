@@ -153,7 +153,9 @@ stable (renaming it changes endpoint names users see).
 base-URL config and no nginx (reference §11/§12); `--slug` handles a landing path or
 query string.
 
-Numbers from `integer` inputs arrive as **strings**; guard with `${var:-default}`.
+`integer` inputs render as bare digits in the shell and compare numerically in
+expressions (`inputs.n == 5`, `inputs.n > 3` — verified 2026-09-16). An **optional
+integer left unset renders empty**, so guard those with `${var:-default}`.
 
 ## Step 3 — Test end-to-end and record the test
 
@@ -254,9 +256,9 @@ non-repetitive; point at an existing tutorial instead.
 - **Stream progress and emit structured results.** Print incremental progress (it
   streams to `run.<JOBID>.out` / the page) and write a machine-readable result
   (JSON) — don't make the user guess whether it's alive or done.
-- **Defensive inputs:** `integer`/numeric inputs arrive as strings — guard with
-  `${var:-default}`; quote every `${{ ... }}` interpolation so empties/spaces don't
-  break the shell.
+- **Defensive inputs:** an optional input with no default renders **empty** in the
+  shell (verified for `integer`) — guard with `${var:-default}`; quote every
+  `${{ ... }}` interpolation so empties/spaces don't break the shell.
 - **Relative paths inside submitted scripts.** `script_submitter` `cd`s into `rundir`
   first; reference files relative to it, not via `${PW_PARENT_JOB_DIR}` (which may be
   unset on a SLURM/PBS compute node — the home FS is shared, so relative paths work).

@@ -212,7 +212,12 @@ graph gives you sequencing, data flow, conditionals, and parallelism:
   `${{ needs.<job>.outputs.KEY }}` (or `${{ needs.<job>.steps.<id>.outputs.KEY }}`).
 - **Conditional steps/jobs:** `if: ${{ needs.analyze.outputs.good_fit == 'true' }}`.
   String equality is reliable; compute booleans **upstream** (e.g. in Python) and
-  emit them, rather than doing numeric comparisons inside the expression.
+  emit them, rather than doing numeric comparisons inside the expression. `if:` also
+  takes **status keywords** — `always`, `never`, `completed`, `error`, `canceled` and
+  their negations — that look at the job's earlier steps (on a step) or at the jobs in
+  `needs` (on a job); no `if:` means `if: ${{ completed }}`. They combine with
+  expressions (`if: ${{ error && inputs.fallback }}`; quote a ternary). See
+  `tutorials/if-conditions/`.
 - **Fan-out / fan-in:** sibling jobs that share a common `needs` but don't depend on
   each other **run concurrently**; a downstream job with `needs: [w1, w2, w3]` joins
   them. (Verified: 3 workers logged the same finish second.) For N identical workers,
@@ -620,6 +625,7 @@ sync with the platform. Read the one closest to your task:
 | **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/endpoint-workflows/05-matrix.yaml` (use this for sweeps) |
 | **Job DAG: `needs`, `$OUTPUTS`, `pw endpoints run`, exiting while the service keeps running** | `tutorials/endpoint-workflows/` (staged `README.md` + stage YAMLs 1→4) |
 | **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` (staged README) |
+| **`if:` status keywords on steps and jobs** (`always`, `error`, `canceled`, `!completed`) | `tutorials/if-conditions/` (one YAML: succeed/fail/cancel a job, watch which handlers run) |
 
 > **Adding a new tutorial requires maintainer approval.** Tutorials must each show
 > something new and non-repetitive — do not add one to `tutorials/` without

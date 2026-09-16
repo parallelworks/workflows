@@ -239,7 +239,8 @@ non-repetitive; point at an existing tutorial instead.
   (`cd` into it). Pass values with `echo "K=v" | tee -a $OUTPUTS` (or pipe a program
   that prints `K=v` lines) and read `${{ needs.<job>.outputs.K }}`. Drive conditional
   steps with `if: ${{ needs.X.outputs.flag == 'true' }}` — compute the boolean
-  upstream. Fan out with a **matrix strategy** (see `tutorials/endpoint-workflows/05-matrix.yaml`); fan
+  upstream. For failure/cancel handlers use the `if:` status keywords (`always`,
+  `error`, `canceled`, `!completed`; see `tutorials/if-conditions/`). Fan out with a **matrix strategy** (see `tutorials/endpoint-workflows/05-matrix.yaml`); fan
   in with `needs: [w1,w2,w3]`. For **retry/failover**, attach a `retry` block to a step
   and use `PW_WORKFLOW_STEP_CURRENT_RETRY` to pick a target per attempt — round-robin
   over a `list` input fails over across resources (see

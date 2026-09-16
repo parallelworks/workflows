@@ -22,7 +22,8 @@ INSTALLER_URL=https://repo.anaconda.com/miniconda/Miniconda3-py312_24.9.2-0-Linu
 WORK=${BUILD_DIR:-${HOME}/pw/build/jupyterlab-conda/${TAG}}
 PREFIX=${WORK}/prefix
 OUT=${WORK}/conda-env.tar.gz
-export CONDA_OVERRIDE_GLIBC=2.28 PIP_ONLY_BINARY=:all:
+# jupyterlab-slurm publishes no wheel; it is pure Python, so its sdist is safe to build
+export CONDA_OVERRIDE_GLIBC=2.28 PIP_ONLY_BINARY=:all: PIP_NO_BINARY=jupyterlab-slurm
 
 [ -f "${ENV_YAML}" ] || { echo "No environment definition ${ENV_YAML}"; exit 1; }
 [ "$(uname -m)" == "x86_64" ] || { echo "The artifact is x86_64 only; this host is $(uname -m)"; exit 1; }

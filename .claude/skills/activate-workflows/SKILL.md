@@ -178,6 +178,12 @@ Pass = `result=pass` and `cleanup=ok` in the row the runner appends. On failure 
 `tests/<variant>/logs/<slug>.txt` and `pw workflows runs errors <slug>`, fix, push,
 re-run. Commit the test files and CSV rows with the change; never edit a CSV by hand.
 
+**If the `pw` client is not authenticated** (or cannot reach the platform from this
+shell), still write the test JSON under `workflows/<name>/tests/<variant>/`, then
+hand the exact runner command above to the user and ask them to run it (after
+`pw auth`) and report the appended row. Never skip creating the test because the run
+cannot happen here, and never claim a workflow was tested if the row does not exist.
+
 Facts that still matter when running by hand (`pw workflows run /abs/path.yaml -i inputs.json`):
 - Pass the resource as its URI (`pw://alvaro/gcpsmall`) or bare name; never an IP.
   It must be `active` in `pw cluster ls`.

@@ -11,9 +11,10 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: fix-miniconda-issue
           sparse_checkout:
             - workflows/jupyterlab/app
+            - tools/oras
       - name: Create Inputs
         run: |
           set -x
@@ -32,6 +33,7 @@ jobs:
           service_load_env="${{ inputs.service.load_env }}"
           service_password="${{ inputs.service.password }}"
           service_install_instructions="${{ inputs.service.install_instructions }}"
+          service_conda_source="${{ inputs.service.conda_source }}"
           service_yaml="${{ inputs.service.yaml }}"
           service_install_kernels="${{ inputs.service.install_kernels }}"
           pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG} --slug lab"
@@ -292,6 +294,14 @@ jobs:
                 label: Dask dependencies for PW
               - value: yaml
                 label: Provide custom Conda environment YAML file
+          conda_source:
+            type: string
+            hidden: true
+            default: auto
+            tooltip: |
+              auto → download Miniconda from repo.anaconda.com and, when that fails, unpack the
+              prebuilt environment ghcr.io/parallelworks/jupyterlab-conda:<installation>
+              native → download only; artifact → prebuilt environment only
           yaml:
             label: Paste Conda Environment Defition YAML
             type: editor

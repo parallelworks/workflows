@@ -9,6 +9,12 @@ service keeps running; stop it with `pw endpoints delete`.
 1. `app/controller.sh` runs on the login node: installs Miniconda and
    JupyterLab under the parent install directory (default `${HOME}/pw/software`)
    if missing, or loads an existing environment via the command you provide.
+   Miniconda and the environment come from repo.anaconda.com; when that fails
+   (some HPC login nodes block it), the controller unpacks a prebuilt copy of the
+   same environment from `ghcr.io/parallelworks/jupyterlab-conda:<installation>`
+   (x86_64, glibc >= 2.28; only the pinned installation has one). Build and
+   push it with `build-conda-artifact.sh`; the hidden `conda_source` input
+   (`auto` | `native` | `artifact`) forces either path.
 2. `app/start-template.sh` runs on the login node or a scheduler job
    (SLURM/PBS, your choice in the form) and launches `jupyter-lab` behind
    `pw endpoints run`.

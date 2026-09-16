@@ -164,6 +164,8 @@ f_install_conda_artifact() {
     fi
     echo "::notice::Unpacking the environment into <${conda_dir}>"
     mkdir -p ${conda_dir}
+    # Marked before unpacking so a run cancelled mid-unpack leaves a prefix the next run may wipe
+    echo artifact > ${conda_dir}/${conda_source_marker}
     if ! tar -xzf ${tarball} -C ${conda_dir}; then
         rm -rf ${conda_dir} ${tarball}
         f_fail "Could not unpack conda-env.tar.gz into <${conda_dir}>"
@@ -180,7 +182,6 @@ f_install_conda_artifact() {
             sed -i "1s|^#!/usr/bin/env python|#!${conda_dir}/bin/python|" "$f"
         fi
     done
-    echo artifact > ${conda_dir}/${conda_source_marker}
     mkdir -p ${conda_dir}/.pw-env-markers
     touch ${conda_dir}/.pw-env-markers/${conda_env}-${yaml_hash}
     source ${conda_dir}/etc/profile.d/conda.sh || f_fail "Could not source ${conda_dir}/etc/profile.d/conda.sh after unpacking ${ref}"

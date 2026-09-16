@@ -66,7 +66,7 @@ is a short standalone lesson on the `if:` status keywords (`always`, `never`, `c
 `general` targets standard cloud/on-prem SLURM & PBS clusters. `emed`, `hsp`, and
 `noaa` are platform-deployment variants with their own schedulers, defaults, and
 network constraints — they can only be run from those platforms. `*k8s*` variants
-target Kubernetes clusters ([docs/k8s-workflows.md](docs/k8s-workflows.md)).
+target Kubernetes clusters ([.claude/skills/activate-workflows/references/k8s-workflows.md](.claude/skills/activate-workflows/references/k8s-workflows.md)).
 
 ## Running a workflow
 

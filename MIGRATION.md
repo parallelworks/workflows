@@ -288,8 +288,10 @@ were all run live on `cluster.einsteinmed.edu`, 2026-09-02: endpoints online, HT
 websocket verified through the platform; kasmvnc additionally had delete and cancel
 teardowns verified clean),
 `langflow-singularity/hsp.yaml` (its scripts were exercised live by general-all),
-and the k8s variants incl. `mlflow`/`ollama-openwebui` (no kubernetes cluster
-attached) — YAML parse + path-existence + reference checks only. n8n-docker and
+and, at the time, the k8s variants incl. `mlflow`/`ollama-openwebui` (no kubernetes
+cluster attached) — YAML parse + path-existence + reference checks only; all eight
+k8s YAMLs ran live on `k3sgpu` on 2026-09-16 (results in
+`.claude/skills/activate-workflows/references/k8s-workflows.md` §9). n8n-docker and
 ollama-gguf-container implementation paths not separately exercised.
 
 ## Open questions

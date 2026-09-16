@@ -65,11 +65,9 @@ endpoint gone. Failing runs keep their platform record; passing ones are not del
 
 ## Kubernetes tests
 
-A k8s workflow keeps its run alive for as long as the service lives (a job streams
-the pod logs), and cancelling the run is the teardown: the cleanup steps delete the
-Deployment, the API key Secret and the PVC, and the endpoint deregisters when its
-sidecar dies. `pw endpoints delete` would only make the Deployment restart the
-sidecar, so the runner never calls it on this lane.
+On Kubernetes the run stays alive while the service serves and cancelling it is the
+teardown (why, and everything else k8s: `.claude/skills/activate-workflows/references/k8s-workflows.md`), so the runner never calls
+`pw endpoints delete` on this lane.
 
 - **Inputs.** The platform wants a Kubernetes resource as an object. A hybrid test
   carries only its stable part, `"resource": {"name": "k3sgpu", "type": "kubernetes"}`,
@@ -87,8 +85,7 @@ sidecar, so the runner never calls it on this lane.
   it with `pw kube auth --no-context-switch <cluster>` and uses the `pw#<cluster>`
   context. Without `kubectl` the cleanup column is `unknown`.
 - **Failure log.** `logs/<slug>.txt` also gets the last 40 namespace events, where
-  scheduling problems such as an exceeded `ResourceQuota` show up (the run log only
-  says `ProgressDeadlineExceeded`).
+  scheduling problems show up (k8s reference §6).
 - **Versions.** Nothing is fetched from GitHub on this lane (the YAML is read locally
   and its manifests are inline), so the tree hashes are those of the local HEAD and
   `commit` is `-dirty` when the YAML has uncommitted changes.

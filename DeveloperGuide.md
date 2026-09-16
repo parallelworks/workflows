@@ -96,7 +96,7 @@ Requirements: listen on **`service_port`**, write a **`cancel.sh`**, end with
 
 On a Kubernetes cluster the same endpoint is registered by a `pw-cli` sidecar in the
 pod, the run stays alive streaming pod logs, and cancelling the run is the teardown;
-see [docs/k8s-workflows.md](docs/k8s-workflows.md).
+see [.claude/skills/activate-workflows/references/k8s-workflows.md](.claude/skills/activate-workflows/references/k8s-workflows.md).
 
 **Copy a real one instead of writing from scratch** —
 `workflows/webshell/yamls/general.yaml` is the smallest complete example;

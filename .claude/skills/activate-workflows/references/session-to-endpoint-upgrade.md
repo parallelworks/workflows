@@ -116,7 +116,7 @@
 | Port | `session_runner` allocates `${service_port}` | `pw endpoints run` assigns it — reference it as the literal **`{port}`** token (also env `PORT`), never `${port}` |
 | Submission | `session_runner` (wraps script_submitter) | **`script_submitter/v3.6` directly** — preprocessing does the controller + script assembly itself |
 | Lifecycle (non-k8s) | run alive for the session's life | run **completes** once the endpoint registers; service outlives it; teardown = `pw endpoints delete <name>` (kills the remote process tree) |
-| Lifecycle (k8s) | run alive streaming logs | unchanged — run stays alive; **cancel run = teardown** (a Deployment restarts an exited sidecar, so the endpoint can't own the pod lifecycle) |
+| Lifecycle (k8s) | run alive streaming logs | unchanged — run stays alive; **cancel run = teardown** ([k8s-workflows.md §2](k8s-workflows.md)) |
 
 Endpoint name convention: **`<service-name>-${PW_RUN_SLUG}`** — built in preprocessing,
 polled in `wait_for_endpoint`. Both jobs see the same value because `PW_RUN_SLUG` is
@@ -205,37 +205,10 @@ Contract differences vs v3:
 7. `parallelworks/checkout` → your **dev branch** while testing; **flip to `main`
    after merge** (both openvscode and jupyterlab needed this follow-up).
 
-## Step 4 — `general_k8s_v5.yaml`
+## Step 4 — the Kubernetes half (`general_k8s.yaml`, standalone `k8s.yaml`)
 
-Start from `workflows/openvscode/yamls/general_k8s.yaml` (any of the three hybrids
-works; all verified on `k3sgpu` 2026-09-16): all of Step 3, plus:
-
-- Top-level `env: { PW_API_KEY: ${PW_API_KEY} }`.
-- **Delete the k8s `Service` manifest and the `update-session` job.** Instead add a
-  **`pw-cli` sidecar** to the Deployment: `ghcr.io/parallelworks/pw-cli:v7.79.0`,
-  args `endpoints http --name <name>-${PW_RUN_SLUG} --slug <slug> --output text <port>`,
-  env `PW_PLATFORM_HOST` (inline) + `PW_API_KEY` from a Secret.
-- **Create API Key Secret** step (idempotent `kubectl create secret … --dry-run=client
-  -o yaml | kubectl apply -f -`) with a `cleanup:` that deletes it. Cleanup order ends
-  up: deployment → secret → PVC (reverse step order) — correct dependency order.
-- `Stream Logs` gets `--all-containers` (sidecar logs are your endpoint diagnostics).
-- Replace `create_k8s_session` with `wait_for_endpoint_k8s` (waits for `pod.running`,
-  then polls `pw endpoints list`).
-- **No `skip_cleanups_file` on the k8s path** — the run must stay alive (log
-  streaming) and cancel-run is the teardown.
-- Guard every cluster-only **job** (`preprocessing`, `session_runner`,
-  `wait_for_endpoint`) with a job-level `if: ${{ inputs.resource.type != 'kubernetes' }}`
-  and every k8s job with the `== 'kubernetes'` form. A step-level guard is not enough:
-  the job's `ssh.remoteHost` renders empty on k8s and the unguarded steps run on the
-  workspace exec node (`[pw] ssh.remoteHost is empty; running this step on localhost`).
-- App container: prefer a container-agnostic launch (`command: ["jupyter","lab"]` +
-  explicit `--ServerApp.port=<image_port>`) over image-specific entrypoint scripts.
-
-The same recipe converts a **standalone** `k8s.yaml` (a `sessions:` block +
-`update-session` into a k8s Service): done for jupyterlab, kasmvnc, openvscode, mlflow
-and ollama-openwebui on 2026-09-16 — drop `sessions:`, the Service and the
-`create_k8s_session` job; add `env`, the Secret step, the sidecar and
-`wait_for_endpoint_k8s`; add a hidden `service_k8s.name` as the endpoint prefix.
+On top of Step 3, apply the conversion recipe in [k8s-workflows.md §8](k8s-workflows.md)
+(verified on `k3sgpu`, 2026-09-16, for the three hybrids and the five standalone files).
 
 ## Step 5 — Test end to end (what "done" means)
 
@@ -299,8 +272,8 @@ full ask_cluster round trip).
 - `pw workflows run` uses the **stored** definition — `update` after every YAML edit.
 - Checkout `branch:` left pointing at a merged-and-deleted dev branch breaks future
   runs — flip to `main` right after merge.
-- Deleting the endpoint on k8s does NOT tear anything down — the Deployment restarts
-  the sidecar and it re-registers. Cancel the run instead.
+- On k8s, cancel the run; `pw endpoints delete` tears nothing down
+  ([k8s-workflows.md §2](k8s-workflows.md)).
 - Don't hand-verify with `--dry-run` alone; the four checks in Step 5 are the test.
 - The ttyd bundled in `downloads/vnc/noVNC-1.3.0.tgz` is a 1.7.1 fork with a
   `-R/--readonly` flag — **writable by default**, unlike upstream ttyd ≥1.7 which is

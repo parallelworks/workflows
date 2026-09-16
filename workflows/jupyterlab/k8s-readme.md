@@ -7,6 +7,7 @@ This workflow launches a JupyterLab server on a Kubernetes cluster using a user-
 - **Choose an Image:** Use a JupyterLab-compatible image (default: jupyter/datascience-notebook).
 - **Configure Resources:** Set CPU, memory, and optional GPU requests/limits.
 - **Run the Workflow:** Deploy JupyterLab and access it via a web interface.
+- **Stop it:** the run keeps running while JupyterLab serves; cancel the run to tear everything down (a new PVC included, unless you chose to persist it).
 
 ### Using Nvidia GPUs
 For GPU-accelerated workloads, use images from the [Nvidia NGC Catalog](https://catalog.ngc.nvidia.com/containers). **Ensure that the driver version on the node meets the minimum driver requirement for that image.**

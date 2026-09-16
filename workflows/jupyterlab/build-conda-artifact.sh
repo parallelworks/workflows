@@ -58,7 +58,7 @@ if [ -n "${runner}" ]; then
         set -e
         ldd --version | head -1
         tar -xzf /work/conda-env.tar.gz -C /work/smoke
-        /work/smoke/bin/conda-unpack
+        /work/smoke/bin/python /work/smoke/bin/conda-unpack
         source /work/smoke/etc/profile.d/conda.sh
         conda activate base
         jupyter-lab --version

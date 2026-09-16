@@ -169,7 +169,8 @@ f_install_conda_artifact() {
         f_fail "Could not unpack conda-env.tar.gz into <${conda_dir}>"
     fi
     rm -f ${tarball}
-    if ! ${conda_dir}/bin/conda-unpack; then
+    # conda-unpack's shebang is /usr/bin/env python, which RHEL 8 hosts do not provide
+    if ! ${conda_dir}/bin/python ${conda_dir}/bin/conda-unpack; then
         rm -rf ${conda_dir}
         f_fail "conda-unpack failed in <${conda_dir}>"
     fi

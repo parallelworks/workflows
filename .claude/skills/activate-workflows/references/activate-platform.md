@@ -236,9 +236,9 @@ graph gives you sequencing, data flow, conditionals, and parallelism:
   hard = the tail is skipped and the waiter's `early-cancel: any-job-failed` ends the
   run. See `tutorials/endpoint-workflows/04-subworkflow.yaml` and
   `workflows/*/general.yaml` (v5 endpoint pattern).
-- See `tutorials/session-workflows-hsp/` (jobs, `needs`, `$OUTPUTS`, conditional `if:`,
-  sessions — staged README) and `tutorials/endpoint-workflows/05-matrix.yaml` (fan-out
-  workers via a matrix strategy — the pattern to copy for a parameter sweep).
+- See `tutorials/endpoint-workflows/` (jobs, `needs`, `$OUTPUTS`, conditional `if:`,
+  endpoints — staged README) and its `05-matrix.yaml` (fan-out workers via a matrix
+  strategy — the pattern to copy for a parameter sweep).
 
 ### Step retries & attempt-aware logic (verified — see `tutorials/endpoint-workflows/07-failover.yaml`)
 A step can declare a `retry` block; it re-runs the step while it exits **non-zero**:
@@ -618,7 +618,7 @@ sync with the platform. Read the one closest to your task:
 | **Endpoint whose `--slug` is a query string** | `workflows/openvscode/yamls/general.yaml` (`--slug ?folder=...`) |
 | **`parallelworks/checkout` (sparse) to fetch code** | preprocessing job of any workflow YAML above |
 | **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/endpoint-workflows/05-matrix.yaml` (use this for sweeps) |
-| **Job DAG: `needs`, `$OUTPUTS`, sessions, `update-session`, `pw agent open-port`** | `tutorials/session-workflows-hsp/` (staged `README.md` + stage YAMLs 1→4) |
+| **Job DAG: `needs`, `$OUTPUTS`, `pw endpoints run`, exiting while the service keeps running** | `tutorials/endpoint-workflows/` (staged `README.md` + stage YAMLs 1→4) |
 | **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` (staged README) |
 
 > **Adding a new tutorial requires maintainer approval.** Tutorials must each show

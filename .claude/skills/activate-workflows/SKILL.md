@@ -40,14 +40,13 @@ every workflow: it is what lets the in-workflow
   code, `script_submitter` (`v3.6`) submits the start script, the start script runs
   the service under `pw endpoints run`, and a `wait_for_endpoint` job confirms it.
   For "just run a script/sim on a cluster," call `script_submitter` directly. Do
-  **not** hand-write job submission, port allocation, or tunnel logic (the legacy
-  `session_runner` pattern is documented in reference §4 for conversions). Pure
+  **not** hand-write job submission, port allocation, or tunnel logic. Pure
   orchestration (multi-job DAG, data flow, fan-out) needs **no** subworkflow — that's
   a first-class use. Learn the patterns from the **repo's own workflows and
   tutorials**, not from invented demos (reference §9): endpoints →
   `workflows/{webshell,jupyterlab,openvscode}/`; **Singularity/SIF services →
-  `workflows/streamlit/` (simple) and `workflows/kasmvnc/` (multi-impl)**; job DAG / sessions / outputs
-  → `tutorials/session-workflows-hsp/` (staged README); **fan-out / sweep →
+  `workflows/streamlit/` (simple) and `workflows/kasmvnc/` (multi-impl)**; job DAG / outputs
+  → `tutorials/endpoint-workflows/` (staged README); **fan-out / sweep →
   `tutorials/endpoint-workflows/05-matrix.yaml`**; retry/failover →
   `tutorials/endpoint-workflows/07-failover.yaml`.
 - **Pick the deployment variant by platform host — don't default to `general`.**

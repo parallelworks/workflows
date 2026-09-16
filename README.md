@@ -56,8 +56,8 @@ layout, runner and results are documented in [`tools/tests/README.md`](tools/tes
 small demo app ([`demo-app/`](tutorials/demo-app/)) into a full workflow:
 [`endpoint-workflows/`](tutorials/endpoint-workflows/) (the current `pw endpoints`
 pattern, stages 1–7 incl. matrix fan-out, first-start-wins, and failover) and
-[`session-workflows-hsp/`](tutorials/session-workflows-hsp/) (the same journey with
-the older session-tunnel pattern, HSP-flavored). [`if-conditions/`](tutorials/if-conditions/)
+[`session-workflows-hsp/`](tutorials/session-workflows-hsp/) (the same journey, HSP-flavored,
+in the older form the upgrade playbook converts). [`if-conditions/`](tutorials/if-conditions/)
 is a short standalone lesson on the `if:` status keywords (`always`, `never`, `completed`,
 `error`, `canceled` and their negations) on steps and on jobs.
 

@@ -182,10 +182,8 @@ Everything a run did is in its job dir on the execution node:
   the form (and its defaults) are the wrong variant's.
 - **"Authentication has expired"** — `pw` tokens lapse; re-run `pw auth`.
 
-## Appendix: converting a legacy workflow
+## Appendix: converting an older workflow
 
-Nothing in this repo uses the older session pattern (a `sessions:` block + the
-`session_runner` subworkflow). To convert a legacy workflow to the endpoint pattern
-and bring it here, follow
-`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`;
-which workflows are still legacy and where they live is in MIGRATION.md.
+To bring an older workflow onto the endpoint pattern, follow
+`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`; which
+workflows those are and where they live is in MIGRATION.md.

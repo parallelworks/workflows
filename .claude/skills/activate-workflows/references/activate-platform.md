@@ -27,14 +27,13 @@ documented here, **trust the docs and fix this file** (Step 5 of the methodology
 ## 1. Mental model
 
 - A **workflow** is a YAML file. It defines an input **form** (`on.execute.inputs`),
-  one or more **jobs**, and optionally **sessions**.
+  one or more **jobs**.
 - Jobs run **on a resource**, reached over SSH (`ssh.remoteHost`). Steps are shell
   (`run:`) or reusable **actions** (`uses:`). Jobs form a DAG via `needs:`.
 - A web service is exposed as a **`pw` endpoint**: the service side runs
   `pw endpoints run`, which dials out, registers a reverse tunnel, and gets a
-  subdomain URL (§12). Every workflow in this repo uses this pattern. (The older
-  platform *tunnel session* mechanism is legacy; to convert one, follow
-  [session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md).)
+  subdomain URL (§12). Every workflow in this repo uses this pattern (converting an
+  older one: [session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md)).
 - **Subworkflows** are workflows invoked from a step with `uses:` + `$yaml:`. Reuse
   `script_submitter` (submit a script via SSH/SLURM/PBS) instead of writing launch
   logic yourself; the endpoint registration lives in each workflow's start script.
@@ -60,7 +59,7 @@ workflow, via `${{ inputs.<name>.* }}`):
 
 | field | example | notes |
 |-------|---------|-------|
-| `id` | `685193ec1bba202cb3341fb7` | used as `update-session` target |
+| `id` | `685193ec1bba202cb3341fb7` | |
 | `ip` | `34.132.29.251` | login-node IP; **empty for workspace** → step runs locally |
 | `name` | `gcpsmall` | |
 | `type` / `provider` | `google-slurm` | |
@@ -112,23 +111,9 @@ Top of file (enables editor autocomplete; harmless at runtime):
 | key | purpose |
 |-----|---------|
 | `permissions` | list of users/groups allowed to run; `['*']` = everyone. **Also required for the `pw` client to be auto-authenticated inside the workflow** — without `permissions: ['*']`, in-workflow `pw` calls (e.g. `pw agent open-port`) fail to authenticate. Always set it. |
-| `sessions` | named session objects this workflow creates |
 | `jobs` | the job DAG |
 | `env` | workflow-level environment variables injected into every job/step's runtime env. **The canonical way to make `PW_API_KEY` available to your workflow code** — set `env: { PW_API_KEY: ${PW_API_KEY} }` (see §12). **⚠ Do NOT also name an input *group* `env`** if this block references `${{ inputs.env.* }}`: the shared `env` name makes the expression engine recurse → `400 Expression Parser Error: max recursion exceeded`, which fails **both `--dry-run` and `pw workflows run`** (the web UI may still submit it). Name the group e.g. `env_vars`. |
 | `'on'.execute.inputs` | the input form (note the quoted `'on'` to avoid YAML's bool) |
-
-### `sessions` (legacy — no workflow in this repo has one)
-```yaml
-sessions:
-  session:                 # arbitrary name; reference as ${{ sessions.session }}
-    useTLS: false          # service speaks plain HTTP
-    redirect: true         # after launch, redirect the user to the Sessions page
-    # useCustomDomain: ${{ inputs.resource.type == 'kubernetes' }}  # SaaS *.activate.pw
-```
-The k8s `k8s.yaml` files were the last users, converted 2026-09-16 (the legacy
-mechanism and the recipe: [k8s-workflows.md §8](k8s-workflows.md)).
-`tutorials/session-workflows-hsp/` keeps the old pattern for reading. Endpoint
-workflows need no top-level `sessions:`.
 
 ### `jobs.<name>`
 ```yaml
@@ -161,10 +146,9 @@ jobs:
     `with: { repo, branch, sparse_checkout: [paths...] }` (list items may be templated).
     Verified: `sparse_checkout: [workflow/readmes]` materializes
     `${PW_PARENT_JOB_DIR}/workflow/readmes`, visible to later `needs:`-dependent jobs.
-    This is **the** way to get code onto the node — see §10. Every real session YAML in
+    This is **the** way to get code onto the node — see §10. Every real workflow YAML in
     the repo (e.g. `workflows/webshell/yamls/general.yaml`) starts preprocessing with a
     `parallelworks/checkout` of `parallelworks/workflows` + a `sparse_checkout` of `workflows/<name>/app` (or an impl subdir).
-  - `parallelworks/update-session` — register/refresh a session (target/name/slug/remoteHost/remotePort)
   - `parallelworks/cancel-jobs` — cancel sibling jobs (e.g. a `tail -f` streamer)
   - `parallelworks/scheduler-agent`, `parallelworks/wait-for-agent` — dynamic compute node
   - `github/parallelworks/workflows@canary` + `$yaml:` — call a subworkflow (below)
@@ -199,7 +183,7 @@ Common attributes: `label`, `default`, `tooltip`, `optional: true`, `hidden: <ex
 
 ### Expressions & env
 - `${{ ... }}` — platform templating, evaluated **before** the shell sees the line
-  (inputs, `needs.*.outputs`, `sessions.*`, `org.*`, comparisons).
+  (inputs, `needs.*.outputs`, `org.*`, comparisons).
 - `${VAR}` / `$VAR` — ordinary shell, evaluated at runtime on the node.
 - Useful runtime env vars: `PW_PARENT_JOB_DIR` (parent run's job dir — use for all
   shared paths), `PW_JOB_DIR`, `PW_JOB_ID`, `PW_RUN_SLUG` (the run's slug — the argument
@@ -208,7 +192,7 @@ Common attributes: `label`, `default`, `tooltip`, `optional: true`, `hidden: <ex
 
 ### Multi-job orchestration (DAG, outputs, fan-out — all verified)
 Not every workflow needs a subworkflow — plain job orchestration is a first-class
-use (subworkflows are specifically for job *submission* and *sessions*). The job
+use (subworkflows are specifically for job *submission*). The job
 graph gives you sequencing, data flow, conditionals, and parallelism:
 
 - **Sequencing & sharing:** `needs: [a, b]` makes a job wait for `a` and `b`. All
@@ -242,7 +226,7 @@ graph gives you sequencing, data flow, conditionals, and parallelism:
 - **A step that fails skips the rest of its job's steps** (verified: run status `error`,
   later steps never run) — same when the job is canceled. So steps placed AFTER a
   blocking `uses:` step are a "it returned cleanly" handler, reached only when the
-  subworkflow comes back without failing. The production v5-generation session workflows
+  subworkflow comes back without failing. The production endpoint workflows
   build their failure tail on exactly this: happy path = the waiter cancels the
   submitter job (tail skipped); service died early = the submitter step returns, and
   the tail cancels the waiter + exits 1 with an `::error` annotation; submitter fails
@@ -342,7 +326,7 @@ running. **Only endpoint workflows use it** (`wait_for_endpoint` touches it so t
 service outlives the run); leave it unset for batch jobs. Output → `run.<JOBID>.out` in `rundir`
 (JOBID = the run slug, e.g. `run.my-session-00001.out`).
 
-**Invoke it as a subworkflow** (verified — batch compute, no session):
+**Invoke it as a subworkflow** (verified — batch compute, no endpoint):
 ```yaml
 run_my_job:
   needs: [preprocessing]
@@ -402,7 +386,7 @@ live there with `squeue` / `sinfo` / `sacct`. On cancel, `script_submitter` runs
 `scancel` (and your cleanup script, if any, on the compute node).
 
 **Use it directly** when your task is "run this script/sim on a cluster" with no web
-session (batch compute). When you also need a live web UI, keep the same submitter and
+service (batch compute). When you also need a live web UI, keep the same submitter and
 wrap the start script in `pw endpoints run` — the endpoint pattern (§12).
 
 ---
@@ -444,7 +428,7 @@ fails with a bogus DNS error (inline run → workflow `inline.<slug>`). `-i` is 
 string or path to a JSON file.
 `--dry-run` validates YAML+schema and each subworkflow's required inputs server-side
 **without executing** (not unknown fields — §5) — run it before every real launch. `-o json` returns the run object (`run.slug`, `run.number`,
-`run.status`, plus `redirect` = the session name when one is created).
+`run.status`).
 
 ### Runs (debugging)
 ```bash
@@ -452,7 +436,7 @@ pw workflows runs list [--workflow <name>] [--status running|completed|error|can
 pw workflows runs view  <slug> [-o text|json]
 pw workflows runs logs  <slug> [--job <name>] [--step <name|idx>] [--failed] [--tail N] [-f]
 pw workflows runs errors <slug> [-o text|json] [--tail N]
-pw workflows runs cancel <slug>            # triggers cleanup trap → cancel.sh → stops service + session
+pw workflows runs cancel <slug>            # triggers cleanup trap → cancel.sh → stops the service + endpoint
 pw workflows runs clean [filters]
 ```
 `runs logs`/`errors` work from any host (pulled via API) — your first stop when the
@@ -470,17 +454,6 @@ lines are tab-separated `name`, `status`, `URL`.
 Endpoint names are `<service.name>-<run-slug>`. `delete` kills the `pw endpoints run`
 wrapper and its children — but a daemonizing app that re-parented to PID 1 (e.g.
 RStudio's `rsession`) can survive; check `ps -x` after teardown.
-
-### Sessions (legacy tunnel sessions)
-```bash
-pw sessions ls [-o table|json] [-t desktop|vscode|tunnel]
-pw sessions create --type tunnel --remote-port <P> <resource> [--name N] [--open] [--connect --port <L>]
-pw sessions open <name>            # open in browser
-pw sessions connect <name>         # local port-forward
-pw sessions stop <name>            # may 404 if the run already tore it down
-```
-A running tunnel session shows `STATUS=running`, `TYPE=tunnel`, `REMOTE HOST`,
-`REMOTE PORT`.
 
 ### Other useful
 ```bash
@@ -596,7 +569,7 @@ sync with the platform. Read the one closest to your task:
 ## 10. Getting your workflow code onto the node
 
 `parallelworks/checkout` clones a git repo into the job dir — that is how every real
-session YAML delivers its controller / start-template scripts (§3). **Do not
+workflow YAML delivers its controller / start-template scripts (§3). **Do not
 base64-embed files** (the old approach); use one of these two modes.
 
 ### Mode A — Claude has write access (recommended)
@@ -634,38 +607,27 @@ resource and **mimic** checkout with a copy step:
 
 ---
 
-## 11. Sessions served from a base-path URL (nginx proxy)
+## 11. Apps that need a base path (path-based endpoints)
 
-A session is reached at `https://<platform-host>/me/session/<user>/<session-name>/<slug>`
-— i.e. the app is served from a **URL prefix**, not the host root. Apps that build
-**absolute URLs** (JupyterLab, many SPAs) break unless they know that prefix. Two
-remedies, both used in the repo:
+Subdomain endpoints serve at the URL root, so most apps need no base-URL config and no
+proxy (§12). A **path-based** endpoint (`--no-subdomain`; required on emed, §12) serves at
+`https://<platform-host>/me/session/<PW_USER>/<name>/<slug>` and forwards the full path, so
+an app that builds **absolute URLs** (JupyterLab, many SPAs) must know that prefix:
 
-- **Tell the app its base path.** Compute it in preprocessing/`inputs.sh`:
-  ```bash
-  basepath=/me/session/${PW_USER}/${{ sessions.session }}
-  ```
-  then point the app's base-URL setting at it (JupyterLab:
-  `c.ServerApp.base_url = '${basepath}'`, plus `default_url`/`static_url_prefix`/… — see
-  `workflows/jupyterlab/start-template.sh`).
-- **Front it with an nginx reverse proxy** that listens on `${service_port}` and proxies
-  to the app on a private port, rewriting the prefix (and setting the WebSocket upgrade
-  headers). `workflows/jupyterlab/start-template.sh` writes an `nginx.conf` and runs an
-  `nginx-unprivileged` container for exactly this.
-- **If the app honors `X-Forwarded-Prefix`, you need neither.** The session tunnel
-  forwards that header, so an app that reads it at runtime (injecting the prefix into
-  its served HTML / asset URLs) serves correctly under the base path with no base-URL
-  config and no nginx proxy — WebSockets included. (Verified with Hermes' dashboard.)
+- pass the **`{path}` token** (also exported as `PW_ENDPOINT_PATH`) as the app's base URL in
+  the `pw endpoints run` command — it renders `/` on subdomain endpoints, so one start
+  template serves both kinds (jupyter/jupyterlab pass it as `--ServerApp.base_url`; n8n
+  sets `N8N_PATH` from `PW_ENDPOINT_PATH`);
+- or `--strip-path` for an app that serves relative URLs and cannot take a base path
+  (code-server).
 
-The **`--slug`** you pass to `pw endpoints run` is the path appended after the endpoint URL:
-`lab` for JupyterLab, `""` for an app that serves correctly at the root, or even a query
-string like `?folder=...` (openvscode). Apps that serve everything with **relative**
-paths need no base path — use `slug: ""` and skip the proxy. Check the platform
-[Sessions docs](https://parallelworks.com/docs/run/sessions) for current behavior.
+`--slug` is the path appended after the endpoint URL: `lab` (JupyterLab), a query string
+such as `?folder=…` (openvscode), or omitted for an app that serves at the root (`--slug ""`
+risks the empty token being eaten by the arg parser).
 
 ---
 
-## 12. AI agents & LLM-backed sessions (verified building `hermes-agent`)
+## 12. AI agents & LLM-backed services (verified building `hermes-agent`)
 
 ### Platform LLM endpoint — a service's "brain"
 OpenAI-compatible at **`https://${PW_PLATFORM_HOST}/api/openai/v1`**; auth
@@ -686,18 +648,18 @@ e.g. langchain `ChatOpenAI(base_url=..., api_key=PW_API_KEY, default_headers={"X
 **The `model` you send must be the FULL id from `pw ai models ls` / `GET /v1/models`,
 not the short name the Chat model picker shows (verified, lite-agent).** The endpoint
 routes by a fully-qualified id: `org:owner/provider` (e.g. `org:glm/glm-5.1`) or — for a
-**session-served** model (one exposed by another `openAI: true` session, e.g. a vLLM
-session) — `session:<user>:<provider>/<model>` (e.g.
+model served by another endpoint (`pw endpoints run --openai`, e.g. a vLLM
+endpoint) — `session:<user>:<provider>/<model>` (e.g.
 `session:alvaro:marketplace.vllmrag.latest_35_session//gpt-oss-20b`; the leading `/` in
 the model name yields the `//`). The picker only displays the trailing short name
 (`/gpt-oss-20b`); sending that verbatim fails with
 `400 "Invalid provider identifier format. Expected 'owner:provider-name'"`, which
 surfaces in the built-in chat as a generic **"network error"** (the agent's brain call
 500s/aborts the stream). Resolve a short name to its full id by matching it against
-`GET /v1/models` (the id whose trailing segment equals the name). Session model ids embed
-the *backing* session's run number and so change when it relaunches — resolve at runtime,
-don't hardcode. `X-Allocation` is required for `org:*` but harmless for session models.
-Session-served models can support tool calling too (gpt-oss-20b does).
+`GET /v1/models` (the id whose trailing segment equals the name). Endpoint-served model
+ids embed the backing run's number and so change when it relaunches — resolve at runtime,
+don't hardcode. `X-Allocation` is required for `org:*` but harmless for endpoint-served
+models, which can support tool calling too (gpt-oss-20b does).
 
 ### `PW_API_KEY` at runtime — the platform credential (don't persist it)
 **Whenever you need `PW_API_KEY` anywhere in the workflow's code, expose it once with
@@ -715,41 +677,12 @@ service can use it as the platform bearer token — `export OPENAI_API_KEY="${PW
 — with no org secret. Expose it via the top-level `env:` block, read it from the
 runtime env, and never persist it to `inputs.sh`.
 
-### `openAI: true` sessions → the built-in chat (don't hand-roll a chat UI)
-A session declared `openAI: true` (schema-confirmed in `workflow.schema.json`)
-registers its tunneled service as a **model in the platform's built-in chat**. The
-service must serve `GET /v1/models` and `POST /v1/chat/completions` (SSE streaming
-supported, but it must be framed carefully — see the SSE note below). Pair with
-`redirect: false` (it's an API, not a page); `detach: true` to persist past the run.
-```yaml
-sessions:
-  my_session:
-    openAI: true
-    redirect: false
-```
-This is the right way to give a session a chat interface — **don't build a bespoke
-HTML chat page**. **Where it surfaces depends on where the session runs** (verified):
-- **Workspace** session → chat **models**: `pw ai models ls` lists
-  `session:<user>:<session-name>/<model-id>`; chat via `pw ai chats` or the web UI.
-- **Cluster** session → chat **provider**: `pw ai providers ls` lists it
-  (`csp: openai-tunnel`); the web Chat polls its `/v1/models` and lists its models.
-  Not shown in `pw ai models ls`, and `pw ai chats` may not target it — use the web Chat.
-
-Both work in the built-in chat — the tunnel makes location transparent
-([Session Tunnels](https://parallelworks.com/docs/ai/ai-providers/session-tunnels)),
-so a cluster agent needs no workspace proxy.
-
-**One session can expose MANY models — and the platform re-polls (verified,
-hermes-agent).** Each entry your `/v1/models` returns registers as its own chat
-model `session:<user>:<session-name>/<model-id>`, all routed to the same session's
-`/v1/chat/completions`; branch on the request's `model` field to send each to the
-right place. The list is **dynamic**: the platform re-polls `/v1/models`, so models
-you add later (e.g. when a new backend appears) show up without relaunching the
-session. This is a clean way to surface several agents/targets from one
-**workspace** session (one alternative to launching a separate per-cluster session
-per target — both work) — the hermes orchestrator advertises itself **plus one
-`hermes-<cluster>` model per worker**, routing a per-worker chat straight to that
-worker's own endpoint.
+### Chat surface: `--openai` endpoints (don't hand-roll a chat UI)
+Expose an OpenAI-compatible server (`GET /v1/models`, `POST /v1/chat/completions`) with
+`pw endpoints run|http --openai`: every model its `/v1/models` lists registers as a chat
+model `session:<user>:<name>/<model-id>` in `pw ai models ls`, and the list is re-polled,
+so models added later appear without relaunching (verified, `ollama-gguf` — below). Don't
+build a bespoke HTML chat page.
 
 **Serving SSE so the built-in chat doesn't abort it (hard-won — `http.server`):**
 the chat sends `stream: true`; if your streamed reply isn't framed the way the
@@ -767,16 +700,7 @@ peer` (and your server logs a `BrokenPipeError`). Two requirements, both needed:
    non-streaming both pass while streaming fails — only a real chat exercises this.
 
 
-### Runtime session discovery
-`pw sessions ls -o json` gives per session: `name`, `status`, `targetName`
-(`<ns>/<cluster>` or `workspace`), `targetType` (`cluster`|`workspace`),
-`remoteHost`, `remotePort`, `localPort`, `openAI`, `workflowRun.{name,slug,number}`.
-**Session name = `<workflow-name>_<runNumber>_<sessionKey>`** (the `sessions:` key
-is the trailing part). Match the **sessionKey marker** in the name to find your
-sessions at runtime — more stable than the workflow name (chosen at `create`). Map
-a discovered session to its `targetName` (cluster) and `remotePort`.
-
-### `pw ssh` from inside a running session (cross-node transport)
+### `pw ssh` from inside a running service (cross-node transport)
 A service process CAN run `pw ssh <cluster> <cmd>` / `pw ssh workspace <cmd>` at
 runtime (reuses pw auth; needs `$HOME/pw` on PATH — the `PATH=$HOME/pw:$PATH`
 inputs.sh line covers it). Clean, inbound-port-free cross-cluster transport (e.g. an
@@ -788,15 +712,14 @@ command instead: `pw ssh c "echo <b64> | base64 -d | curl --data-binary @- http:
 **Upgrading a v4 workflow to this pattern? Follow the step-by-step playbook in
 [session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md)** (distilled from the
 openvscode and jupyterlab conversions). Every workflow in this repo uses
-**endpoint sessions** (the legacy `sessions:` tunnel pattern lives only in
-`interactive_session`): the service side runs
+**endpoint sessions**: the service side runs
 `pw endpoints run`/`http`, which dials out, registers a reverse tunnel, and gets a
 subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query string like
 `?folder=/dir` or a path like `lab`). Key facts, all verified on live runs:
 - **Endpoints are platform-authenticated by default**: an anonymous request to
   `https://<name>.activate.pw/...` gets `307 → https://<platform-host>/?sessionRedirect=…`.
-  A service that relied on the session tunnel's login (e.g. Jupyter with `token = ''`)
-  keeps the same trust model behind an endpoint; only serving it "publicly"
+  A service that leaves authentication to the platform login (e.g. Jupyter with
+  `token = ''`) keeps that trust model behind an endpoint; only serving it "publicly"
   (`pw endpoints http --help`) changes that.
 - **The endpoint name is a registry key, not the subdomain**: a random subdomain is
   assigned by default (`-s/--subdomain` pins one). Names are how you *find* endpoints —
@@ -884,7 +807,7 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   subsequent `run` executes that empty definition instead of erroring. The Bash shell
   cwd is not guaranteed between tool calls — pass the YAML as an **absolute path**, and
   recover with `pw workflows update <name> --yaml <abs-path>`.
-- **Long synchronous requests through the session tunnel can `502 Proxy Error`**
+- **Long synchronous requests through the platform proxy can `502 Proxy Error`**
   (~a minute+ exceeds the proxy timeout). Stream to keep bytes flowing, or use an
   async job+poll pattern for long work.
 - Transient `pw workflows run/cancel` API timeouts happen — just retry.

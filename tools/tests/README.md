@@ -114,4 +114,4 @@ CSVs merge with `merge=union` (see `.gitattributes`): rows are independent, so
 concurrent appends from two branches keep both sides.
 
 `run-workflows-on-active-clusters.py` and `clean-software-dir-on-active-clusters.py`
-predate this runner and target the old session pattern.
+predate this runner and the endpoint pattern.

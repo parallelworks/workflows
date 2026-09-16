@@ -162,7 +162,7 @@ integer left unset renders empty**, so guard those with `${var:-default}`.
 
 **Kubernetes:** the same endpoint, registered by a `pw-cli` sidecar inside the pod; no
 script_submitter, no login node, nothing checked out, and the run stays alive until it
-is cancelled. Anatomy, dev loop, inputs, tests, debugging and conversion are in
+is cancelled. Anatomy, dev loop, inputs, tests and debugging are in
 [references/k8s-workflows.md](references/k8s-workflows.md); copy
 `workflows/mlflow/yamls/k8s.yaml` (k8s-only) or `workflows/openvscode/yamls/general_k8s.yaml`
 (hybrid).
@@ -304,7 +304,7 @@ non-repetitive; point at an existing tutorial instead.
   see Common pitfalls). Read the other job's runtime values (its allocated port, its
   `HOSTNAME`) with `pw ssh <resource> "cat ${PW_PARENT_JOB_DIR}/<file>"` — that path is the
   same on every resource in a run. Reference §6.
-- **Gate dependent sessions without hanging.** If session A needs session B's runtime
+- **Gate dependent services without hanging.** If service A needs service B's runtime
   output (e.g. a dynamically-allocated port), have A **wait** for it, but make B **fail loud**
   on any misconfiguration and rely on `early-cancel: any-job-failed` so B's failure cancels
   A — otherwise an indefinite wait hangs forever. Mirror B's values locally in A once read,
@@ -322,7 +322,7 @@ non-repetitive; point at an existing tutorial instead.
   hand-built object; login IPs change, so never hardcode `ip`. A **kubernetes**
   resource is the exception: it must be the object described in reference §2.
 - **Kubernetes-specific pitfalls** (quota, guards, sidecar lifecycle) are collected in
-  [references/k8s-workflows.md §10](references/k8s-workflows.md).
+  [references/k8s-workflows.md §9](references/k8s-workflows.md).
 - **`Could not parse subworkflow` on `--dry-run`:** a non-optional subworkflow input
   with no default is missing from your `with:` block; the message never names it.
   Hidden+ignored inputs don't count — compare your block against the fields the
@@ -337,8 +337,8 @@ non-repetitive; point at an existing tutorial instead.
 - **Code-delivery mistakes:** don't base64-embed; if you used the no-write-access
   copy step, remember it must be swapped for the (currently commented) checkout once
   the branch is merged.
-- **Base-path apps break at the session URL** if served at the host root — set the
-  app's base URL or front it with an nginx proxy (reference §11).
+- **Base-path apps break on path-based endpoints** if they assume the host root — give
+  them the `{path}` token as base URL, or `--strip-path` (reference §11).
 - **No session subdomains on emed:** register endpoints with `--no-subdomain` there
   (the platform then serves `/me/session/<PW_USER>/<name>/` and forwards the full
   path — give the app that base path). See `workflows/kasmvnc/yamls/emed.yaml`.
@@ -381,13 +381,11 @@ non-repetitive; point at an existing tutorial instead.
 - **Service must bind `0.0.0.0:${service_port}`** (not `127.0.0.1`, not a fixed
   port) or the tunnel can't reach it / the port clashes.
 - **Forgot `cancel.sh` or `sleep inf`:** the service is killed immediately or the
-  job exits before the session registers.
+  job exits before the endpoint registers.
 - **Missing `permissions: ['*']`:** in-workflow `pw` calls fail to authenticate.
 - **Test the failure path on purpose:** make the start script `exit 1` before
   `pw endpoints run` and check the run ends in `error` — the success path never
   exercises the error-handling steps.
-- **`pw sessions stop` 404s** if the run was already canceled (cancel tears the
-  session down). Not an error.
 - **Always `--dry-run`** before a real run; it catches schema/YAML problems cheaply.
 - **`pw workflows run ./relative/path.yaml` is parsed as a git host** and fails with
   a bogus DNS/GitLab error — always pass the **absolute path** for local YAML files.
@@ -412,7 +410,7 @@ non-repetitive; point at an existing tutorial instead.
   **fail loud (exit non-zero), don't silently skip**: a silent skip upstream plus a
   downstream job waiting on its output (e.g. a port file) becomes an indefinite hang.
 
-## Lessons from LLM-backed & multi-session builds (hermes-agent)
+## Lessons from LLM-backed & multi-service builds (hermes-agent)
 
 Reusable takeaways from building a multi-agent workflow (an orchestrator on the
 workspace + a worker per cluster). Platform mechanics are in **reference §12**.
@@ -423,7 +421,7 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   `pw endpoints list`, exercising the *live* service, and debugging from `~/pw/jobs`. Don't
   call a workflow tested on a dry-run alone.
 - **Test through the real client path, not a stand-in.** Reach the service the way
-  the user will — through the platform proxy/session/chat — not just a local `curl`.
+  the user will — through the platform proxy, endpoint URL or chat — not just a local `curl`.
   Proxy-only failures (SSE streaming resets, base-path rewrites, ~60s timeouts) pass
   a localhost curl and a non-streaming call, then fail in the actual UI. When a
   service works locally but fails through the platform, read its **own stdout/stderr
@@ -432,21 +430,10 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   is wired. For a distributed piece (e.g. cross-node `pw ssh` calls), stage the
   script on the target node and exercise it directly, then wrap it in YAML.
 - **Reuse the platform's native surfaces — don't hand-roll UI.** For a chat-style
-  service, make it OpenAI-compatible and declare the session `openAI: true` so it
-  joins the built-in chat. **It works whether the session runs on the workspace or a
-  cluster — only the surface differs** (verified): a workspace session shows up as
-  chat **models** in `pw ai models ls`; a cluster session shows up as a chat
-  **provider** in `pw ai providers ls` (`csp: openai-tunnel`), and the web Chat lists
-  its models under that provider. So you do NOT need a workspace proxy to chat a
-  cluster agent. One workspace session can also expose **many** models (one
-  `/v1/models` entry each, routed by the request's `model`) — handy for fronting
-  several backends from one session. SSE must be framed for the proxy. (Reference §12.)
-- **If a chat-style openAI service is flaky in the built-in chat, serve its own web
-  UI instead.** Agentic/streaming cluster sessions can still report "not reachable"
-  (the probe hits `/`/`HEAD`/`OPTIONS` — answer those 200 — and slow/silent streams
-  flap). A web session (`openAI: false`, `redirect: true`) under the base path (often
-  just `X-Forwarded-Prefix`, no nginx) is more robust; offer both from one workflow via
-  a `dropdown` driving the `sessions:` block. (Verified building `hermes-agent`. §11/§12.)
+  service, make it OpenAI-compatible and expose it with `pw endpoints run --openai` so it
+  joins the built-in chat; every model its `/v1/models` lists becomes a chat model and the
+  list is re-polled. If an agentic/streaming service is flaky in the chat, serve its own
+  web UI as a plain endpoint instead. SSE must be framed for the proxy. (Reference §12.)
 - **LLM "brain" = the platform endpoint + runtime `PW_API_KEY`** (+ `X-Allocation`
   for `org:*` models) — no external key or org secret. To use the key in workflow
   code, expose it with a top-level `env:` block (`PW_API_KEY: ${PW_API_KEY}`); keep
@@ -454,6 +441,3 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   runtime env. (Reference §12.)
 - **`pw workflows run` uses the STORED def — `pw workflows update` after every YAML
   edit**, or the run silently uses the old form.
-- **Discover related sessions by the `sessions:` key marker in the session name**
-  (`<workflow>_<n>_<key>`) via `pw sessions ls -o json` — more robust than matching
-  the workflow name. (Reference §12.)

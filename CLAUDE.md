@@ -57,7 +57,7 @@ docs/                        # developer + AI docs
 ## The endpoint pattern
 
 Every workflow here serves through a **`pw` endpoint** (`pw endpoints list`) named
-`<service>-${PW_RUN_SLUG}`; no workflow has a `sessions:` block. On a compute cluster,
+`<service>-${PW_RUN_SLUG}`. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through
@@ -67,12 +67,12 @@ confirms the endpoint; the run then completes and the service outlives it.
 **Kubernetes** (`yamls/k8s.yaml` = k8s-only example, `yamls/general_k8s.yaml` = hybrid):
 the same endpoint, registered by a `pw-cli` sidecar inside the pod; the run stays alive
 and **cancelling the run is the teardown**. Everything else Kubernetes — anatomy, dev
-loop, inputs, tests, debugging, conversion, cluster facts — is in one place:
+loop, inputs, tests, debugging, cluster facts — is in one place:
 `.claude/skills/activate-workflows/references/k8s-workflows.md`.
 
-To convert a legacy session-pattern workflow to this pattern, follow
+To convert an older workflow to this pattern, follow
 `.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`
-(what is legacy and where it lives: MIGRATION.md).
+(which workflows those are and where they live: MIGRATION.md).
 
 ## Critical rules and conventions
 
@@ -101,7 +101,7 @@ To convert a legacy session-pattern workflow to this pattern, follow
   that full prefix, including paths composed from variables.
 - Form inputs are grouped as `cluster` (resource/scheduler) and `service`
   (service-specific); values read as `${{ inputs.cluster.* }}` / `${{ inputs.service.* }}`.
-- The hidden `service.name` input is the **endpoint/session name prefix** — it is not
+- The hidden `service.name` input is the **endpoint name prefix** — it is not
   a checkout path. Keep its value stable; renaming it changes endpoint names.
 - Endpoint names must be lowercase `[a-z0-9-]`. `<service.name>-${PW_RUN_SLUG}` already
   is; a name that comes from a form input must be folded before it reaches

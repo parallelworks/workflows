@@ -3,7 +3,7 @@
 > The one place for everything Kubernetes in this repo. SKILL.md, CLAUDE.md,
 > `activate-platform.md`, the upgrade playbook and the tests README point here instead
 > of repeating it. Verified on the platform cluster `k3sgpu` on 2026-09-16: every file
-> named below ran (§9).
+> named below ran (§8).
 
 ## 1. Layouts and examples
 
@@ -196,39 +196,18 @@ Run k8s tests **one at a time**: the namespace quota (§7) is shared.
 - Image pulls: jupyter datascience ≈2 GB, ollama ≈3.7 GB, kasmweb ≈1.5 GB, code-server
   ≈0.4 GB; a first pull adds up to a minute, then it is cached on the node.
 
-## 8. Converting a legacy `sessions:` k8s workflow
-
-The legacy k8s pattern — a top-level `sessions:` block (`useCustomDomain: true`) and a
-`create_k8s_session` job calling `parallelworks/update-session` with a `targetInfo` of
-`{name: <cluster>, namespace, resourceType: services, resourceName: <app>-lb}` — makes
-the platform tunnel into a k8s Service itself. It still works (verified 2026-09-16:
-the session URL is `externalHref` in `pw sessions ls -o json`), but it is not the repo
-pattern. To convert:
-
-1. Replace the `sessions:` block with `env: {PW_API_KEY: ${PW_API_KEY}}`.
-2. Delete the Service (unless another pod needs it) and the `create_k8s_session` job.
-3. Add the sidecar (§2) to the Deployment, and the **Create API Key Secret** step with
-   its `cleanup:` before the Deployment apply; `--all-containers` on the log stream.
-4. Add `wait_for_endpoint_k8s` (copy it from any k8s YAML) and a hidden
-   `service_k8s.name`.
-5. Hybrids: guard every cluster-only **job** with a job-level
-   `if: ${{ inputs.resource.type != 'kubernetes' }}` (§6, last bullet).
-6. Prefer a container-agnostic launch (`command:` plus the port from `image_port`) over
-   image-specific entrypoint scripts.
-7. Dry-run, run, cancel, check the namespace is empty; add the test (§5).
-
-## 9. Run evidence (2026-09-16, k3sgpu, namespace `alvarok8s`)
+## 8. Run evidence (2026-09-16, k3sgpu, namespace `alvarok8s`)
 
 | YAML | before conversion | after conversion (runner rows) |
 |---|---|---|
 | jupyterlab, kasmvnc, openvscode `general_k8s.yaml` | pass (`settling-aphid`, `wanted-kitten`, `merry-python`) | pass (`skilled-starling`, `strong-flea`, `full-tomcat`) |
-| jupyterlab, kasmvnc, openvscode, mlflow `k8s.yaml` | legacy session pass (two runs each) | pass (`special-lacewing`, `light-seal`, `dear-mongoose`, `neat-lemming`) |
+| jupyterlab, kasmvnc, openvscode, mlflow `k8s.yaml` | pass (two runs each) | pass (`special-lacewing`, `light-seal`, `dear-mongoose`, `neat-lemming`) |
 | ollama-openwebui `k8s.yaml` | quota fail (`dynamic-penguin`), pass alone (`useful-leopard`) | quota fail from the sidecar's extra 50m (`picked-tapir`), pass after the 1-CPU default (`pleasant-puma`) |
 
 Pass = endpoint in `pw endpoints list`, anonymous curl → `307` login redirect, run
 still `running`; then cancel → Deployment, Secret, PVC and endpoint gone within 35 s.
 
-## 10. Gotchas (each bit a real run)
+## 9. Gotchas (each bit a real run)
 
 - Quota failures are silent in the run log (§6); run tests one at a time.
 - The sidecar shifts a pod's requests by 50m: a form default that just fit a quota

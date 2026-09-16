@@ -291,7 +291,7 @@ teardowns verified clean),
 and, at the time, the k8s variants incl. `mlflow`/`ollama-openwebui` (no kubernetes
 cluster attached) — YAML parse + path-existence + reference checks only; all eight
 k8s YAMLs ran live on `k3sgpu` on 2026-09-16 (results in
-`.claude/skills/activate-workflows/references/k8s-workflows.md` §9). n8n-docker and
+`.claude/skills/activate-workflows/references/k8s-workflows.md` §8). n8n-docker and
 ollama-gguf-container implementation paths not separately exercised.
 
 ## Open questions

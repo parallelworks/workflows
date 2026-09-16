@@ -329,10 +329,12 @@ jobs:
           log_pid=$!
           trap "kill ${log_pid}" EXIT
           [[ "${DEBUG:-}" == "true" ]] && set -x
-          kubectl wait --for=condition=available --timeout=600s deployment/${app_name} -n ${namespace}
-          exit_code=$?
-          kubectl get deployment ${app_name} -n ${namespace} -o wide
-          kubectl describe deployment ${app_name} -n ${namespace}
+          exit_code=0
+          for deployment in ${app_name} ${app_name}-openwebui; do
+            kubectl wait --for=condition=available --timeout=600s deployment/${deployment} -n ${namespace} || exit_code=$?
+            kubectl get deployment ${deployment} -n ${namespace} -o wide
+            kubectl describe deployment ${deployment} -n ${namespace}
+          done
           exit ${exit_code}
       - name: Wait for Pod to be Ready
         early-cancel: any-job-failed
@@ -549,7 +551,7 @@ jobs:
                   cpu:
                     label: CPU
                     type: string
-                    default: '2'
+                    default: '1'
                     tooltip: Specify the minimum CPU required for the pod (e.g., 0.5, 1, 100m). Use decimal values for partial CPUs or "m" for millicores (e.g., 100m = 0.1 CPU).
               limits:
                 type: group

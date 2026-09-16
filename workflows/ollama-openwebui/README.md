@@ -18,8 +18,8 @@ Two Deployments are created in the selected namespace:
 
 Once the pods are ready, the workflow pulls the `llama3`, `mistral`, and
 `phi3` models, waits for the endpoint to be listed, and streams logs from both
-deployments. The default requests (2 CPUs per pod) need a namespace quota of at
-least 4 CPUs.
+deployments. The default requests (2 CPUs for Ollama, 1 for Open WebUI, plus the sidecar's
+50m) fit a 4-CPU namespace quota.
 
 ## Cleanup
 

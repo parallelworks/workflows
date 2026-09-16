@@ -1,0 +1,47 @@
+Run picked-tapir: canceled (5m40s)
+Reason: canceledByUser
+
+No failed jobs or steps.
+
+
+=== kubectl get events (last 40) ===
+7m7s        Normal    ProvisioningSucceeded   persistentvolumeclaim/alvarojobsneat-lemming-pvc            Successfully provisioned volume pvc-48c09c2a-e9d6-46e8-b897-8ea730f69fa2
+7m6s        Normal    Pulling                 pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Pulling image "busybox"
+7m5s        Normal    Pulling                 pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Pulling image "ubuntu/mlflow:2.1.1_1.0-22.04"
+7m5s        Normal    Started                 pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Started container set-permissions
+7m5s        Normal    Pulled                  pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Successfully pulled image "busybox" in 402ms (402ms including waiting). Image size: 2236931 bytes.
+7m5s        Normal    Created                 pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Created container: set-permissions
+6m57s       Normal    Pulled                  pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Successfully pulled image "ubuntu/mlflow:2.1.1_1.0-22.04" in 8.039s (8.039s including waiting). Image size: 307311749 bytes.
+6m57s       Normal    Created                 pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Created container: alvarojobsneat-lemming
+6m56s       Normal    Pulled                  pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Container image "ghcr.io/parallelworks/pw-cli:v7.79.0" already present on machine
+6m56s       Normal    Started                 pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Started container pw-endpoint
+6m56s       Normal    Created                 pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Created container: pw-endpoint
+6m56s       Normal    Started                 pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Started container alvarojobsneat-lemming
+6m39s       Normal    Killing                 pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Stopping container pw-endpoint
+6m39s       Normal    Killing                 pod/alvarojobsneat-lemming-64485dc4df-44nt6                 Stopping container alvarojobsneat-lemming
+5m56s       Normal    WaitForFirstConsumer    persistentvolumeclaim/alvarojobspicked-tapir-pvc            waiting for first consumer to be created before binding
+5m55s       Normal    Provisioning            persistentvolumeclaim/alvarojobspicked-tapir-pvc            External provisioner is provisioning volume for claim "alvarok8s/alvarojobspicked-tapir-pvc"
+5m55s       Normal    ExternalProvisioning    persistentvolumeclaim/alvarojobspicked-tapir-pvc            Waiting for a volume to be created either by the external provisioner 'rancher.io/local-path' or manually by the system administrator. If volume creation is delayed, please verify that the provisioner is running and correctly registered.
+5m55s       Normal    SuccessfulCreate        replicaset/alvarojobspicked-tapir-56756d45f8                Created pod: alvarojobspicked-tapir-56756d45f8-pn76g
+5m55s       Normal    ScalingReplicaSet       deployment/alvarojobspicked-tapir-openwebui                 Scaled up replica set alvarojobspicked-tapir-openwebui-cfc589fc7 from 0 to 1
+5m55s       Normal    ScalingReplicaSet       deployment/alvarojobspicked-tapir                           Scaled up replica set alvarojobspicked-tapir-56756d45f8 from 0 to 1
+5m55s       Warning   FailedCreate            replicaset/alvarojobspicked-tapir-openwebui-cfc589fc7       Error creating: pods "alvarojobspicked-tapir-openwebui-cfc589fc7-ndgfh" is forbidden: exceeded quota: pw-quota, requested: cpu=2050m, used: cpu=2, limited: cpu=4
+5m55s       Warning   FailedCreate            replicaset/alvarojobspicked-tapir-openwebui-cfc589fc7       Error creating: pods "alvarojobspicked-tapir-openwebui-cfc589fc7-x5ppj" is forbidden: exceeded quota: pw-quota, requested: cpu=2050m, used: cpu=2, limited: cpu=4
+5m55s       Warning   FailedCreate            replicaset/alvarojobspicked-tapir-openwebui-cfc589fc7       Error creating: pods "alvarojobspicked-tapir-openwebui-cfc589fc7-h4vtt" is forbidden: exceeded quota: pw-quota, requested: cpu=2050m, used: cpu=2, limited: cpu=4
+5m54s       Warning   FailedCreate            replicaset/alvarojobspicked-tapir-openwebui-cfc589fc7       Error creating: pods "alvarojobspicked-tapir-openwebui-cfc589fc7-85xz7" is forbidden: exceeded quota: pw-quota, requested: cpu=2050m, used: cpu=2, limited: cpu=4
+5m54s       Warning   FailedCreate            replicaset/alvarojobspicked-tapir-openwebui-cfc589fc7       Error creating: pods "alvarojobspicked-tapir-openwebui-cfc589fc7-z2jgl" is forbidden: exceeded quota: pw-quota, requested: cpu=2050m, used: cpu=2, limited: cpu=4
+5m54s       Warning   FailedCreate            replicaset/alvarojobspicked-tapir-openwebui-cfc589fc7       Error creating: pods "alvarojobspicked-tapir-openwebui-cfc589fc7-fr7zx" is forbidden: exceeded quota: pw-quota, requested: cpu=2050m, used: cpu=2, limited: cpu=4
+5m54s       Warning   FailedCreate            replicaset/alvarojobspicked-tapir-openwebui-cfc589fc7       Error creating: pods "alvarojobspicked-tapir-openwebui-cfc589fc7-p8snn" is forbidden: exceeded quota: pw-quota, requested: cpu=2050m, used: cpu=2, limited: cpu=4
+5m54s       Warning   FailedCreate            replicaset/alvarojobspicked-tapir-openwebui-cfc589fc7       Error creating: pods "alvarojobspicked-tapir-openwebui-cfc589fc7-jbfgb" is forbidden: exceeded quota: pw-quota, requested: cpu=2050m, used: cpu=2, limited: cpu=4
+5m53s       Warning   FailedCreate            replicaset/alvarojobspicked-tapir-openwebui-cfc589fc7       Error creating: pods "alvarojobspicked-tapir-openwebui-cfc589fc7-lf9tl" is forbidden: exceeded quota: pw-quota, requested: cpu=2050m, used: cpu=2, limited: cpu=4
+5m52s       Normal    ProvisioningSucceeded   persistentvolumeclaim/alvarojobspicked-tapir-pvc            Successfully provisioned volume pvc-55da768b-1f0c-4637-b007-aae1ae6966bd
+5m50s       Normal    Created                 pod/alvarojobspicked-tapir-56756d45f8-pn76g                 Created container: set-permissions
+5m50s       Normal    Pulled                  pod/alvarojobspicked-tapir-56756d45f8-pn76g                 Successfully pulled image "busybox" in 469ms (469ms including waiting). Image size: 2236931 bytes.
+5m50s       Normal    Pulling                 pod/alvarojobspicked-tapir-56756d45f8-pn76g                 Pulling image "busybox"
+5m49s       Normal    Started                 pod/alvarojobspicked-tapir-56756d45f8-pn76g                 Started container set-permissions
+5m48s       Normal    Pulling                 pod/alvarojobspicked-tapir-56756d45f8-pn76g                 Pulling image "ollama/ollama:latest"
+5m2s        Normal    Pulled                  pod/alvarojobspicked-tapir-56756d45f8-pn76g                 Successfully pulled image "ollama/ollama:latest" in 46.514s (46.514s including waiting). Image size: 3714345729 bytes.
+5m2s        Normal    Created                 pod/alvarojobspicked-tapir-56756d45f8-pn76g                 Created container: alvarojobspicked-tapir
+5m1s        Normal    Started                 pod/alvarojobspicked-tapir-56756d45f8-pn76g                 Started container alvarojobspicked-tapir
+27s         Warning   FailedCreate            replicaset/alvarojobspicked-tapir-openwebui-cfc589fc7       (combined from similar events): Error creating: pods "alvarojobspicked-tapir-openwebui-cfc589fc7-8cpkj" is forbidden: exceeded quota: pw-quota, requested: cpu=2050m, used: cpu=2, limited: cpu=4
+20s         Normal    Killing                 pod/alvarojobspicked-tapir-56756d45f8-pn76g                 Stopping container alvarojobspicked-tapir

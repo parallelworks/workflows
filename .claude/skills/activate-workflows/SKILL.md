@@ -56,11 +56,14 @@ every workflow: it is what lets the in-workflow
   `activate.hpc.mil`, `general` otherwise — **if unclear, ask the user.** Then copy the
   cluster/slurm/pbs form and `with:` block from the matching
   `workflows/<name>/yamls/<variant>.yaml`. (`pw context list` shows the host.)
-- **Pass every required subworkflow input, and `--dry-run` first.** A subworkflow's
-  defaults-filler does NOT apply its own `hidden`/`ignore` rules, so non-optional
-  fields with no default must be passed explicitly even when its form would hide
-  them (e.g. `script_submitter`'s `cleanup_script_path`). `--dry-run` catches this —
-  and variant/field mismatches — cheaply before you burn a real run.
+- **Pass every required subworkflow input, and `--dry-run` first.** `--dry-run`
+  validates the YAML and each subworkflow's required inputs: omit a non-optional input
+  with no default and it fails with the terse `Could not parse subworkflow` (the field
+  is never named — diff your `with:` block against the subworkflow's form). Inputs the
+  form hides and ignores under the values you pass are NOT required
+  (`script_submitter` with `define_cleanup_script: false` needs no
+  `cleanup_script_path`). Dry-run does NOT flag unknown or wrong-variant fields; they
+  pass silently and surface only at run time (verified 2026-09-16).
 - **Develop on the target machine before touching YAML.** The YAML is a thin wrapper
   around code that already works there (directly if this shell is the target's login
   node, else via `pw ssh <resource>` — Step 1).
@@ -114,7 +117,7 @@ Provide the two contract scripts:
   the submitter job fails and the session_runner's cancel-jobs step stops
   `wait_for_endpoint` (copy the tail of `workflows/webshell/app/start-template.sh`).
   Do NOT self-cancel the run with `pw workflows runs cancel` from inside a start
-  template — that was removed everywhere (it marked failed runs as canceled).
+  template.
 
 **Path rule (learned the hard way):** only the runtime subtree is checked out —
 `workflows/<name>/app` (single-implementation) or `workflows/<name>/<impl>` — and it
@@ -284,14 +287,16 @@ non-repetitive; point at an existing tutorial instead.
 
 ## Common pitfalls (learned from real runs)
 
-- **Wrong deployment variant / mismatched resource form:** using `general`'s
-  slurm/pbs fields against an `emed`/`noaa`/`hsp` subworkflow fails `--dry-run` with
-  field errors. Match the variant to the host and copy its variant YAML form.
+- **Wrong deployment variant / mismatched resource form:** `general`'s slurm/pbs
+  fields passed to an `emed`/`noaa`/`hsp` subworkflow are NOT rejected by `--dry-run`
+  (unknown fields pass silently; verified 2026-09-16), so the mismatch surfaces only
+  at run time. Match the variant to the host and copy its variant YAML form.
 - **Resource passing:** bare name string in `-i`, not a hand-built object; login
   IPs change, so never hardcode `ip`.
-- **Subworkflow "Missing required fields":** pass non-optional subworkflow inputs
-  with no default even when its form hides them (e.g. `cleanup_script_path: ""` +
-  `define_cleanup_script: false` for `script_submitter`).
+- **`Could not parse subworkflow` on `--dry-run`:** a non-optional subworkflow input
+  with no default is missing from your `with:` block; the message never names it.
+  Hidden+ignored inputs don't count — compare your block against the fields the
+  subworkflow's form shows for the values you pass.
 - **Scheduled jobs run on a compute node** that may lack `${PW_PARENT_JOB_DIR}`; use
   paths relative to `rundir`. Cloud-burst nodes are slow to provision (**6+ min**
   observed; `idle~ → CF → RUNNING`, `POWERING_UP` while booting) — watch with
@@ -382,7 +387,8 @@ non-repetitive; point at an existing tutorial instead.
 Reusable takeaways from building a multi-agent workflow (an orchestrator on the
 workspace + a worker per cluster). Platform mechanics are in **reference §12**.
 
-- **`--dry-run` is necessary but NOT sufficient.** It only validates schema/variant.
+- **`--dry-run` is necessary but NOT sufficient.** It only validates the YAML and
+  required subworkflow inputs.
   "Tested end-to-end" (Step 3/4) means a real run, the endpoint online in
   `pw endpoints list`, exercising the *live* service, and debugging from `~/pw/jobs`. Don't
   call a workflow tested on a dry-run alone.

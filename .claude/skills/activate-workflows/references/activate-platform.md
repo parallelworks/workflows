@@ -312,8 +312,9 @@ section** of your YAML: the `resource`, `scheduler`, `slurm`, and `pbs` input gr
 the `with:` block you pass differ per variant (e.g. `emed`'s `slurm` has `slurm_options`,
 `partition_default`, `cpus_per_task`, `mem`, `gres_gpu_*` instead of `general`'s
 `partition`). **Copy the cluster/slurm/pbs form and the `with:` mapping from the matching
-`workflows/<name>/yamls/<variant>.yaml`**, not from a `general` example, or
-`--dry-run` will reject the run with mismatched fields.
+`workflows/<name>/yamls/<variant>.yaml`**, not from a `general` example — `--dry-run`
+does NOT catch mismatched fields (unknown fields pass silently, verified 2026-09-16),
+so the mistake surfaces only at run time.
 
 **Invoke it** from a job that depends on your preprocessing:
 ```yaml
@@ -407,21 +408,20 @@ run_my_job:
         shebang: '#!/bin/bash'
         scheduler: ${{ inputs.scheduler }}             # false ⇒ login node; true ⇒ sbatch/qsub
         use_scheduler_agent: false
-        define_cleanup_script: false                   # ⚠ see gotcha below
-        cleanup_script_path: ""                        # ⚠ must be passed even when unused
+        define_cleanup_script: false                   # cleanup_script_path not needed then (hidden+ignored)
         slurm: { is_enabled: ${{ inputs.slurm.is_enabled }}, partition: ..., time: ..., scheduler_directives: ... }
         pbs:   { is_enabled: ${{ inputs.pbs.is_enabled }}, scheduler_directives: ... }
 ```
 
-> **⚠ Subworkflow required-field gotcha (verified):** you must pass **every**
-> non-optional subworkflow input that has no default — *even ones the subworkflow's
-> form hides/ignores conditionally*. The defaults-filler does **not** evaluate the
-> subworkflow's own `hidden`/`ignore` expressions. Omitting `script_submitter`'s
-> `cleanup_script_path` fails with `Missing required fields: Cleanup Script Path`
-> **or the far less obvious `Could not parse subworkflow`** (observed with the
-> `general` variant, whose `cleanup_script_path` has no default — the `hsp` variant
-> tolerates the omission, so this bites when switching variants). Both are caught by
-> `--dry-run`. Fix: pass `define_cleanup_script: false` + `cleanup_script_path: ""`.
+> **Subworkflow required-input check (verified 2026-09-16: `pw` dry-runs + a live run
+> on gcpsmall):** `--dry-run` fails with the terse `Could not parse subworkflow` when a
+> non-optional subworkflow input with no default is missing from `with:` — the message
+> never names the field. The check honors the subworkflow's `hidden`/`ignore` rules
+> under the values you pass: `script_submitter` with `define_cleanup_script: false`
+> accepts a missing `cleanup_script_path` (dry-run and real run both pass) and rejects
+> it once `define_cleanup_script: true`. `--dry-run` does NOT flag unknown fields
+> (`partition_default` passed to `general`, or `general`'s `slurm.partition` passed to
+> `emed`) — they pass silently. (`hsp` has no `cleanup_script_path` input at all.)
 
 > **Best practice — paths inside the submitted script:** `script_submitter` `cd`s
 > into `rundir` before running your script, so reference files **relative to rundir**
@@ -489,8 +489,8 @@ pw workflows run <name-or-file> [-i <json|file>] [--name "label"] [--dry-run] [-
 **absolute path**: a relative `./workflows/x/yamls/y.yaml` is parsed as a git host and
 fails with a bogus DNS error (inline run → workflow `inline.<slug>`). `-i` is a JSON
 string or path to a JSON file.
-`--dry-run` validates YAML+schema server-side **without executing** — run it before
-every real launch. `-o json` returns the run object (`run.slug`, `run.number`,
+`--dry-run` validates YAML+schema and each subworkflow's required inputs server-side
+**without executing** (not unknown fields — §5) — run it before every real launch. `-o json` returns the run object (`run.slug`, `run.number`,
 `run.status`, plus `redirect` = the session name when one is created).
 
 ### Runs (debugging)

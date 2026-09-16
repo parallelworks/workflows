@@ -67,8 +67,11 @@ tools/oras/oras logout ghcr.io   # so later pull tests exercise the anonymous pa
   ```bash
   TOKEN=$(curl -s "https://ghcr.io/token?service=ghcr.io&scope=repository:parallelworks/<name>:pull" | jq -r .token)
   curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+      -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
       https://ghcr.io/v2/parallelworks/<name>/manifests/<tag>   # 200 = public
   ```
+  Send the OCI `Accept` header: without it ghcr answers **404** for a public ORAS
+  artifact (and 401 for a private one), which looks like a missing tag (verified 2026-09-16).
   A brand-new package is **private by default** and must be made public in the
   GitHub UI (Package settings → Danger Zone) before workflows can pull it.
 - **Version by tag, don't overwrite:** `n8n:1.0` = legacy sandbox tgz (still used by

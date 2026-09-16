@@ -1,7 +1,8 @@
 # Ollama + Open WebUI on Kubernetes
 
 Deploys an Ollama model server and an Open WebUI chat interface on a
-Kubernetes cluster and exposes the WebUI through a platform session.
+Kubernetes cluster and exposes the WebUI as the `pw` endpoint
+`ollama-openwebui-<run-slug>`.
 
 ## How it works
 
@@ -13,14 +14,16 @@ Two Deployments are created in the selected namespace:
   reuse an existing one.
 - **Open WebUI** (default image `ghcr.io/open-webui/open-webui:main`, port
   8080) — pointed at the Ollama service in-cluster, with authentication
-  disabled.
+  disabled, plus a `pw` client sidecar that publishes the port as the endpoint.
 
 Once the pods are ready, the workflow pulls the `llama3`, `mistral`, and
-`phi3` models, attaches the session to the WebUI service, and streams logs
-from both deployments.
+`phi3` models, waits for the endpoint to be listed, and streams logs from both
+deployments. The default requests (2 CPUs per pod) need a namespace quota of at
+least 4 CPUs.
 
 ## Cleanup
 
-Canceling the run deletes both Deployments and Services. A new PVC is also
-deleted unless you set **Persist PVC After Completion** — persist it to avoid
-re-downloading models on the next run.
+Canceling the run is the teardown: it deletes both Deployments, the Ollama
+Service and the API key Secret, and the endpoint disappears with the sidecar. A
+new PVC is also deleted unless you set **Persist PVC After Completion** — persist
+it to avoid re-downloading models on the next run.

@@ -56,12 +56,21 @@ docs/                        # developer + AI docs
 
 ## The endpoint pattern
 
-Every workflow here uses it: preprocessing checks out this repo
-(`parallelworks/checkout`, sparse `workflows/<name>/app` — or an impl subdir —
-[+ `tools/...`]), assembles
+Every workflow here serves through a **`pw` endpoint** (`pw endpoints list`) named
+`<service>-${PW_RUN_SLUG}`; no workflow has a `sessions:` block. On a compute cluster,
+preprocessing checks out this repo (`parallelworks/checkout`, sparse
+`workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through
-`workflows/script_submitter/v3.6/<variant>.yaml`, and waits for a **`pw` endpoint**
-(`pw endpoints list`) named `<service>-${PW_RUN_SLUG}`. No `sessions:` block.
+`workflows/script_submitter/v3.6/<variant>.yaml`, and a `wait_for_endpoint` job
+confirms the endpoint; the run then completes and the service outlives it.
+
+**Kubernetes variant** (`yamls/k8s.yaml` = k8s-only example, `yamls/general_k8s.yaml` =
+hybrid form for clusters and k8s): the same endpoint, registered by a `pw-cli`
+**sidecar** (`pw endpoints http`) inside the pod instead of `pw endpoints run` on a
+node; the API key reaches it through a Secret, nothing is checked out from GitHub, the
+run **stays alive** streaming pod logs, and **cancelling the run is the teardown**
+(`pw endpoints delete` only makes the Deployment restart the sidecar). How-to and
+verified cluster facts: `docs/k8s-workflows.md`.
 
 To convert a legacy session-pattern workflow to this pattern, follow
 `.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`
@@ -130,6 +139,15 @@ those platforms — validate them statically.
   and its URL answers. The run completes while the service keeps running.
 - **Tear down:** `pw endpoints delete <name>` kills the remote process tree; verify
   with `ps -x` (daemonizing apps that re-parent to PID 1 can survive).
+- **Kubernetes runs differ:** the run stays `running` while the endpoint serves (pass =
+  endpoint listed and answering while the run is still running), and the teardown is
+  `pw workflows runs cancel <slug>`, after which the Deployment, Secret and PVC must be
+  gone (`pw kube auth --no-context-switch <cluster>`, then
+  `kubectl --context pw#<cluster> -n <ns> get deploy,pods,pvc,secret`). The runner's k8s
+  lane does both; tests live under `tests/k8s/` (standalone) and `tests/general_k8s/`
+  (hybrid). From the CLI a kubernetes resource is an object
+  (`{"id":"<pw kube ls id>","name":"k3sgpu","type":"kubernetes","uri":"pw://k3sgpu"}`),
+  which the runner fills in from `{"name":…,"type":"kubernetes"}`.
 - **Verify cancel cleanup when developing a workflow:** cancel a run mid-flight
   (`pw workflows runs cancel <slug>`) and confirm `cancel.sh` ran — no leftover
   processes (`ps -x`), scheduler jobs (`squeue`/`qstat`), or container instances
@@ -141,7 +159,11 @@ those platforms — validate them statically.
   `run.<JOBID>.out` is the service output; `logs/<job>/step_N/step.out` the step
   trace; `logs/<job>/step_N/script-unstable.sh` is the **rendered** step showing every
   `${{ input }}` as its literal value — read it first when a form value seems ignored.
-  From anywhere: `pw workflows runs errors <slug>`.
+  From anywhere: `pw workflows runs errors <slug>`. Kubernetes jobs run on the
+  workspace node and have no job dir on a cluster: read
+  `pw workflows runs logs <slug> --job apply_k8s_deployment` (kubectl output + streamed
+  pod logs) and `kubectl … get events --sort-by=.lastTimestamp` (quota and scheduling
+  failures appear only there).
 - `pw` auth tokens expire; "Authentication has expired" means a human must run `pw auth`.
 - Registered ("remote") workflows pin one YAML path (`pw workflows get <name>` →
   `remote.yaml`); the form and its defaults come from that file — point registrations

@@ -207,8 +207,8 @@ Contract differences vs v3:
 
 ## Step 4 — `general_k8s_v5.yaml`
 
-Start from `workflow/yamls/jupyterlab-host/general_k8s_v5.yaml` (it includes two
-improvements over openvscode's): all of Step 3, plus:
+Start from `workflows/openvscode/yamls/general_k8s.yaml` (any of the three hybrids
+works; all verified on `k3sgpu` 2026-09-16): all of Step 3, plus:
 
 - Top-level `env: { PW_API_KEY: ${PW_API_KEY} }`.
 - **Delete the k8s `Service` manifest and the `update-session` job.** Instead add a
@@ -223,12 +223,19 @@ improvements over openvscode's): all of Step 3, plus:
   then polls `pw endpoints list`).
 - **No `skip_cleanups_file` on the k8s path** — the run must stay alive (log
   streaming) and cancel-run is the teardown.
-- Guard *Controller Preprocessing* and *Create Service Script* with
-  `if: ${{ inputs.resource.type != 'kubernetes' }}` so a k8s run doesn't install the
-  non-k8s software on the workspace exec node (jupyterlab improvement; openvscode
-  installs unconditionally).
+- Guard every cluster-only **job** (`preprocessing`, `session_runner`,
+  `wait_for_endpoint`) with a job-level `if: ${{ inputs.resource.type != 'kubernetes' }}`
+  and every k8s job with the `== 'kubernetes'` form. A step-level guard is not enough:
+  the job's `ssh.remoteHost` renders empty on k8s and the unguarded steps run on the
+  workspace exec node (`[pw] ssh.remoteHost is empty; running this step on localhost`).
 - App container: prefer a container-agnostic launch (`command: ["jupyter","lab"]` +
   explicit `--ServerApp.port=<image_port>`) over image-specific entrypoint scripts.
+
+The same recipe converts a **standalone** `k8s.yaml` (a `sessions:` block +
+`update-session` into a k8s Service): done for jupyterlab, kasmvnc, openvscode, mlflow
+and ollama-openwebui on 2026-09-16 — drop `sessions:`, the Service and the
+`create_k8s_session` job; add `env`, the Secret step, the sidecar and
+`wait_for_endpoint_k8s`; add a hidden `service_k8s.name` as the endpoint prefix.
 
 ## Step 5 — Test end to end (what "done" means)
 

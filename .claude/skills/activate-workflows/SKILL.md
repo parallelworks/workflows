@@ -157,6 +157,24 @@ query string.
 expressions (`inputs.n == 5`, `inputs.n > 3` — verified 2026-09-16). An **optional
 integer left unset renders empty**, so guard those with `${var:-default}`.
 
+**Kubernetes (verified on `k3sgpu`, 2026-09-16).** Same endpoint, different transport:
+the pod runs the app container plus a **`pw-cli` sidecar** (`pw endpoints http --name
+<service_k8s.name>-${PW_RUN_SLUG} --slug <landing> -o text <image_port>`; `https` when
+the image serves TLS) that dials out from `localhost` inside the pod — no Service, no
+ingress, nothing checked out from GitHub. Copy the smallest k8s-only example,
+`workflows/mlflow/yamls/k8s.yaml`, or the hybrid `workflows/openvscode/yamls/general_k8s.yaml`
+(k8s jobs guarded by `if: ${{ inputs.resource.type == 'kubernetes' }}`, script_submitter
+jobs by the negation — **every** cluster-only job needs the job-level `if`, or it runs on
+the workspace with an empty `ssh.remoteHost`). Keep these pieces: the API key reaches
+the sidecar through a Secret created from the run env (`env: {PW_API_KEY: ${PW_API_KEY}}`
++ `kubectl create secret … --dry-run=client -o yaml | kubectl apply -f -`); every
+`kubectl apply` step has a `cleanup:` that deletes what it created; `Stream Logs`
+(`kubectl logs -f … --all-containers`) keeps the run alive for the life of the service;
+`wait_for_endpoint_k8s` polls `pw endpoints list`. The run stays `running` and
+**cancelling the run is the teardown** (`pw endpoints delete` only makes the Deployment
+restart the sidecar). How-to and cluster facts: `docs/k8s-workflows.md`; platform facts:
+reference §12 "Kubernetes".
+
 ## Step 3 — Test end-to-end and record the test
 
 Every workflow is tested end-to-end at least once, and any end-to-end test is recorded
@@ -187,9 +205,18 @@ cannot happen here, and never claim a workflow was tested if the row does not ex
 Facts that still matter when running by hand (`pw workflows run /abs/path.yaml -i inputs.json`):
 - Pass the resource as its URI (`pw://alvaro/gcpsmall`) or bare name; never an IP.
   It must be `active` in `pw cluster ls`.
-- The run completes once `wait_for_endpoint` sees the endpoint; the service keeps
-  running until `pw endpoints delete <name>`, which kills the remote process tree.
-  Daemonizing apps that re-parent to PID 1 (e.g. RStudio's `rsession`) can survive it.
+- **Kubernetes:** a `compute-resources` resource must be an **object** in `-i`
+  (`{"id":"<pw kube ls id>","name":"k3sgpu","type":"kubernetes","uri":"pw://k3sgpu"}`;
+  the runner fills `id`/`uri` from `{"name":…,"type":"kubernetes"}`), while a
+  `kubernetes-clusters` input takes the bare name. Pass = the endpoint is listed and
+  answers **while the run is still `running`**; teardown = `pw workflows runs cancel
+  <slug>`, then the namespace must be empty of the run's objects
+  (`kubectl --context pw#<cluster> -n <ns> get deploy,pods,pvc,secret`). Run k8s tests
+  one at a time — the namespace quota is shared (Common pitfalls).
+- On a compute cluster the run completes once `wait_for_endpoint` sees the endpoint;
+  the service keeps running until `pw endpoints delete <name>`, which kills the remote
+  process tree. Daemonizing apps that re-parent to PID 1 (e.g. RStudio's `rsession`)
+  can survive it.
 - **Verify cleanup on CANCEL — a required test, not an afterthought:** cancel one run
   mid-flight (`pw workflows runs cancel <slug>` while the service is starting or
   serving) and confirm `cancel.sh` actually ran: no service processes (`ps -x`), no
@@ -223,10 +250,19 @@ pw workflows runs logs   <slug> --job session_runner          # the submitter jo
 pw workflows runs errors <slug> -o text                       # just the failures
 ```
 
+**Kubernetes runs have no job dir on a cluster node:** the k8s jobs run on the
+workspace exec node (its `~/pw/jobs/<slug>/` holds the rendered `pvc.yaml`/`app.yaml`).
+Read `pw workflows runs logs <slug> --job apply_k8s_deployment` (kubectl output plus the
+streamed pod logs, sidecar included) and inspect the cluster from here:
+`pw kube auth --no-context-switch <cluster>`, then `kubectl --context pw#<cluster> -n <ns>
+get pods,pvc,secret` and `… get events --sort-by=.lastTimestamp` — quota, taint and
+image-pull failures are only in the events.
+
 Diagnose → fix the local code or YAML → push (PR to `canary`, or the dev branch the
 checkout points at) → re-run. **Clean up what you started:** `pw endpoints delete`
-for live endpoints, `pw workflows runs cancel <slug>` for runs still executing. A
-lingering endpoint holds the service process.
+for live endpoints, `pw workflows runs cancel <slug>` for runs still executing (and for
+every Kubernetes run — cancelling is its teardown). A lingering endpoint holds the
+service process.
 
 ## Step 5 — Harden this skill
 
@@ -300,8 +336,24 @@ non-repetitive; point at an existing tutorial instead.
   fields passed to an `emed`/`noaa`/`hsp` subworkflow are NOT rejected by `--dry-run`
   (unknown fields pass silently; verified 2026-09-16), so the mismatch surfaces only
   at run time. Match the variant to the host and copy its variant YAML form.
-- **Resource passing:** bare name string in `-i`, not a hand-built object; login
-  IPs change, so never hardcode `ip`.
+- **Resource passing:** bare name string in `-i` for `compute-clusters`, not a
+  hand-built object; login IPs change, so never hardcode `ip`. The exception is a
+  **kubernetes** resource on a `compute-resources` input: it must be the object
+  `{"id","name","type":"kubernetes","uri"}` (reference §2) — a bare name reaches the
+  workflow as a string and every `type == 'kubernetes'` guard is false.
+- **Namespace `ResourceQuota` blocks pods silently (k8s):** platform namespaces carry
+  `pw-quota` (k3sgpu/`alvarok8s`: 4 CPU, 10Gi, 2 GPUs). Over quota the ReplicaSet logs
+  `FailedCreate … exceeded quota` only in `kubectl get events`; the run log shows just
+  the 600 s `kubectl wait` timeout and `ProgressDeadlineExceeded` (the job errors, the
+  wait job is early-cancelled, the cleanups still run). Requests add up per pod, the
+  sidecar's 50m/64Mi count, and under a quota every container must declare requests.
+- **`pw endpoints list` has no `-o json`** (`unknown shorthand flag: 'o'`): parse its
+  tab-separated `name  status  URL` lines. `pw sessions ls -o json` does exist
+  (`externalHref` is the session URL).
+- **A hybrid job without the job-level `if` runs on the workspace on k8s:** an
+  `ssh.remoteHost` that renders empty logs `[pw] ssh.remoteHost is empty; running this
+  step on localhost` and proceeds there (jupyterlab's preprocessing cloned canary for
+  nothing until 2026-09-16). Guard every cluster-only job itself, not just its steps.
 - **`Could not parse subworkflow` on `--dry-run`:** a non-optional subworkflow input
   with no default is missing from your `with:` block; the message never names it.
   Hidden+ignored inputs don't count — compare your block against the fields the

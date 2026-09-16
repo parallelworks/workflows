@@ -90,6 +90,9 @@ pw workflows run my-session -i '{"resource":"gcpsmall","scheduler":false}'
 >   object passes through **verbatim, unvalidated**: for a kubernetes cluster send
 >   `{"id":"<pw kube ls id>","name":"k3sgpu","type":"kubernetes","uri":"pw://k3sgpu"}`
 >   (set the fields the workflow reads: `name` for `pw kube auth`, `type` for the guards).
+>   The test runner's k8s lane completes `{"name":…,"type":"kubernetes"}` from
+>   `pw kube ls -o json`. A `kubernetes-clusters` input (standalone `k8s.yaml`,
+>   `k8s.cluster`) takes the **bare cluster name**; `kubernetes-namespaces` a string.
 
 **The workspace as a resource:** `include-workspace: true` on a `compute-clusters`
 input makes the user workspace selectable. Pass `"workspace"` (aliases:
@@ -114,7 +117,7 @@ Top of file (enables editor autocomplete; harmless at runtime):
 | `env` | workflow-level environment variables injected into every job/step's runtime env. **The canonical way to make `PW_API_KEY` available to your workflow code** — set `env: { PW_API_KEY: ${PW_API_KEY} }` (see §12). **⚠ Do NOT also name an input *group* `env`** if this block references `${{ inputs.env.* }}`: the shared `env` name makes the expression engine recurse → `400 Expression Parser Error: max recursion exceeded`, which fails **both `--dry-run` and `pw workflows run`** (the web UI may still submit it). Name the group e.g. `env_vars`. |
 | `'on'.execute.inputs` | the input form (note the quoted `'on'` to avoid YAML's bool) |
 
-### `sessions`
+### `sessions` (legacy — no workflow in this repo has one)
 ```yaml
 sessions:
   session:                 # arbitrary name; reference as ${{ sessions.session }}
@@ -122,6 +125,11 @@ sessions:
     redirect: true         # after launch, redirect the user to the Sessions page
     # useCustomDomain: ${{ inputs.resource.type == 'kubernetes' }}  # SaaS *.activate.pw
 ```
+The k8s `k8s.yaml` files were the last users (a `sessions:` block +
+`parallelworks/update-session` with a `targetInfo` pointing at a k8s Service — the
+platform tunnels into the Service itself; still works, verified 2026-09-16) and were
+converted to the sidecar endpoint the same day. `tutorials/session-workflows-hsp/`
+keeps the old pattern for reading. Endpoint workflows need no top-level `sessions:`.
 
 ### `jobs.<name>`
 ```yaml
@@ -458,6 +466,8 @@ output yet — harmless.
 pw endpoints list                   # name, status, URL — the pass/fail check for a run
 pw endpoints delete <name>          # tears down the whole remote process tree
 ```
+`pw endpoints list` has **no `-o json`** (`unknown shorthand flag: 'o'`, v7.99.0); its
+lines are tab-separated `name`, `status`, `URL`.
 Endpoint names are `<service.name>-<run-slug>`. `delete` kills the `pw endpoints run`
 wrapper and its children — but a daemonizing app that re-parented to PID 1 (e.g.
 RStudio's `rsession`) can survive; check `ps -x` after teardown.
@@ -475,6 +485,8 @@ A running tunnel session shows `STATUS=running`, `TYPE=tunnel`, `REMOTE HOST`,
 
 ### Other useful
 ```bash
+pw kube ls [-o json]               # kubernetes clusters: id, name, cpus, memory (no status field)
+pw kube auth [--no-context-switch] <cluster>   # kubeconfig context pw#<cluster>; exec plugin = pw kube token (kubectl >= 1.22)
 pw cluster ls [-o json]            # resources + status
 pw ssh <resource> ["cmd"]          # shell on a resource's node, or run "cmd" and exit
 pw forward -L [bind:]lport:host:rport <resource>   # local→remote tunnel (auto-reconnects)
@@ -533,6 +545,11 @@ Debug checklist on the service node: `cat run.<JOBID>.out`, the rendered step sc
 `ps -x | grep <your-process>`, `pw endpoints list`, then `pw workflows runs errors <slug>`.
 
 ---
+
+**Kubernetes jobs (no `ssh:` block) run on the workspace exec node**, so their job dir
+is `~/pw/jobs/<slug>/` *there* (rendered `pvc.yaml`, `app.yaml`, `OUTPUTS`, the
+`pod.running`/`app.deleted` markers); nothing exists on a cluster node. The app name the
+YAMLs derive from that path is `<user>jobs<slug>` for CLI runs.
 
 ## 8. Best example workflows in this repo
 
@@ -828,15 +845,7 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   `PW_API_KEY` + `PW_PLATFORM_HOST` env vars with no config file — this is how to run
   it in a pod. `ghcr.io/parallelworks/pw-cli:<ver>` is distroless (entrypoint
   `/usr/local/bin/pw`, nonroot 65532), so pass subcommands via container `args:`.
-- **Kubernetes: run the client as a sidecar** (see
-  `workflows/openvscode/yamls/general_k8s.yaml`): the app container serves its port,
-  the `pw-cli` sidecar runs `pw endpoints http --name <n> -o text <port>` against pod-local
-  `localhost:<port>`; feed `PW_API_KEY` from a Secret created with
-  `kubectl create secret generic ... --from-literal=PW_API_KEY="${PW_API_KEY}" --dry-run=client -o yaml | kubectl apply -f -`
-  (top-level `env: {PW_API_KEY: ${PW_API_KEY}}` exposes it to the step; the key never
-  lands in a file). Unlike v5 non-k8s, the k8s run must **stay alive** (log streaming)
-  and clean up on cancel: a Deployment restarts an exited sidecar, so the endpoint
-  cannot own the pod's lifecycle — cancel run → `kubectl delete` → endpoint deregisters.
+- **Kubernetes: run the client as a sidecar** — see the dedicated subsection below.
 - `PW_RUN_SLUG` holds the **run slug** (same in every job) — build the endpoint name as
   `<service>-${PW_RUN_SLUG}` in one job and wait for it in another. (`PW_JOB_ID` carries
   the same value, but prefer `PW_RUN_SLUG` — the name says what it is.) It is also the
@@ -845,6 +854,52 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   exit non-zero, the submitter job fails, and the submitter job's cancel-jobs step
   stops `wait_for_endpoint`. Both vars reach scheduled
   compute nodes via the `inputs.sh` `env | grep '^PW_'` capture.
+
+### Kubernetes: the sidecar endpoint pattern (verified on `k3sgpu`, 2026-09-16)
+Eight k8s YAMLs run this way and each has a passing k3sgpu test:
+`workflows/{jupyterlab,kasmvnc,openvscode}/yamls/general_k8s.yaml` (hybrids) and
+`workflows/{jupyterlab,kasmvnc,openvscode,mlflow,ollama-openwebui}/yamls/k8s.yaml`
+(k8s-only examples). How-to: `docs/k8s-workflows.md`.
+- **Where the jobs run:** no `ssh:` block → the workspace exec node (`pw` + `kubectl`
+  present). Every object is named after the run — Deployment `<user>jobs<slug>`,
+  Secret `<app>-pw-api-key`, PVC `<app>-pvc` — which is what the test runner's leftover
+  check keys on (`kubectl get … -o name | grep <slug>`).
+- **The sidecar:** `ghcr.io/parallelworks/pw-cli:v7.79.0` (public; `v7.99.0` is public
+  too) with `args: [endpoints, http|https, --name, <n>-${PW_RUN_SLUG}, --slug, <landing>,
+  --output, text, "<port>"]`, `PW_PLATFORM_HOST` from the run env, `PW_API_KEY` from the
+  Secret (`kubectl create secret generic … --from-literal=PW_API_KEY="${PW_API_KEY}"
+  --dry-run=client -o yaml | kubectl apply -f -`; the top-level
+  `env: {PW_API_KEY: ${PW_API_KEY}}` exposes it to the step and the key never lands in a
+  file), requests 50m/64Mi. It logs `Endpoint "<name>" serving localhost:<port>` + the
+  URL, `Endpoint tunnel connected`, then a health-check line; the endpoint was listed
+  within seconds of the pod going Ready in all eight runs. No Service or ingress is
+  needed. Use `endpoints https` for TLS images (kasmweb :6901 — one
+  `health check failed … not reachable yet` while it boots is normal).
+- **Lifecycle:** the run **stays alive** (`kubectl logs -f … --all-containers` as the
+  last step) and **cancelling the run is the teardown**: each apply step's `cleanup:`
+  runs (`POST Apply Deployment`, `POST Create API Key Secret`, `POST Apply PVC` in the
+  run log); Deployment, Secret and PVC were gone and the endpoint deregistered within
+  ~20 s in every run. `pw endpoints delete` cannot own the pod — the Deployment restarts
+  an exited sidecar.
+- **Quota:** platform namespaces carry a `pw-quota` ResourceQuota (`alvarok8s`: cpu 4,
+  memory 10Gi, nvidia.com/gpu 2). Over quota the ReplicaSet fails with
+  `FailedCreate … exceeded quota` — visible only in `kubectl get events`; the run log
+  shows the 600 s `kubectl wait` timeout and `ProgressDeadlineExceeded`, the job errors,
+  `early-cancel: any-job-failed` cancels the wait job and the cleanups still run.
+  `ollama-openwebui`'s defaults (2 + 2 CPU requests) need the whole quota; run k8s tests
+  one at a time.
+- **Cluster facts (k3sgpu):** one untainted control-plane node (20 CPU, 64 GiB, 2 GPUs:
+  A30 + RTX 3050), default StorageClass `local-path` (`WaitForFirstConsumer`),
+  RuntimeClasses incl. `nvidia` — attach `runtimeClassName: nvidia` only when GPUs are
+  requested. Image sizes: jupyter datascience ≈2 GB, kasmweb ≈1.5 GB, code-server
+  ≈0.4 GB (cached after the first pull).
+- **CLI inputs:** `compute-resources` (hybrids) needs the resource **object** (§2);
+  `kubernetes-clusters` (`k8s.cluster`) takes the bare name. `--dry-run` validated all
+  eight with those inputs.
+- **Debug from your machine:** `pw kube auth --no-context-switch <cluster>` (writes the
+  `pw#<cluster>` context without switching kubectl's current one), then
+  `kubectl --context pw#<cluster> -n <ns> get pods,pvc,secret` /
+  `get events --sort-by=.lastTimestamp`.
 
 ### Serving GGUF models with Ollama behind an endpoint (verified, `ollama-gguf`)
 - **The whole pattern is one command** (from `pw endpoints run --help`'s own example):

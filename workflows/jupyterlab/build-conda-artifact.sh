@@ -59,6 +59,11 @@ if [ -n "${runner}" ]; then
         ldd --version | head -1
         tar -xzf /work/conda-env.tar.gz -C /work/smoke
         /work/smoke/bin/python /work/smoke/bin/conda-unpack
+        for f in /work/smoke/bin/*; do
+            if [ -f "$f" ] && [ ! -L "$f" ] && [ "$(head -c 21 "$f")" == "#!/usr/bin/env python" ]; then
+                sed -i "1s|^#!/usr/bin/env python|#!/work/smoke/bin/python|" "$f"
+            fi
+        done
         source /work/smoke/etc/profile.d/conda.sh
         conda activate base
         jupyter-lab --version

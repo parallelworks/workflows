@@ -13,7 +13,6 @@
     "conda_install": true,
     "parent_install_dir": "${HOME}/pw/software",
     "conda_install_dir": "miniconda3c",
-    "conda_env": "base",
-    "install_instructions": "jupyterlab4.1.5-python3.11.5"
+    "conda_registry": "ghcr.io/parallelworks/jupyterlab-conda:jupyterlab4.1.5-python3.11.5"
   }
 }

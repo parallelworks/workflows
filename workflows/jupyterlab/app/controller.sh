@@ -17,6 +17,8 @@ set -o pipefail
 #       native   = download Miniconda from repo.anaconda.com and build the env
 #       artifact = unpack the prebuilt env ghcr.io/parallelworks/jupyterlab-conda:<install_instructions>
 #       auto     = native, falling back to artifact when the native path fails
+#   - service_conda_registry: full reference of a prebuilt env (hsp form); when set it replaces
+#       install_instructions and is always unpacked (no native path exists for it)
 #   - service_load_env: Command to load jupyter-lab (when conda_install=false)
 ################################################################################
 
@@ -128,17 +130,13 @@ f_set_up_conda_latest() {
     fi
 }
 
+# $1 prefix, $2 env (the artifacts only provide base), $3 full registry reference,
+# $4 key of the "environment already matches" marker
 f_install_conda_artifact() {
-    local conda_dir=$1 conda_env=$2 tag=$3 yaml_hash=$4
-    local ref=${conda_artifact_registry}:${tag}
+    local conda_dir=$1 conda_env=$2 ref=$3 env_key=$4
     local tarball=${PWD}/conda-env.tar.gz
     local arch glibc
 
-    case "${tag}" in
-        yaml|latest)
-            f_fail "No prebuilt conda environment exists for the '${tag}' installation. Select 'Jupyter Lab 4.1.5 with Python 3.11.5' (jupyterlab4.1.5-python3.11.5): it is the installation that works when repo.anaconda.com is unreachable"
-            ;;
-    esac
     if [[ "${conda_env}" != "base" ]]; then
         f_fail "The prebuilt conda environment only provides the base environment; set the conda environment to base (got '${conda_env}')"
     fi
@@ -149,7 +147,7 @@ f_install_conda_artifact() {
     fi
     if [ -d "${conda_dir}" ]; then
         if [ -f "${conda_dir}/${conda_source_marker}" ]; then
-            echo "::warning::Removing the conda installation in <${conda_dir}> left by the failed setup"
+            echo "::warning::Removing the conda installation in <${conda_dir}>: this workflow installed it and it does not match the requested environment"
             rm -rf ${conda_dir}
         else
             f_fail "<${conda_dir}> exists but was not installed by this workflow; fix that environment or choose another conda installation directory to unpack the prebuilt environment into"
@@ -183,7 +181,7 @@ f_install_conda_artifact() {
         fi
     done
     mkdir -p ${conda_dir}/.pw-env-markers
-    touch ${conda_dir}/.pw-env-markers/${conda_env}-${yaml_hash}
+    touch ${conda_dir}/.pw-env-markers/${conda_env}-${env_key}
     source ${conda_dir}/etc/profile.d/conda.sh || f_fail "Could not source ${conda_dir}/etc/profile.d/conda.sh after unpacking ${ref}"
     echo "::notice::Prebuilt conda environment ${ref} installed in <${conda_dir}>"
 }
@@ -198,17 +196,25 @@ f_provide_conda() {
             f_set_up_conda_from_yaml ${conda_prefix} ${service_conda_env} ${native#yaml } ${yaml_hash}
         fi
     }
+    f_artifact() {
+        case "${tag}" in
+            yaml|latest)
+                f_fail "No prebuilt conda environment exists for the '${tag}' installation. Select 'Jupyter Lab 4.1.5 with Python 3.11.5' (jupyterlab4.1.5-python3.11.5): it is the installation that works when repo.anaconda.com is unreachable"
+                ;;
+        esac
+        f_install_conda_artifact ${conda_prefix} ${service_conda_env} ${conda_artifact_registry}:${tag} "${yaml_hash}"
+    }
     case "${service_conda_source}" in
         native)
             f_native || f_fail "Conda setup failed and conda_source=native disables the prebuilt fallback"
             ;;
         artifact)
-            f_install_conda_artifact ${conda_prefix} ${service_conda_env} ${tag} "${yaml_hash}"
+            f_artifact
             ;;
         *)
             if ! f_native; then
                 echo "::warning::Conda setup from repo.anaconda.com failed; falling back to the prebuilt environment ${conda_artifact_registry}:${tag}"
-                f_install_conda_artifact ${conda_prefix} ${service_conda_env} ${tag} "${yaml_hash}"
+                f_artifact
             fi
             ;;
     esac
@@ -219,6 +225,15 @@ if [[ "${service_conda_install}" == "true" ]]; then
     if [[ "${service_install_instructions}" == "install_command" ]]; then
         echo "::notice::Running install command ${service_install_command}"
         eval ${service_install_command}
+    elif [ -n "${service_conda_registry}" ]; then
+        echo "::notice::Installing the prebuilt conda environment ${service_conda_registry}"
+        env_key=$(printf '%s' "${service_conda_registry}" | tr -c 'a-zA-Z0-9._-' '_')
+        env_marker=${conda_prefix}/.pw-env-markers/${service_conda_env}-${env_key}
+        if [ -f "${service_conda_sh}" ] && [ -f "${env_marker}" ]; then
+            echo "::notice::Conda environment <${service_conda_env}> in <${conda_prefix}> already comes from ${service_conda_registry}; nothing to install"
+        else
+            f_install_conda_artifact ${conda_prefix} ${service_conda_env} "${service_conda_registry}" "${env_key}"
+        fi
     elif [[ "${service_install_instructions}" == "latest" ]]; then
         echo "::notice::Installing latest conda environment"
         f_provide_conda latest latest ""

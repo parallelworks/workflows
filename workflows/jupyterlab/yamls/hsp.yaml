@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: fix-miniconda-issue
+          branch: fix-miniconda-issue-2
           sparse_checkout:
             - workflows/jupyterlab/app
             - tools/oras
@@ -32,10 +32,7 @@ jobs:
           service_conda_env="${{ inputs.service.conda_env }}"
           service_load_env="${{ inputs.service.load_env }}"
           service_password="${{ inputs.service.password }}"
-          service_install_instructions="${{ inputs.service.install_instructions }}"
-          service_conda_source="${{ inputs.service.conda_source }}"
-          service_yaml="${{ inputs.service.yaml }}"
-          service_install_kernels="${{ inputs.service.install_kernels }}"
+          service_conda_registry="${{ inputs.service.conda_registry }}"
           pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG} --slug lab"
           EOF
           # Remove empty variables
@@ -322,10 +319,10 @@ jobs:
             default: ${HOME}
             tooltip: This is the directory that you start with when the Jupyter graphical user interface starts. The default value here is your home directory.
           conda_install:
-            label: Install miniconda environment if not there?
+            label: Install the prebuilt JupyterLab conda environment if not there?
             type: boolean
             default: true
-            tooltip: Select Yes to install Jupyter in miniconda environment and No to load an existing python environment
+            tooltip: Select Yes to unpack the prebuilt JupyterLab conda environment and No to load an existing python environment
           parent_install_dir:
             label: Parent Install Directory
             type: string
@@ -341,13 +338,19 @@ jobs:
             ignore: ${{ .hidden }}
             tooltip: Ensure the directory has sufficient space for Conda and its packages.
           conda_env:
-            label: Conda environment
             type: string
+            hidden: true
             default: base
+          conda_registry:
+            label: Prebuilt JupyterLab conda environment
+            type: string
+            default: ghcr.io/parallelworks/jupyterlab-conda:jupyterlab4.1.5-python3.11.5
             hidden: ${{ inputs.service.conda_install == false }}
-            optional: ${{ .hidden }}
             ignore: ${{ .hidden }}
-            tooltip: Environment to active. The base environment enables changing kernel to other environments!
+            tooltip: |
+              ORAS reference of a conda environment packed by workflows/jupyterlab/build-conda-artifact.sh
+              (a public ghcr.io package containing conda-env.tar.gz). HPC login nodes cannot reach
+              repo.anaconda.com, so the environment is pulled prebuilt; change the tag to pick another build.
           load_env:
             label: Command to load Jupyter Notebook to the PATH
             type: string
@@ -363,44 +366,3 @@ jobs:
             hidden: true
             ignore: true
             tooltip: Enter password or leave blank for no password
-          install_instructions:
-            label: Select Jupyter Lab Installation
-            type: dropdown
-            hidden: ${{ inputs.service.conda_install == false }}
-            ignore: ${{ .hidden }}
-            default: jupyterlab4.1.5-python3.11.5
-            options:
-              - value: jupyterlab4.1.5-python3.11.5
-                label: Jupyter Lab 4.1.5 with Python 3.11.5
-              - value: latest
-                label: Latest versions of Jupyter Lab and Python (not thoroughly tested)
-              - value: dask-extension-jupyterlab
-                label: Dask dependencies for PW
-              - value: yaml
-                label: Provide custom Conda environment YAML file
-          conda_source:
-            type: string
-            hidden: true
-            default: auto
-            tooltip: |
-              auto → download Miniconda from repo.anaconda.com and, when that fails, unpack the
-              prebuilt environment ghcr.io/parallelworks/jupyterlab-conda:<installation>
-              native → download only; artifact → prebuilt environment only
-          yaml:
-            label: Paste Conda Environment Defition YAML
-            type: editor
-            hidden: ${{ inputs.service.install_instructions != yaml ||  inputs.service.conda_install == false }}
-            optional: ${{ .hidden }}
-            ignore: ${{ .hidden }}
-            tooltip: Copy and paste a custom Conda environment definition YAML file
-          install_kernels:
-            label: Select additional kernels to install
-            type: multi-dropdown
-            optional: true
-            hidden: ${{ inputs.service.conda_install == false }}
-            ignore: ${{ .hidden }}
-            options:
-              - value: julia-kernel
-                label: Julia Kernel
-              - value: R-kernel
-                label: R Kernel

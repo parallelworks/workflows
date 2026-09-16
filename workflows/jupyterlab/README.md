@@ -14,7 +14,9 @@ service keeps running; stop it with `pw endpoints delete`.
    same environment from `ghcr.io/parallelworks/jupyterlab-conda:<installation>`
    (x86_64, glibc >= 2.28; only the pinned installation has one). Build and
    push it with `build-conda-artifact.sh`; the hidden `conda_source` input
-   (`auto` | `native` | `artifact`) forces either path.
+   (`auto` | `native` | `artifact`) forces either path. The hsp form skips the
+   download entirely: it takes the registry reference of the prebuilt
+   environment and unpacks that.
 2. `app/start-template.sh` runs on the login node or a scheduler job
    (SLURM/PBS, your choice in the form) and launches `jupyter-lab` behind
    `pw endpoints run`.

@@ -1,10 +1,7 @@
 permissions:
   - '*'
-sessions:
-  session:
-    redirect: true
-    useCustomDomain: true
-    useTLS: true
+env:
+  PW_API_KEY: ${PW_API_KEY}
 
 jobs:
   auth_k8s:
@@ -20,6 +17,7 @@ jobs:
     steps:
       - name: Creating New PVC YAML
         early-cancel: any-job-failed
+        if: ${{ inputs.k8s.volumes.pvc == New }}
         run: |
           if [[ ${{ inputs.k8s.volumes.pvc_persist }} == "true" ]]; then
             pvc_name="${{ inputs.k8s.volumes.pvc_name }}"
@@ -60,6 +58,7 @@ jobs:
           cat pvc.yaml
       - name: Dry Run PVC
         early-cancel: any-job-failed
+        if: ${{ inputs.k8s.volumes.pvc == New }}
         run: |
           echo "Performing dry run..."
           kubectl apply -f pvc.yaml --dry-run=client
@@ -75,7 +74,7 @@ jobs:
           workflow_name=$(pwd | rev | cut -d "/" -f2 | rev)
           app_name=$(echo "${PW_USER}${workflow_name}${job_number}" | sed 's|_||g' | sed 's|\.||g' | tr '[:upper:]' '[:lower:]' | tail -c 56)
           echo "app_name=${app_name}" | tee -a $OUTPUTS | tee -a OUTPUTS
-      - name: Creating Deployment and Service YAML
+      - name: Creating Deployment YAML
         early-cancel: any-job-failed
         run: |
           [[ "${DEBUG:-}" == "true" ]] && set -x
@@ -155,23 +154,38 @@ jobs:
                     volumeMounts:
                       - name: storage
                         mountPath: ${{ inputs.k8s.volumes.pvc_mount_path }}
+                  # Sidecar: the pw client dials out and exposes the service as an
+                  # endpoint. The kasmweb image serves HTTPS on its port, so this
+                  # uses `endpoints https` (not http).
+                  - name: pw-endpoint
+                    image: ghcr.io/parallelworks/pw-cli:v7.79.0
+                    args:
+                      - endpoints
+                      - https
+                      - --name
+                      - ${{ inputs.service_k8s.name }}-${PW_RUN_SLUG}
+                      - --output
+                      - text
+                      - "${{ inputs.service_k8s.image_port }}"
+                    env:
+                      - name: PW_PLATFORM_HOST
+                        value: "${PW_PLATFORM_HOST}"
+                      - name: PW_API_KEY
+                        valueFrom:
+                          secretKeyRef:
+                            name: ${{ needs.prepare_k8s_deployment.outputs.app_name }}-pw-api-key
+                            key: PW_API_KEY
+                    resources:
+                      requests:
+                        memory: "64Mi"
+                        cpu: "50m"
+                      limits:
+                        memory: "256Mi"
+                        cpu: "500m"
                 volumes:
                   - name: storage
                     persistentVolumeClaim:
                       claimName: ${pvc_name}  # Assumes PVC name is provided as an input
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: ${{ needs.prepare_k8s_deployment.outputs.app_name }}-lb
-            namespace: ${{ inputs.k8s.namespace }}
-          spec:
-            selector:
-              app: ${{ needs.prepare_k8s_deployment.outputs.app_name }}
-            ports:
-              - protocol: TCP
-                port: ${{ inputs.service_k8s.image_port }}
-                targetPort: ${{ inputs.service_k8s.image_port }}
           EOF
       - name: Dry Run Deployment
         early-cancel: any-job-failed
@@ -186,6 +200,7 @@ jobs:
         early-cancel: any-job-failed
         run: cat OUTPUTS >> $OUTPUTS
       - name: Apply PVC
+        if: ${{ inputs.k8s.volumes.pvc == New }}
         run: kubectl apply -f pvc.yaml
         cleanup: |
           [[ "${DEBUG:-}" == "true" ]] && set -x
@@ -207,7 +222,17 @@ jobs:
               fi
             done
           fi
-      - name: Apply Deployment and Service
+      - name: Create API Key Secret
+        early-cancel: any-job-failed
+        run: |
+          kubectl create secret generic ${{ needs.apply_k8s_deployment.outputs.app_name }}-pw-api-key \
+            --namespace ${{ inputs.k8s.namespace }} \
+            --from-literal=PW_API_KEY="${PW_API_KEY}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        cleanup: |
+          kubectl delete secret ${{ needs.apply_k8s_deployment.outputs.app_name }}-pw-api-key \
+            --namespace ${{ inputs.k8s.namespace }} --ignore-not-found
+      - name: Apply Deployment
         run: kubectl apply -f app.yaml
         cleanup: |
           [[ "${DEBUG:-}" == "true" ]] && set -x
@@ -276,8 +301,8 @@ jobs:
           touch pod.running
       - name: Stream Logs
         early-cancel: any-job-failed
-        run: kubectl logs -f deployment/${{ needs.apply_k8s_deployment.outputs.app_name }} -n ${{ inputs.k8s.namespace }}
-  create_k8s_session:
+        run: kubectl logs -f deployment/${{ needs.apply_k8s_deployment.outputs.app_name }} -n ${{ inputs.k8s.namespace }} --all-containers
+  wait_for_endpoint_k8s:
     needs:
       - prepare_k8s_deployment
     steps:
@@ -292,24 +317,20 @@ jobs:
               echo "Pod is ready"
               break
             fi
-            sleep 2 
+            sleep 2
           done
-      - name: Get Service Name
+      - name: Wait for endpoint
         early-cancel: any-job-failed
         run: |
-          source OUTPUTS
-          echo "service_name=${app_name}-lb" | tee -a $OUTPUTS
-      - name: Expose port
-        early-cancel: any-job-failed
-        uses: parallelworks/update-session
-        with:
-          remotePort: ${{ inputs.service_k8s.image_port }}
-          name: ${{ sessions.session }}
-          targetInfo:
-            name: ${{ inputs.k8s.cluster }}
-            namespace: ${{ inputs.k8s.namespace }}
-            resourceType: services
-            resourceName: ${{ needs.create_k8s_session.outputs.service_name }}
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          endpoint_name="${{ inputs.service_k8s.name }}-${PW_RUN_SLUG}"
+          echo "::notice::Waiting for endpoint ${endpoint_name} to come online"
+          until pw endpoints list | grep -qw "${endpoint_name}"; do
+            echo "$(date) Endpoint ${endpoint_name} not found yet; retrying in 10 seconds"
+            sleep 10
+          done
+          echo "::notice::Endpoint ${endpoint_name} is online"
+          pw endpoints list | grep -w "${endpoint_name}"
 'on':
   execute:
     inputs:
@@ -416,6 +437,7 @@ jobs:
                   select_gpu:
                     label: Select GPU Device
                     type: dropdown
+                    default: None
                     tooltip: Choose the type of GPU device for the deployment, if needed. Select "None" for CPU-only workloads or "Custom" to specify a custom GPU resource key.
                     options:
                       - value: None
@@ -454,6 +476,10 @@ jobs:
         type: group
         label: Service Settings
         items:
+          name:
+            type: string
+            hidden: true
+            default: kasmvnc
           image:
             label: KasmVNC Image
             type: string

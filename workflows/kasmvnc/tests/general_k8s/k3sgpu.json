@@ -1,0 +1,35 @@
+{
+  "_test": {
+    "timeout_s": 1200
+  },
+  "resource": {
+    "name": "k3sgpu",
+    "type": "kubernetes"
+  },
+  "container_runtime": "kasmvnc-singularity",
+  "k8s": {
+    "namespace": "alvarok8s",
+    "volumes": {
+      "pvc": "New",
+      "pvc_mount_path": "/mnt",
+      "pvc_storage_size": "1Gi",
+      "pvc_persist": false
+    },
+    "resources": {
+      "requests": {
+        "memory": "512Mi",
+        "cpu": "1"
+      },
+      "limits": {
+        "memory": "1Gi",
+        "cpu": "2",
+        "select_gpu": "None"
+      }
+    }
+  },
+  "service_k8s": {
+    "image": "kasmweb/desktop:1.16.0",
+    "image_port": 6901,
+    "password": "changeme-k8s-test"
+  }
+}

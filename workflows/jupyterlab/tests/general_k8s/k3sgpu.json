@@ -1,0 +1,35 @@
+{
+  "_test": {
+    "timeout_s": 1200
+  },
+  "resource": {
+    "name": "k3sgpu",
+    "type": "kubernetes"
+  },
+  "k8s": {
+    "namespace": "alvarok8s",
+    "volumes": {
+      "pvc": "New",
+      "pvc_mount_path": "/mnt",
+      "pvc_storage_size": "1Gi",
+      "pvc_persist": false
+    },
+    "resources": {
+      "requests": {
+        "memory": "512Mi",
+        "cpu": "1"
+      },
+      "limits": {
+        "memory": "1Gi",
+        "cpu": "2",
+        "select_gpu": "None"
+      }
+    }
+  },
+  "service_k8s": {
+    "name": "jupyterlab-host",
+    "image": "jupyter/datascience-notebook",
+    "image_port": 8888,
+    "use_token_auth": false
+  }
+}

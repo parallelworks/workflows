@@ -10,26 +10,41 @@ One row per launch is appended to the CSV next to it:
 
     workflows/<name>/tests/<variant>/<test>.csv
 
+The lane is picked from the inputs:
+
+    cluster lane   cluster.resource (or resource) names a compute resource. Pass = the run
+                   completes, an endpoint named *-<run-slug> is listed and its URL answers.
+                   Teardown = `pw endpoints delete`; leftovers are checked over `pw ssh`.
+    k8s lane       resource is an object with type "kubernetes" (hybrid *_k8s.yaml; the
+                   runner fills in its id and uri from `pw kube ls`) or the inputs carry
+                   k8s.cluster (standalone k8s.yaml). Pass = the run is still running when
+                   an endpoint named *-<run-slug> is listed and its URL answers. Teardown =
+                   `pw workflows runs cancel`; leftovers are the run's Kubernetes objects
+                   (name contains the run slug) listed with kubectl in k8s.namespace.
+
 The optional "_test" object is stripped before launch:
 
-    timeout_s          seconds to wait for the run to reach a final status (default 1800)
+    timeout_s          seconds to wait for the verdict (default 1800)
     http_expect        acceptable HTTP status codes from the endpoint URL (default: 2xx and 3xx)
     warm_marker        path, or list of paths, on the resource: all present -> phase "warm",
-                       none -> "cold", some -> "partial"
-    setup              shell snippet run on the resource before launch (idempotent; e.g. seed files)
-    leftover_patterns  process patterns that must not survive teardown (default: ["pw endpoints"])
-    leftover_commands  {name: shell snippet printing a count} that must all print 0 after teardown
-                       (e.g. {"docker": "docker ps -q | wc -l"})
+                       none -> "cold", some -> "partial" (cluster lane)
+    setup              shell snippet run on the resource before launch (idempotent; cluster lane)
+    leftover_patterns  process patterns that must not survive teardown (cluster lane;
+                       default: ["pw endpoints"])
+    leftover_commands  {name: shell snippet printing a count} that must all print 0 after
+                       teardown (cluster lane; e.g. {"docker": "docker ps -q | wc -l"})
+    leftover_kinds     Kubernetes object kinds that must be gone after teardown (k8s lane;
+                       default: deployments, services, pods, persistentvolumeclaims, secrets)
 
-Pass = the run completes, an endpoint named *-<run-slug> is listed, and its URL
-answers with an accepted status. Cleanup is verified separately after
-`pw endpoints delete`: no matching processes for the user, and no queued jobs
-when the test schedules. Failing runs keep their platform record and get their
-`pw workflows runs errors` output saved under tests/<variant>/logs/<slug>.txt.
+Failing runs keep their platform record and get their `pw workflows runs errors`
+output (plus the namespace events on the k8s lane) saved under
+tests/<variant>/logs/<slug>.txt.
 
-Version columns are tree hashes of the content the run fetched from GitHub
-(the branch named in the YAML), plus the local commit; the commit gets a
-"-dirty" suffix when the local YAML differs from that branch.
+Version columns are tree hashes of the content the run fetched from GitHub (the
+branch named in the YAML), plus the local commit; the commit gets a "-dirty"
+suffix when the local YAML differs from that branch. The k8s lane fetches
+nothing (the YAML is read locally and its manifests are inline), so it stamps
+the local HEAD and is "-dirty" when the YAML has uncommitted changes.
 
 Usage:
     python3 tools/tests/run-workflow-test.py workflows/jupyterlab/tests/general/gcp-controller.json [...]
@@ -42,6 +57,7 @@ import csv
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -57,7 +73,8 @@ FINAL_STATUSES = {"completed", "error", "canceled", "failed"}
 COLUMNS = ["date", "phase", "result", "cleanup", "http", "workflow_tree", "submitter_tree",
            "tools_tree", "commit", "fetched", "branch", "user", "run_slug", "duration_s", "error"]
 DEFAULTS = {"timeout_s": 1800, "http_expect": None, "warm_marker": "", "setup": "",
-            "leftover_patterns": ["pw endpoints"], "leftover_commands": {}}
+            "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
+            "leftover_kinds": ["deployments", "services", "pods", "persistentvolumeclaims", "secrets"]}
 
 
 def log(msg):
@@ -103,10 +120,23 @@ class Test:
         data = json.loads(self.path.read_text())
         self.meta = {**DEFAULTS, **data.pop("_test", {})}
         self.inputs = data
-        self.resource = self.lookup("cluster", "resource") or self.lookup("resource")
-        self.scheduler = bool(self.lookup("cluster", "scheduler") or self.lookup("scheduler"))
-        if not self.resource:
-            raise SystemExit(f"{self.id}: no cluster.resource or resource input")
+        resource = self.lookup("cluster", "resource") or self.lookup("resource")
+        k8s_cluster = self.lookup("k8s", "cluster")
+        self.k8s = (isinstance(resource, dict) and resource.get("type") == "kubernetes") or bool(k8s_cluster)
+        if self.k8s:
+            self.cluster = (resource.get("name") if isinstance(resource, dict) else None) or k8s_cluster
+            self.namespace = self.lookup("k8s", "namespace") or ""
+            self.resource = f"kubernetes cluster {self.cluster}"
+            self.scheduler = False
+            if not self.cluster:
+                raise SystemExit(f"{self.id}: kubernetes resource without a name")
+        else:
+            if isinstance(resource, dict):
+                raise SystemExit(f"{self.id}: a resource object must have type \"kubernetes\"")
+            self.resource = resource
+            self.scheduler = bool(self.lookup("cluster", "scheduler") or self.lookup("scheduler"))
+            if not self.resource:
+                raise SystemExit(f"{self.id}: no cluster.resource, resource or k8s.cluster input")
 
     def lookup(self, *keys):
         value = self.inputs
@@ -139,13 +169,76 @@ def resource_active(resource, default_user):
     return False, "not found in pw cluster ls"
 
 
+def kube_cluster(name):
+    r = pw("kube", "ls", "-o", "json")
+    if r.returncode != 0:
+        return None, f"pw kube ls failed: {(r.stderr or r.stdout).strip()[:200]}"
+    for c in parse_json(r.stdout):
+        if c.get("name") == name:
+            return c, "listed"
+    return None, "not found in pw kube ls"
+
+
+def complete_resource(test, cluster):
+    # A kubernetes resource is passed to `pw workflows run` as an object; the test
+    # carries only what is stable across platforms (name, type) and the rest is
+    # filled in from `pw kube ls` here.
+    resource = test.inputs.get("resource")
+    if isinstance(resource, dict):
+        resource.setdefault("name", test.cluster)
+        resource.setdefault("id", cluster.get("id"))
+        resource.setdefault("uri", f"pw://{test.cluster}")
+        resource["type"] = "kubernetes"
+
+
+_kube_ready = {}
+
+
+def kubectl(test):
+    if test.cluster not in _kube_ready:
+        ok = bool(shutil.which("kubectl"))
+        if not ok:
+            log("  kubectl not found; Kubernetes leftovers cannot be checked")
+        else:
+            r = pw("kube", "auth", "--no-context-switch", test.cluster)
+            ok = r.returncode == 0
+            if not ok:
+                log(f"  pw kube auth {test.cluster} failed: {(r.stderr or r.stdout).strip()[:200]}")
+        _kube_ready[test.cluster] = ok
+    if not _kube_ready[test.cluster] or not test.namespace:
+        return None
+    return ["kubectl", "--context", f"pw#{test.cluster}", "-n", test.namespace]
+
+
+def k8s_leftovers(test, slug):
+    k = kubectl(test)
+    if not k:
+        return None
+    r = sh(*k, "get", ",".join(test.meta["leftover_kinds"]), "-o", "name")
+    if r.returncode != 0:
+        log(f"  kubectl get failed: {(r.stderr or r.stdout).strip()[:200]}")
+        return None
+    return [l.strip() for l in r.stdout.splitlines() if slug in l]
+
+
+def k8s_events(test):
+    k = kubectl(test)
+    if not k:
+        return ""
+    r = sh(*k, "get", "events", "--sort-by=.lastTimestamp")
+    return "\n".join(r.stdout.splitlines()[-40:])
+
+
 def stamp(test):
-    m = re.search(r"^\s*branch:\s*['\"]?([\w./-]+)", test.yaml.read_text(), re.M)
-    branch = m.group(1) if m else "canary"
-    fetched = sh("git", "-C", str(REPO), "fetch", "-q", "origin", branch, timeout=120).returncode == 0
-    ref = "FETCH_HEAD" if fetched else "HEAD"
-    if not fetched:
-        log(f"  warning: git fetch origin {branch} failed; stamping from local HEAD")
+    if test.k8s:
+        fetched, ref = True, "HEAD"
+    else:
+        m = re.search(r"^\s*branch:\s*['\"]?([\w./-]+)", test.yaml.read_text(), re.M)
+        branch = m.group(1) if m else "canary"
+        fetched = sh("git", "-C", str(REPO), "fetch", "-q", "origin", branch, timeout=120).returncode == 0
+        ref = "FETCH_HEAD" if fetched else "HEAD"
+        if not fetched:
+            log(f"  warning: git fetch origin {branch} failed; stamping from local HEAD")
     commit = git("rev-parse", "--short", "HEAD")
     if sh("git", "-C", str(REPO), "diff", "--quiet", ref, "--", str(test.yaml)).returncode != 0:
         commit += "-dirty"
@@ -199,26 +292,59 @@ def launch(test, run_name):
     return data.get("run", data)["slug"]
 
 
+def view(slug):
+    r = pw("workflows", "runs", "view", slug, "-o", "json", timeout=90)
+    if r.returncode != 0:
+        log(f"  runs view failed: {(r.stderr or r.stdout).strip()[:200]}")
+        return None
+    try:
+        return parse_json(r.stdout)
+    except ValueError:
+        return {}
+
+
+def describe(data):
+    status = data.get("status", "?")
+    jobs = {k: v.get("status") for k, v in data.get("executedJobs", {}).items() if isinstance(v, dict)}
+    return status, jobs
+
+
 def wait(slug, timeout_s):
     deadline, last, data = time.time() + timeout_s, None, {}
     while time.time() < deadline:
-        r = pw("workflows", "runs", "view", slug, "-o", "json", timeout=90)
-        if r.returncode == 0:
-            try:
-                data = parse_json(r.stdout)
-            except ValueError:
-                data = {}
-            status = data.get("status", "?")
-            jobs = {k: v.get("status") for k, v in data.get("executedJobs", {}).items() if isinstance(v, dict)}
+        current = view(slug)
+        if current is not None:
+            data = current
+            status, jobs = describe(data)
             if (status, jobs) != last:
                 log(f"  run {slug}: {status} {jobs}")
                 last = (status, jobs)
             if status in FINAL_STATUSES:
                 return status, data
-        else:
-            log(f"  runs view failed: {(r.stderr or r.stdout).strip()[:200]}")
         time.sleep(POLL_S)
     return "timeout", data
+
+
+def wait_k8s(slug, timeout_s):
+    # The k8s run streams pod logs for as long as the service lives, so the verdict
+    # comes from the endpoint list while the run is still running; a final status
+    # before that means the deployment failed.
+    deadline, last, data = time.time() + timeout_s, None, {}
+    while time.time() < deadline:
+        current = view(slug)
+        if current is not None:
+            data = current
+            status, jobs = describe(data)
+            if (status, jobs) != last:
+                log(f"  run {slug}: {status} {jobs}")
+                last = (status, jobs)
+            if status in FINAL_STATUSES:
+                return status, None, "", data
+            name, url = endpoint(slug, attempts=1)
+            if name:
+                return status, name, url, data
+        time.sleep(POLL_S)
+    return "timeout", None, "", data
 
 
 def endpoint(slug, attempts=6):
@@ -295,6 +421,30 @@ def teardown(test, slug, endpoint_name):
     return "ok" if not leftovers else "leftover:" + "+".join(leftovers)
 
 
+def teardown_k8s(test, slug):
+    # Cancelling the run is the teardown: its cleanup steps delete the Deployment,
+    # Secret and PVC, and the endpoint deregisters when the sidecar dies. Deleting
+    # the endpoint instead would only make the Deployment restart the sidecar.
+    r = pw("workflows", "runs", "cancel", slug, timeout=90)
+    log(f"  runs cancel {slug}: rc={r.returncode} {(r.stdout + r.stderr).strip()[:120]}")
+    deadline, leftovers, unknown = time.time() + 180, ["unchecked"], False
+    while time.time() < deadline:
+        data = view(slug) or {}
+        status = data.get("status", "?")
+        objects = k8s_leftovers(test, slug)
+        unknown = objects is None
+        leftovers = ([] if status in FINAL_STATUSES else [f"run:{status}"]) + (objects or [])
+        if endpoint(slug, attempts=1)[0]:
+            leftovers.append("endpoint")
+        if not leftovers:
+            break
+        log(f"  waiting for teardown: {leftovers}")
+        time.sleep(15)
+    if leftovers:
+        return "leftover:" + "+".join(leftovers)
+    return "unknown" if unknown else "ok"
+
+
 def append(csv_path, row):
     new = not csv_path.exists()
     with open(csv_path, "a", newline="") as f:
@@ -304,58 +454,86 @@ def append(csv_path, row):
         writer.writerow(row)
 
 
+def verdict(row, test, slug, endpoint_name, url):
+    code = http_status(url)
+    row["http"] = code
+    expect = test.meta["http_expect"]
+    ok = code in expect if expect else 200 <= code < 400
+    row["result"] = "pass" if ok else "fail"
+    if not ok:
+        row["error"] = f"http {code} from {url}"
+    log(f"  endpoint {endpoint_name} {url} -> http {code}")
+
+
 def run_test(test, args, user):
-    lane = "compute" if test.scheduler else "login"
+    if test.k8s:
+        lane = "k8s"
+        cluster, why = kube_cluster(test.cluster)
+        active = cluster is not None
+    else:
+        lane = "compute" if test.scheduler else "login"
+        active, why = resource_active(test.resource, user)
     log(f"=== {test.id} on {test.resource} ({lane} lane)")
-    active, why = resource_active(test.resource, user)
     if not active:
         log(f"  SKIP: resource {test.resource} is not active ({why})")
         return None
+    if test.k8s:
+        complete_resource(test, cluster)
     row = {c: "" for c in COLUMNS}
     row.update(stamp(test))
     row["user"] = user
-    row["phase"] = phase(test)
+    row["phase"] = "" if test.k8s else phase(test)
     row["date"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     log(f"  version {row['workflow_tree']} (submitter {row['submitter_tree']}, tools {row['tools_tree']}) "
         f"commit {row['commit']} phase {row['phase'] or 'n/a'}")
     started, slug, endpoint_name, detail = time.time(), "", None, ""
     try:
-        setup(test)
+        if test.k8s:
+            if test.meta["setup"] or test.meta["warm_marker"]:
+                log("  note: setup and warm_marker need a login node; ignored on the k8s lane")
+        else:
+            setup(test)
         slug = launch(test, f"{test.id} @{row['workflow_tree']}")
         row["run_slug"] = slug
         log(f"  launched run {slug}")
-        status, _ = wait(slug, test.meta["timeout_s"])
-        if status == "timeout":
-            pw("workflows", "runs", "cancel", slug)
-            row["result"], row["error"] = "fail", f"timeout after {test.meta['timeout_s']}s; run canceled"
-        elif status != "completed":
-            summary, detail = errors(slug)
-            row["result"], row["error"] = "fail", f"run {status}: {summary}"
-        else:
-            endpoint_name, url = endpoint(slug)
-            if not endpoint_name:
-                row["result"], row["error"] = "fail", "run completed but no endpoint listed"
+        if test.k8s:
+            status, endpoint_name, url, _ = wait_k8s(slug, test.meta["timeout_s"])
+            if endpoint_name:
+                verdict(row, test, slug, endpoint_name, url)
+            elif status == "timeout":
+                row["result"], row["error"] = "fail", f"no endpoint after {test.meta['timeout_s']}s"
             else:
-                code = http_status(url)
-                row["http"] = code
-                expect = test.meta["http_expect"]
-                ok = code in expect if expect else 200 <= code < 400
-                row["result"] = "pass" if ok else "fail"
-                if not ok:
-                    row["error"] = f"http {code} from {url}"
-                log(f"  endpoint {endpoint_name} {url} -> http {code}")
-        if endpoint_name is None and slug:
-            endpoint_name, _ = endpoint(slug, attempts=1)
+                summary, detail = errors(slug)
+                row["result"], row["error"] = "fail", f"run {status} before the endpoint appeared: {summary}"
+        else:
+            status, _ = wait(slug, test.meta["timeout_s"])
+            if status == "timeout":
+                pw("workflows", "runs", "cancel", slug)
+                row["result"], row["error"] = "fail", f"timeout after {test.meta['timeout_s']}s; run canceled"
+            elif status != "completed":
+                summary, detail = errors(slug)
+                row["result"], row["error"] = "fail", f"run {status}: {summary}"
+            else:
+                endpoint_name, url = endpoint(slug)
+                if not endpoint_name:
+                    row["result"], row["error"] = "fail", "run completed but no endpoint listed"
+                else:
+                    verdict(row, test, slug, endpoint_name, url)
+            if endpoint_name is None and slug:
+                endpoint_name, _ = endpoint(slug, attempts=1)
     except Exception as e:
         row["result"], row["error"] = "fail", str(e).replace("\n", " | ")[:300]
     row["duration_s"] = int(time.time() - started)
     if args.keep:
         row["cleanup"] = "kept"
     elif slug:
-        row["cleanup"] = teardown(test, slug, endpoint_name)
+        row["cleanup"] = teardown_k8s(test, slug) if test.k8s else teardown(test, slug, endpoint_name)
     if row["result"] != "pass" and slug:
         test.logs.mkdir(exist_ok=True)
-        (test.logs / f"{slug}.txt").write_text(detail or errors(slug)[1])
+        text = detail or errors(slug)[1]
+        if test.k8s:
+            text += "\n\n=== kubectl get events (last 40) ===\n" + k8s_events(test)
+        (test.logs / f"{slug}.txt").write_text(text)
     append(test.csv, row)
     log(f"  {row['result'].upper()} cleanup={row['cleanup']} {row['error']}")
     return row
@@ -371,6 +549,10 @@ def main():
     tests = [Test(p) for p in args.tests]
     if args.emit:
         for t in tests:
+            if t.k8s:
+                cluster, _ = kube_cluster(t.cluster)
+                if cluster:
+                    complete_resource(t, cluster)
             print(f"# pw workflows run {t.yaml} -i <this>", file=sys.stderr)
             print(json.dumps(t.inputs, indent=2))
         return 0

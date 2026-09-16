@@ -1,0 +1,45 @@
+{
+  "_test": {
+    "timeout_s": 1200
+  },
+  "k8s": {
+    "cluster": "k3sgpu",
+    "namespace": "alvarok8s",
+    "volumes": {
+      "pvc": "New",
+      "pvc_mount_path": "/root/.ollama",
+      "pvc_storage_size": "20Gi",
+      "pvc_persist": false
+    },
+    "ollama_resources": {
+      "requests": {
+        "memory": "2Gi",
+        "cpu": "2"
+      },
+      "limits": {
+        "memory": "4Gi",
+        "cpu": "4",
+        "select_gpu": "nvidia.com/gpu",
+        "number_of_gpus": 1
+      }
+    },
+    "openwebui_resources": {
+      "requests": {
+        "memory": "2Gi",
+        "cpu": "2"
+      },
+      "limits": {
+        "memory": "4Gi",
+        "cpu": "4"
+      }
+    }
+  },
+  "ollama_k8s": {
+    "image": "ollama/ollama:latest",
+    "image_port": 11434
+  },
+  "openwebui_k8s": {
+    "image": "ghcr.io/open-webui/open-webui:main",
+    "image_port": 8080
+  }
+}

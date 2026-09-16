@@ -1,10 +1,7 @@
 permissions:
   - '*'
-sessions:
-  session:
-    useTLS: false
-    redirect: true
-    useCustomDomain: true
+env:
+  PW_API_KEY: ${PW_API_KEY}
 
 jobs:
   auth_k8s:
@@ -86,9 +83,11 @@ jobs:
             gpu_limits="${{ inputs.k8s.ollama_resources.limits.select_gpu }}: ${{ inputs.k8s.ollama_resources.limits.number_of_gpus }}"
           fi
           # Attach RuntimeClass if it's available and using NVIDIA
-          if kubectl get runtimeclass nvidia &>/dev/null; then
-            echo "nvidia RuntimeClass is available"
-            runtimeClassName="runtimeClassName: nvidia"
+          if ! [ -z "${gpu_limits}" ]; then
+            if kubectl get runtimeclass nvidia &>/dev/null; then
+              echo "nvidia RuntimeClass is available"
+              runtimeClassName="runtimeClassName: nvidia"
+            fi
           fi
 
           if [[ "${{ inputs.k8s.volumes.pvc }}" == "Existing" ]]; then
@@ -207,21 +206,32 @@ jobs:
                       limits:
                         memory: "${{ inputs.k8s.openwebui_resources.limits.memory }}"
                         cpu: "${{ inputs.k8s.openwebui_resources.limits.cpu }}"
-
-          ---
-          # Service for openwebui
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: ${{ needs.prepare_k8s_deployment.outputs.app_name }}-lb
-            namespace: ${{ inputs.k8s.namespace }}
-          spec:
-            selector:
-              app: ${{ needs.prepare_k8s_deployment.outputs.app_name }}-openwebui
-            ports:
-              - protocol: TCP
-                port: ${{ inputs.openwebui_k8s.image_port }}
-                targetPort: ${{ inputs.openwebui_k8s.image_port }}
+                  # Sidecar: the pw client dials out and exposes the service as an endpoint
+                  - name: pw-endpoint
+                    image: ghcr.io/parallelworks/pw-cli:v7.79.0
+                    args:
+                      - endpoints
+                      - http
+                      - --name
+                      - ${{ inputs.openwebui_k8s.name }}-${PW_RUN_SLUG}
+                      - --output
+                      - text
+                      - "${{ inputs.openwebui_k8s.image_port }}"
+                    env:
+                      - name: PW_PLATFORM_HOST
+                        value: "${PW_PLATFORM_HOST}"
+                      - name: PW_API_KEY
+                        valueFrom:
+                          secretKeyRef:
+                            name: ${{ needs.prepare_k8s_deployment.outputs.app_name }}-pw-api-key
+                            key: PW_API_KEY
+                    resources:
+                      requests:
+                        memory: "64Mi"
+                        cpu: "50m"
+                      limits:
+                        memory: "256Mi"
+                        cpu: "500m"
           EOF
       - name: Dry Run Deployment
         early-cancel: any-job-failed
@@ -258,6 +268,16 @@ jobs:
               fi
             done
           fi
+      - name: Create API Key Secret
+        early-cancel: any-job-failed
+        run: |
+          kubectl create secret generic ${{ needs.apply_k8s_deployment.outputs.app_name }}-pw-api-key \
+            --namespace ${{ inputs.k8s.namespace }} \
+            --from-literal=PW_API_KEY="${PW_API_KEY}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        cleanup: |
+          kubectl delete secret ${{ needs.apply_k8s_deployment.outputs.app_name }}-pw-api-key \
+            --namespace ${{ inputs.k8s.namespace }} --ignore-not-found
       - name: Apply Deployment and Service
         run: kubectl apply -f app.yaml
         cleanup: |
@@ -336,14 +356,14 @@ jobs:
       - name: Stream Ollama Logs
         run: |
           kubectl logs -f --selector=app=${{ needs.apply_k8s_deployment.outputs.app_name }} -n ${{ inputs.k8s.namespace }} &
-          ollama_stream_pid=$?
+          ollama_stream_pid=$!
           echo ${ollama_stream_pid} > ollama_stream.pid
         cleanup: kill $(cat ollama_stream.pid)
       - name: Stream OpenWebUI Logs
         early-cancel: any-job-failed
         run: |
-          kubectl logs -f --selector=app=${{ needs.apply_k8s_deployment.outputs.app_name }}-openwebui -n ${{ inputs.k8s.namespace }}
-  create_k8s_session:
+          kubectl logs -f --selector=app=${{ needs.apply_k8s_deployment.outputs.app_name }}-openwebui -n ${{ inputs.k8s.namespace }} --all-containers
+  wait_for_endpoint_k8s:
     needs:
       - prepare_k8s_deployment
     steps:
@@ -358,24 +378,20 @@ jobs:
               echo "Pod is ready"
               break
             fi
-            sleep 2 
+            sleep 2
           done
-      - name: Get Service Name
+      - name: Wait for endpoint
         early-cancel: any-job-failed
         run: |
-          source OUTPUTS
-          echo "service_name=${app_name}-lb" | tee -a $OUTPUTS
-      - name: Expose port
-        early-cancel: any-job-failed
-        uses: parallelworks/update-session
-        with:
-          remotePort: ${{ inputs.openwebui_k8s.image_port }}
-          name: ${{ sessions.session }}
-          targetInfo:
-            name: ${{ inputs.k8s.cluster }}
-            namespace: ${{ inputs.k8s.namespace }}
-            resourceType: services
-            resourceName: ${{ needs.create_k8s_session.outputs.service_name }}
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          endpoint_name="${{ inputs.openwebui_k8s.name }}-${PW_RUN_SLUG}"
+          echo "::notice::Waiting for endpoint ${endpoint_name} to come online"
+          until pw endpoints list | grep -qw "${endpoint_name}"; do
+            echo "$(date) Endpoint ${endpoint_name} not found yet; retrying in 10 seconds"
+            sleep 10
+          done
+          echo "::notice::Endpoint ${endpoint_name} is online"
+          pw endpoints list | grep -w "${endpoint_name}"
 'on':
   execute:
     inputs:
@@ -567,6 +583,10 @@ jobs:
         label: OpenWebUI Settings
         collapsed: true
         items:
+          name:
+            type: string
+            hidden: true
+            default: ollama-openwebui
           image:
             label: OpenWebUI Image
             type: string

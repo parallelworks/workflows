@@ -126,8 +126,7 @@ script builds to reach repo files (including ones composed from variables like
 `"${PW_PARENT_JOB_DIR}/${service_name}"`) must carry that full prefix. Keep
 `yamls/`, `thumbnails/`, and READMEs out of `app/` so runs never materialize them.
 
-**Getting the scripts onto the node — use `parallelworks/checkout`, never base64**
-(reference §10). The repo is fetched from GitHub **at runtime**, so nothing you edit
+**Getting the scripts onto the node — use `parallelworks/checkout`. The repo is fetched from GitHub **at runtime**, so nothing you edit
 locally takes effect until it is pushed. Two modes depending on whether Claude can
 push to the repo:
 1. **Write access (recommended):** ask the user to grant a **deploy key with write
@@ -143,7 +142,9 @@ push to the repo:
 
 Pass `script_submitter`'s inputs **from the matching variant's YAML** (`resource`,
 `use_existing_script`+`script_path`, `scheduler`, `slurm`/`pbs`, and the
-`skip_cleanups_file` wiring — copy the whole `with:` block). Add
+`skip_cleanups_file` wiring — copy the whole `with:` block). `skip_cleanups_file` exists
+only for endpoint workflows (it is what lets the service outlive the run); a plain
+batch job leaves it unset. Add
 `include-workspace: true` on the `compute-clusters` input if the workspace should be
 selectable. The hidden `service.name` input is the **endpoint name prefix** — keep it
 stable (renaming it changes endpoint names users see).

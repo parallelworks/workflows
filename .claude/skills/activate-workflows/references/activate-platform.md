@@ -387,7 +387,10 @@ Submission modes (auto-selected from inputs):
 `use_existing_script:false`) or `use_existing_script:true` + `script_path`; `shebang`
 (default `#!/bin/bash`); `scheduler`, `use_scheduler_agent`; `slurm`/`pbs` groups;
 `define_cleanup_script` + `cleanup_script_path` (cleanup runs on cancel, 300s timeout,
-on the compute node for scheduled jobs). Output → `run.<JOBID>.out` in `rundir`
+on the compute node for scheduled jobs); `skip_cleanups_file` (optional, hidden) — if
+the file exists when the job ends, every cleanup is skipped and the script/job is left
+running. **Only endpoint workflows use it** (`wait_for_endpoint` touches it so the
+service outlives the run); leave it unset for batch jobs. Output → `run.<JOBID>.out` in `rundir`
 (JOBID = the run slug, e.g. `run.my-session-00001.out`).
 
 **Invoke it as a subworkflow** (verified — batch compute, no session):

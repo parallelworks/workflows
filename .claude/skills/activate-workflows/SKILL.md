@@ -114,7 +114,7 @@ Provide the two contract scripts:
 - **`start-template.sh`** — launches the service under
   `pw endpoints run ${pw_endpoints_args} -- <cmd with {port}>`, and **fails loud**:
   if `pw endpoints run` exits without the endpoint registered, exit non-zero so
-  the submitter job fails and the session_runner's cancel-jobs step stops
+  the submitter job fails and the submitter job's cancel-jobs step stops
   `wait_for_endpoint` (copy the tail of `workflows/webshell/app/start-template.sh`).
   Do NOT self-cancel the run with `pw workflows runs cancel` from inside a start
   template.
@@ -219,7 +219,7 @@ resource. If files/processes aren't here, you targeted a different resource — 
 target the resource whose login node *is* this host, or `pw ssh <resource>` to it.
 Logs are always reachable via the API regardless of node:
 ```bash
-pw workflows runs logs   <slug> --job session_runner          # subworkflow steps
+pw workflows runs logs   <slug> --job session_runner          # the submitter job (its name in every YAML here)
 pw workflows runs errors <slug> -o text                       # just the failures
 ```
 

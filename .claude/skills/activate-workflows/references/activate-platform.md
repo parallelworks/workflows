@@ -5,7 +5,7 @@ Everything here was verified against `pw v7.56.0` and the workflows now consolid
 `parallelworks/workflows` repo (one directory per workflow under `workflows/`; version
 suffixes dropped — git tags version the repo; the tutorials live at `tutorials/`).
 Originally verified against the `interactive_session` repo
-(`session_runner/v1.4`, `script_submitter/v3.6`), and live runs on this machine.
+(`script_submitter/v3.6`), and live runs on this machine.
 
 ## Official documentation (authoritative — consult when in doubt)
 
@@ -33,7 +33,8 @@ documented here, **trust the docs and fix this file** (Step 5 of the methodology
 - A web service is exposed as a **`pw` endpoint**: the service side runs
   `pw endpoints run`, which dials out, registers a reverse tunnel, and gets a
   subdomain URL (§12). Every workflow in this repo uses this pattern. (The older
-  platform *tunnel session* mechanism is legacy — §4.)
+  platform *tunnel session* mechanism is legacy; to convert one, follow
+  [session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md).)
 - **Subworkflows** are workflows invoked from a step with `uses:` + `$yaml:`. Reuse
   `script_submitter` (submit a script via SSH/SLURM/PBS) instead of writing launch
   logic yourself; the endpoint registration lives in each workflow's start script.
@@ -288,14 +289,8 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
 
 ---
 
-## 4. `session_runner` subworkflow (LEGACY — start a web service + make a tunnel session)
+## 4. Choosing the deployment variant (`general` / `emed` / `hsp` / `noaa`) — IMPORTANT
 
-Legacy: nothing in this repo uses it (every workflow here is endpoint-pattern, §5).
-It lives in `parallelworks/interactive_session` at
-`workflow/session_runner/v1.4/<deployment>.yaml`, serving the unconverted session
-workflows still there. Kept documented for conversions.
-
-### Choosing the deployment variant (`general` / `emed` / `hsp` / `noaa`) — IMPORTANT
 Do **not** default to `general`. Pick the variant that matches the **Activate platform
 host you are on** (check `pw context list` → the `user@host` / platform host):
 
@@ -316,65 +311,12 @@ the `with:` block you pass differ per variant (e.g. `emed`'s `slurm` has `slurm_
 does NOT catch mismatched fields (unknown fields pass silently, verified 2026-09-16),
 so the mistake surfaces only at run time.
 
-**Invoke it** from a job that depends on your preprocessing:
-```yaml
-session_runner:
-  needs: [preprocessing]
-  ssh:
-    remoteHost: ${{ inputs.resource.ip }}
-  steps:
-    - uses: github/parallelworks/interactive_session@main
-      early-cancel: any-job-failed
-      with:
-        $yaml: workflow/session_runner/v1.4/general.yaml
-        session: ${{ sessions.session }}
-        resource: ${{ inputs.resource }}
-        cluster:
-          scheduler: ${{ inputs.scheduler }}            # false ⇒ run on login node
-          slurm: { is_enabled: ..., partition: ..., time: ..., scheduler_directives: ... }
-          pbs:   { is_enabled: ..., scheduler_directives: ... }
-        service:
-          start_service_script: ${PW_PARENT_JOB_DIR}/<service-dir>/start-template-v3.sh   # interactive_session layout
-          controller_script:    ${PW_PARENT_JOB_DIR}/<service-dir>/controller-v3.sh
-          inputs_sh:            ${PW_PARENT_JOB_DIR}/inputs.sh
-          slug: ""                                      # URL path after the host; "" = root app
-          rundir: ${PW_PARENT_JOB_DIR}
-```
-
-**Inputs:** `session`, `resource`, `cluster.{scheduler,slurm,pbs}`,
-`service.{start_service_script, controller_script, inputs_sh, slug, rundir}`.
-
-**What it does (verified flow):**
-1. Runs `inputs.sh` + your **controller_script** on the controller/login node (setup,
-   installs — this node has internet).
-2. Builds the start script: prepends port allocation (`service_port=$(pw agent
-   open-port)` if unset), writes `SESSION_PORT` + `HOSTNAME`, installs a cleanup
-   trap that runs `cancel.sh`, `touch job.started`, then appends your
-   **start_service_script**. Submits it via `script_submitter/v3.6` (SSH if
-   `scheduler:false`, else SLURM/PBS).
-3. `wait_for_job_start` waits for `job.started`. For `scheduler:false` it forces
-   `HOSTNAME=localhost` (service shares the login node).
-4. `create_session` curls `http://$HOSTNAME:$SESSION_PORT` until it answers, then
-   `parallelworks/update-session` (target=`resource.id`, name=`session`, slug,
-   remoteHost, remotePort) → "Session is ready".
-5. On cancel/failure, the trap runs `cancel.sh` and kills the process group.
-
-**Your contract (the two scripts you provide):**
-- `controller.sh` — idempotent install/setup on the login node. All `inputs.sh`
-  vars are available.
-- `start-template.sh` — must:
-  - bind the service on **`${service_port}`** and **host `0.0.0.0`** (so the tunnel reaches it),
-  - write `${PW_PARENT_JOB_DIR}/cancel.sh` (commands that stop the service),
-  - keep the job alive (background the server + `sleep inf`, or run it in foreground).
-- `inputs.sh` — your preprocessing job writes it (PW vars + form values), one
-  `export VAR="..."` per line. `session_runner` sources it before both scripts.
-
 ---
 
 ## 5. `script_submitter` subworkflow (run a script on a resource)
 
 Path: `workflows/script_submitter/v3.6/<deployment>.yaml`. Marketplace slug:
-`marketplace/script_submitter/v3.6`. Used standalone, or internally by `session_runner`.
+`marketplace/script_submitter/v3.6`.
 **Pick the deployment variant (`general`/`emed`/`hsp`/`noaa`) by the same host rule as
 §4**, and match the `slurm`/`pbs` `with:` block to that variant.
 
@@ -453,7 +395,8 @@ live there with `squeue` / `sinfo` / `sacct`. On cancel, `script_submitter` runs
 `scancel` (and your cleanup script, if any, on the compute node).
 
 **Use it directly** when your task is "run this script/sim on a cluster" with no web
-session (batch compute). Use **`session_runner`** when you also need a live web UI.
+session (batch compute). When you also need a live web UI, keep the same submitter and
+wrap the start script in `pw endpoints run` — the endpoint pattern (§12).
 
 ---
 
@@ -469,7 +412,7 @@ success path hides this because `wait_for_endpoint` cancels the whole subworkflo
 setsid rewrite (#4) had dropped it from `general`/`emed` `ssh_job` and `noaa`
 `scheduler_agent_job`; restored on 2026-09-09. Symptom to recognize: error annotation in
 `pw workflows runs errors` but the run never leaves `running`, and `ps` on the node shows
-`tail -f run.<job>.out` under `subworkflows/session_runner/`.
+`tail -f run.<job>.out` under `subworkflows/<submitter job>/` (§7).
 
 ## 6. `pw` CLI reference (verified)
 
@@ -506,8 +449,8 @@ pw workflows runs cancel <slug>            # triggers cleanup trap → cancel.sh
 pw workflows runs clean [filters]
 ```
 `runs logs`/`errors` work from any host (pulled via API) — your first stop when the
-service node isn't local. `--job session_runner` / `--job create_session` narrow to
-the interesting subworkflow jobs. Step logs may 404 for steps that haven't produced
+service node isn't local. `--job <job name>` narrows to one job (the
+submitter job's name is in §7). Step logs may 404 for steps that haven't produced
 output yet — harmless.
 
 ### Endpoints (how every workflow here serves)
@@ -528,8 +471,7 @@ pw sessions connect <name>         # local port-forward
 pw sessions stop <name>            # may 404 if the run already tore it down
 ```
 A running tunnel session shows `STATUS=running`, `TYPE=tunnel`, `REMOTE HOST`,
-`REMOTE PORT`. `pw sessions create --type tunnel` is the manual equivalent of what
-`session_runner` automates.
+`REMOTE PORT`.
 
 ### Other useful
 ```bash
@@ -584,8 +526,8 @@ Contents after an endpoint-pattern launch (all verified on live runs):
 ├── logs/<job>/step_N/script-unstable.sh   # the RENDERED step: every ${{ input }} as its
 │                                          #   literal value — read this first when a form
 │                                          #   value seems ignored
-└── subworkflows/session_runner/step_0/…   # script_submitter subworkflow logs (the job
-                                           #   is still *named* session_runner for history)
+└── subworkflows/session_runner/step_0/…   # script_submitter subworkflow logs — every YAML
+                                           #   here names its submitter job `session_runner`
 ```
 Debug checklist on the service node: `cat run.<JOBID>.out`, the rendered step scripts,
 `ps -x | grep <your-process>`, `pw endpoints list`, then `pw workflows runs errors <slug>`.
@@ -700,7 +642,7 @@ remedies, both used in the repo:
   its served HTML / asset URLs) serves correctly under the base path with no base-URL
   config and no nginx proxy — WebSockets included. (Verified with Hermes' dashboard.)
 
-The **`slug`** you pass to `session_runner` is the path appended after the session URL:
+The **`--slug`** you pass to `pw endpoints run` is the path appended after the endpoint URL:
 `lab` for JupyterLab, `""` for an app that serves correctly at the root, or even a query
 string like `?folder=...` (openvscode). Apps that serve everything with **relative**
 paths need no base path — use `slug: ""` and skip the proxy. Check the platform
@@ -831,8 +773,8 @@ command instead: `pw ssh c "echo <b64> | base64 -d | curl --data-binary @- http:
 **Upgrading a v4 workflow to this pattern? Follow the step-by-step playbook in
 [session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md)** (distilled from the
 openvscode and jupyterlab conversions). Every workflow in this repo uses
-**endpoint sessions** (the legacy `sessions:` + `session_runner` tunnel pattern lives
-only in `interactive_session`): the service side runs
+**endpoint sessions** (the legacy `sessions:` tunnel pattern lives only in
+`interactive_session`): the service side runs
 `pw endpoints run`/`http`, which dials out, registers a reverse tunnel, and gets a
 subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query string like
 `?folder=/dir` or a path like `lab`). Key facts, all verified on live runs:
@@ -900,7 +842,7 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   the same value, but prefer `PW_RUN_SLUG` — the name says what it is.) It is also the
   argument `pw workflows runs cancel` takes. Start templates must NOT self-cancel the
   run with it (removed everywhere — it marked failed runs as canceled): on failure they
-  exit non-zero, the submitter job fails, and the session_runner's cancel-jobs step
+  exit non-zero, the submitter job fails, and the submitter job's cancel-jobs step
   stops `wait_for_endpoint`. Both vars reach scheduled
   compute nodes via the `inputs.sh` `env | grep '^PW_'` capture.
 
@@ -935,9 +877,6 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   subsequent `run` executes that empty definition instead of erroring. The Bash shell
   cwd is not guaranteed between tool calls — pass the YAML as an **absolute path**, and
   recover with `pw workflows update <name> --yaml <abs-path>`.
-- **Pin a service port:** export `service_port` in `inputs.sh` and `session_runner`
-  uses it (it only runs `pw agent open-port` when unset) — handy when another
-  service must reach it at a known port.
 - **Long synchronous requests through the session tunnel can `502 Proxy Error`**
   (~a minute+ exceeds the proxy timeout). Stream to keep bytes flowing, or use an
   async job+poll pattern for long work.

@@ -355,6 +355,16 @@ non-repetitive; point at an existing tutorial instead.
   the resource namespace, cluster and `PW_USER`), keep `--name <service>-${PW_RUN_SLUG}` for lookup,
   and check `pw endpoints list` for an endpoint already serving `https://<label>.`
   before launching (see `workflows/openvscode/app/start-template.sh`).
+- **Login nodes that block repo.anaconda.com (hsp `jean`) need a prebuilt conda env:**
+  a download that runs under `nohup` with its output sent to a file is never checked, so
+  the failure surfaces 80 lines later as "command not found". Check every download and
+  installer, and ship the fallback as a conda-pack tarball on ghcr
+  (`workflows/jupyterlab/build-conda-artifact.sh`, pulled with `oras_pull_file`). Packing
+  a Miniconda root prefix works (`--exclude 'pkgs/*' --exclude 'envs/*'`); run the
+  generated `conda-unpack` as `<prefix>/bin/python <prefix>/bin/conda-unpack` because its
+  `#!/usr/bin/env python` shebang finds no `python` on RHEL 8 (verified in a Rocky 8
+  container). Build with `CONDA_OVERRIDE_GLIBC=<target>` and `PIP_ONLY_BINARY=:all:`, and
+  whitelist pure-Python sdists (`PIP_NO_BINARY=jupyterlab-slurm`) that publish no wheel.
 - **`oras pull` says `denied` for a public package:** a stale ghcr login in the
   user's `~/.docker/config.json` on the cluster is being sent. `tools/oras/libs.sh`
   pulls anonymously first for this reason — reuse it instead of calling oras directly.

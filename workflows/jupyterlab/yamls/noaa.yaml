@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: fix-miniconda-issue-2
+          branch: canary
           sparse_checkout:
             - workflows/jupyterlab/app
             - tools/oras

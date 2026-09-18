@@ -83,7 +83,7 @@ jobs:
   librechat_preprocessing:
     needs:
       - github_checkout
-    working-directory: ${PW_PARENT_JOB_DIR}/librechat
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/librechat
     ssh:
       remoteHost: ${{ inputs.librechat_resource.ip }}
     steps:
@@ -212,7 +212,7 @@ jobs:
           echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
 
   librechat_session_runner:
-    working-directory: ${PW_PARENT_JOB_DIR}/librechat
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/librechat
     needs:
       - librechat_preprocessing
     ssh:
@@ -270,7 +270,7 @@ jobs:
           exit 1
 
   librechat_wait_for_endpoint:
-    working-directory: ${PW_PARENT_JOB_DIR}/librechat
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/librechat
     needs:
       - librechat_preprocessing
     ssh:
@@ -299,7 +299,7 @@ jobs:
   manager_preprocessing:
     needs:
       - github_checkout
-    working-directory: ${PW_PARENT_JOB_DIR}/manager
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/manager
     ssh:
       remoteHost: ${{ inputs.librechat_resource.ip }}
     steps:
@@ -387,7 +387,7 @@ jobs:
           echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
 
   manager_session_runner:
-    working-directory: ${PW_PARENT_JOB_DIR}/manager
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/manager
     needs:
       - manager_preprocessing
     ssh:
@@ -434,7 +434,7 @@ jobs:
           exit 1
 
   manager_wait_for_endpoint:
-    working-directory: ${PW_PARENT_JOB_DIR}/manager
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/manager
     needs:
       - manager_preprocessing
     ssh:
@@ -463,7 +463,7 @@ jobs:
   langflow_preprocessing:
     needs:
       - github_checkout
-    working-directory: ${PW_PARENT_JOB_DIR}/langflow
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/langflow
     ssh:
       remoteHost: ${{ inputs.langflow_resource.ip }}
     steps:
@@ -577,7 +577,7 @@ jobs:
           echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
 
   langflow_session_runner:
-    working-directory: ${PW_PARENT_JOB_DIR}/langflow
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/langflow
     needs:
       - langflow_preprocessing
     ssh:
@@ -624,7 +624,7 @@ jobs:
           exit 1
 
   langflow_wait_for_endpoint:
-    working-directory: ${PW_PARENT_JOB_DIR}/langflow
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/langflow
     needs:
       - langflow_preprocessing
     ssh:

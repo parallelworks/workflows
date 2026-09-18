@@ -508,8 +508,7 @@ jobs:
       rundir:
         label: Run Directory
         type: string
-        default: ${PWD}
-        tooltip: The directory in which the script will be executed. Defaults to the job’s current working directory ($PWD).
+        tooltip: The directory in which the script will be executed. Leave blank to use the job's own directory.
       use_existing_script:
         type: boolean
         default: false

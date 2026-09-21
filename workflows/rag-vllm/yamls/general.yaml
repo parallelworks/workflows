@@ -22,7 +22,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: update-chat-template-rag-vllm
           sparse_checkout:
             - workflows/rag-vllm/app
       - name: Create Inputs

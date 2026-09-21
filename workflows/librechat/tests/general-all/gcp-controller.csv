@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-09-21T11:47:45Z,partial,pass,ok,43ffbb3,572f319,c193971,f4bcbff,f4bcbff,workdir-env-expressions,alvaro,just-kangaroo,94,

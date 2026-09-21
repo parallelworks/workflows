@@ -5,19 +5,22 @@ env:
   PW_API_KEY: ${PW_API_KEY}
 
 jobs:
-  check_endpoint_health:
+  wait_for_endpoint:
     ssh:
       remoteHost: ${{ inputs.host }}
     steps:
-      - name: Check endpoint health
+      - name: Wait for endpoint
         run: |
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           endpoint_name="${{ inputs.endpoint_name }}"
+          echo "::notice::Waiting for endpoint ${endpoint_name} to come online"
+          # Match the name column exactly: grep -w treats a dash as a word boundary, so
+          # a short name would accept any longer endpoint that starts with it.
+          until pw endpoints list | awk -F'\t' '{print $1}' | grep -qxF "${endpoint_name}"; do
+            echo "$(date) Endpoint ${endpoint_name} not found yet; retrying in 10 seconds"
+            sleep 10
+          done
           url=$(pw endpoints list | awk -F'\t' -v name="${endpoint_name}" '$1 == name {print $3}')
-          if [ -z "${url}" ]; then
-            echo "::error title=Error::Endpoint ${endpoint_name} is not listed"
-            exit 1
-          fi
           # Path-based endpoints (--no-subdomain) are listed as a path, not a URL
           case "${url}" in
             /*) url="https://${PW_PLATFORM_HOST}${url}" ;;
@@ -35,7 +38,7 @@ jobs:
             echo "::error title=Error::PW_API_KEY is not set; cannot probe ${probe_url%%\?*}"
             exit 1
           fi
-          echo "::notice::Checking that ${probe_url%%\?*} answers"
+          echo "::notice::Endpoint ${endpoint_name} is listed; checking that ${probe_url%%\?*} answers"
           started=$(date +%s)
           while :; do
             resp=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time ${{ inputs.max_time }} -H "Authorization: Bearer ${PW_API_KEY}" "${probe_url}")
@@ -46,6 +49,11 @@ jobs:
             case "${code}" in
               ${{ inputs.healthy }})
                 echo "::notice::Endpoint ${endpoint_name} is healthy: ${seen} from ${probe_url%%\?*} after ${elapsed}s"
+                skip_file="${{ inputs.skip_cleanups_file }}"
+                case "${skip_file}" in
+                  ''|undefined) ;;
+                  *) touch "${skip_file}"; sleep 2 ;;
+                esac
                 exit 0
                 ;;
             esac
@@ -55,12 +63,10 @@ jobs:
             echo "$(date) ${seen} from ${probe_url%%\?*} after ${elapsed}s; retrying in 5 seconds"
             sleep 5
           done
-          if [ "${{ inputs.on_failure }}" = delete ]; then
-            echo "::error title=Error::Endpoint ${endpoint_name} is unhealthy (${seen} from ${probe_url%%\?*} after ${elapsed}s); deleting it"
-            pw endpoints delete "${endpoint_name}"
-          else
-            echo "::error title=Error::Endpoint ${endpoint_name} is unhealthy (${seen} from ${probe_url%%\?*} after ${elapsed}s)"
-          fi
+          # No skip file was written, so the caller's script submitter (cancelled by
+          # early-cancel when this job fails) still owns the cleanup and tears the
+          # service down; on Kubernetes the log-stream step's cleanups do the same.
+          echo "::error title=Error::Endpoint ${endpoint_name} is unhealthy (${seen} from ${probe_url%%\?*} after ${elapsed}s)"
           exit 1
 
 'on':
@@ -76,6 +82,12 @@ jobs:
         optional: true
         default: ''
         tooltip: IP of the login node (inputs.cluster.resource.ip); leave empty to probe from the workspace (Kubernetes)
+      skip_cleanups_file:
+        label: Skip-cleanups file
+        type: string
+        optional: true
+        default: ''
+        tooltip: Touched once the endpoint is healthy so the script submitter leaves the service running; leave empty on Kubernetes
       healthy:
         label: Healthy status pattern
         type: string
@@ -85,7 +97,7 @@ jobs:
         label: Retry budget (seconds)
         type: number
         default: 120
-        tooltip: How long to keep probing every 5 seconds before declaring the endpoint unhealthy
+        tooltip: How long to keep probing every 5 seconds once the endpoint is listed before declaring it unhealthy
       path:
         label: Path to probe
         type: string
@@ -96,12 +108,3 @@ jobs:
         label: Per-request timeout (seconds)
         type: number
         default: 20
-      on_failure:
-        label: On failure
-        type: dropdown
-        default: delete
-        options:
-          - value: delete
-            label: Delete the endpoint (pw endpoints delete) and fail the run
-          - value: fail
-            label: Fail the run only (Kubernetes - deleting the endpoint would just restart the sidecar)

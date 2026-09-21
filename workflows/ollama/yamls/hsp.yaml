@@ -194,6 +194,8 @@ jobs:
           cat "workflows/ollama/${service_impl}/start-template.sh" >> ./start-service-${PW_JOB_ID}.sh
           echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
           echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+          endpoint_name="$(printf '%s' '${{ inputs.service.endpoint_name }}' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
+          echo "ENDPOINT_NAME=${endpoint_name:-${{ inputs.service.name }}-${PW_RUN_SLUG}}" | tee -a $OUTPUTS
 
   session_runner:
     needs:
@@ -248,78 +250,18 @@ jobs:
     steps:
       - name: Wait for endpoint
         early-cancel: any-job-failed
-        run: |
-          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          # An endpoint name becomes a DNS label, so pw endpoints rejects anything
-          # outside [a-z0-9-] - one uppercase letter is enough to fail the launch.
-          # Fold it here rather than leaving that to the operator, with the same
-          # fold the Create Inputs step used, or this loop waits for a name that
-          # was never registered.
-          endpoint_name="$(printf '%s' '${{ inputs.service.endpoint_name }}' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
-          if [ -z "${endpoint_name}" ]; then
-            endpoint_name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
-          fi
-          echo "::notice::Waiting for endpoint ${endpoint_name} to come online"
-          # grep -w treats a dash as a word boundary, so a short name matches any
-          # longer endpoint starting with it: a run asking for "ollama" accepts a
-          # running "ollama-gguf-container-..." as its own, cancels its script
-          # submitter and finishes green having served nothing. Match the name
-          # column exactly.
-          until pw endpoints list | awk '{print $1}' | grep -qxF "${endpoint_name}"; do
-            echo "$(date) Endpoint ${endpoint_name} not found yet; retrying in 10 seconds"
-            sleep 10
-          done
-          echo "::notice::Endpoint ${endpoint_name} is online"
-          touch ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
-          sleep 2
+        uses: github/parallelworks/workflows@dev
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ needs.preprocessing.outputs.ENDPOINT_NAME }}
+          host: ${{ inputs.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          budget: 300
       - name: Cancel Script Submitter
         uses: parallelworks/cancel-jobs
         with:
           jobs:
             - session_runner
-      - name: Check endpoint health
-        run: |
-          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          endpoint_name="$(printf '%s' '${{ inputs.service.endpoint_name }}' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
-          if [ -z "${endpoint_name}" ]; then
-            endpoint_name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
-          fi
-          url=$(pw endpoints list | awk -F'\t' -v name="${endpoint_name}" '$1 == name {print $3}')
-          if [ -z "${url}" ]; then
-            echo "::error title=Error::Endpoint ${endpoint_name} is no longer listed"
-            exit 1
-          fi
-          probe_url="${url}"
-          # Anonymous requests never get past the platform's login redirect (307),
-          # so the probe carries the run's key: the answer is then the service's own,
-          # and a tunnel with nothing listening behind it answers 503.
-          if [ -z "${PW_API_KEY}" ]; then
-            echo "::error title=Error::PW_API_KEY is not set; cannot probe ${probe_url%%\?*}"
-            exit 1
-          fi
-          echo "::notice::Checking that ${probe_url%%\?*} answers"
-          started=$(date +%s)
-          while :; do
-            resp=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 20 -H "Authorization: Bearer ${PW_API_KEY}" "${probe_url}")
-            code="${resp%% *}"
-            location="${resp#* }"
-            seen="HTTP ${code}${location:+ -> ${location%%\?*}}"
-            elapsed=$(( $(date +%s) - started ))
-            case "${code}" in
-              2*|3*)
-                echo "::notice::Endpoint ${endpoint_name} is healthy: ${seen} from ${probe_url%%\?*} after ${elapsed}s"
-                exit 0
-                ;;
-            esac
-            if [ "${elapsed}" -ge 300 ]; then
-              break
-            fi
-            echo "$(date) ${seen} from ${probe_url%%\?*} after ${elapsed}s; retrying in 5 seconds"
-            sleep 5
-          done
-          echo "::error title=Error::Endpoint ${endpoint_name} is unhealthy (${seen} from ${probe_url%%\?*} after ${elapsed}s); deleting it"
-          pw endpoints delete "${endpoint_name}"
-          exit 1
 
 'on':
   execute:

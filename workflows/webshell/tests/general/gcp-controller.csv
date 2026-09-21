@@ -1,3 +1,4 @@
 date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-09-11T16:13:39Z,cold,pass,ok,307,f79041c,436820d,e7b718b,ae7a06f,ae7a06f,tests,alvaro,smiling-trout,66,
 2026-09-21T07:49:28Z,cold,pass,ok,,11e06d4,436820d,8e2818b,6f42902-dirty,6f42902,test-dev,alvaro,assured-sheep,31,
+2026-09-21T10:15:50Z,warm,pass,ok,,4470a2e,436820d,9b833fc,aa37094-dirty,5e96588,dev,alvaro,touching-mole,33,

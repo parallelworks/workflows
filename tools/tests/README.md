@@ -38,13 +38,13 @@ The runner picks the lane from the inputs:
 | k8s | `resource` is an object with `"type": "kubernetes"` (hybrid `*_k8s.yaml`) or the inputs carry `k8s.cluster` (standalone `k8s.yaml`) | the run is still `running` when its `wait_for_endpoint_k8s` job completes and an endpoint named `*-<run-slug>` is listed | `pw workflows runs cancel`; leftovers are Kubernetes objects |
 
 The runner never probes the endpoint URL. **Checking that the endpoint is healthy is
-the workflow's responsibility**: the last step of every `wait_for_endpoint` job sends
-an authenticated request to the listed URL (with the run's `PW_API_KEY`, since an
-anonymous request only ever sees the platform's `307` login redirect), retries for
-the budget that workflow chose, and on failure deletes the endpoint and fails the
-run (on Kubernetes it fails the run, whose cleanups tear the deployment down). A run
-that completes has therefore already proven its URL answers; the runner only checks
-that the run and the listing agree.
+the workflow's responsibility**: every `wait_for_endpoint` job calls the
+`wait_for_endpoint` subworkflow, which probes the listed URL with the run's
+`PW_API_KEY` (an anonymous request only sees the platform's `307` login redirect),
+retries for the budget that workflow chose, and on failure fails the run so the
+submitter's cleanup (or the Kubernetes cleanups) tears the service down. A run that
+completes has therefore already proven its URL answers; the runner only checks that
+the run and the listing agree.
 
 ## The `_test` object
 

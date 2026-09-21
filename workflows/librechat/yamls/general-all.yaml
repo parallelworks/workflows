@@ -48,7 +48,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: workdir-env-expressions
           sparse_checkout:
             - workflows/librechat/${{ inputs.container_runtime }}
             - tools/oras
@@ -62,7 +62,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: workdir-env-expressions
           sparse_checkout:
             - workflows/librechat/${{ inputs.container_runtime }}
             - tools/oras
@@ -75,7 +75,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: workdir-env-expressions
           sparse_checkout:
             - tools/oras
             - workflows/langflow-singularity/app
@@ -190,7 +190,7 @@ jobs:
       remoteHost: ${{ inputs.librechat_resource.ip }}
     steps:
       - name: Librechat Session Runner
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@workdir-env-expressions
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
@@ -244,7 +244,7 @@ jobs:
     steps:
       - name: Wait for endpoint
         early-cancel: any-job-failed
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@workdir-env-expressions
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: librechat-${PW_RUN_SLUG}
@@ -335,7 +335,7 @@ jobs:
       remoteHost: ${{ inputs.librechat_resource.ip }}
     steps:
       - name: Manager Session Runner
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@workdir-env-expressions
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
@@ -378,7 +378,7 @@ jobs:
     steps:
       - name: Wait for endpoint
         early-cancel: any-job-failed
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@workdir-env-expressions
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: librechat-manager-${PW_RUN_SLUG}
@@ -477,7 +477,7 @@ jobs:
       remoteHost: ${{ inputs.langflow_resource.ip }}
     steps:
       - name: Session Runner
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@workdir-env-expressions
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
@@ -520,7 +520,7 @@ jobs:
     steps:
       - name: Wait for endpoint
         early-cancel: any-job-failed
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@workdir-env-expressions
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: langflow-${PW_RUN_SLUG}

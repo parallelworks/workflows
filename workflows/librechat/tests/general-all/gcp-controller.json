@@ -19,5 +19,5 @@
   "librechat_cluster": { "scheduler": false },
   "langflow_cluster": { "scheduler": false },
   "librechat": { "dir": "${HOME}/pw/LibreChat", "domain_client": "ACTIVATE" },
-  "langflow": { "enable_proxy": false, "enable_hftei": false, "proxy_dir": "" }
+  "langflow": { "enable_proxy": false, "enable_hftei": false, "proxy_dir": "${HOME}/pw/langflow_proxy" }
 }

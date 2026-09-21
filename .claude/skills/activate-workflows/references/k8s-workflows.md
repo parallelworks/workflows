@@ -78,14 +78,15 @@ where `pw` and `kubectl` are installed.
    health-check lines are in the run log). Every apply step has a `cleanup:` that
    deletes what it created; cleanups run in reverse step order (Deployment → Secret →
    PVC).
-5. **`wait_for_endpoint_k8s`** — waits for the `pod.running` marker, then calls the
-   `wait_for_endpoint` subworkflow with no `host` (it probes from the workspace) and no
-   skip file: it polls `pw endpoints list` for the name and probes the URL until the
-   service answers. On failure it does **not** call `pw endpoints delete` — the
-   Deployment would just restart the sidecar — the job fails, the log-stream step's
-   `early-cancel: any-job-failed` ends the apply job, whose cleanups delete the
-   Deployment, and the endpoint deregisters with the sidecar. In every verified run the
-   endpoint was listed within seconds of the pod going Ready.
+5. **`wait_for_endpoint_k8s`** — waits for the `pod.running` marker, then polls
+   `pw endpoints list` for the name and prints its URL, then **checks the endpoint is
+   healthy** (`Check endpoint health`: an authenticated GET to the listed URL must
+   return a healthy status within the budget). On failure it does **not** call
+   `pw endpoints delete` — the Deployment would just restart the sidecar — it fails
+   the job: the log-stream step's `early-cancel: any-job-failed` ends the apply job,
+   whose cleanups delete the Deployment, and the endpoint deregisters with the
+   sidecar. In every verified run the endpoint was listed within seconds of the pod
+   going Ready.
 
 **Lifecycle.** The run stays `running`. **Cancelling the run is the teardown**: the
 cleanups delete Deployment, Secret and PVC (unless `pvc_persist`), and the endpoint

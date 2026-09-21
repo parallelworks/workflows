@@ -38,7 +38,6 @@ workflows/<name>/<impl>/     # multi-implementation workflows use impl subdirs i
 workflows/<name>/            # README + build tooling (defs, build-container.sh)
 workflows/<name>/thumbnails/ # marketplace thumbnails (one per registered variant look)
 workflows/script_submitter/v3.6/  # shared subworkflow: SLURM/PBS/SSH script submission
-workflows/wait_for_endpoint/      # shared subworkflow: wait for the endpoint, probe its URL, release the submitter
 tools/oras, tools/utils      # shared runtime tools, referenced as tools/... from run dirs
 workflows/<name>/tests/<variant>/  # end-to-end tests: <test>.json form inputs + <test>.csv results
 tools/tests/                 # the test runner (run-workflow-test.py) and its README
@@ -62,17 +61,15 @@ Every workflow here serves through a **`pw` endpoint** (`pw endpoints list`) nam
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through
-`workflows/script_submitter/v3.6/<variant>.yaml`, and a `wait_for_endpoint` job calls
-the `wait_for_endpoint` subworkflow (`workflows/wait_for_endpoint/`): it waits until
-the endpoint is listed, **probes its URL until the service answers**, then touches the
-`SKIP_CLEANUP` file; the job cancels the submitter and the run completes while the
-service outlives it. **The workflow is responsible for checking that the endpoint is
-healthy before it exits.** The probe carries the run's `PW_API_KEY` (an anonymous
-request only sees the platform's `307` login redirect; with the key the service's own
-status comes back, `503` while nothing listens behind the tunnel yet). If the service
-never answers within the budget the wait job fails without touching the skip file, so
-the submitter's cleanup tears the job down and the run ends in error. Which HTTP codes
-count as healthy and how long to retry are set per workflow through the call's inputs.
+`workflows/script_submitter/v3.6/<variant>.yaml`, and a `wait_for_endpoint` job
+confirms the endpoint is listed **and that its URL answers**; the run then completes
+and the service outlives it. **The workflow is responsible for checking that the
+endpoint is healthy before it exits**: the job's last step, `Check endpoint health`,
+probes the listed URL with the run's `PW_API_KEY` (an anonymous request only sees the
+platform's `307` login redirect; through the key the service's own status comes back,
+`503` while nothing listens behind the tunnel yet), retries for a per-workflow budget,
+and otherwise runs `pw endpoints delete` and fails the run. Which HTTP codes count as
+healthy and how long to retry are decided per workflow, in that step.
 
 **Kubernetes** (`yamls/k8s.yaml` = k8s-only example, `yamls/general_k8s.yaml` = hybrid):
 the same endpoint, registered by a `pw-cli` sidecar inside the pod; the run stays alive
@@ -116,13 +113,12 @@ To convert an older workflow to this pattern, follow
 - Endpoint names must be lowercase `[a-z0-9-]`. `<service.name>-${PW_RUN_SLUG}` already
   is; a name that comes from a form input must be folded before it reaches
   `pw endpoints` — see the `endpoint_name` input in `workflows/ollama/yamls/general.yaml`.
-- The `wait_for_endpoint` job is two steps: the `wait_for_endpoint` subworkflow
-  (`uses: github/parallelworks/workflows@canary`,
-  `$yaml: workflows/wait_for_endpoint/general.yaml`, with `early-cancel: any-job-failed`)
-  and `parallelworks/cancel-jobs` on the submitter. Pass `endpoint_name`, `host` (the
-  login-node IP) and `skip_cleanups_file`; set `healthy`, `budget` and `path` per service
-  (inputs and how to choose them: `workflows/wait_for_endpoint/README.md`). On Kubernetes
-  keep the `pod.running` marker step first and omit `host` and `skip_cleanups_file`.
+- Every `wait_for_endpoint` job ends with the `Check endpoint health` step (copy it from
+  `workflows/jupyterlab/yamls/general.yaml`). Keep its shape; adapt only the healthy
+  status pattern, the retry budget and, for API servers, the probed path. Path-based
+  endpoints (`--no-subdomain`) list a path, which the step prefixes with
+  `https://${PW_PLATFORM_HOST}`. On Kubernetes the step fails the run instead of
+  deleting the endpoint (the Deployment would just restart the sidecar).
 - Multi-implementation workflows select their script subdir via a runtime input
   (`container_runtime`, `service.container_runtime`, `service.name`): the input
   **values must match the impl subdirectory names** under `workflows/<name>/`.

@@ -2,5 +2,3 @@ date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fe
 2026-09-11T16:25:58Z,cold,fail,,,9b62364,436820d,e7b718b,ae7a06f,ae7a06f,tests,alvaro,,1,launch failed: 2026-09-11T18:25:59+02:00 [ERROR] Missing required fields: AI allocation
 2026-09-11T16:38:34Z,cold,pass,ok,307,9b62364,436820d,e7b718b,ae7a06f,ae7a06f,tests,alvaro,eminent-kite,34,
 2026-09-21T07:56:39Z,cold,pass,ok,,70e6154,436820d,8e2818b,6f42902-dirty,6f42902,test-dev,alvaro,optimum-skink,31,
-2026-09-21T10:18:19Z,warm,pass,ok,,2f34633,436820d,9b833fc,aa37094-dirty,5e96588,dev,alvaro,usable-piranha,33,
-2026-09-21T10:29:15Z,warm,pass,ok,,2f34633,436820d,9b833fc,ad6e4a1-dirty,5e96588,dev,alvaro,dashing-kodiak,32,

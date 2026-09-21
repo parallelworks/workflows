@@ -8,6 +8,3 @@ date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fe
 2026-09-21T07:21:30Z,warm,pass,ok,307,f78808c,436820d,8e2818b,6f42902-dirty,6f42902,test-dev,alvaro,helping-sailfish,31,
 2026-09-21T07:48:50Z,warm,pass,ok,,f78808c,436820d,8e2818b,6f42902-dirty,6f42902,test-dev,alvaro,thorough-chamois,31,
 2026-09-21T08:08:55Z,warm,pass,ok,,f78808c,436820d,8e2818b,6f42902-dirty,6f42902,test-dev,alvaro,devoted-goshawk,33,
-2026-09-21T10:15:12Z,warm,pass,ok,,608105e,436820d,9b833fc,aa37094-dirty,5e96588,dev,alvaro,strong-humpback,32,
-2026-09-21T10:26:09Z,warm,pass,ok,,608105e,436820d,9b833fc,7e7e5bf-dirty,5e96588,dev,alvaro,loyal-amoeba,33,
-2026-09-21T10:36:59Z,warm,pass,ok,,608105e,436820d,9b833fc,ad6e4a1-dirty,5e96588,dev,alvaro,eternal-mullet,33,

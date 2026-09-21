@@ -198,14 +198,14 @@ Contract differences vs v3:
    `define_cleanup_script: true`, `cleanup_script_path: ./cancel.sh`,
    `submit_and_exit: false`, `skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}`,
    plus the same `scheduler`/`slurm`/`pbs` mappings as v4.
-5. **Add the `wait_for_endpoint` job**: a call to the `wait_for_endpoint` subworkflow
-   (copy it from `workflows/jupyterlab/yamls/general.yaml`; inputs in
-   `workflows/wait_for_endpoint/README.md`) followed by `parallelworks/cancel-jobs` on
-   the submitter. The subworkflow waits for the name, probes the URL (Bearer
-   `PW_API_KEY`, per-service `healthy` codes and `budget`) and touches the SKIP_CLEANUP
-   file — that's what lets the run complete while the service lives on; an endpoint
-   that never answers fails the run and the submitter's cleanup tears the job down.
-   Path-based endpoints are handled (the listed path gets `https://${PW_PLATFORM_HOST}`).
+5. **Add the `wait_for_endpoint` job**: poll `pw endpoints list` for the name every
+   10 s; on success `touch` the SKIP_CLEANUP file and `parallelworks/cancel-jobs` the
+   submitter — that's what lets the run complete while the service lives on — and end
+   with the `Check endpoint health` step (copy it from
+   `workflows/jupyterlab/yamls/general.yaml`): the workflow must verify the URL
+   answers (Bearer `PW_API_KEY`, per-service healthy codes and budget) and delete the
+   endpoint + fail the run when it does not. Path-based endpoints list a path: prefix
+   it with `https://${PW_PLATFORM_HOST}` (see the emed/hsp variants).
 6. Form: keep the v4 `cluster`/`service` groups; drop the `juice` group.
 7. `parallelworks/checkout` → your **dev branch** while testing; **flip to `main`
    after merge** (both openvscode and jupyterlab needed this follow-up).
@@ -244,8 +244,8 @@ pw workflows run <wf> -i '{"cluster":{"resource":"<name>","scheduler":false}}' -
 ```
 Then verify, in order:
 1. `pw endpoints list` shows `<service>-<run-slug>` **running** with its URL, and the
-   wait job's log (`pw workflows runs logs <slug> --job wait_for_endpoint`) shows the
-   status it accepted.
+   `Check endpoint health` step log (`pw workflows runs logs <slug> --job
+   wait_for_endpoint`) shows the status it accepted.
 2. Non-k8s: the **run completes** on its own (wait_for_endpoint fired); the service
    process (`pw endpoints run … -- <server> --port <realport>`) is alive — `{port}`
    was substituted with a number.

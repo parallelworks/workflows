@@ -531,7 +531,6 @@ Repo: `https://github.com/parallelworks/workflows`. Read these for working patte
 | `workflows/webshell/yamls/general.yaml` | **simplest** full endpoint example (preprocessing → script_submitter → wait_for_endpoint) |
 | `workflows/webshell/app/{controller,start-template}.sh` | minimal controller + start scripts |
 | `workflows/script_submitter/v3.6/general.yaml` + `README.md` | submission modes + interface |
-| `workflows/wait_for_endpoint/general.yaml` + `README.md` | the subworkflow every `wait_for_endpoint` job calls: wait for the name, probe the URL, touch the skip file (inputs: endpoint_name, host, skip_cleanups_file, healthy, budget, path) |
 | `workflows/jupyterlab/yamls/general.yaml` + scripts | typical: conda install + support files |
 | `workflows/streamlit/yamls/general.yaml` + scripts | **Singularity/SIF service**: SIF via `oras_pull_file`, `.def` + `build-container.sh`, sandbox fallback |
 | `workflows/openvscode/yamls/general.yaml` | endpoint whose URL slug is a query string (`?folder=...`) |
@@ -760,8 +759,8 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   the tunnel forwards to the assigned port. Always write `{port}`.
 - **Lifecycle = the tunnel client.** In v5 the workflow *run* completes once
   `wait_for_endpoint` sees the name in `pw endpoints list` (it touches the
-  `skip_cleanups_file` and `parallelworks/cancel-jobs` the submitter) **and the
-  `wait_for_endpoint` subworkflow saw the URL answer**; the service outlives the run.
+  `skip_cleanups_file` and `parallelworks/cancel-jobs` the submitter) **and its
+  `Check endpoint health` step saw the URL answer**; the service outlives the run.
   `pw endpoints delete <name>` tears down the whole remote process tree (verified: the
   `pw endpoints run` child dies with it; rc 0, and rc 1 `Session not found` for a
   name already gone).

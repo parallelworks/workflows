@@ -1,5 +1,3 @@
 date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-09-14T15:27:28Z,partial,pass,ok,307,10f459d,436820d,e9e6033,c16e830-dirty,5ebcdc0,noaa-vllm,alvaro,eager-glowworm,81,
 2026-09-21T07:48:50Z,warm,pass,ok,,604c23a,436820d,8e2818b,6f42902-dirty,6f42902,test-dev,alvaro,amazing-pony,76,
-2026-09-21T10:14:25Z,warm,pass,ok,,6e62a62,436820d,9b833fc,aa37094-dirty,5e96588,dev,alvaro,clever-chicken,63,
-2026-09-21T10:25:01Z,warm,pass,ok,,6e62a62,436820d,9b833fc,7e7e5bf-dirty,5e96588,dev,alvaro,helpful-pegasus,77,

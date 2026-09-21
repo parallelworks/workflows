@@ -90,17 +90,15 @@ Requirements: listen on **`service_port`**, write a **`cancel.sh`**, end with
 2. **session_runner** (the job name kept for history) — submit the start script via
    `workflows/script_submitter/v3.6/<variant>.yaml`
    (`uses: github/parallelworks/workflows@canary`).
-3. **wait_for_endpoint** — calls the `wait_for_endpoint` subworkflow
-   (`uses: github/parallelworks/workflows@canary`,
-   `$yaml: workflows/wait_for_endpoint/general.yaml`), then cancels the submitter. The
-   subworkflow polls `pw endpoints list` for `<service.name>-${PW_RUN_SLUG}`, probes the
-   URL with the run's key until the status matches `healthy` (within `budget`), and
-   touches the `SKIP_CLEANUP` file so the service outlives the run. If the service never
-   answers, the job fails without the skip file and the submitter's cleanup tears the
-   job down. The workflow, not the test runner, owns this check. Set `healthy` (a web UI
-   answers 2xx/3xx), `path` (an API server's health route) and `budget` (minutes for a
-   container or a model load) per service and verify them in a test. Inputs:
-   [workflows/wait_for_endpoint/README.md](workflows/wait_for_endpoint/README.md).
+3. **wait_for_endpoint** — poll `pw endpoints list` until the endpoint named
+   `<service.name>-${PW_RUN_SLUG}` is online, leave the service running
+   (`SKIP_CLEANUP` marker), cancel the submitter's wait, then **check the endpoint is
+   healthy** (`Check endpoint health`): an authenticated GET (Bearer `PW_API_KEY`) to
+   the listed URL must return a healthy status within the step's budget, or the step
+   deletes the endpoint (`pw endpoints delete`) and fails the run. The workflow, not
+   the test runner, owns this check. Decide per service which codes are healthy (a
+   web UI: any 2xx/3xx; an API server: probe its health route) and how long to wait
+   (a few minutes for a container or a model load), and verify the choice in a test.
 
 On a Kubernetes cluster the same endpoint is registered by a `pw-cli` sidecar in the
 pod, the run stays alive streaming pod logs, and cancelling the run is the teardown;
@@ -114,7 +112,7 @@ service (SIF pulled via oras, `.def` + `build-container.sh` alongside).
 Key parts to adapt:
 
 - the hidden `service.name` input (endpoint name prefix),
-- the `healthy`, `budget` and `path` inputs of the `wait_for_endpoint` call,
+- the healthy-status pattern, retry budget and probed path of `Check endpoint health`,
 - the sparse-checkout paths (`workflows/my-session/app`, `tools/...`),
 - the `cat workflows/my-session/app/controller.sh` / `start-template.sh` lines,
 - the `service` input group (your form fields → `inputs.sh` variables).
@@ -144,7 +142,7 @@ python3 tools/tests/run-workflow-test.py workflows/my-session/tests/<variant>/<t
 
 Commit the test and the rows the runner appends to its CSV with your change; never
 edit a CSV by hand. The runner does not probe the endpoint URL: a run that completes
-has passed the workflow's own health probe, and the wait job's output
+has passed the workflow's own `Check endpoint health` step, and that step's output
 (`pw workflows runs logs <slug> --job wait_for_endpoint`) shows the status codes it saw.
 
 **Verify cleanup on cancel — part of testing, every time.** Cancel a run mid-flight

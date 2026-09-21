@@ -169,6 +169,28 @@ else
     endpoint_port=$(pw agent open-port)
     svc_log="${PWD}/vllm-${PW_JOB_ID}.out"
 
+    # vLLM's OpenAI /v1/chat/completions endpoint hard-errors ("default chat
+    # template is no longer allowed", transformers>=4.44) when the tokenizer
+    # defines no chat_template of its own -- true for base/completion-only
+    # checkpoints such as OLMo-2-0425-1B. An explicit override wins; otherwise
+    # fall back to the bundled Alpaca-style template only if the model truly
+    # has none, so a checkpoint shipping its own is never overridden.
+    app_dir=${PW_PARENT_JOB_DIR}/workflows/rag-vllm/app
+    chat_template_arg=""
+    chat_template_bind=""
+    if [ -n "${chat_template_override}" ] && [ "${chat_template_override}" != "undefined" ]; then
+        chat_template_path=${chat_template_override/#\~/$HOME}
+        chat_template_arg="--chat-template ${chat_template_path}"
+        # Bind its parent dir explicitly -- unlike model_dir/app_dir, an
+        # override path can point anywhere on the cluster, and singularity
+        # only auto-binds $HOME by default.
+        chat_template_bind="--bind $(dirname "${chat_template_path}"):$(dirname "${chat_template_path}")"
+    elif ! grep -q '"chat_template"' "${model_dir}/tokenizer_config.json" 2>/dev/null \
+         && [ ! -s "${model_dir}/chat_template.jinja" ]; then
+        echo "::notice::${model_dir} has no chat_template; falling back to ${app_dir}/default_chat_template.jinja"
+        chat_template_arg="--chat-template ${app_dir}/default_chat_template.jinja"
+    fi
+
     # CC/CXX must be pinned to the container's compilers: singularity passes
     # the host env through by default, and some systems (Jean) export CC=icc,
     # which Triton uses to build its CUDA driver stub but does not exist in
@@ -180,6 +202,8 @@ else
 #!/bin/bash
 exec "${singularity_bin}" exec --nv --writable-tmpfs \\
     --bind "${model_dir}:${model_dir}" \\
+    --bind "${app_dir}:${app_dir}" \\
+    ${chat_template_bind} \\
     --bind "${PWD}/container_tmp:/tmp" \\
     --bind "${tiktoken_dir}:${tiktoken_dir}" \\
     --env PYTHONNOUSERSITE=1 \\
@@ -202,7 +226,7 @@ exec "${singularity_bin}" exec --nv --writable-tmpfs \\
         --served-model-name "${served_model_name}" \\
         --host 127.0.0.1 \\
         --port ${endpoint_port} \\
-        ${vllm_args}
+        ${vllm_args} ${chat_template_arg}
 LAUNCHEOF
     chmod +x launch-vllm-${PW_JOB_ID}.sh
     cat launch-vllm-${PW_JOB_ID}.sh

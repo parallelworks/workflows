@@ -13,6 +13,7 @@ resolv.conf
 PROXY_PORT
 SESSION_PORT
 *.jinja
+!default_chat_template.jinja
 job.started
 job.ended
 cancel.sh

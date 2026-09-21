@@ -52,6 +52,19 @@ Choose how to provide model weights:
 
 The HuggingFace Clone option uses `git clone` with git-lfs, which is more widely supported on HPC systems than the HuggingFace API. Models are cloned once to your cache directory and reused for subsequent runs.
 
+#### Chat template
+
+`/v1/chat/completions` needs a chat template, and since transformers v4.44 a
+tokenizer that ships none is an error rather than a silent default — which rules
+out base/completion-only checkpoints (OLMo, for example). The workflow resolves
+this itself: a template shipped with the model (in `tokenizer_config.json` or a
+`chat_template.jinja` beside it) is always used as-is, and only a model with
+none falls back to the bundled `app/default_chat_template.jinja`, an
+Alpaca-style `### Instruction:` / `### Response:` template — the layout
+instruction-tuning datasets for such checkpoints conventionally use. Set
+**Chat Template Override** to the path of a Jinja2 file on the cluster to serve
+a model in a different format instead.
+
 ### 3. Set vLLM Parameters
 
 Common configurations:
@@ -106,6 +119,7 @@ rag-vllm/
 ├── rag_server.py          # RAG search server
 ├── indexer.py             # Document indexer
 ├── indexer_config.yaml    # Indexer runtime config template
+├── default_chat_template.jinja  # Fallback chat template for models that ship none
 └── singularity/           # Container defs + runtime env template
 ```
 
@@ -121,6 +135,7 @@ rag-vllm/
 |-------|----------|
 | CUDA out of memory | Reduce `--gpu-memory-utilization` or `--max-model-len` |
 | Model not found | Verify path exists with `config.json`; check HF_TOKEN for gated models |
+| `default chat template is no longer allowed` | The model's tokenizer ships no chat template. The workflow falls back to a bundled Alpaca-style one automatically; set **Chat Template Override** to a Jinja2 file on the cluster to use a different format |
 | git-lfs not found | Workflow auto-installs git-lfs locally if missing |
 | Apptainer/Singularity not found | Load module: `module load apptainer` or `module load singularity` |
 | Port in use | Service auto-finds available ports; check for existing instances |

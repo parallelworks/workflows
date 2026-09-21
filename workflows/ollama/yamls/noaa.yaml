@@ -231,7 +231,7 @@ jobs:
     steps:
       - name: Wait for endpoint
         early-cancel: any-job-failed
-        uses: github/parallelworks/workflows@dev
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: ${{ needs.preprocessing.outputs.ENDPOINT_NAME }}

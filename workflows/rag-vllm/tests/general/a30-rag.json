@@ -1,7 +1,6 @@
 {
   "_test": {
     "timeout_s": 2400,
-    "http_expect": [200, 302, 307, 401, 404],
     "warm_marker": [
       "${HOME}/pw/software/containers/vllm.sif",
       "${HOME}/pw/software/containers/rag.sif",

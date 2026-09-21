@@ -62,7 +62,14 @@ preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through
 `workflows/script_submitter/v3.6/<variant>.yaml`, and a `wait_for_endpoint` job
-confirms the endpoint; the run then completes and the service outlives it.
+confirms the endpoint is listed **and that its URL answers**; the run then completes
+and the service outlives it. **The workflow is responsible for checking that the
+endpoint is healthy before it exits**: the job's last step, `Check endpoint health`,
+probes the listed URL with the run's `PW_API_KEY` (an anonymous request only sees the
+platform's `307` login redirect; through the key the service's own status comes back,
+`503` while nothing listens behind the tunnel yet), retries for a per-workflow budget,
+and otherwise runs `pw endpoints delete` and fails the run. Which HTTP codes count as
+healthy and how long to retry are decided per workflow, in that step.
 
 **Kubernetes** (`yamls/k8s.yaml` = k8s-only example, `yamls/general_k8s.yaml` = hybrid):
 the same endpoint, registered by a `pw-cli` sidecar inside the pod; the run stays alive
@@ -106,6 +113,12 @@ To convert an older workflow to this pattern, follow
 - Endpoint names must be lowercase `[a-z0-9-]`. `<service.name>-${PW_RUN_SLUG}` already
   is; a name that comes from a form input must be folded before it reaches
   `pw endpoints` — see the `endpoint_name` input in `workflows/ollama/yamls/general.yaml`.
+- Every `wait_for_endpoint` job ends with the `Check endpoint health` step (copy it from
+  `workflows/jupyterlab/yamls/general.yaml`). Keep its shape; adapt only the healthy
+  status pattern, the retry budget and, for API servers, the probed path. Path-based
+  endpoints (`--no-subdomain`) list a path, which the step prefixes with
+  `https://${PW_PLATFORM_HOST}`. On Kubernetes the step fails the run instead of
+  deleting the endpoint (the Deployment would just restart the sidecar).
 - Multi-implementation workflows select their script subdir via a runtime input
   (`container_runtime`, `service.container_runtime`, `service.name`): the input
   **values must match the impl subdirectory names** under `workflows/<name>/`.
@@ -133,12 +146,14 @@ those platforms — validate them statically.
   is read from the absolute path you pass, so a YAML-only edit tests without a push.
 - Run with the **absolute** YAML path (a relative path is parsed as a git host):
   `pw workflows run /abs/path/workflows/<name>/yamls/general.yaml -i '{"cluster":{"resource":"<cluster>","scheduler":false}}'`
-- **Pass = the endpoint serves:** `pw endpoints list` shows `<service.name>-<run-slug>`
-  and its URL answers. The run completes while the service keeps running.
+- **Pass = the run completes and `pw endpoints list` shows `<service.name>-<run-slug>`.**
+  The run only completes after the workflow's own health check saw the URL answer, so
+  the runner does not probe URLs. The service keeps running after the run completes.
 - **Tear down:** `pw endpoints delete <name>` kills the remote process tree; verify
   with `ps -x` (daemonizing apps that re-parent to PID 1 can survive).
-- **Kubernetes runs differ:** pass = the endpoint is listed and answers while the run is
-  still `running`; teardown = `pw workflows runs cancel <slug>`. The runner's k8s lane
+- **Kubernetes runs differ:** pass = the `wait_for_endpoint_k8s` job completes (endpoint
+  listed, URL answering) while the run is still `running`; teardown =
+  `pw workflows runs cancel <slug>`. The runner's k8s lane
   does both (tests under `tests/k8s/` and `tests/general_k8s/`); details in
   `.claude/skills/activate-workflows/references/k8s-workflows.md` §4–§6.
 - **Verify cancel cleanup when developing a workflow:** cancel a run mid-flight

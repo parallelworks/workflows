@@ -34,8 +34,17 @@ The runner picks the lane from the inputs:
 
 | lane | how it is recognised | pass | teardown |
 |---|---|---|---|
-| cluster | `cluster.resource` (or `resource`) is a resource name or `pw://` URI | the run reaches `completed`, an endpoint named `*-<run-slug>` is listed and its URL answers | `pw endpoints delete`; leftovers are checked over `pw ssh` |
-| k8s | `resource` is an object with `"type": "kubernetes"` (hybrid `*_k8s.yaml`) or the inputs carry `k8s.cluster` (standalone `k8s.yaml`) | the run is still `running` when an endpoint named `*-<run-slug>` is listed and its URL answers | `pw workflows runs cancel`; leftovers are Kubernetes objects |
+| cluster | `cluster.resource` (or `resource`) is a resource name or `pw://` URI | the run reaches `completed` and an endpoint named `*-<run-slug>` is listed | `pw endpoints delete`; leftovers are checked over `pw ssh` |
+| k8s | `resource` is an object with `"type": "kubernetes"` (hybrid `*_k8s.yaml`) or the inputs carry `k8s.cluster` (standalone `k8s.yaml`) | the run is still `running` when its `wait_for_endpoint_k8s` job completes and an endpoint named `*-<run-slug>` is listed | `pw workflows runs cancel`; leftovers are Kubernetes objects |
+
+The runner never probes the endpoint URL. **Checking that the endpoint is healthy is
+the workflow's responsibility**: the last step of every `wait_for_endpoint` job sends
+an authenticated request to the listed URL (with the run's `PW_API_KEY`, since an
+anonymous request only ever sees the platform's `307` login redirect), retries for
+the budget that workflow chose, and on failure deletes the endpoint and fails the
+run (on Kubernetes it fails the run, whose cleanups tear the deployment down). A run
+that completes has therefore already proven its URL answers; the runner only checks
+that the run and the listing agree.
 
 ## The `_test` object
 
@@ -44,7 +53,6 @@ Optional, stripped before launch.
 | key | lane | meaning | default |
 |---|---|---|---|
 | `timeout_s` | both | seconds to wait for the verdict | 1800 |
-| `http_expect` | both | list of acceptable HTTP status codes from the endpoint URL | any 2xx or 3xx |
 | `warm_marker` | cluster | path or list of paths on the resource; all exist → phase `warm`, none → `cold`, some → `partial` | none |
 | `setup` | cluster | shell snippet run on the resource before launch; must be idempotent (seed files, create dirs) | none |
 | `leftover_patterns` | cluster | process patterns that must not survive teardown, matched against `ps -u $USER -o args` | `["pw endpoints"]` |
@@ -55,13 +63,14 @@ Optional, stripped before launch.
 
 Cluster lane:
 
-- the run reaches `completed`
+- the run reaches `completed` (which the workflow only allows after its own health
+  check of the endpoint URL passed)
 - `pw endpoints list` shows an endpoint named `*-<run-slug>`
-- its URL answers with an accepted status (unauthenticated, so a login redirect counts)
 
 Cleanup is verified separately after `pw endpoints delete`: no matching processes
-for the user on the resource, no queued jobs when the test schedules, and the
-endpoint gone. Failing runs keep their platform record; passing ones are not deleted yet.
+for the user on the resource (processes that already existed before the launch are
+ignored, so an editor's remote server or the runner itself on the login node never
+counts), no queued jobs when the test schedules, and the endpoint gone. Failing runs keep their platform record; passing ones are not deleted yet.
 
 ## Kubernetes tests
 
@@ -75,9 +84,11 @@ teardown (why, and everything else k8s: `.claude/skills/activate-workflows/refer
   the cluster in `k8s.cluster`. Both need `k8s.namespace`.
 - **Skip rule.** The cluster must appear in `pw kube ls`; otherwise the test is skipped
   like an inactive compute resource.
-- **Pass.** Within `timeout_s`, `pw endpoints list` shows `*-<run-slug>` while the run
-  is still `running`, and the URL answers. A run that reaches a final status first
-  fails with its `pw workflows runs errors` summary.
+- **Pass.** Within `timeout_s`, the `wait_for_endpoint_k8s` job completes (the
+  workflow found the endpoint and its URL answered) while the run is still `running`,
+  and `pw endpoints list` shows `*-<run-slug>`. A run that reaches a final status
+  first — including one failed by the health check — fails with its
+  `pw workflows runs errors` summary.
 - **Teardown.** `pw workflows runs cancel`, then up to three minutes for: the run to
   reach `canceled`, no object of the `leftover_kinds` whose name contains the run slug
   left in `k8s.namespace` (every k8s YAML here names its objects after the run), and
@@ -100,7 +111,7 @@ teardown (why, and everything else k8s: `.claude/skills/activate-workflows/refer
 | `phase` | `cold`, `warm` or `partial` from `warm_marker`, empty when the test defines none (always empty on the k8s lane) |
 | `result` | `pass` or `fail` |
 | `cleanup` | `ok`, `leftover:<what>`, `unknown` (check failed), `kept` |
-| `http` | status code from the endpoint URL |
+| `http` | retired 2026-09-21: the status code the runner used to get from the endpoint URL. Older CSVs keep the column (empty in new rows); new CSVs do not have it |
 | `workflow_tree`, `submitter_tree`, `tools_tree` | git tree hashes of `workflows/<name>`, `workflows/script_submitter/v3.6`, `tools` at the commit the run fetched (the branch named in the YAML; the local HEAD on the k8s lane). Same content → same hash, across squash merges |
 | `commit` | local HEAD; `-dirty` when the local YAML differs from the fetched branch |
 | `fetched` | the fetched commit; `?` when the fetch failed and local HEAD was used |
@@ -109,6 +120,9 @@ teardown (why, and everything else k8s: `.claude/skills/activate-workflows/refer
 | `run_slug` | for `pw workflows runs view|logs|errors <slug>` |
 | `duration_s` | launch to verdict, excluding teardown |
 | `error` | one-line failure summary |
+
+New rows follow the header of the CSV they land in, so a column retired from the
+runner stays (empty) in the files that already have it.
 
 CSVs merge with `merge=union` (see `.gitattributes`): rows are independent, so
 concurrent appends from two branches keep both sides.

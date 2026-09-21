@@ -1,13 +1,6 @@
 {
   "_test": {
     "timeout_s": 3600,
-    "http_expect": [
-      200,
-      302,
-      307,
-      401,
-      404
-    ],
     "warm_marker": [
       "${HOME}/pw/software/containers/vllm.sif",
       "${HOME}/pw/models/Qwen2.5-0.5B-Instruct/config.json"

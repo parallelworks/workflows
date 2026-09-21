@@ -108,8 +108,19 @@ Mirror the proven pattern (see `workflows/webshell/yamls/general.yaml`): a
 **preprocessing** job (checkout + `inputs.sh` + run `controller.sh` + assemble the
 start script), a **script_submitter** job that submits it, and a
 **wait_for_endpoint** job that polls `pw endpoints list` for
-`<service.name>-${PW_RUN_SLUG}`, then touches the `SKIP_CLEANUP` marker and cancels
-the submitter so the service outlives the run.
+`<service.name>-${PW_RUN_SLUG}`, touches the `SKIP_CLEANUP` marker, cancels
+the submitter so the service outlives the run, and then **checks the endpoint is
+healthy** (`Check endpoint health`, the job's last step): a GET with
+`Authorization: Bearer ${PW_API_KEY}` to the listed URL must return a healthy status
+within the step's budget, or the step runs `pw endpoints delete` and fails the run.
+**The workflow owns this check**. Copy the
+step from `workflows/jupyterlab/yamls/general.yaml` and decide per service: which
+codes are healthy (web UI: `2*|3*`; API server: probe its health route and accept
+what it returns), how long to retry (seconds for a Python server, minutes for a SIF
+conversion or a model load), and verify the choice in the test's step log. Why the
+key: an anonymous request only gets the platform's `307` login redirect whatever the
+service does; with the key the service's own status comes back, and a registered
+tunnel with nothing listening yet answers `503` (verified 2026-09-21).
 
 Provide the two contract scripts:
 - **`controller.sh`** — idempotent setup on the login node (has internet). Often
@@ -197,10 +208,11 @@ cannot happen here, and never claim a workflow was tested if the row does not ex
 Facts that still matter when running by hand (`pw workflows run /abs/path.yaml -i inputs.json`):
 - Pass the resource as its URI (`pw://alvaro/gcpsmall`) or bare name; never an IP.
   It must be `active` in `pw cluster ls`.
-- **Kubernetes:** pass = the endpoint is listed and answers while the run is still
-  `running`; teardown = `pw workflows runs cancel <slug>`. Inputs and checks:
+- **Kubernetes:** pass = the `wait_for_endpoint_k8s` job completes (endpoint listed,
+  URL answering) while the run is still `running`; teardown = `pw workflows runs cancel <slug>`. Inputs and checks:
   [references/k8s-workflows.md §4–§5](references/k8s-workflows.md).
-- On a compute cluster the run completes once `wait_for_endpoint` sees the endpoint;
+- On a compute cluster the run completes once `wait_for_endpoint` sees the endpoint
+  and its health check passes (an unhealthy endpoint is deleted and the run fails);
   the service keeps running until `pw endpoints delete <name>`, which kills the remote
   process tree. Daemonizing apps that re-parent to PID 1 (e.g. RStudio's `rsession`)
   can survive it.

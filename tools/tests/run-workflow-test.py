@@ -13,24 +13,29 @@ One row per launch is appended to the CSV next to it:
 The lane is picked from the inputs:
 
     cluster lane   cluster.resource (or resource) names a compute resource. Pass = the run
-                   completes, an endpoint named *-<run-slug> is listed and its URL answers.
-                   Teardown = `pw endpoints delete`; leftovers are checked over `pw ssh`.
+                   completes and an endpoint named *-<run-slug> is listed. Teardown =
+                   `pw endpoints delete`; leftovers are checked over `pw ssh`.
     k8s lane       resource is an object with type "kubernetes" (hybrid *_k8s.yaml; the
                    runner fills in its id and uri from `pw kube ls`) or the inputs carry
                    k8s.cluster (standalone k8s.yaml). Pass = the run is still running when
-                   an endpoint named *-<run-slug> is listed and its URL answers. Teardown =
-                   `pw workflows runs cancel`; leftovers are the run's Kubernetes objects
-                   (name contains the run slug) listed with kubectl in k8s.namespace.
+                   its wait_for_endpoint job completes and an endpoint named *-<run-slug>
+                   is listed. Teardown = `pw workflows runs cancel`; leftovers are the run's
+                   Kubernetes objects (name contains the run slug) listed with kubectl in
+                   k8s.namespace.
+
+Whether the endpoint's URL answers is the workflow's job, not the runner's: every
+wait_for_endpoint job ends with a step that probes the URL and deletes the endpoint
+(or fails the run, on Kubernetes) when the service does not answer, so a run that
+completes has already proven its service healthy.
 
 The optional "_test" object is stripped before launch:
 
     timeout_s          seconds to wait for the verdict (default 1800)
-    http_expect        acceptable HTTP status codes from the endpoint URL (default: 2xx and 3xx)
     warm_marker        path, or list of paths, on the resource: all present -> phase "warm",
                        none -> "cold", some -> "partial" (cluster lane)
     setup              shell snippet run on the resource before launch (idempotent; cluster lane)
     leftover_patterns  process patterns that must not survive teardown (cluster lane;
-                       default: ["pw endpoints"])
+                       default: ["pw endpoints"]; processes that predate the launch are ignored)
     leftover_commands  {name: shell snippet printing a count} that must all print 0 after
                        teardown (cluster lane; e.g. {"docker": "docker ps -q | wc -l"})
     leftover_kinds     Kubernetes object kinds that must be gone after teardown (k8s lane;
@@ -62,17 +67,15 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 POLL_S = 15
 FINAL_STATUSES = {"completed", "error", "canceled", "failed"}
-COLUMNS = ["date", "phase", "result", "cleanup", "http", "workflow_tree", "submitter_tree",
+COLUMNS = ["date", "phase", "result", "cleanup", "workflow_tree", "submitter_tree",
            "tools_tree", "commit", "fetched", "branch", "user", "run_slug", "duration_s", "error"]
-DEFAULTS = {"timeout_s": 1800, "http_expect": None, "warm_marker": "", "setup": "",
+DEFAULTS = {"timeout_s": 1800, "warm_marker": "", "setup": "",
             "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
             "leftover_kinds": ["deployments", "services", "pods", "persistentvolumeclaims", "secrets"]}
 
@@ -327,8 +330,9 @@ def wait(slug, timeout_s):
 
 def wait_k8s(slug, timeout_s):
     # The k8s run streams pod logs for as long as the service lives, so the verdict
-    # comes from the endpoint list while the run is still running; a final status
-    # before that means the deployment failed.
+    # comes while the run is still running: "ready" once its wait_for_endpoint job
+    # has completed (the workflow found the endpoint and its URL answered). A final
+    # status before that means the deployment or the health check failed.
     deadline, last, data = time.time() + timeout_s, None, {}
     while time.time() < deadline:
         current = view(slug)
@@ -339,12 +343,11 @@ def wait_k8s(slug, timeout_s):
                 log(f"  run {slug}: {status} {jobs}")
                 last = (status, jobs)
             if status in FINAL_STATUSES:
-                return status, None, "", data
-            name, url = endpoint(slug, attempts=1)
-            if name:
-                return status, name, url, data
+                return status, data
+            if any("wait_for_endpoint" in k and v == "completed" for k, v in jobs.items()):
+                return "ready", data
         time.sleep(POLL_S)
-    return "timeout", None, "", data
+    return "timeout", data
 
 
 def endpoint(slug, attempts=6):
@@ -359,24 +362,6 @@ def endpoint(slug, attempts=6):
     return None, ""
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-def http_status(url):
-    if not url:
-        return 0
-    try:
-        with urllib.request.build_opener(NoRedirect).open(url, timeout=30) as resp:
-            return resp.status
-    except urllib.error.HTTPError as e:
-        return e.code
-    except Exception as e:
-        log(f"  http error: {e}")
-        return 0
-
-
 def errors(slug):
     text = pw("workflows", "runs", "errors", slug, "-o", "text", timeout=90).stdout
     lines = [l.strip() for l in text.splitlines() if l.strip()]
@@ -387,7 +372,17 @@ def errors(slug):
     return summary, text
 
 
-def teardown(test, slug, endpoint_name):
+def preexisting_pids(test):
+    # A process that was already running before the launch cannot be the run's
+    # leftover, and the user's process list on the login node often holds
+    # look-alikes: an editor's remote server matches "code-server", and when
+    # the runner itself executes there its command line names the test files
+    # (workflows/jupyter/tests/...). Snapshot them and ignore them at teardown.
+    r = pw("ssh", test.resource, "ps -u $USER -o pid=", timeout=120)
+    return [t for t in r.stdout.split() if t.isdigit()] if r.returncode == 0 else []
+
+
+def teardown(test, slug, endpoint_name, preexisting):
     if endpoint_name:
         r = pw("endpoints", "delete", endpoint_name, timeout=90)
         log(f"  endpoints delete {endpoint_name}: rc={r.returncode} {(r.stdout + r.stderr).strip()[:120]}")
@@ -395,7 +390,9 @@ def teardown(test, slug, endpoint_name):
     # command may contain a pattern verbatim: keys are indexes and the grep
     # pattern brackets its first character.
     patterns = list(test.meta["leftover_patterns"])
-    checks = [f"echo 'p{i}='$(ps -u $USER -o args= | grep -c -- '[{p[0]}]{p[1:]}')"
+    ps = ("ps -u $USER -o pid=,args= | awk -v skip='" + ",".join(preexisting) +
+          "' 'BEGIN {split(skip, a, \",\"); for (i in a) s[a[i]]} !($1 in s)' | cut -d' ' -f2-")
+    checks = [f"echo 'p{i}='$({ps} | grep -c -- '[{p[0]}]{p[1:]}')"
               for i, p in enumerate(patterns)]
     commands = dict(test.meta["leftover_commands"])
     checks += [f"echo 'c{i}='$({snippet})" for i, snippet in enumerate(commands.values())]
@@ -446,23 +443,17 @@ def teardown_k8s(test, slug):
 
 
 def append(csv_path, row):
-    new = not csv_path.exists()
+    # An existing CSV keeps its own header (older files carry the retired `http`
+    # column, left empty), so rows always line up with the file they land in.
+    columns, new = COLUMNS, not csv_path.exists()
+    if not new:
+        with open(csv_path, newline="") as f:
+            columns = next(csv.reader(f), None) or COLUMNS
     with open(csv_path, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=COLUMNS)
+        writer = csv.DictWriter(f, fieldnames=columns)
         if new:
             writer.writeheader()
-        writer.writerow(row)
-
-
-def verdict(row, test, slug, endpoint_name, url):
-    code = http_status(url)
-    row["http"] = code
-    expect = test.meta["http_expect"]
-    ok = code in expect if expect else 200 <= code < 400
-    row["result"] = "pass" if ok else "fail"
-    if not ok:
-        row["error"] = f"http {code} from {url}"
-    log(f"  endpoint {endpoint_name} {url} -> http {code}")
+        writer.writerow({c: row.get(c, "") for c in columns})
 
 
 def run_test(test, args, user):
@@ -486,25 +477,31 @@ def run_test(test, args, user):
     row["date"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     log(f"  version {row['workflow_tree']} (submitter {row['submitter_tree']}, tools {row['tools_tree']}) "
         f"commit {row['commit']} phase {row['phase'] or 'n/a'}")
-    started, slug, endpoint_name, detail = time.time(), "", None, ""
+    started, slug, endpoint_name, detail, preexisting = time.time(), "", None, "", []
     try:
         if test.k8s:
             if test.meta["setup"] or test.meta["warm_marker"]:
                 log("  note: setup and warm_marker need a login node; ignored on the k8s lane")
         else:
             setup(test)
+            preexisting = preexisting_pids(test)
         slug = launch(test, f"{test.id} @{row['workflow_tree']}")
         row["run_slug"] = slug
         log(f"  launched run {slug}")
         if test.k8s:
-            status, endpoint_name, url, _ = wait_k8s(slug, test.meta["timeout_s"])
-            if endpoint_name:
-                verdict(row, test, slug, endpoint_name, url)
+            status, _ = wait_k8s(slug, test.meta["timeout_s"])
+            if status == "ready":
+                endpoint_name, url = endpoint(slug)
+                if not endpoint_name:
+                    row["result"], row["error"] = "fail", "wait_for_endpoint completed but no endpoint listed"
+                else:
+                    row["result"] = "pass"
+                    log(f"  endpoint {endpoint_name} {url} (URL checked by the workflow)")
             elif status == "timeout":
-                row["result"], row["error"] = "fail", f"no endpoint after {test.meta['timeout_s']}s"
+                row["result"], row["error"] = "fail", f"wait_for_endpoint not completed after {test.meta['timeout_s']}s"
             else:
                 summary, detail = errors(slug)
-                row["result"], row["error"] = "fail", f"run {status} before the endpoint appeared: {summary}"
+                row["result"], row["error"] = "fail", f"run {status} before the endpoint came online: {summary}"
         else:
             status, _ = wait(slug, test.meta["timeout_s"])
             if status == "timeout":
@@ -518,7 +515,8 @@ def run_test(test, args, user):
                 if not endpoint_name:
                     row["result"], row["error"] = "fail", "run completed but no endpoint listed"
                 else:
-                    verdict(row, test, slug, endpoint_name, url)
+                    row["result"] = "pass"
+                    log(f"  endpoint {endpoint_name} {url} (URL checked by the workflow)")
             if endpoint_name is None and slug:
                 endpoint_name, _ = endpoint(slug, attempts=1)
     except Exception as e:
@@ -527,7 +525,7 @@ def run_test(test, args, user):
     if args.keep:
         row["cleanup"] = "kept"
     elif slug:
-        row["cleanup"] = teardown_k8s(test, slug) if test.k8s else teardown(test, slug, endpoint_name)
+        row["cleanup"] = teardown_k8s(test, slug) if test.k8s else teardown(test, slug, endpoint_name, preexisting)
     if row["result"] != "pass" and slug:
         test.logs.mkdir(exist_ok=True)
         text = detail or errors(slug)[1]

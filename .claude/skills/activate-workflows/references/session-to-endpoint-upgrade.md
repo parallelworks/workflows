@@ -200,7 +200,12 @@ Contract differences vs v3:
    plus the same `scheduler`/`slurm`/`pbs` mappings as v4.
 5. **Add the `wait_for_endpoint` job**: poll `pw endpoints list` for the name every
    10 s; on success `touch` the SKIP_CLEANUP file and `parallelworks/cancel-jobs` the
-   submitter — that's what lets the run complete while the service lives on.
+   submitter — that's what lets the run complete while the service lives on — and end
+   with the `Check endpoint health` step (copy it from
+   `workflows/jupyterlab/yamls/general.yaml`): the workflow must verify the URL
+   answers (Bearer `PW_API_KEY`, per-service healthy codes and budget) and delete the
+   endpoint + fail the run when it does not. Path-based endpoints list a path: prefix
+   it with `https://${PW_PLATFORM_HOST}` (see the emed/hsp variants).
 6. Form: keep the v4 `cluster`/`service` groups; drop the `juice` group.
 7. `parallelworks/checkout` → your **dev branch** while testing; **flip to `main`
    after merge** (both openvscode and jupyterlab needed this follow-up).
@@ -238,7 +243,9 @@ pw workflows create <wf> --yaml /abs/path/general_v5.yaml     # ABSOLUTE path (s
 pw workflows run <wf> -i '{"cluster":{"resource":"<name>","scheduler":false}}' --name t1 -o json
 ```
 Then verify, in order:
-1. `pw endpoints list` shows `<service>-<run-slug>` **running** with its URL.
+1. `pw endpoints list` shows `<service>-<run-slug>` **running** with its URL, and the
+   `Check endpoint health` step log (`pw workflows runs logs <slug> --job
+   wait_for_endpoint`) shows the status it accepted.
 2. Non-k8s: the **run completes** on its own (wait_for_endpoint fired); the service
    process (`pw endpoints run … -- <server> --port <realport>`) is alive — `{port}`
    was substituted with a number.

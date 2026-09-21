@@ -79,8 +79,14 @@ where `pw` and `kubectl` are installed.
    deletes what it created; cleanups run in reverse step order (Deployment → Secret →
    PVC).
 5. **`wait_for_endpoint_k8s`** — waits for the `pod.running` marker, then polls
-   `pw endpoints list` for the name and prints its URL. In every verified run the
-   endpoint was listed within seconds of the pod going Ready.
+   `pw endpoints list` for the name and prints its URL, then **checks the endpoint is
+   healthy** (`Check endpoint health`: an authenticated GET to the listed URL must
+   return a healthy status within the budget). On failure it does **not** call
+   `pw endpoints delete` — the Deployment would just restart the sidecar — it fails
+   the job: the log-stream step's `early-cancel: any-job-failed` ends the apply job,
+   whose cleanups delete the Deployment, and the endpoint deregisters with the
+   sidecar. In every verified run the endpoint was listed within seconds of the pod
+   going Ready.
 
 **Lifecycle.** The run stays `running`. **Cancelling the run is the teardown**: the
 cleanups delete Deployment, Secret and PVC (unless `pvc_persist`), and the endpoint
@@ -204,8 +210,10 @@ Run k8s tests **one at a time**: the namespace quota (§7) is shared.
 | jupyterlab, kasmvnc, openvscode, mlflow `k8s.yaml` | pass (two runs each) | pass (`special-lacewing`, `light-seal`, `dear-mongoose`, `neat-lemming`) |
 | ollama-openwebui `k8s.yaml` | quota fail (`dynamic-penguin`), pass alone (`useful-leopard`) | quota fail from the sidecar's extra 50m (`picked-tapir`), pass after the 1-CPU default (`pleasant-puma`) |
 
-Pass = endpoint in `pw endpoints list`, anonymous curl → `307` login redirect, run
-still `running`; then cancel → Deployment, Secret, PVC and endpoint gone within 35 s.
+Pass = `wait_for_endpoint_k8s` completed (endpoint in `pw endpoints list`, its health
+step saw the service answer), run still `running`; then cancel → Deployment, Secret,
+PVC and endpoint gone within 35 s. (Rows before 2026-09-21 recorded the runner's own
+anonymous curl, which only ever saw the `307` login redirect.)
 
 ## 9. Gotchas (each bit a real run)
 

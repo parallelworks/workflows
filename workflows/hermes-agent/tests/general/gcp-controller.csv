@@ -1,3 +1,4 @@
 date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-09-11T16:26:06Z,cold,fail,,,75eda9d,436820d,e7b718b,ae7a06f,ae7a06f,tests,alvaro,,0,launch failed: 2026-09-11T18:26:06+02:00 [ERROR] Missing required fields: AI allocation
 2026-09-11T16:39:20Z,partial,pass,ok,307,75eda9d,436820d,e7b718b,ae7a06f,ae7a06f,tests,alvaro,free-magpie,141,
+2026-09-21T07:57:14Z,partial,pass,ok,,cd236d6,436820d,8e2818b,6f42902-dirty,6f42902,test-dev,alvaro,measured-terrier,122,

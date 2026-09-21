@@ -1,13 +1,6 @@
 {
   "_test": {
     "timeout_s": 2400,
-    "http_expect": [
-      200,
-      302,
-      307,
-      401,
-      404
-    ],
     "setup": "S=${HOME}/pw/shared-ro; chmod -R u+w $S 2>/dev/null; rm -rf $S ${HOME}/pw/software/models/Qwen2.5-0.5B-Instruct; mkdir -p $S/containers $S/models $S/cache/tiktoken_encodings; ln -sf ${HOME}/pw/software/containers/vllm.sif $S/containers/vllm.sif; cp ${HOME}/pw/software/cache/tiktoken_encodings/o200k_base.tiktoken $S/cache/tiktoken_encodings/; chmod 555 $S/containers $S/models $S/cache/tiktoken_encodings $S/cache $S",
     "warm_marker": [
       "${HOME}/pw/software/containers/vllm.sif"

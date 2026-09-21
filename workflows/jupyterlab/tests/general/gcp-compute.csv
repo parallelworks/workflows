@@ -1,3 +1,4 @@
 date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-09-11T14:19:27Z,warm,pass,ok,307,6139b1b,436820d,e7b718b,ae7a06f,ae7a06f,tests,alvaro,cosmic-anchovy,206,
 2026-09-11T16:03:03Z,warm,pass,ok,307,6139b1b,436820d,e7b718b,ae7a06f,ae7a06f,tests,alvaro,easy-newt,238,
+2026-09-21T07:13:29Z,warm,pass,leftover:proc:jupyter,307,f78808c,436820d,8e2818b,6f42902-dirty,6f42902,test-dev,alvaro,fitting-snapper,213,

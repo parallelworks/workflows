@@ -759,9 +759,21 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   the tunnel forwards to the assigned port. Always write `{port}`.
 - **Lifecycle = the tunnel client.** In v5 the workflow *run* completes once
   `wait_for_endpoint` sees the name in `pw endpoints list` (it touches the
-  `skip_cleanups_file` and `parallelworks/cancel-jobs` the submitter); the service
-  outlives the run. `pw endpoints delete <name>` tears down the whole remote process
-  tree (verified: the `pw endpoints run` child dies with it).
+  `skip_cleanups_file` and `parallelworks/cancel-jobs` the submitter) **and its
+  `Check endpoint health` step saw the URL answer**; the service outlives the run.
+  `pw endpoints delete <name>` tears down the whole remote process tree (verified: the
+  `pw endpoints run` child dies with it; rc 0, and rc 1 `Session not found` for a
+  name already gone).
+- **Probing an endpoint URL (verified 2026-09-21, `pw endpoints list` is
+  tab-separated `name status URL`).** An anonymous GET gets `307 →
+  https://<platform>/?sessionRedirect=<host>` whether or not anything serves behind
+  the tunnel — it proves nothing about the service. With
+  `Authorization: Bearer ${PW_API_KEY}` (present in every step's environment under
+  `permissions: ['*']`) the proxy forwards the request and returns the service's own
+  status: `503` for a registered tunnel whose local port has nothing listening (seen
+  for ~5 s while JupyterLab booted on a compute node), the app's `200`/`404`/… once it
+  serves. The endpoint is listed as `running` ~2 s after `pw endpoints run` starts,
+  before the app listens, which is why the health step retries.
 - **Env-var auth for containers/sidecars (v7.79.0):** the CLI authenticates from
   `PW_API_KEY` + `PW_PLATFORM_HOST` env vars with no config file — this is how to run
   it in a pod. `ghcr.io/parallelworks/pw-cli:<ver>` is distroless (entrypoint

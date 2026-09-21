@@ -1,0 +1,64 @@
+Run trusted-airedale: error (20s)
+Reason: executorExitedEarly
+
+Error annotations:
+
+  Error: oras pull failed for ghcr.io/parallelworks/rag-service:1.0 after 3 attempts
+    in preprocessing → Controller Preprocessing
+
+Failed jobs/steps:
+
+  preprocessing > Controller Preprocessing (error, 0s)
+    Error: oras pull failed for ghcr.io/parallelworks/rag-service:1.0 after 3 attempts
+    + sandbox_dir=/home/alvaro/pw/software/containers/rag-service-sandbox
+    + echo ::group::Prerequisites
+    ── Prerequisites ──
+    + '[' -z /home/alvaro/pw/tests/rag-docs ']'
+    + docs_dir_abs=/home/alvaro/pw/tests/rag-docs
+    + '[' '!' -d /home/alvaro/pw/tests/rag-docs ']'
+    + which singularity
+    + echo ::endgroup::
+    ──
+    + mkdir -p /home/alvaro/pw/software/containers /home/alvaro/pw/software/models
+    + chmod a+rX /home/alvaro/pw/software/containers
+    + '[' -f /home/alvaro/pw/software/containers/rag-service.sif ']'
+    + echo '::group::rag-service SIF Download'
+    ── rag-service SIF Download ──
+    + oras_pull_file ghcr.io/parallelworks/rag-service:1.0 rag-service.sif /home/alvaro/pw/software/containers/rag-service.sif
+    + repo=ghcr.io/parallelworks/rag-service:1.0
+    + repo_path=rag-service.sif
+    + host_path=/home/alvaro/pw/software/containers/rag-service.sif
+    + local output_dir oras_bin anon_config
+    ++ dirname /home/alvaro/pw/software/containers/rag-service.sif
+    + output_dir=/home/alvaro/pw/software/containers
+    + oras_bin=/home/alvaro/pw/jobs/trusted-airedale/tools/oras/oras
+    ++ mktemp
+    + anon_config=/tmp/tmp.eDVgSObdDr
+    + echo '{}'
+    + local attempt
+    + for attempt in 1 2 3
+    + /home/alvaro/pw/jobs/trusted-airedale/tools/oras/oras pull --registry-config /tmp/tmp.eDVgSObdDr ghcr.io/parallelworks/rag-service:1.0 -o /home/alvaro/pw/software/containers
+    Error response from registry: failed to resolve 1.0: GET "https://ghcr.io/v2/parallelworks/rag-service/manifests/1.0": unauthorized: authentication required
+    + /home/alvaro/pw/jobs/trusted-airedale/tools/oras/oras pull ghcr.io/parallelworks/rag-service:1.0 -o /home/alvaro/pw/software/containers
+    Error response from registry: failed to resolve 1.0: GET "https://ghcr.io/v2/parallelworks/rag-service/manifests/1.0": unauthorized: authentication required
+    + '[' 1 -lt 3 ']'
+    + sleep 5
+    + for attempt in 1 2 3
+    + /home/alvaro/pw/jobs/trusted-airedale/tools/oras/oras pull --registry-config /tmp/tmp.eDVgSObdDr ghcr.io/parallelworks/rag-service:1.0 -o /home/alvaro/pw/software/containers
+    Error response from registry: failed to resolve 1.0: GET "https://ghcr.io/v2/parallelworks/rag-service/manifests/1.0": unauthorized: authentication required
+    + /home/alvaro/pw/jobs/trusted-airedale/tools/oras/oras pull ghcr.io/parallelworks/rag-service:1.0 -o /home/alvaro/pw/software/containers
+    Error response from registry: failed to resolve 1.0: GET "https://ghcr.io/v2/parallelworks/rag-service/manifests/1.0": unauthorized: authentication required
+    + '[' 2 -lt 3 ']'
+    + sleep 10
+    + for attempt in 1 2 3
+    + /home/alvaro/pw/jobs/trusted-airedale/tools/oras/oras pull --registry-config /tmp/tmp.eDVgSObdDr ghcr.io/parallelworks/rag-service:1.0 -o /home/alvaro/pw/software/containers
+    Error response from registry: failed to resolve 1.0: GET "https://ghcr.io/v2/parallelworks/rag-service/manifests/1.0": unauthorized: authentication required
+    + /home/alvaro/pw/jobs/trusted-airedale/tools/oras/oras pull ghcr.io/parallelworks/rag-service:1.0 -o /home/alvaro/pw/software/containers
+    Error response from registry: failed to resolve 1.0: GET "https://ghcr.io/v2/parallelworks/rag-service/manifests/1.0": unauthorized: authentication required
+    + '[' 3 -lt 3 ']'
+    + rm -f /tmp/tmp.eDVgSObdDr
+    + echo '::error title=Error::oras pull failed for ghcr.io/parallelworks/rag-service:1.0 after 3 attempts'
+    ✗ Error: oras pull failed for ghcr.io/parallelworks/rag-service:1.0 after 3 attempts
+    + exit 1
+
+Summary: 1 job(s) failed, 1 step(s) failed

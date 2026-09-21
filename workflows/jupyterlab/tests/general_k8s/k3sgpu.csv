@@ -2,3 +2,4 @@ date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fe
 2026-09-16T14:20:27Z,,pass,ok,307,fd53ebd,436820d,7fbf1da,8e0cab4,8e0cab4,k8s-endpoints,alvaro,skilled-starling,19,
 2026-09-21T07:52:34Z,,pass,ok,,f78808c,436820d,8e2818b,6f42902-dirty,6f42902,test-dev,alvaro,square-warthog,31,
 2026-09-21T10:17:01Z,,pass,ok,,608105e,436820d,9b833fc,aa37094-dirty,aa37094,dev,alvaro,square-monkey,31,
+2026-09-21T10:27:56Z,,pass,ok,,ee99704,436820d,2d967eb,ad6e4a1,ad6e4a1,dev,alvaro,classic-starfish,31,

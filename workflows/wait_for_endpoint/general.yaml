@@ -20,7 +20,16 @@ jobs:
             echo "$(date) Endpoint ${endpoint_name} not found yet; retrying in 10 seconds"
             sleep 10
           done
+          echo "::notice::Endpoint ${endpoint_name} is online"
+      - name: Check endpoint health
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          endpoint_name="${{ inputs.endpoint_name }}"
           url=$(pw endpoints list | awk -F'\t' -v name="${endpoint_name}" '$1 == name {print $3}')
+          if [ -z "${url}" ]; then
+            echo "::error title=Error::Endpoint ${endpoint_name} is no longer listed"
+            exit 1
+          fi
           # Path-based endpoints (--no-subdomain) are listed as a path, not a URL
           case "${url}" in
             /*) url="https://${PW_PLATFORM_HOST}${url}" ;;
@@ -38,7 +47,7 @@ jobs:
             echo "::error title=Error::PW_API_KEY is not set; cannot probe ${probe_url%%\?*}"
             exit 1
           fi
-          echo "::notice::Endpoint ${endpoint_name} is listed; checking that ${probe_url%%\?*} answers"
+          echo "::notice::Checking that ${probe_url%%\?*} answers"
           started=$(date +%s)
           while :; do
             resp=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time ${{ inputs.max_time }} -H "Authorization: Bearer ${PW_API_KEY}" "${probe_url}")

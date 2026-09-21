@@ -4,7 +4,9 @@ Subworkflow every endpoint workflow calls once its start script has been submitt
 polls `pw endpoints list` until `endpoint_name` is listed, probes the endpoint URL with
 `Authorization: Bearer ${PW_API_KEY}` until the status matches `healthy` (within
 `budget`), then touches `skip_cleanups_file` so the script submitter leaves the service
-running. If the service never answers, the job fails **without** touching the skip file:
+running. It is two steps, `Wait for endpoint` (poll) and `Check endpoint health`
+(probe, then skip file), so the run log shows which phase took the time. If the service
+never answers, the job fails **without** touching the skip file:
 the caller's submitter step (`early-cancel: any-job-failed`) is cancelled and its normal
 cleanup tears the job down (`scancel`/`qdel`/kill); on Kubernetes the log-stream step's
 cleanups delete the Deployment.

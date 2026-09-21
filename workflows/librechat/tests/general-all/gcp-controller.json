@@ -1,0 +1,23 @@
+{
+  "_test": {
+    "resource": "pw://alvaro/gcpsmall",
+    "timeout_s": 2400,
+    "warm_marker": [
+      "${HOME}/pw/software/containers/librechat",
+      "${HOME}/pw/software/containers/langflow.sif"
+    ],
+    "leftover_patterns": [
+      "librechat",
+      "mongod",
+      "meilisearch",
+      "langflow",
+      "pw endpoints run"
+    ]
+  },
+  "librechat_resource": "pw://alvaro/gcpsmall",
+  "langflow_resource": "pw://alvaro/gcpsmall",
+  "librechat_cluster": { "scheduler": false },
+  "langflow_cluster": { "scheduler": false },
+  "librechat": { "dir": "${HOME}/pw/LibreChat", "domain_client": "ACTIVATE" },
+  "langflow": { "enable_proxy": false, "enable_hftei": false, "proxy_dir": "" }
+}

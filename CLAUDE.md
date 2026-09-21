@@ -92,8 +92,11 @@ To convert an older workflow to this pattern, follow
 - Scripts MUST create `cancel.sh` for graceful shutdown.
 - The start script MUST end with `sleep inf` (or run the service in the foreground).
 - All configuration arrives via the sourced `inputs.sh` — no hardcoded paths/values.
-- Use `${PW_PARENT_JOB_DIR}` for job-dir references and `service_parent_install_dir`
-  (default `${HOME}/pw/software`) for installs.
+- Use `${PW_PARENT_JOB_DIR}` for job-dir references in scripts and `run:` steps, and
+  `service_parent_install_dir` (default `${HOME}/pw/software`) for installs. Keys the
+  platform resolves itself take shell variables literally: a job's `working-directory`,
+  and a `with:` value that becomes one (the submitter's `rundir`), must use
+  `${{ env.PW_PARENT_JOB_DIR }}` instead.
 - Shared tools are referenced as `tools/oras/...` / `tools/utils/...` relative to the
   run directory (the YAML sparse-checkouts them alongside `workflows/<name>`).
 - Pull ghcr/ORAS artifacts through `tools/oras/libs.sh:oras_pull_file` (it retries —

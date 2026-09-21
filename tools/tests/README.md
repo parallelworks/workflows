@@ -58,6 +58,7 @@ Optional, stripped before launch.
 | `leftover_patterns` | cluster | process patterns that must not survive teardown, matched against `ps -u $USER -o args` | `["pw endpoints"]` |
 | `leftover_commands` | cluster | `{name: shell snippet}`; each snippet must print `0` after teardown, e.g. `docker ps -q \| wc -l` for containers `ps` cannot see | none |
 | `leftover_kinds` | k8s | object kinds that must be gone after teardown; drop `persistentvolumeclaims` for a test that sets `pvc_persist: true` | `deployments`, `services`, `pods`, `persistentvolumeclaims`, `secrets` |
+| `resource` | cluster | the resource the runner checks (warm marker, leftovers) when the form has no `cluster.resource`, e.g. librechat `general-all` with its `librechat_resource` | none |
 
 ## Pass criteria
 
@@ -67,7 +68,8 @@ Cluster lane:
   check of the endpoint URL passed)
 - `pw endpoints list` shows an endpoint named `*-<run-slug>`
 
-Cleanup is verified separately after `pw endpoints delete`: no matching processes
+Cleanup is verified separately after `pw endpoints delete` of every endpoint ending in
+the run slug (a multi-service workflow registers several): no matching processes
 for the user on the resource (processes that already existed before the launch are
 ignored, so an editor's remote server or the runner itself on the login node never
 counts), no queued jobs when the test schedules, and the endpoint gone. Failing runs keep their platform record; passing ones are not deleted yet.

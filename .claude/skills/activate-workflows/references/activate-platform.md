@@ -184,7 +184,12 @@ Common attributes: `label`, `default`, `tooltip`, `optional: true`, `hidden: <ex
 ### Expressions & env
 - `${{ ... }}` — platform templating, evaluated **before** the shell sees the line
   (inputs, `needs.*.outputs`, `org.*`, comparisons).
-- `${VAR}` / `$VAR` — ordinary shell, evaluated at runtime on the node.
+- `${VAR}` / `$VAR` — ordinary shell, evaluated at runtime on the node — so only where
+  a shell runs the string (`run:`, `cleanup:`, a `with:` value the subworkflow puts in
+  a `run:`). The platform takes a job's `working-directory` literally, and with it any
+  `with:` value that becomes one (`script_submitter`'s `rundir`): `${PW_PARENT_JOB_DIR}/x`
+  there creates a directory named `${PW_PARENT_JOB_DIR}`. Write `${{ env.PW_PARENT_JOB_DIR }}/x`
+  in those keys.
 - Useful runtime env vars: `PW_PARENT_JOB_DIR` (parent run's job dir — use for all
   shared paths), `PW_JOB_DIR`, `PW_JOB_ID`, `PW_RUN_SLUG` (the run's slug — the argument
   `pw workflows runs cancel` takes), `PW_USER`, plus all `PW_*`. The
@@ -338,7 +343,7 @@ run_my_job:
       with:
         $yaml: workflows/script_submitter/v3.6/general.yaml
         resource: ${{ inputs.resource }}
-        rundir: ${PW_PARENT_JOB_DIR}
+        rundir: ${{ env.PW_PARENT_JOB_DIR }}          # platform-resolved: ${PW_PARENT_JOB_DIR} would be literal here
         use_existing_script: true
         script_path: ${PW_PARENT_JOB_DIR}/my/run.sh   # written by preprocessing
         shebang: '#!/bin/bash'

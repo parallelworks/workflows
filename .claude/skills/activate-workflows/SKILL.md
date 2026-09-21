@@ -279,7 +279,9 @@ non-repetitive; point at an existing tutorial instead.
 - **Match the deployment variant to the platform host** (`emed`/`noaa`/`hsp`/`general`)
   and copy that variant's resource/slurm/pbs form — don't reuse `general` blindly.
 - **Orchestrate with the job graph.** Share files across jobs via `${PW_PARENT_JOB_DIR}`
-  (`cd` into it). Pass values with `echo "K=v" | tee -a $OUTPUTS` (or pipe a program
+  (`cd` into it in shell; as a job's `working-directory` or the submitter's `rundir` write
+  `${{ env.PW_PARENT_JOB_DIR }}` — the platform takes `${VAR}` literally there). Pass
+  values with `echo "K=v" | tee -a $OUTPUTS` (or pipe a program
   that prints `K=v` lines) and read `${{ needs.<job>.outputs.K }}`. Drive conditional
   steps with `if: ${{ needs.X.outputs.flag == 'true' }}` — compute the boolean
   upstream. For failure/cancel handlers use the `if:` status keywords (`always`,

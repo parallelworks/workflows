@@ -40,6 +40,8 @@ The optional "_test" object is stripped before launch:
                        teardown (cluster lane; e.g. {"docker": "docker ps -q | wc -l"})
     leftover_kinds     Kubernetes object kinds that must be gone after teardown (k8s lane;
                        default: deployments, services, pods, persistentvolumeclaims, secrets)
+    resource           the resource the runner checks (warm marker, leftovers) when the form
+                       has no cluster.resource, e.g. librechat general-all's librechat_resource
 
 Failing runs keep their platform record and get their `pw workflows runs errors`
 output (plus the namespace events on the k8s lane) saved under
@@ -75,7 +77,7 @@ POLL_S = 15
 FINAL_STATUSES = {"completed", "error", "canceled", "failed"}
 COLUMNS = ["date", "phase", "result", "cleanup", "workflow_tree", "submitter_tree",
            "tools_tree", "commit", "fetched", "branch", "user", "run_slug", "duration_s", "error"]
-DEFAULTS = {"timeout_s": 1800, "warm_marker": "", "setup": "",
+DEFAULTS = {"timeout_s": 1800, "warm_marker": "", "setup": "", "resource": "",
             "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
             "leftover_kinds": ["deployments", "services", "pods", "persistentvolumeclaims", "secrets"]}
 
@@ -123,7 +125,7 @@ class Test:
         data = json.loads(self.path.read_text())
         self.meta = {**DEFAULTS, **data.pop("_test", {})}
         self.inputs = data
-        resource = self.lookup("cluster", "resource") or self.lookup("resource")
+        resource = self.meta["resource"] or self.lookup("cluster", "resource") or self.lookup("resource")
         k8s_cluster = self.lookup("k8s", "cluster")
         self.k8s = (isinstance(resource, dict) and resource.get("type") == "kubernetes") or bool(k8s_cluster)
         if self.k8s:
@@ -139,7 +141,7 @@ class Test:
             self.resource = resource
             self.scheduler = bool(self.lookup("cluster", "scheduler") or self.lookup("scheduler"))
             if not self.resource:
-                raise SystemExit(f"{self.id}: no cluster.resource, resource or k8s.cluster input")
+                raise SystemExit(f"{self.id}: no cluster.resource, resource, k8s.cluster or _test.resource input")
 
     def lookup(self, *keys):
         value = self.inputs
@@ -362,6 +364,13 @@ def endpoint(slug, attempts=6):
     return None, ""
 
 
+def endpoints(slug):
+    names = []
+    for line in pw("endpoints", "list", timeout=90).stdout.splitlines():
+        names += [t for t in line.split() if t.endswith(f"-{slug}")]
+    return names
+
+
 def errors(slug):
     text = pw("workflows", "runs", "errors", slug, "-o", "text", timeout=90).stdout
     lines = [l.strip() for l in text.splitlines() if l.strip()]
@@ -383,9 +392,11 @@ def preexisting_pids(test):
 
 
 def teardown(test, slug, endpoint_name, preexisting):
-    if endpoint_name:
-        r = pw("endpoints", "delete", endpoint_name, timeout=90)
-        log(f"  endpoints delete {endpoint_name}: rc={r.returncode} {(r.stdout + r.stderr).strip()[:120]}")
+    # A multi-service workflow (librechat general-all) registers one endpoint per
+    # service, every one ending in the run slug: all of them come down.
+    for name in endpoints(slug) or ([endpoint_name] if endpoint_name else []):
+        r = pw("endpoints", "delete", name, timeout=90)
+        log(f"  endpoints delete {name}: rc={r.returncode} {(r.stdout + r.stderr).strip()[:120]}")
     # The checker's own shell is in the user's process list, so nothing in this
     # command may contain a pattern verbatim: keys are indexes and the grep
     # pattern brackets its first character.

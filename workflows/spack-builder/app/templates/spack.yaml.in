@@ -92,6 +92,14 @@ __GROMACS_GPU_SPECS__
         # actual externals (see external-modules.py). It cannot be hardcoded:
         # which packages are external depends on what `spack external find` turns
         # up on each image, and leaving one in makes `module load` fail outright.
+        #
+        # `include:` WINS over `exclude:` (modules/common.py: `not include_matches
+        # and (exclude_matches or excluded_as_implicit)`), and `gcc` is the entry
+        # that does the work here: the stack compiler is an external, so build.sh
+        # excludes it with all the others, and this line is the only reason it
+        # gets a modulefile at all. Drop it and the stack can be RUN but nothing
+        # can be COMPILED against it. Spack files that modulefile under the
+        # external's generic target, i.e. a different tree from the stack's.
         include:
           - gcc
           - openmpi

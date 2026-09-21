@@ -307,6 +307,7 @@ jobs:
           app_dir="${PWD}/workflows/spack-builder/app"
           fabric_env="${PWD}/fabric.env"
           env_dir="${PWD}/spack-env"
+          modulepath_env="${PWD}/modulepath.env"
           EOF
           # Remove empty variables
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh

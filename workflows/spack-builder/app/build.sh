@@ -339,17 +339,61 @@ spack -e "$ENV_DIR" module tcl refresh -y
 # this workflow exists for, those differ. Run moral-silkworm built x86_64_v3 and
 # printed a skylake_avx512 MODULEPATH that held none of its modules.
 MODROOT="$MODULE_ROOT/$(spack arch -p)-$(spack arch -o)-${TARGET}"
+
+# The compiler is external with a GENERIC target, so its modulefile lands in a
+# DIFFERENT tree from everything built with it (linux-rocky9-x86_64 next to
+# linux-rocky9-skylake_avx512) and a MODULEPATH holding only $MODROOT offers no
+# compiler at all -- the stack can then be run but nothing new can be built
+# against it. Ask Spack where it wrote the file instead of reconstructing the
+# generic target name, which is not derivable from $TARGET.
+# `|| true`: under `set -e` a failed lookup here would abort the run at its very
+# last step, after a fully successful build and push.
+GCC_MODFILE="$(spack -e "$ENV_DIR" module tcl find --full-path gcc 2>/dev/null | head -1 || true)"
+if [ -n "$GCC_MODFILE" ] && [ -f "$GCC_MODFILE" ]; then
+    GCC_MODROOT="$(dirname "$(dirname "$GCC_MODFILE")")"
+else
+    GCC_MODROOT=""
+fi
+
+if [ -n "$GCC_MODROOT" ] && [ "$GCC_MODROOT" != "$MODROOT" ]; then
+    MODULEPATH_VALUE="$MODROOT:$GCC_MODROOT"
+    GCC_LOAD_LINE="    module load gcc          # gcc/g++/gfortran + CC/CXX/FC, to COMPILE"
+    GCC_NOTE="BOTH directories are needed. $(basename "$MODROOT") holds the stack;
+$(basename "$GCC_MODROOT") holds the compiler, which Spack files under a generic
+target because it is registered as an external. With only the first, openmpi
+loads and RUNS but there is no gcc/g++/gfortran to build anything new against."
+else
+    MODULEPATH_VALUE="$MODROOT"
+    GCC_LOAD_LINE="    # no compiler module was generated -- 'spack load gcc' for gcc/g++/gfortran"
+    GCC_NOTE="No compiler modulefile was found under $MODULE_ROOT."
+fi
+
+# The endpoint job prints this same MODULEPATH on its page. It runs in its own
+# directory, after this script has exited, with no Spack environment set up --
+# so the value is handed over through the shared run dir instead of being
+# recomputed there from `spack arch` and a target it does not have.
+if [ -n "${modulepath_env:-}" ]; then
+    printf '%s\n' "$MODULEPATH_VALUE" > "$modulepath_env"
+fi
+
 cat <<EOF
 
 === DONE ===
 Stack built for target: $TARGET  (fabric=$FABRIC_PROFILE, cloud=${CLOUD:-?})
 GPU path: $( [ "$GPU_ACTIVE" = "1" ] && echo "ENABLED (cuda_arch=${EFFECTIVE_ARCH})" || echo "disabled" )
 
-    export MODULEPATH=$MODROOT:\$MODULEPATH
+    export MODULEPATH=$MODULEPATH_VALUE:\$MODULEPATH
+$GCC_LOAD_LINE
     module load openmpi      # or mpich / intel-oneapi-mpi
     module load gromacs
 
-(There is no gcc module: the stack compiler is registered as an external and
-externals are excluded from the module tree. Use 'spack load gcc' if you need
-the compiler itself on PATH.)
+$GCC_NOTE
+
+MODULEPATH must name the module tree(s) above exactly, never the parent
+
+    $MODULE_ROOT
+
+The autoload lines inside every modulefile are bare names resolved against a
+MODULEPATH entry, so a parent-level entry makes every load fail with
+"ERROR: Unable to locate a modulefile for 'gcc-runtime/14.2.0-none-none'".
 EOF

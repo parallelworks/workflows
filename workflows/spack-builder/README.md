@@ -205,7 +205,13 @@ Spack keys the tree by **spec** architecture — `<root>/<platform>-<os>-<target
 — so stacks built for different targets already separate themselves. Point
 separate stacks at separate roots when you want them independent beyond that.
 
-Two things were wrong here and are now fixed:
+One consequence catches everyone: a *single* stack spans **two** of those
+directories. The packages carry the stack target (`linux-rocky9-skylake_avx512`),
+while the external compiler carries a generic one (`linux-rocky9-x86_64`), so the
+`gcc` modulefile is filed apart from everything built with it. Both belong on
+`MODULEPATH` — see "After the build".
+
+Three things were wrong here and are now fixed:
 
 - **`module tcl refresh --delete-tree` wiped other stacks.** `--delete-tree`
   deletes the whole tree and regenerates only the current environment's specs, so
@@ -218,6 +224,15 @@ Two things were wrong here and are now fixed:
   workflow exists for — those differ: `moral-silkworm` built `x86_64_v3` and told
   users to add the `skylake_avx512` directory, which held none of its modules. It
   is now composed from the resolved target.
+- **The banner offered no compiler, and said there was none to offer.** It
+  printed the stack tree alone and a note claiming no `gcc` module exists or can
+  exist — which was never true: `include:` overrides `exclude`, so the external
+  compiler does get a modulefile, in the generic-target tree the banner never
+  mentioned. Users could load and run the stack but had no `gcc` on `PATH` to
+  build against it. The banner now locates that tree with `spack module tcl find
+  --full-path gcc` (the generic target is not derivable from `$TARGET`), prints
+  both directories and a `module load gcc` line, and warns against pointing
+  `MODULEPATH` at their parent.
 
 ## Module names in a GPU build
 
@@ -275,20 +290,58 @@ order they are written, with `all` reserved as the fallback — see
 
 ## After the build
 
+The build ends with a `=== DONE ===` banner that prints these paths for the
+stack it just built. Take them from there rather than composing them by hand;
+the shape is
+
 ```bash
-export MODULEPATH=<install_prefix>/share/spack/modules/<arch>:$MODULEPATH
+export MODULEPATH=<module_root>/<arch>:<module_root>/<generic-arch>:$MODULEPATH
+module load gcc/<gccver>-none-none              # gcc/g++/gfortran, to compile
 module load openmpi/<version>-gcc-<gccver>      # or mpich / intel-oneapi-mpi
 module load gromacs/<version>-openmpi-<version>
 ```
 
-**There is deliberately no `gcc` module**, and there cannot be one. Two mandatory
-constraints collide: the stack compiler must be registered as an *external* (the
-solver refuses to build the provider of the `c` virtual, see `build.sh`), and
-externals must be excluded from the module tree (they have no modulefile, and
-`autoload: direct` turns one missing requirement into a failure of the entire
-`module load`). Nothing is lost by this: every package is RPATH-linked to the
-compiler, and `gcc-runtime` carries the runtime libraries. If you want the
-compiler itself on `PATH`, use `spack load gcc`.
+which on a `skylake_avx512` CPU stack installed with the default module root is
+
+```bash
+M=$HOME/pw/software/modules
+export MODULEPATH=$M/linux-rocky9-skylake_avx512:$M/linux-rocky9-x86_64:$MODULEPATH
+```
+
+**Two directories, and `MODULEPATH` must name them, not their parent.** The
+`depends-on` lines Spack writes into every modulefile are *bare* names
+(`gcc-runtime/14.2.0-none-none`), resolved against a `MODULEPATH` entry. Point
+`MODULEPATH` at `$M` and the modules are named `linux-rocky9-skylake_avx512/…`
+instead, so every one of those requirements misses and the load aborts:
+
+```
+$ export MODULEPATH=$HOME/pw/software/modules
+$ module load linux-rocky9-skylake_avx512/openmpi
+  ERROR: Unable to locate a modulefile for 'gcc-runtime/14.2.0-none-none'
+  ERROR: Load of requirement gcc-runtime/14.2.0-none-none failed
+```
+
+Nothing loads, and — because the `module` command still returns 0 — the shell is
+left on the *system* MPI, which is the same silent-wrong-direction failure
+`external-modules.py` exists to prevent.
+
+**The `gcc` module lives in the second tree**, the `<generic-arch>` one. The
+stack compiler is registered as an *external* (the solver refuses to build the
+provider of the `c` virtual, see `build.sh`) and `build.sh` excludes every
+external from the module tree — but `include: [gcc, …]` in `spack.yaml.in` takes
+precedence over `exclude` (`return not include_matches and (exclude_matches or
+excluded_as_implicit)`, `lib/spack/spack/modules/common.py`), so `gcc` alone
+comes back. It lands in a tree of its own because the external entry carries a
+*generic* target (`x86_64`) while everything built with it carries the stack
+target, and Spack files modules by the spec's architecture.
+
+That second tree is what makes the stack usable for *building*, not just
+running: it sets `PATH`, `MANPATH`, `CMAKE_PREFIX_PATH` and
+`CC`/`CXX`/`FC`/`F77` to the Spack compiler. With only the first tree, `module
+load openmpi` succeeds and `mpirun` works — every package is RPATH-linked and
+`gcc-runtime` carries the runtime libraries — but no compiler lands on `PATH` to
+compile anything new against it. `spack load gcc` does the same job without
+modules.
 
 Use the **full** module name. Plain `module load openmpi` can match a system
 module of the same name earlier on `MODULEPATH` and silently give you the system
@@ -522,7 +575,10 @@ and there is nothing to compare.
 
 The last two jobs (`endpoint`, `wait_for_endpoint`) start a `pw` endpoint named
 `spack-builder-<run-slug>` that serves one static page: the run slug, the
-resolved fabric profile and the `MODULEPATH` to use. **Nothing in the build
+resolved fabric profile and the `MODULEPATH` to use — read from
+`modulepath.env`, which `build.sh` writes in the shared run directory, because
+the endpoint job runs elsewhere with no Spack set up and cannot work the two
+module trees out for itself. **Nothing in the build
 needs it.** It exists because the shared end-to-end test runner
 (`tools/tests/run-workflow-test.py`) passes a run only when
 

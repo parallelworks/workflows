@@ -89,8 +89,11 @@ pw workflows run my-session -i '{"resource":"gcpsmall","scheduler":false}'
 >   object passes through **verbatim, unvalidated**: for a kubernetes cluster send
 >   `{"id":"<pw kube ls id>","name":"k3sgpu","type":"kubernetes","uri":"pw://k3sgpu"}`
 >   (set the fields the workflow reads: `name` for `pw kube auth`, `type` for the guards).
->   The test runner's k8s lane completes `{"name":…,"type":"kubernetes"}` from
->   `pw kube ls -o json`. A `kubernetes-clusters` input (standalone `k8s.yaml`,
+>   The test runner builds both objects, so a test JSON keeps the portable form: its
+>   k8s lane completes `{"name":…,"type":"kubernetes"}` from `pw kube ls -o json`, and
+>   its cluster lane expands a `pw://` string into the cluster object above from
+>   `pw cluster ls -o json` whenever the YAML declares `compute-resources`.
+>   A `kubernetes-clusters` input (standalone `k8s.yaml`,
 >   `k8s.cluster`) takes the **bare cluster name**; `kubernetes-namespaces` a string.
 
 **The workspace as a resource:** `include-workspace: true` on a `compute-clusters`

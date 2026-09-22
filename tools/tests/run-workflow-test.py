@@ -77,6 +77,7 @@ POLL_S = 15
 FINAL_STATUSES = {"completed", "error", "canceled", "failed"}
 COLUMNS = ["date", "phase", "result", "cleanup", "workflow_tree", "submitter_tree",
            "tools_tree", "commit", "fetched", "branch", "user", "run_slug", "duration_s", "error"]
+COMPUTE_RESOURCES_RE = re.compile(r"^\s*type:\s*compute-resources\s*$", re.M)
 DEFAULTS = {"timeout_s": 1800, "warm_marker": "", "setup": "", "resource": "",
             "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
             "leftover_kinds": ["deployments", "services", "pods", "persistentvolumeclaims", "secrets"]}
@@ -133,6 +134,8 @@ class Test:
             self.namespace = self.lookup("k8s", "namespace") or ""
             self.resource = f"kubernetes cluster {self.cluster}"
             self.scheduler = False
+            self.resource_path = None
+            self.hydrate = False
             if not self.cluster:
                 raise SystemExit(f"{self.id}: kubernetes resource without a name")
         else:
@@ -142,6 +145,13 @@ class Test:
             self.scheduler = bool(self.lookup("cluster", "scheduler") or self.lookup("scheduler"))
             if not self.resource:
                 raise SystemExit(f"{self.id}: no cluster.resource, resource, k8s.cluster or _test.resource input")
+            self.resource_path = (("cluster", "resource") if self.lookup("cluster", "resource")
+                                  else ("resource",) if self.lookup("resource") else None)
+            # The platform hydrates a pw:// string only for compute-clusters inputs; a
+            # compute-resources one reaches the workflow raw, so `.ip` is empty and
+            # ssh steps run on the workspace. The UI sends the object, so we do too.
+            self.hydrate = bool(self.resource_path) and bool(
+                COMPUTE_RESOURCES_RE.search(self.yaml.read_text()))
 
     def lookup(self, *keys):
         value = self.inputs
@@ -161,17 +171,17 @@ def context():
 def resource_active(resource, default_user):
     m = re.match(r"^(?:pw://)?(?:([^/]+)/)?([^/]+)$", resource)
     if not m:
-        return False, f"unparseable resource {resource!r}"
+        return False, f"unparseable resource {resource!r}", None
     user, name = m.group(1), m.group(2)
     if not resource.startswith("pw://"):
         user = default_user
     r = pw("cluster", "ls", "-o", "json")
     if r.returncode != 0:
-        return False, f"pw cluster ls failed: {(r.stderr or r.stdout).strip()[:200]}"
+        return False, f"pw cluster ls failed: {(r.stderr or r.stdout).strip()[:200]}", None
     for c in parse_json(r.stdout):
         if c.get("name") == name and (user is None or c.get("user") in (user, None)):
-            return c.get("status") == "active", f"status {c.get('status')}"
-    return False, "not found in pw cluster ls"
+            return c.get("status") == "active", f"status {c.get('status')}", c
+    return False, "not found in pw cluster ls", None
 
 
 def kube_cluster(name):
@@ -194,6 +204,30 @@ def complete_resource(test, cluster):
         resource.setdefault("id", cluster.get("id"))
         resource.setdefault("uri", f"pw://{test.cluster}")
         resource["type"] = "kubernetes"
+
+
+def hydrate_compute_resource(test, cluster, default_user):
+    if not test.hydrate:
+        return
+    owner = cluster.get("user") or default_user
+    name = cluster.get("name", "")
+    obj = {
+        "$type": "computeResource",
+        "id": cluster.get("id", ""),
+        # `pw cluster ls -o json` calls it ipAddress; the resolved object wants ip
+        "ip": cluster.get("ipAddress", ""),
+        "name": name,
+        "namespace": owner,
+        "user": owner,
+        "provider": cluster.get("type", ""),
+        "type": cluster.get("type", ""),
+        "schedulerType": cluster.get("schedulerType", ""),
+        "uri": f"pw://{owner}/{name}",
+    }
+    target = test.inputs
+    for key in test.resource_path[:-1]:
+        target = target.setdefault(key, {})
+    target[test.resource_path[-1]] = obj
 
 
 _kube_ready = {}
@@ -474,13 +508,15 @@ def run_test(test, args, user):
         active = cluster is not None
     else:
         lane = "compute" if test.scheduler else "login"
-        active, why = resource_active(test.resource, user)
+        active, why, cluster = resource_active(test.resource, user)
     log(f"=== {test.id} on {test.resource} ({lane} lane)")
     if not active:
         log(f"  SKIP: resource {test.resource} is not active ({why})")
         return None
     if test.k8s:
         complete_resource(test, cluster)
+    else:
+        hydrate_compute_resource(test, cluster, user)
     row = {c: "" for c in COLUMNS}
     row.update(stamp(test))
     row["user"] = user
@@ -562,6 +598,11 @@ def main():
                 cluster, _ = kube_cluster(t.cluster)
                 if cluster:
                     complete_resource(t, cluster)
+            elif t.hydrate:
+                emit_user, _ = context()
+                _, _, cluster = resource_active(t.resource, emit_user)
+                if cluster:
+                    hydrate_compute_resource(t, cluster, emit_user)
             print(f"# pw workflows run {t.yaml} -i <this>", file=sys.stderr)
             print(json.dumps(t.inputs, indent=2))
         return 0

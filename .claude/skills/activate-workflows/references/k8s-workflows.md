@@ -139,9 +139,13 @@ copy the closest example from §1 and change the image, port and args, the hidde
   prefix; keep it stable.
 - Hybrid: `resource` (`compute-resources`; the k8s jobs read `.type` and `.name`), the
   same `k8s` group, `service_k8s` for the container and `service` for the
-  compute-cluster scripts, each hidden when the other applies. From the CLI the
-  kubernetes `resource` must be an **object**, not a name; the exact JSON and why are
-  in [activate-platform.md §2](activate-platform.md#2-resources).
+  compute-cluster scripts, each hidden when the other applies. From the CLI **every**
+  `resource` must be an **object**, not a name: a `compute-resources` input does not
+  hydrate from a name or `pw://` URI, for a compute cluster no more than for a
+  kubernetes one, and a bare string leaves `.ip` empty so `ssh.remoteHost` steps run
+  on the workspace. The exact JSON and why are in
+  [activate-platform.md §2](activate-platform.md#2-resources); the test runner builds
+  both objects for you (§5).
 
 ```bash
 python3 tools/tests/run-workflow-test.py --emit workflows/mlflow/tests/k8s/k3sgpu.json > inputs.json
@@ -161,6 +165,12 @@ One test per k8s YAML: `workflows/<name>/tests/k8s/k3sgpu.json` (standalone) and
 passes on "endpoint listed and answering while the run is still `running`", tears down
 by cancelling the run and checks the namespace with kubectl; its keys, skip rule and
 columns are in [tools/tests/README.md](../../../../tools/tests/README.md).
+
+A hybrid YAML also has a **compute lane**, which the `k3sgpu.json` above never reaches
+(`preprocessing` is gated `if: resource.type != 'kubernetes'`), so cover it with a
+second test beside it — `tests/general_k8s/<cluster>-compute.json` with a `pw://`
+resource string. The runner hydrates that string into the full object, because a
+`compute-resources` input never hydrates on its own (§4).
 
 ```bash
 python3 tools/tests/run-workflow-test.py workflows/mlflow/tests/k8s/k3sgpu.json

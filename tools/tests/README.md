@@ -37,6 +37,14 @@ The runner picks the lane from the inputs:
 | cluster | `cluster.resource` (or `resource`) is a resource name or `pw://` URI | the run reaches `completed` and an endpoint named `*-<run-slug>` is listed | `pw endpoints delete`; leftovers are checked over `pw ssh` |
 | k8s | `resource` is an object with `"type": "kubernetes"` (hybrid `*_k8s.yaml`) or the inputs carry `k8s.cluster` (standalone `k8s.yaml`) | the run is still `running` when its `wait_for_endpoint_k8s` job completes and an endpoint named `*-<run-slug>` is listed | `pw workflows runs cancel`; leftovers are Kubernetes objects |
 
+A hybrid `*_k8s.yaml` runs either lane, so it takes one test per lane: a k8s-lane test
+with the `resource` object and a cluster-lane test with a `pw://` string. On the
+cluster lane the runner expands that string into the full resource object from
+`pw cluster ls -o json` when the YAML declares the input as `compute-resources`,
+because the platform hydrates only `compute-clusters` inputs — a `compute-resources`
+input reaches the workflow as a raw string, leaving `.ip` empty so `ssh.remoteHost`
+steps run on the workspace instead of the cluster.
+
 The runner never probes the endpoint URL. **Checking that the endpoint is healthy is
 the workflow's responsibility**: every `wait_for_endpoint` job calls the
 `wait_for_endpoint` subworkflow, which probes the listed URL with the run's

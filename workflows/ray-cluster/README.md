@@ -85,7 +85,10 @@ the platform SSH key (`~/.ssh/pwcli`) for that, which the user workspace has.
 still running. Select the resource that runs the head, leave **Cluster Job Directory**
 on `auto` (the latest job directory with a Ray head is used) or point it at the
 cluster run's job directory, and add the new sites. The added workers connect to the
-existing head and appear in its dashboard; this run completes once they are dispatched.
+existing head and appear in its dashboard; this run completes once they are dispatched
+and the workers stay attached. Same-resource workers are SLURM/PBS jobs whose ids are
+also recorded in the cluster run's `slurm_jobids`, so cancelling the cluster run cancels
+them too.
 
 ## Dashboard
 

@@ -1,16 +1,20 @@
 {
   "_test": {
-    "timeout_s": 1200,
+    "timeout_s": 2400,
     "endpoint": false,
+    "ready_job": "complete",
     "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
     "leftover_patterns": [
-      "dispatch_workers.sh"
+      "ray_worker_remote",
+      "slurm_worker.out",
+      "gcs_server",
+      "raylet"
     ]
   },
   "head": {
-    "resource": "pw://alvaro/gcpsmall"
+    "resource": "workspace"
   },
-  "cluster_job_dir": "auto",
   "workers": [
     {
       "resource": "pw://alvaro/gcpsmall",
@@ -26,5 +30,10 @@
   ],
   "ray_settings": {
     "ray_version": "2.40.0"
+  },
+  "workload_settings": {
+    "workload_type": "benchmark",
+    "num_tasks": "100",
+    "matrix_size": "200"
   }
 }

@@ -2,7 +2,10 @@
   "_test": {
     "timeout_s": 1200,
     "endpoint": false,
-    "resource": "pw://alvaro/gcpsmall"
+    "resource": "pw://alvaro/gcpsmall",
+    "leftover_patterns": [
+      "dispatch_workers.sh"
+    ]
   },
   "head": {
     "resource": "pw://alvaro/gcpsmall"

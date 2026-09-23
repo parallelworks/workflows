@@ -496,6 +496,7 @@ WORKER_SCRIPT
                 tail -f "${log_file}" 2>/dev/null | sed -u "s/^/[${site_name}] /"
             fi
         ) &
+        LOCAL_STREAMER_PIDS+=($!)
     fi
 }
 
@@ -2175,6 +2176,13 @@ except:
         fi
         [ $((check % 6)) -eq 0 ] && echo "  Still waiting for workers... (${check}0s elapsed)"
         sleep 10
+    done
+
+    # A same-resource site's log streamer (tail -f on its SLURM log) would outlive
+    # this run; the SLURM job itself lives on.
+    for pid in "${LOCAL_STREAMER_PIDS[@]}"; do
+        pkill -TERM -P "${pid}" 2>/dev/null || true
+        kill "${pid}" 2>/dev/null || true
     done
 
     # Disown background SSH sessions so they survive script exit

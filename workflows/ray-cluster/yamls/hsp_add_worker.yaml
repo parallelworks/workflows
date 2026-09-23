@@ -69,6 +69,9 @@ jobs:
           RAY_HEAD_IP=$(cat "${CLUSTER_JOB_DIR}/RAY_HEAD_IP")
           SESSION_PORT=$(cat "${CLUSTER_JOB_DIR}/SESSION_PORT")
           PYTHON_VERSION=$(cat "${CLUSTER_JOB_DIR}/PYTHON_VERSION")
+          # Same-resource workers activate the venv named in RAY_VENV_DIR of the job dir
+          # they are submitted from, which is this run's, not the cluster's
+          cp "${CLUSTER_JOB_DIR}/RAY_VENV_DIR" "${PW_PARENT_JOB_DIR%/}/RAY_VENV_DIR"
 
           # Verify Ray head is reachable
           VENV_DIR="$(cat "${CLUSTER_JOB_DIR}/RAY_VENV_DIR" 2>/dev/null || echo "")"
@@ -125,6 +128,7 @@ jobs:
           echo "SESSION_PORT=${SESSION_PORT}" >> "${OUTPUTS}"
           echo "PYTHON_VERSION=${PYTHON_VERSION}" >> "${OUTPUTS}"
           echo "SITE_INDEX_OFFSET=${EXISTING_SITES}" >> "${OUTPUTS}"
+          echo "CLUSTER_JOB_DIR=${CLUSTER_JOB_DIR}" >> "${OUTPUTS}"
 
           echo "=========================================="
           echo "Cluster validated — ready to add workers"
@@ -150,7 +154,18 @@ jobs:
           export RAY_REPO_BRANCH="ray-cluster"
 
           bash workflows/ray-cluster/app/dispatch_workers.sh
+          # Same-resource workers are SLURM jobs recorded in this run's slurm_jobids; the
+          # cluster run's cleanup only cancels the jobs listed in its own
+          if [ -f "${PW_PARENT_JOB_DIR%/}/slurm_jobids" ]; then
+            cat "${PW_PARENT_JOB_DIR%/}/slurm_jobids" >> "${{ needs.validate_cluster.outputs.CLUSTER_JOB_DIR }}/slurm_jobids"
+          fi
+          touch "${PW_PARENT_JOB_DIR%/}/WORKERS_DISPATCHED"
         cleanup: |
+          # The cleanup also runs after a successful dispatch; the workers must then stay
+          if [ -f "${PW_PARENT_JOB_DIR%/}/WORKERS_DISPATCHED" ]; then
+            echo "Workers were dispatched; leaving them attached to the cluster."
+            exit 0
+          fi
           echo "dispatch_workers cleanup — cancelling added workers..."
 
           export WORKERS_JSON='${{ inputs.workers }}'

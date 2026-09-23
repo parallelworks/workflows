@@ -146,10 +146,25 @@ remote worker sites cloned it again for `setup.sh`.
 | `bash scripts/<x>.sh` in the YAMLs; `SCRIPT_DIR="${JOB_DIR}/scripts"` in `start_ray_head.sh`, `dispatch_workers.sh`, `run_benchmark.sh` | `workflows/ray-cluster/app/...` |
 | remote worker clone: `git clone --sparse ray-cluster.git` + `sparse-checkout set scripts` + `bash scripts/setup.sh` (3 dispatch modes) | clone of this repo (`REPO_URL`/`REPO_BRANCH`, overridable with `RAY_REPO_URL`/`RAY_REPO_BRANCH`, default `canary`) + `sparse-checkout set workflows/ray-cluster/app` + `bash workflows/ray-cluster/app/setup.sh` |
 
-Everything else in the scripts and the job graph is verbatim. Small YAML-only changes:
-banner comments removed; `add_worker`'s `auto` job-dir detection also accepts the flat
-`~/pw/jobs/<run-slug>/` directory of a CLI file run (registered runs keep their numbered
-subdirectories).
+Everything else in the scripts and the job graph is verbatim. YAML-only changes beyond
+the paths: banner comments removed, and four fixes to the `add_worker` forms that the
+first test exposed (all pre-existing upstream; none touch `app/`):
+
+- `auto` job-dir detection also accepts the flat `~/pw/jobs/<run-slug>/` directory of a
+  CLI file run (registered runs keep their numbered subdirectories).
+- A same-resource worker's sbatch script activates the venv named in `RAY_VENV_DIR` of
+  the job dir it was submitted from — the add-worker run's, which had none, so the job
+  died with `ray: command not found` (SLURM job 4 in the first test). The validate step
+  now copies the cluster run's `RAY_VENV_DIR` into the add-worker run's dir.
+- A step `cleanup:` block runs after a successful step too (platform semantics, observed
+  live), so the dispatch step's cleanup — written for cancellation — ran right after
+  attaching the workers; on a remote SLURM site it `scancel`s the job it just added. The
+  run block now touches `WORKERS_DISPATCHED` on success and the cleanup exits early when
+  the marker exists.
+- The cluster run's cancel only `scancel`s the jobs listed in its own `slurm_jobids`, so
+  same-resource workers added later were orphaned until walltime. The dispatch step now
+  appends its `slurm_jobids` to the cluster run's (job dir published as an output of the
+  validate step).
 
 **Judgment calls:**
 

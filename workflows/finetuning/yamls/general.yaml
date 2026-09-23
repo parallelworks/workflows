@@ -202,7 +202,22 @@ jobs:
               # completes normally. Explicitly delete it here so every exit
               # path (normal completion, error, cancel, signal) actually tears
               # the endpoint down, not just the local process tree.
-              pw endpoints delete "${endpoint_name}" 2>/dev/null || true
+              # Retried: the delete runs the instant `pw endpoints run` exits and
+              # failed there on every run (runs 8 and 9, 2026-09-23), while the
+              # same delete issued by hand seconds later succeeded. Errors stay
+              # visible so the log shows why if it still fails. Bounded to ~12s
+              # so a scheduler cancel's SIGKILL grace period isn't exceeded.
+              for attempt in 1 2 3 4 5; do
+                  pw endpoints delete "${endpoint_name}" && break
+                  if ! pw endpoints list 2>/dev/null | awk '{print $1}' | grep -qxF "${endpoint_name}"; then
+                      break
+                  fi
+                  if [ "${attempt}" = 5 ]; then
+                      echo "::warning::Endpoint ${endpoint_name} could not be deleted; remove it with: pw endpoints delete ${endpoint_name}"
+                  else
+                      sleep 3
+                  fi
+              done
               if [ -n "${hf_token_file:-}" ] && [ -f "${hf_token_file}" ]; then
                   shred -u "${hf_token_file}" 2>/dev/null || rm -f "${hf_token_file}"
               fi

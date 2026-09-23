@@ -2122,12 +2122,26 @@ for i in $(seq 0 $((NUM_WORKERS - 1))); do
             -d "{\"site_id\": \"site-${remote_site_index}\", \"cluster_name\": \"${site_name}\", \"scheduler_type\": \"${scheduler_type}\"}" 2>&1) \
             || echo "[site-${remote_site_index}] Warning: pending notification failed: ${pending_resp}"
         echo "[site-${remote_site_index}] Pending notification: ${pending_resp}"
-        dispatch_worker "$((remote_site_index - 1))" "${site_name}" "${site_ip}" "${site_user}" \
-            "${use_scheduler}" "${scheduler_type}" \
-            "${slurm_partition}" "${slurm_account}" "${slurm_qos}" "${slurm_time}" \
-            "${slurm_nodes}" "${slurm_gres}" "${slurm_directives}" \
-            "${pbs_queue}" "${pbs_account}" "${pbs_nodes}" "${pbs_select}" "${pbs_walltime}" \
-            "${pbs_directives}" &
+        remote_args=("$((remote_site_index - 1))" "${site_name}" "${site_ip}" "${site_user}"
+            "${use_scheduler}" "${scheduler_type}"
+            "${slurm_partition}" "${slurm_account}" "${slurm_qos}" "${slurm_time}"
+            "${slurm_nodes}" "${slurm_gres}" "${slurm_directives}"
+            "${pbs_queue}" "${pbs_account}" "${pbs_nodes}" "${pbs_select}" "${pbs_walltime}"
+            "${pbs_directives}")
+        if [ "${DISPATCH_AND_EXIT:-false}" = "true" ]; then
+            # Fire-and-forget (add_worker): the SSH session that carries the tunnels must
+            # outlive this script and the step running it. Job control gives it its own
+            # process group so the step's teardown does not reach it, and its own log
+            # lets the step's output close (the step otherwise never ends).
+            mkdir -p "${JOB_DIR}/logs"
+            set -m
+            dispatch_worker "${remote_args[@]}" \
+                > "${JOB_DIR}/logs/dispatch_site-${remote_site_index}.out" 2>&1 < /dev/null &
+            set +m
+            echo "[site-${remote_site_index}] Dispatch log: ${JOB_DIR}/logs/dispatch_site-${remote_site_index}.out"
+        else
+            dispatch_worker "${remote_args[@]}" &
+        fi
         PIDS+=($!)
         SITE_LABELS+=("[site-${remote_site_index}] ${site_name}")
         SITE_IDS+=("site-${remote_site_index}")

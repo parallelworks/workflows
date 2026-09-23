@@ -53,6 +53,12 @@ jobs:
           import json, os, subprocess
 
           workers = json.loads(os.environ.get('WORKERS_JSON', '[]'))
+          # Sites attached later by the add_worker workflow
+          added = os.path.join(os.environ.get('PW_PARENT_JOB_DIR', '.'), 'added_workers.jsonl')
+          if os.path.exists(added):
+              for line in open(added):
+                  if line.strip():
+                      workers += json.loads(line)
           head_ip = os.environ.get('PW_RESOURCE_IP', '')
           pw_user = os.environ.get('PW_USER', '')
           pw_cmd = os.environ.get('PW_CMD', 'pw')

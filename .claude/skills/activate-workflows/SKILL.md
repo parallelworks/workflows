@@ -430,6 +430,18 @@ non-repetitive; point at an existing tutorial instead.
 - **Input group named `env` + a top-level `env:` block** referencing `${{ inputs.env.* }}`
   → `Expression Parser Error: max recursion exceeded`, failing **both `--dry-run` and
   `pw workflows run`** (the web UI may still submit). Rename the group (e.g. `env_vars`).
+- **A step's `cleanup:` runs after a successful step too** (verified 2026-09-23 on
+  ray-cluster's add_worker): a cleanup written for cancellation tore down what the step
+  had just set up. Guard it with a marker the run block touches on success.
+- **A run whose job errored shows status `faulted`** while it winds down; treat it as final
+  (the test runner does) — it never completes from there.
+- **`pkill -f <pattern>` over `pw ssh` matches its own remote shell** (the command line
+  carries the pattern) and any other run's process with that script name: bracket a
+  character (`dispatch_workers[.]sh`) and never kill by script name on a login node where
+  another run of the same workflow may be live — anchor patterns to the run's job dir.
+- **List items of type `compute-clusters` are hydrated** like top-level ones: `-i` can pass
+  `"workers": [{"resource": "pw://user/cluster", ...}]` and the run sees the full object
+  (`name`, `ip`, `schedulerType`, ...). The workspace is passed as `"workspace"`.
 - **Cross-cluster filesystems are separate:** a code/data path staged on one resource is
   absent on another — stage it on the resource that runs it. If a required path is missing,
   **fail loud (exit non-zero), don't silently skip**: a silent skip upstream plus a

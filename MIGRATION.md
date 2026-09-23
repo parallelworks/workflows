@@ -190,6 +190,19 @@ first test exposed (all pre-existing upstream; none touch `app/`):
    has it, a cloud login node does not, so a cluster login node can head same-resource
    workers but not remote sites.
 
+**Test results (2026-09-23, `pw://alvaro/gcpsmall`, Ray 2.40.0, branch `ray-cluster`):**
+pass = the `complete` job finished while the run still held the cluster (head up,
+session `running`, the SLURM worker joined and ran the 208-task benchmark), then
+`pw workflows runs cancel` left no Ray/dashboard/dispatcher process, no SLURM job and no
+session on the resource. Rows are in `workflows/ray-cluster/tests/*/*.csv`.
+
+| Test | Result |
+|---|---|
+| `general/gcp-head-gcp-worker` | probe `splendid-bat` (cold: Ray venv built in ~20 s with uv, head + SLURM worker + benchmark + session in 5m50s) then recorded PASS `upright-earwig` (warm, 177 s, cleanup ok). The `evolved-tarpon` fail row is not the workflow: a `pkill -f dispatch_workers.sh` run on the login node to remove orphans from earlier add-worker runs also hit this run's dispatcher (exit 143), which is what added `faulted` to the runner's final statuses |
+| `general_add_worker/gcp-worker` | 3 rows: `witty-duckling` passed the runner's criterion but its worker died (`ray: command not found`, the venv-marker bug above); `endless-bluegill` after the venv + cleanup fixes: worker joined, cluster at 2 CPUs, cleanup skipped; `musical-grubworm` after the job-id fix: `slurm_jobids` of the cluster run held both jobs and cancelling it removed both |
+| `hsp/gcp-head-gcp-worker` | PASS `good-titmouse` (warm, 53 s: the compute node was still up from the previous run, cleanup ok); `dashing-wahoo` PASS kept as the target of the hsp add-worker test |
+| `hsp_add_worker/gcp-worker` | PASS `sure-mite` against `dashing-wahoo` (22 s): second SLURM worker joined (cluster at 2 CPUs), both job ids in the cluster run's `slurm_jobids`, no streamer left behind (`dispatch_workers.sh` in the leftover patterns); cancelling the cluster run then left no job, process or session |
+TEST_RESULTS_PLACEHOLDER
 ## Dead branches (pre-existing breakage, now fixed)
 
 Three selected YAMLs checked out branches that **no longer exist upstream** — those
@@ -303,6 +316,9 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   stay on the old repo or the yaml bumped to v3.6).
 - Readme/thumbnail paths in registrations (`workflow/readmes/...`,
   `workflow/thumbnails/...`) → the files inside each `workflows/<name>/thumbnails/`.
+- The ray-cluster entries (cluster + add-worker) pin `parallelworks/ray-cluster`'s
+  `workflow.yaml` / `add_worker.yaml` → `workflows/ray-cluster/yamls/<variant>.yaml` /
+  `<variant>_add_worker.yaml` here (`hsp` on `activate.hpc.mil`, `general` elsewhere).
 
 ## Test results (2026-08-31, repo public, canary pushed)
 
@@ -367,6 +383,16 @@ ollama-gguf-container implementation paths not separately exercised.
    `workflows/activate-batch/`, re-pointed from `marketplace/job_runner/v4.0` to
    `workflows/script_submitter/v3.6`; the helios/kestrel examples remain open.
 3. Thumbnail guesses in judgment call 6 — confirm against the actual registrations.
+5. **ray-cluster to the endpoint pattern** (2026-09-23): it joined as the one
+   session-pattern workflow (`parallelworks/update-session`, run holds the cluster) to
+   keep the move code-neutral. Converting it means starting the dashboard under
+   `pw endpoints run` in `start_ray_head.sh`, replacing `wait_for_ray`/`update_session`
+   with the `wait_for_endpoint` subworkflow (host empty when the head is the workspace),
+   and printing the endpoint URL in `complete`; the run would still hold the cluster.
+   Its marketplace entries (the multi-site cluster and "Add Worker") still point at
+   `parallelworks/ray-cluster`'s `workflow.yaml`/`add_worker.yaml` and must be re-pointed
+   at `workflows/ray-cluster/yamls/{hsp,general}.yaml` and `{hsp,general}_add_worker.yaml`
+   here (thumbnail `workflows/ray-cluster/thumbnails/ray-cluster.png`).
 4. Converting the left-behind legacy variants (emed etc.) to the endpoint pattern so
    they can join this repo — who/when? **emed done (2026-09-02):** kasmvnc (+ the
    rstudio/schrodinger/firefox desktop-app variants replacing the legacy vncserver

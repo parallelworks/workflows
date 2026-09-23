@@ -604,6 +604,9 @@ dispatch_worker() {
 
     # Build base SSH args depending on mode
     # SSH login user is always PW_USER (site_user is the cluster owner, used for pw:// path)
+    # No connection multiplexing: a ControlPath built from the host name breaks on the
+    # slashes of a pw:// target (the workspace's ssh config sets one), and the tunnels
+    # this connection carries must not be shared with a control master anyway.
     local SSH_BASE_ARGS=()
     local SSH_LOGIN_USER="${PW_USER}"
     if [ "${SSH_MODE}" = "pw" ]; then
@@ -611,6 +614,8 @@ dispatch_worker() {
             -i ~/.ssh/pwcli
             -o StrictHostKeyChecking=no
             -o UserKnownHostsFile=/dev/null
+            -o ControlMaster=no
+            -o ControlPath=none
             -o ConnectTimeout=30
             -o "ProxyCommand=${PW_CMD} ssh --proxy-command %h"
         )
@@ -619,6 +624,8 @@ dispatch_worker() {
             -i ~/.ssh/pwcli
             -o StrictHostKeyChecking=no
             -o UserKnownHostsFile=/dev/null
+            -o ControlMaster=no
+            -o ControlPath=none
             -o ConnectTimeout=30
         )
     fi

@@ -83,7 +83,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 POLL_S = 15
-FINAL_STATUSES = {"completed", "error", "canceled", "failed"}
+# "faulted": a job errored and the run is winding down; it never completes from there
+FINAL_STATUSES = {"completed", "error", "canceled", "failed", "faulted"}
 COLUMNS = ["date", "phase", "result", "cleanup", "workflow_tree", "submitter_tree",
            "tools_tree", "commit", "fetched", "branch", "user", "run_slug", "duration_s", "error"]
 COMPUTE_RESOURCES_RE = re.compile(r"^\s*type:\s*compute-resources\s*$", re.M)

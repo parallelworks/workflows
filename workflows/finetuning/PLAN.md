@@ -1575,13 +1575,17 @@ completed" — see the correction note at the bottom).
   report. Asserts `trainable != 0` before training (guards HANDOFF §8.5a).
 - `app/train-entrypoint.sh` — env-var → CLI translation, runs inside the
   container. Owns no TensorBoard lifecycle (that moved to start-template.sh).
-- `app/tb_proxy.py` — unchanged from the legacy workflow; reused as-is.
+- `app/tb_proxy.py` — removed 2026-09-23. It injected `<base href="$PW_ENDPOINT_PATH/">`,
+  which renders `//` on subdomain endpoints (`PW_ENDPOINT_PATH=/`) and blanked
+  the page; it also listened on 0.0.0.0, exposing TensorBoard without auth.
+  TensorBoard now binds `{port}` on 127.0.0.1 directly (`--path_prefix` only
+  on path-based endpoints).
 - `app/controller.sh` — login-node setup; resolves the container by
   `container_mode` (`registry` via `oras_pull_file` / `sif_path` / `build`).
-- `app/start-template.sh` — the service. TensorBoard (behind `tb_proxy.py`) is
-  bound to the endpoint's `{port}` **only while training runs**; training runs
-  in the foreground of a generated `launch-service.sh`; on exit TensorBoard and
-  the proxy are torn down and the run completes, so the endpoint retires itself.
+- `app/start-template.sh` — the service. TensorBoard is
+  bound to the endpoint's `{port}` (127.0.0.1) **only while training runs**; training runs
+  in the foreground of a generated `launch-service.sh`; on exit TensorBoard is
+  torn down and the run completes, so the endpoint retires itself.
   Writes `cancel.sh` before backgrounding anything.
 - `app/build-container.sh` + `app/finetune.def` + `app/requirements.txt` —
   standalone container build, deliberately **inside `app/`** (not at the

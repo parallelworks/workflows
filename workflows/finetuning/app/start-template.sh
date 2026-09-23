@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # start-template.sh — LoRA/QLoRA training behind a pw endpoint.
 #
-# TensorBoard (via tb_proxy.py) is reachable at the endpoint's {port} only
+# TensorBoard is reachable at the endpoint's {port} only
 # while training runs. Once training.py exits, train.py has already written
 # a persistent offline report (report/metrics.json, PNG plots, report.html)
-# under OUTPUT_DIR; this script then tears down TensorBoard/the proxy and
+# under OUTPUT_DIR; this script then tears down TensorBoard and
 # exits, so the run completes and the endpoint retires itself -- no dangling
 # endpoint to remember to delete.
 
@@ -105,14 +105,13 @@ else
 fi
 
 # Written before anything is backgrounded: a mid-training manual cancel must
-# be able to kill training + TensorBoard + the proxy, all of which escape the
+# be able to kill training + TensorBoard, both of which escape the
 # single `pw endpoints run -- ./launch-service.sh` process tree as detached
 # background siblings (see launch-service.sh below).
 cat > cancel.sh << 'CANCELEOF'
 #!/usr/bin/env bash
 [ -f "$PWD/train.pid" ] && kill "$(cat "$PWD/train.pid")" 2>/dev/null
 [ -f "$PWD/tb.pid" ] && kill "$(cat "$PWD/tb.pid")" 2>/dev/null
-[ -f "$PWD/tbproxy.pid" ] && kill "$(cat "$PWD/tbproxy.pid")" 2>/dev/null
 exit 0
 CANCELEOF
 chmod +x cancel.sh
@@ -122,32 +121,26 @@ cat > launch-service.sh << LAUNCHEOF
 set -x
 PORT="\${1}"
 
-# Real TensorBoard backend, fixed internal port -- never exposed directly.
 # --host 127.0.0.1, NOT --bind_all: --bind_all listens on 0.0.0.0 with no
 # authentication, which hands the whole logdir (loss curves, eval metrics,
-# hyperparameters) to anyone who can reach this node on 6007, bypassing the
-# endpoint's auth entirely. tb_proxy.py connects over localhost, so the
-# endpoint path is unaffected.
+# hyperparameters) to anyone who can reach this node, bypassing the
+# endpoint's auth entirely. pw endpoints run tunnels from this same node over
+# loopback, so the endpoint still reaches it.
+# Subdomain endpoints serve at the root (PW_ENDPOINT_PATH=/), where
+# TensorBoard's relative asset URLs just work. Path-based endpoints
+# (--no-subdomain) forward the full path, so give TensorBoard that prefix.
+tb_path_prefix="\${PW_ENDPOINT_PATH%/}"
 singularity exec --writable-tmpfs \\
     --bind "${output_dir_resolved}:${output_dir_resolved}" \\
     --bind "${PWD}/container_tmp:/tmp" \\
     "${container_ref}" \\
-    tensorboard --logdir "${output_dir_resolved}" --port 6007 --host 127.0.0.1 \\
+    tensorboard --logdir "${output_dir_resolved}" --port "\${PORT}" --host 127.0.0.1 \\
+    \${tb_path_prefix:+--path_prefix "\${tb_path_prefix}"} \\
     > "${PWD}/tb.log" 2>&1 &
 echo \$! > "${PWD}/tb.pid"
 
-# tb_proxy.py is the only thing bound to the endpoint's {port}.
-SESSION_BASE_PATH="\${PW_ENDPOINT_PATH:-}" TB_BACKEND_PORT=6007 \\
-    singularity exec --writable-tmpfs \\
-    --bind "${app_dir}:${app_dir}" \\
-    --bind "${PWD}/container_tmp:/tmp" \\
-    "${container_ref}" \\
-    python3 "${app_dir}/tb_proxy.py" --port "\${PORT}" \\
-    > "${PWD}/tbproxy.log" 2>&1 &
-echo \$! > "${PWD}/tbproxy.pid"
-
 # Training runs in the FOREGROUND -- this is what the launcher blocks on.
-# When it exits, TensorBoard/proxy are torn down and so is the endpoint.
+# When it exits, TensorBoard is torn down and so is the endpoint.
 # train-entrypoint.sh/train.py read UPPERCASE env vars (legacy convention,
 # unchanged); inputs.sh (sourced ahead of this script, see yamls/general.yaml)
 # exports lowercase snake_case vars (streamlit's convention) -- bridge here.
@@ -203,7 +196,6 @@ train_rc=\$?
 set -e
 
 kill "\$(cat "${PWD}/tb.pid")" 2>/dev/null || true
-kill "\$(cat "${PWD}/tbproxy.pid")" 2>/dev/null || true
 
 exit \${train_rc}
 LAUNCHEOF

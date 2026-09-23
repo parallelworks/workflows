@@ -29,7 +29,7 @@ target_python="3.12"
 export UV_CACHE_DIR="${install_dir}/.uv-cache"
 # Some HPC networks terminate TLS at an inspection proxy with a private CA that uv's
 # bundled trust store does not know; the OS store does
-export UV_NATIVE_TLS=true
+export UV_SYSTEM_CERTS=true
 
 echo "Hostname: $(hostname)"
 echo "Install dir: ${install_dir}"

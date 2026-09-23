@@ -1,12 +1,12 @@
 {
   "_test": {
     "timeout_s": 2400,
-    "endpoint": false,
     "ready_job": "complete",
     "resource": "pw://alvaro/gcpsmall",
     "scheduler": true,
     "warm_marker": "${HOME}/pw/software/ray-2.40.0/bin/python",
     "leftover_patterns": [
+      "pw endpoints run",
       "gcs_server",
       "raylet",
       "uvicorn dashboard:app",

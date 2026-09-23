@@ -1,10 +1,6 @@
 # yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
 permissions:
   - '*'
-sessions:
-  session:
-    useTLS: false
-    redirect: true
 
 jobs:
   checkout:
@@ -15,7 +11,7 @@ jobs:
           remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: ray-cluster
           sparse_checkout:
             - workflows/ray-cluster/app
 
@@ -29,6 +25,7 @@ jobs:
         run: |
           set -e
           export RAY_VERSION="${{ inputs.ray_settings.ray_version }}"
+          export RAY_ENDPOINT_NAME="${{ inputs.ray_settings.name }}-${PW_RUN_SLUG}"
           bash workflows/ray-cluster/app/start_ray_head.sh
         cleanup: |
           echo "Cleaning up Ray head + workers..."
@@ -142,9 +139,12 @@ jobs:
             ray stop --force 2>/dev/null || true
           fi
 
-          # --- Kill dashboard ---
+          # --- Kill dashboard (the pw endpoints run wrapper; its endpoint goes with it) ---
           if [ -f "${JOB_DIR}/dashboard.pid" ]; then
             kill "$(cat "${JOB_DIR}/dashboard.pid")" 2>/dev/null || true
+          fi
+          if [ -f "${JOB_DIR}/ENDPOINT_NAME" ] && [ -n "${PW_CMD}" ]; then
+            ${PW_CMD} endpoints delete "$(cat "${JOB_DIR}/ENDPOINT_NAME")" 2>/dev/null || true
           fi
           echo "Ray head + worker cleanup done."
 
@@ -209,24 +209,18 @@ jobs:
           echo "ERROR: Dashboard timeout"
           exit 1
 
-  update_session:
+  wait_for_endpoint:
     needs: [wait_for_ray]
     ssh:
       remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
     steps:
-      - name: Get local port
-        run: |
-          local_port=$(pw agent open-port)
-          echo "local_port=${local_port}" | tee -a $OUTPUTS
-
-      - name: Update session
-        uses: parallelworks/update-session
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
         with:
-          target: ${{ inputs.head.resource.id }}
-          name: ${{ sessions.session }}
-          remoteHost: ${{ needs.wait_for_ray.outputs.HOSTNAME }}
-          remotePort: ${{ needs.wait_for_ray.outputs.SESSION_PORT }}
-          local_port: ${{ needs.update_session.outputs.local_port }}
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ inputs.ray_settings.name }}-${PW_RUN_SLUG}
+          host: ${{ inputs.head.resource.ip }}
 
   dispatch_workers:
     needs: [wait_for_ray, checkout]
@@ -244,6 +238,7 @@ jobs:
           export WORKERS_JSON='${{ inputs.workers }}'
           export HEAD_RESOURCE_NAME='${{ inputs.head.resource.name }}'
 
+          export RAY_REPO_BRANCH="ray-cluster"
           bash workflows/ray-cluster/app/dispatch_workers.sh
         cleanup: |
           # NOTE: Worker cleanup (scancel, remote SSH) is handled by
@@ -389,20 +384,20 @@ jobs:
           echo "cluster_ready cleanup done."
 
   complete:
-    needs: [run_benchmark, cluster_ready, update_session]
+    needs: [run_benchmark, cluster_ready, wait_for_endpoint]
     steps:
       - name: Workflow complete
         run: |
-          basepath="/me/session/${PW_USER}/${{ sessions.session }}"
-          local_port="${{ needs.update_session.outputs.local_port }}"
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          endpoint_name="${{ inputs.ray_settings.name }}-${PW_RUN_SLUG}"
+          url=$(pw endpoints list | awk -F'\t' -v name="${endpoint_name}" '$1 == name {print $3}')
           echo "=========================================="
           echo "Multi-Site Ray Cluster Ready!"
           echo "=========================================="
           echo "  Ray Version: ${{ inputs.ray_settings.ray_version }}"
           echo ""
-          echo "  Dashboard: ${PW_PLATFORM_HOST}${basepath}/"
-          echo "  Local tunnel: ssh -L ${local_port}:localhost:${local_port} -o ProxyCommand=\"pw ssh --proxy-command %h\" ${PW_USER}@workspace"
-          echo "  Then access: http://localhost:${local_port}/"
+          echo "  Dashboard: ${url:-endpoint ${endpoint_name} (see pw endpoints list)}"
+          echo "  The cluster runs until this workflow run is cancelled."
           echo "=========================================="
 
 'on':
@@ -583,6 +578,10 @@ jobs:
         type: group
         label: Ray Configuration
         items:
+          name:
+            type: string
+            hidden: true
+            default: ray-cluster
           ray_version:
             type: dropdown
             label: Ray Version

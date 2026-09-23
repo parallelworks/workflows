@@ -58,10 +58,7 @@ docs/                        # developer + AI docs
 ## The endpoint pattern
 
 Every workflow here but `activate-batch` (a batch job that runs a command script to
-completion and fails when it fails) and `ray-cluster` (a platform session behind
-`parallelworks/update-session`; the run holds the cluster and cancelling it is the
-teardown — the last session-pattern workflow, see MIGRATION.md) serves through a
-**`pw` endpoint** (`pw endpoints list`) named
+completion and fails when it fails) serves through a **`pw` endpoint** (`pw endpoints list`) named
 `<service>-${PW_RUN_SLUG}`. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
@@ -77,6 +74,11 @@ status comes back, `503` while nothing listens behind the tunnel yet). If the se
 never answers within the budget the wait job fails without touching the skip file, so
 the submitter's cleanup tears the job down and the run ends in error. Which HTTP codes
 count as healthy and how long to retry are set per workflow through the call's inputs.
+
+**ray-cluster** is the compute-cluster exception to the submitter mechanics: its head
+job runs `pw endpoints run` itself (no `script_submitter`), the run stays alive holding
+the Ray cluster, and **cancelling the run is the teardown** (its tests use the runner's
+`ready_job`).
 
 **Kubernetes** (`yamls/k8s.yaml` = k8s-only example, `yamls/general_k8s.yaml` = hybrid):
 the same endpoint, registered by a `pw-cli` sidecar inside the pod; the run stays alive

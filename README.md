@@ -7,9 +7,8 @@ The home of the Parallel Works / ACTIVATE platform workflows.
 in `app/` or an implementation subdir — the only subtree checked out at run time),
 README, build tooling, and marketplace thumbnails (in `thumbnails/`) all live together. There are **no
 version suffixes** — every file is the latest version; git tags version the repo.
-Every workflow but [activate-batch](workflows/activate-batch/) (a batch script run to
-completion) and [ray-cluster](workflows/ray-cluster/) (a Ray cluster behind a platform
-session, held by its run) serves through the **`pw` endpoint pattern**.
+Every workflow but [activate-batch](workflows/activate-batch/) serves through the
+**`pw` endpoint pattern**; that one runs a batch script to completion.
 
 How this repo was assembled, and where anything older lives, is recorded in
 [MIGRATION.md](MIGRATION.md).
@@ -35,7 +34,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [openvscode](workflows/openvscode/) | OpenVSCode Server | general, emed, hsp, noaa, general_k8s, k8s |
 | [rag-service](workflows/rag-service/) | RAG search/index service | general |
 | [rag-vllm](workflows/rag-vllm/) | vLLM inference server + optional RAG stack | general, hsp, noaa |
-| [ray-cluster](workflows/ray-cluster/) | Multi-site Ray cluster: head + live dashboard on one resource, SLURM/PBS/SSH workers on any others (platform session; the run holds the cluster, cancel = teardown) | general, hsp, general_add_worker, hsp_add_worker |
+| [ray-cluster](workflows/ray-cluster/) | Multi-site Ray cluster: head + live dashboard on one resource, SLURM/PBS/SSH workers on any others (the run holds the cluster, cancel = teardown) | general, hsp, general_add_worker, hsp_add_worker |
 | [streamlit](workflows/streamlit/) | Streamlit apps (Singularity) | general, hsp |
 | [vncserver](workflows/vncserver/) | Host desktop (KasmVNC, no container) | emed, emed_{rstudio, matlab, firefox, fsl, schrodinger, vmd} |
 | [webshell](workflows/webshell/) | Web terminal (ttyd) | general, noaa |
@@ -87,8 +86,8 @@ nothing is left behind (processes, scheduler jobs, containers), and delete test
 endpoints when done — see [DeveloperGuide.md](DeveloperGuide.md).
 
 Every endpoint workflow registers a **`pw` endpoint** (check `pw endpoints list`);
-`activate-batch` runs its commands to completion instead, and `ray-cluster` registers a
-platform session and keeps running until it is cancelled.
+`activate-batch` runs its commands to completion instead, and `ray-cluster`'s run keeps
+running (it holds the cluster) until it is cancelled.
 Note that workflow YAMLs pull this repo from GitHub at runtime
 (`parallelworks/checkout` + subworkflow `uses:`), so local YAML edits only take full
 effect once pushed to the referenced branch (**canary**).

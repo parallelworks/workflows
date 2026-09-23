@@ -210,6 +210,30 @@ Contract differences vs v3:
 7. `parallelworks/checkout` → your **dev branch** while testing; **flip to `main`
    after merge** (both openvscode and jupyterlab needed this follow-up).
 
+## Variant — a service started by a long-lived job, not by `script_submitter` (ray-cluster, 2026-09-23)
+
+`workflows/ray-cluster` starts its dashboard from a job that then keeps running (it
+holds a Ray cluster; cancelling the run is the teardown, as on k8s), so Steps 2–3 do
+not apply literally. What did:
+
+- **Keep the port allocation** when other components already need the number
+  (`pw agent open-port` → `SESSION_PORT`, read by the workers' tunnels) and pass it to
+  the wrapper with **`pw endpoints run --port <n>`**; `{port}` is for services nobody
+  else has to know about.
+- Start the wrapper **in the background** (`nohup pw endpoints run --name <svc>-${PW_RUN_SLUG}
+  --port <n> -- <server> ... &`), record its PID (it is what the job's monitor loop
+  watches and what the cleanup kills — the tree and the endpoint go with it) and the
+  name (`ENDPOINT_NAME`), and **wait for the local port to answer** before talking to
+  the service: the wrapper registers the endpoint first, so the app comes up a few
+  seconds later than a bare launch did.
+- Replace the `sessions:` block + `update-session` job with a `wait_for_endpoint` job
+  calling the subworkflow **without** `skip_cleanups_file` (nothing to release) and with
+  `host: ${{ inputs.<head>.ip }}` — it renders empty for the workspace, which makes the
+  probe run there. No `cancel-jobs` step: the run must stay alive.
+- Cleanup: `kill $(cat dashboard.pid)` then a best-effort `pw endpoints delete`.
+- Tests: `_test.ready_job` (pass = the job completes while the run still runs, plus the
+  endpoint listed; teardown = cancel) instead of the completed-run criterion.
+
 ## Step 4 — the Kubernetes half (`general_k8s.yaml`, standalone `k8s.yaml`)
 
 The v4 k8s pattern — a top-level `sessions:` block (`useCustomDomain: true`) and a

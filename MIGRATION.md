@@ -131,9 +131,10 @@ so beyond the global rules:
 Migrated 2026-09-23 from `parallelworks/ray-cluster@main` (98bb3dd, 2026-07-22), a
 multi-site Ray cluster: a Ray head + FastAPI dashboard on one resource, workers
 dispatched to SLURM/PBS/SSH sites (same-resource sites via the local scheduler, other
-resources over `pw ssh` tunnels), served through a platform **session**
-(`parallelworks/update-session`). The source repo checked out its own `scripts/` and the
-remote worker sites cloned it again for `setup.sh`.
+resources over `pw ssh` tunnels). The source served its dashboard through a platform
+**session** (`parallelworks/update-session`); it is a `pw` endpoint here (judgment call
+1). The source repo checked out its own `scripts/` and the remote worker sites cloned it
+again for `setup.sh`.
 
 | Old | New |
 |---|---|
@@ -146,8 +147,9 @@ remote worker sites cloned it again for `setup.sh`.
 | `bash scripts/<x>.sh` in the YAMLs; `SCRIPT_DIR="${JOB_DIR}/scripts"` in `start_ray_head.sh`, `dispatch_workers.sh`, `run_benchmark.sh` | `workflows/ray-cluster/app/...` |
 | remote worker clone: `git clone --sparse ray-cluster.git` + `sparse-checkout set scripts` + `bash scripts/setup.sh` (3 dispatch modes) | clone of this repo (`REPO_URL`/`REPO_BRANCH`, overridable with `RAY_REPO_URL`/`RAY_REPO_BRANCH`, default `canary`) + `sparse-checkout set workflows/ray-cluster/app` + `bash workflows/ray-cluster/app/setup.sh` |
 
-Everything else in the job graph is verbatim, and the scripts change in two places
-beyond the paths (judgment call 6, and the log-streamer fix below). YAML-only changes
+Everything else in the job graph is verbatim but for the endpoint conversion (judgment
+call 1), and the scripts change in three places beyond the paths (the endpoint launch in
+`start_ray_head.sh`, judgment call 6, and the log-streamer fix below). YAML-only changes
 beyond the paths: banner comments removed, and four fixes to the `add_worker` forms that
 the first test exposed (all pre-existing upstream):
 
@@ -174,12 +176,19 @@ the first test exposed (all pre-existing upstream):
 
 **Judgment calls:**
 
-1. **Session pattern kept.** The dashboard stays behind `update-session` rather than a
-   `pw` endpoint: the brief was to move the workflow with as few code changes as
-   possible, and the conversion (start the dashboard under `pw endpoints run`, replace
-   `wait_for_ray`/`update_session` with the `wait_for_endpoint` subworkflow) is a
-   separate step per `references/session-to-endpoint-upgrade.md`. It is the one
-   session-pattern workflow in this repo; README.md and CLAUDE.md say so.
+1. **Converted to the endpoint pattern** (second pass, same day; the first pass had
+   kept the session to stay code-neutral). `start_ray_head.sh` still allocates the
+   dashboard port with `pw agent open-port` and writes `SESSION_PORT` first — the
+   workers reach the dashboard on that port through their tunnels — then wraps the
+   dashboard in `pw endpoints run --name <ray_settings.name>-${PW_RUN_SLUG} --port
+   <that port>` in the background (the wrapper's PID is `dashboard.pid`, the name is in
+   `ENDPOINT_NAME`) and waits for the port to answer before registering the head. The
+   `sessions:` block and the `update_session` job are gone; a `wait_for_endpoint` job
+   calls the shared subworkflow (`host` = the head's IP, empty for the workspace, no
+   skip file: there is no submitter to release), and `complete` prints the endpoint URL.
+   Because the run holds the cluster, there is no `script_submitter`; the cancel path
+   kills the wrapper and `pw endpoints delete`s the name. The recipe for this "service
+   started by a long-lived job" shape is in `references/session-to-endpoint-upgrade.md`.
 2. **The run holds the cluster** (like the k8s workflows: cancel = teardown) — the
    `start_ray_head`, `dispatch_workers` and `cluster_ready` jobs loop until cancelled.
    The test runner gained `_test.ready_job` (pass = that job completes while the run is
@@ -402,12 +411,8 @@ ollama-gguf-container implementation paths not separately exercised.
    `workflows/activate-batch/`, re-pointed from `marketplace/job_runner/v4.0` to
    `workflows/script_submitter/v3.6`; the helios/kestrel examples remain open.
 3. Thumbnail guesses in judgment call 6 — confirm against the actual registrations.
-5. **ray-cluster to the endpoint pattern** (2026-09-23): it joined as the one
-   session-pattern workflow (`parallelworks/update-session`, run holds the cluster) to
-   keep the move code-neutral. Converting it means starting the dashboard under
-   `pw endpoints run` in `start_ray_head.sh`, replacing `wait_for_ray`/`update_session`
-   with the `wait_for_endpoint` subworkflow (host empty when the head is the workspace),
-   and printing the endpoint URL in `complete`; the run would still hold the cluster.
+5. **ray-cluster marketplace entries** (2026-09-23): the workflow joined on the
+   endpoint pattern (its run still holds the cluster; cancel = teardown).
    Its marketplace entries (the multi-site cluster and "Add Worker") still point at
    `parallelworks/ray-cluster`'s `workflow.yaml`/`add_worker.yaml` and must be re-pointed
    at `workflows/ray-cluster/yamls/{hsp,general}.yaml` and `{hsp,general}_add_worker.yaml`

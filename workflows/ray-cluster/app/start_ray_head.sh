@@ -143,14 +143,16 @@ echo "Python version (for workers to match): ${PYTHON_MICRO}"
 # =============================================================================
 # Port allocation for custom dashboard
 # =============================================================================
-if command -v pw &>/dev/null; then
-    service_port=$(pw agent open-port 2>/dev/null)
-elif [ -x "${HOME}/pw/pw" ]; then
-    service_port=$(~/pw/pw agent open-port 2>/dev/null)
-else
+PW_CMD=""
+for cmd in pw ~/pw/pw; do
+    command -v $cmd &>/dev/null && { PW_CMD=$cmd; break; }
+    [ -x "$cmd" ] && { PW_CMD=$cmd; break; }
+done
+if [ -z "${PW_CMD}" ]; then
     echo "[ERROR] pw CLI not found"
     exit 1
 fi
+service_port=$(${PW_CMD} agent open-port 2>/dev/null)
 
 if [ -z "${service_port}" ] || ! [[ "${service_port}" =~ ^[0-9]+$ ]]; then
     echo "[ERROR] Failed to allocate port (got: '${service_port}')"
@@ -172,14 +174,23 @@ echo "  SESSION_PORT=$(cat SESSION_PORT)"
 echo "  RAY_HEAD_IP=$(cat RAY_HEAD_IP)"
 
 # =============================================================================
-# Start custom dashboard
+# Start custom dashboard behind a pw endpoint
 # =============================================================================
 mkdir -p logs
 
 export DASHBOARD_PORT="${service_port}"
 export RAY_HEAD_IP="${HEAD_IP}"
 
-nohup ${PYTHON_CMD} -m uvicorn dashboard:app \
+# The endpoint pins the local port to the one allocated above: workers reach the
+# dashboard on it through their tunnels and SESSION_PORT is already written. The
+# wrapper is the process this job keeps alive; killing it stops the dashboard and
+# deregisters the endpoint.
+ENDPOINT_NAME="${RAY_ENDPOINT_NAME:-ray-cluster-${PW_RUN_SLUG}}"
+echo "${ENDPOINT_NAME}" > ENDPOINT_NAME
+echo "Endpoint: ${ENDPOINT_NAME}"
+
+nohup ${PW_CMD} endpoints run --name "${ENDPOINT_NAME}" --port "${service_port}" \
+    -- ${PYTHON_CMD} -m uvicorn dashboard:app \
     --host 0.0.0.0 \
     --port "${service_port}" \
     --app-dir "${SCRIPT_DIR}" \
@@ -190,7 +201,12 @@ SERVER_PID=$!
 echo "Dashboard PID: ${SERVER_PID}"
 echo "${SERVER_PID}" > dashboard.pid
 
-sleep 3
+# The endpoint registers itself before it starts the dashboard; wait for the port to answer
+for _i in $(seq 1 30); do
+    curl -s -o /dev/null --connect-timeout 2 "http://localhost:${service_port}/" && break
+    kill -0 ${SERVER_PID} 2>/dev/null || break
+    sleep 2
+done
 
 if kill -0 ${SERVER_PID} 2>/dev/null; then
     echo "=========================================="

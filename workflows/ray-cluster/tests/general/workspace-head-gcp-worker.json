@@ -1,11 +1,11 @@
 {
   "_test": {
     "timeout_s": 2400,
-    "endpoint": false,
     "ready_job": "complete",
     "resource": "pw://alvaro/gcpsmall",
     "scheduler": true,
     "leftover_patterns": [
+      "pw endpoints run",
       "ray_worker_remote",
       "slurm_worker.out",
       "gcs_server",

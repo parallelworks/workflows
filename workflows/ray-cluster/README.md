@@ -5,13 +5,13 @@ a Ray head node on any resource, connects workers from one or more additional si
 via SSH tunnels, and provides a live dashboard showing cluster topology and task
 placement.
 
-Two things set it apart from the other workflows in this repository:
-
-- The dashboard is served through a platform **session** (`parallelworks/update-session`),
-  not a `pw` endpoint.
-- The **run holds the cluster**: it stays `running` while the head, the dashboard and
-  the workers are alive, and **cancelling the run is the teardown** — its cleanup steps
-  stop Ray, kill the dashboard and cancel every SLURM/PBS worker job, local and remote.
+The dashboard is served through a **`pw` endpoint** named `ray-cluster-<run-slug>`,
+registered by the head job itself (`pw endpoints run` wraps the dashboard; there is no
+`script_submitter`). Unlike the other compute-cluster workflows here, the **run holds
+the cluster**: it stays `running` while the head, the dashboard and the workers are
+alive, and **cancelling the run is the teardown** — its cleanup steps stop Ray, kill the
+dashboard (which deregisters the endpoint) and cancel every SLURM/PBS worker job, local
+and remote. This is the Kubernetes workflows' lifecycle.
 
 ## Architecture
 
@@ -40,7 +40,8 @@ Two things set it apart from the other workflows in this repository:
    - **Compute Workers**: Add one or more worker sites (SSH, SLURM, or PBS resources)
    - **Workload**: Choose fractal rendering, benchmark, or cluster-only mode
 3. Click **Execute**
-4. Open the session link to view the live dashboard
+4. Open the endpoint `ray-cluster-<run-slug>` (Sessions page, or `pw endpoints list`) to
+   view the live dashboard; the run's `complete` job prints its URL
 
 ## Workload Modes
 
@@ -154,9 +155,10 @@ pw workflows runs cancel <slug>     # tears the cluster down
 Tests live under `tests/<variant>/` and run with the repository's runner
 (`tools/tests/README.md`). Because the run holds the cluster, the tests set
 `_test.ready_job`: the `complete` job completing while the run is still `running`
-means the head came up, the session was registered, the SLURM worker joined and the
-benchmark ran across it; the runner then cancels the run and verifies that no Ray,
-dashboard or dispatcher process and no SLURM job is left on the resource.
+means the head came up, the `wait_for_endpoint` subworkflow saw the endpoint answer,
+the SLURM worker joined and the benchmark ran across it; the runner also checks that
+the endpoint is listed, then cancels the run and verifies that no endpoint wrapper,
+Ray, dashboard or dispatcher process and no SLURM job is left on the resource.
 
 The `*_add_worker` tests need a running cluster: keep one from the main test, run the
 add-worker test against it, then cancel the cluster run.
@@ -172,8 +174,10 @@ pw workflows runs cancel <slug of the kept run>
 Everything is in the run's job directory on the head resource (`~/pw/jobs/<run-slug>/`
 for CLI runs, `~/pw/jobs/<workflow-name>/<run-number>/` for registered ones):
 `RAY_HEAD_IP`, `SESSION_PORT`, `HOSTNAME`, `PYTHON_VERSION` and `RAY_VENV_DIR` are the
-coordination files the jobs and the add-worker workflow read, `logs/dashboard.log` is
-the dashboard's output, `logs/worker_local_<i>.out` a same-resource SLURM worker's
+coordination files the jobs and the add-worker workflow read, `ENDPOINT_NAME` the
+endpoint's name and `dashboard.pid` the `pw endpoints run` wrapper's PID,
+`logs/dashboard.log` the wrapper's and the dashboard's output,
+`logs/worker_local_<i>.out` a same-resource SLURM worker's
 output, and `slurm_jobids` the SLURM jobs the cleanup cancels. Remote worker sites
 keep theirs under `~/pw/jobs/ray_worker_remote/` on their own login node. From
 anywhere:
@@ -213,8 +217,12 @@ Moved from the standalone `parallelworks/ray-cluster` repository (`main` @ `98bb
 and `add_worker.yaml` became the two `*_add_worker.yaml` forms. The scripts changed
 where they locate themselves and each other (`SCRIPT_DIR` and the remote worker clone
 point at `workflows/ray-cluster/app` in this repository; `RAY_REPO_URL` /
-`RAY_REPO_BRANCH` override the clone target) and in two behaviors the tests exposed:
-the worker-site ssh calls disable connection multiplexing, and the add-worker mode no
-longer leaves a log streamer behind. The add-worker YAMLs also gained the fixes that
-make same-resource workers work (venv marker, cleanup only on failure, job ids
-registered with the cluster run). Details and test results: `MIGRATION.md`.
+`RAY_REPO_BRANCH` override the clone target), in two behaviors the tests exposed (the
+worker-site ssh calls disable connection multiplexing, and the add-worker mode no
+longer leaves a log streamer behind), and in how the dashboard is exposed: the source
+registered a platform session (`sessions:` block + `parallelworks/update-session`);
+here `start_ray_head.sh` wraps the dashboard in `pw endpoints run` pinned to the port
+it already allocated, and a `wait_for_endpoint` job replaces `update_session`. The
+add-worker YAMLs also gained the fixes that make same-resource workers work (venv
+marker, cleanup only on failure, job ids registered with the cluster run). Details and
+test results: `MIGRATION.md`.

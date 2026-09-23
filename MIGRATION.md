@@ -231,6 +231,21 @@ session on the resource. Rows are in `workflows/ray-cluster/tests/*/*.csv`.
 Not exercised: PBS sites, SSH-mode (unscheduled) remote workers, multi-node sites, GPU
 detection, the `fractal` workload and the `cluster_only` user script — the scripts for
 those are verbatim upstream.
+
+**Endpoint conversion (second pass, same day):** pass now also requires
+`ray-cluster-<run-slug>` in `pw endpoints list`; the workflow's `wait_for_endpoint` job
+probed the URL with the run's key and, in addition, the URL was fetched by hand with a
+user token during `causal-stallion` (anonymous: `307` to the login page; with the token:
+`200`, `<title>Ray Cluster Dashboard</title>`, `/api/state` JSON with the head
+registered). Cancelling the run kills the wrapper and the endpoint is gone within a
+second (the runner's follow-up `pw endpoints delete` finds no session).
+
+| Test | Result |
+|---|---|
+| `general/gcp-head-gcp-worker` | PASS `causal-stallion` (warm, 178 s, cleanup ok; endpoint `https://coherent-cod.activate.pw/`) |
+| `hsp/gcp-head-gcp-worker` | PASS `fit-rattler` (warm, 53 s, cleanup ok) |
+| `hsp/gcp-head-gcp-worker` (kept) + `hsp_add_worker/gcp-worker` | `picked-hyena` PASS kept; `generous-kitten` PASS (21 s): second worker's job registered with the cluster run (`slurm_jobids` 15 16); the endpoint URL fetched with a user token showed the dashboard's `/api/state` (phase `complete`, head `gcpsmall`); cancelling the cluster run removed the endpoint, both jobs and every process |
+| `general/workspace-head-gcp-worker` | PASS `wealthy-grizzly` (85 s, cleanup ok on both hosts): with the head on the workspace the subworkflow's `host` rendered empty and the probe ran from the workspace (HTTP 200) |
 ## Dead branches (pre-existing breakage, now fixed)
 
 Three selected YAMLs checked out branches that **no longer exist upstream** — those

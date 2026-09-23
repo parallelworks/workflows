@@ -1,0 +1,342 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: burst-render-demo
+          sparse_checkout:
+            - workflows/burst-render-demo/app
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_parent_install_dir="${{ inputs.render_settings.parent_install_dir }}"
+          pw_endpoints_args="--name ${{ inputs.render_settings.name }}-${PW_RUN_SLUG}"
+          EOF
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh # remove var=""
+          # Add export= to all lines
+          sed -i 's/^/export /' inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/burst-render-demo/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f SESSION_PORT
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/burst-render-demo/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  session_runner:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.head.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: false
+          # The dashboard always runs on the login node: the sites' reverse tunnels
+          # terminate on the host that dispatches them
+          scheduler: false
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: false
+          pbs:
+            is_enabled: false
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::The dashboard exited before its endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ inputs.render_settings.name }}-${PW_RUN_SLUG}
+          host: ${{ inputs.head.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
+  render:
+    needs:
+      - wait_for_endpoint
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip }}
+    steps:
+      - name: Configure Dashboard
+        run: |
+          set -e
+          port=$(cat "${PW_PARENT_JOB_DIR}/SESSION_PORT")
+          grid_size=${{ inputs.render_settings.grid_size }}
+          image_size=${{ inputs.render_settings.image_size }}
+          curl -sf -X POST "http://localhost:${port}/api/config" \
+            -F "grid_size=${grid_size}" \
+            -F "image_size=${image_size}"
+          echo
+          echo "::notice::Dashboard configured: ${grid_size}x${grid_size} grid, ${image_size}px tiles"
+      - name: Dispatch Renders
+        run: |
+          set -e
+          export DASHBOARD_PORT=$(cat "${PW_PARENT_JOB_DIR}/SESSION_PORT")
+          export GRID_SIZE="${{ inputs.render_settings.grid_size }}"
+          export TOTAL_TILES=$(( GRID_SIZE * GRID_SIZE ))
+          export IMAGE_SIZE="${{ inputs.render_settings.image_size }}"
+          export PALETTE="${{ inputs.render_settings.palette }}"
+          export PARALLELISM="${{ inputs.render_settings.parallelism }}"
+          export TARGETS_JSON='${{ inputs.targets }}'
+          export HEAD_RESOURCE_NAME='${{ inputs.head.resource.name }}'
+          export REPO_URL=https://github.com/parallelworks/workflows.git
+          export REPO_BRANCH=burst-render-demo
+          # Own process group, so a cancel takes down the ssh sessions, srun and local
+          # renders with the dispatcher
+          set -m
+          bash workflows/burst-render-demo/app/dispatch_renders.sh &
+          pid=$!
+          set +m
+          echo ${pid} > dispatch.pid
+          wait ${pid}
+        cleanup: |
+          pgid=$(cat dispatch.pid 2>/dev/null) || exit 0
+          kill -- -${pgid} 2>/dev/null || true
+      - name: Summary
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          endpoint_name="${{ inputs.render_settings.name }}-${PW_RUN_SLUG}"
+          url=$(pw endpoints list | awk -F'\t' -v name="${endpoint_name}" '$1 == name {print $3}')
+          grid_size=${{ inputs.render_settings.grid_size }}
+          echo "=========================================="
+          echo "Multi-Site Burst Renderer Complete!"
+          echo "=========================================="
+          echo "  Grid: ${grid_size}x${grid_size}"
+          echo "  Resolution: ${{ inputs.render_settings.image_size }}px per tile"
+          echo "  Total tiles: $(( grid_size * grid_size ))"
+          echo ""
+          echo "  Dashboard: ${url:-endpoint ${endpoint_name} (see pw endpoints list)}"
+          echo "  The dashboard keeps serving the finished image until its endpoint is deleted:"
+          echo "    pw endpoints delete ${endpoint_name}"
+          echo "=========================================="
+          echo "::notice::Dashboard: ${url:-endpoint ${endpoint_name}}"
+
+'on':
+  execute:
+    inputs:
+      head:
+        type: group
+        label: Dashboard Host
+        items:
+          resource:
+            label: Resource
+            type: compute-clusters
+            include-workspace: true
+            autoselect: true
+            tooltip: |
+              Runs the live dashboard on its login node. No rendering happens here.
+              Select a login node, cloud VM, or the user workspace. A cloud cluster's
+              login node can only dispatch renders to itself; the user workspace or an
+              on-prem resource can dispatch to any site.
+
+      targets:
+        type: list
+        label: Compute Sites
+        min: 1
+        tooltip: Add one or more compute sites. Each site renders its share of the tiles in parallel and streams them to the dashboard.
+        template:
+          resource:
+            label: Resource
+            type: compute-clusters
+            include-workspace: false
+            tooltip: Select a compute resource for rendering tiles.
+
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Job?
+            hidden: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes - Tiles render on compute nodes allocated with srun.
+              No  - Tiles render on the login/controller node.
+
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' || inputs.targets.[index].scheduler == false }}
+            ignore: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' || inputs.targets.[index].scheduler == false }}
+            collapsed: true
+            items:
+              partition:
+                type: slurm-partitions
+                label: Partition
+                optional: true
+                resource: ${{ inputs.targets.[index].resource }}
+                tooltip: Select a SLURM partition
+
+              nodes:
+                label: Nodes
+                type: dropdown
+                default: "1"
+                tooltip: Number of compute nodes to request. Each node renders a portion of the tiles.
+                options:
+                  - value: "1"
+                    label: "1 node"
+                  - value: "2"
+                    label: "2 nodes"
+                  - value: "4"
+                    label: "4 nodes"
+
+              time:
+                label: Walltime
+                type: string
+                default: "00:05:00"
+                tooltip: '--time= limit of the srun allocation'
+
+              scheduler_directives:
+                type: editor
+                label: Additional Directives
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix; they are
+                  passed to srun as options. For example:
+                  #SBATCH --account=<account>
+                  #SBATCH --qos=<qos>
+                  #SBATCH --exclusive
+
+      render_settings:
+        type: group
+        label: Render Settings
+        items:
+          name:
+            type: string
+            hidden: true
+            default: burst-render
+          parent_install_dir:
+            label: Parent Install Directory
+            type: string
+            hidden: true
+            default: ${HOME}/pw/software
+            tooltip: The dashboard's Python environment is installed under this directory on the dashboard host
+
+          grid_size:
+            type: dropdown
+            label: Grid Size
+            tooltip: Number of tiles per side (total tiles = N x N)
+            default: "8"
+            options:
+              - value: "4"
+                label: "4x4 (16 tiles — quick test)"
+              - value: "8"
+                label: "8x8 (64 tiles — default)"
+              - value: "16"
+                label: "16x16 (256 tiles — impressive)"
+              - value: "32"
+                label: "32x32 (1024 tiles — large)"
+
+          image_size:
+            type: dropdown
+            label: Tile Resolution
+            tooltip: Size of each tile in pixels
+            default: "256"
+            options:
+              - value: "128"
+                label: "128px (fast)"
+              - value: "256"
+                label: "256px (default)"
+              - value: "512"
+                label: "512px (high quality)"
+
+          palette:
+            type: dropdown
+            label: Color Palette
+            default: electric
+            options:
+              - value: electric
+                label: Electric Blue
+              - value: fire
+                label: Fire
+              - value: ocean
+                label: Ocean
+              - value: cosmic
+                label: Cosmic Purple
+
+          parallelism:
+            type: dropdown
+            label: Worker Threads
+            tooltip: Number of parallel render processes per node. Auto uses all available CPU cores.
+            default: "1"
+            options:
+              - value: "auto"
+                label: "Auto (all cores)"
+              - value: "1"
+                label: "Single-threaded"
+              - value: "2"
+                label: "2 workers"
+              - value: "4"
+                label: "4 workers"
+              - value: "8"
+                label: "8 workers"

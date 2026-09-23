@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-09-23T12:23:46Z,,fail,,,572f319,0ad4a1d,9836499,9836499,activate-batch,alvaro,,5,launch failed: 2026-09-23T14:23:51+02:00 [ERROR] User workspace not found or is not running
 2026-09-23T12:25:17Z,,pass,ok,,572f319,0ad4a1d,9836499,9836499,activate-batch,alvaro,helped-leopard,21,
+2026-09-23T15:39:32Z,,pass,ok,4a1283e,74bcc3d,5df57cb,2a5679b-dirty,6d36dd9,activate-batch,alvaro,well-airedale,22,

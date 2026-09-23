@@ -11,7 +11,8 @@ completes when the commands finish and **fails when they fail**.
 
 ## How It Works
 
-1. **preprocessing** writes `commands.sh` in the job directory: `set -e`, a trap
+1. **preprocessing** first rejects a request in the retired top-level input shape
+   (see [API input shape](#api-input-shape)), then writes `commands.sh` in the job directory: `set -e`, a trap
    that records the script's exit status in `commands.exit`, a banner with the
    hostname, date, user and directory, your commands, and a completion footer.
 2. **script_submitter** submits that file through the shared
@@ -61,6 +62,36 @@ exceeded, node failure); the run fails with that message.
 pw workflows run "$PWD/workflows/activate-batch/yamls/general.yaml" \
   -i '{"cluster":{"resource":"pw://<user>/<cluster>","scheduler":false},"service":{"commands":"hostname\ndate"}}'
 ```
+
+## API input shape
+
+The form groups its inputs: the cluster settings under `cluster` and the commands under
+`service`. The standalone `parallelworks/activate-batch` template took them at the top
+level, and the platform does not reject input keys a workflow does not declare, so a
+request in the old shape is accepted, its `commands` never bind, and `service.commands`
+falls back to its default. To keep that from running the example commands and reporting
+success, **preprocessing fails the run** when a request carries a top-level `commands`,
+`scheduler` or `submit_to_scheduler` input:
+
+```
+Legacy inputs: The request uses retired top-level inputs (commands submit_to_scheduler).
+Commands now go in service.commands; scheduler settings in cluster.scheduler, cluster.slurm
+and cluster.pbs (see workflows/activate-batch/README.md). Nothing was run.
+```
+
+| Standalone template | `general.yaml` | `hsp.yaml` |
+|---|---|---|
+| `resource` | `cluster.resource` | `resource` |
+| `commands` | `service.commands` | `service.commands` |
+| `scheduler` / `submit_to_scheduler` | `cluster.scheduler` | `cluster.scheduler` |
+| `slurm.partition`, `slurm.time`, `slurm.scheduler_directives` | `cluster.slurm.*` | `cluster.slurm.*` |
+| `slurm.account`, `slurm.qos`, `slurm.nodes`, `slurm.cpus_per_task` | `cluster.slurm.scheduler_directives` (`#SBATCH` lines) | `cluster.slurm.*` |
+| `slurm.gres`, `slurm.mem` | `cluster.slurm.scheduler_directives` | `cluster.slurm.scheduler_directives` |
+| `pbs.account` | `cluster.pbs.scheduler_directives` (`#PBS -A`) | `cluster.pbs.account` |
+| `pbs.queue`, `pbs.walltime`, `pbs.select`, `pbs.scheduler_directives` | `cluster.pbs.scheduler_directives` | `cluster.pbs.scheduler_directives` |
+
+Only those three keys are checked: they are present in every request in the old shape,
+and the form cannot send them, so the check never fires on a run started from the UI.
 
 ## Provenance
 

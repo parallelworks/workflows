@@ -7,6 +7,24 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
+      - name: Reject Legacy Inputs
+        run: |
+          # The platform hands undeclared inputs to expressions unchanged and the form cannot
+          # send these keys, so a value here is an API request in the retired top-level shape.
+          # Without this check service.commands falls back to its default and the run succeeds
+          # at running the example commands instead of the caller's.
+          cat <<'EOF' > legacy-commands.txt
+          ${{ inputs.commands }}
+          EOF
+          legacy=""
+          if grep -q '[^[:space:]]' legacy-commands.txt; then legacy="${legacy} commands"; fi
+          if [ -n "${{ inputs.scheduler }}" ]; then legacy="${legacy} scheduler"; fi
+          if [ -n "${{ inputs.submit_to_scheduler }}" ]; then legacy="${legacy} submit_to_scheduler"; fi
+          rm -f legacy-commands.txt
+          if [ -n "${legacy}" ]; then
+            echo "::error title=Legacy inputs::The request uses retired top-level inputs (${legacy# }). Commands now go in service.commands; scheduler settings in cluster.scheduler, cluster.slurm and cluster.pbs (see workflows/activate-batch/README.md). Nothing was run."
+            exit 1
+          fi
       - name: Create Command Script
         run: |
           set -e

@@ -16,8 +16,6 @@ The workflow auto-detects whether the selected resource is a SLURM or PBS cluste
 
 ## Monitoring & Cleanup
 
-While the job runs, a `stream_output` job follows `run.${PW_JOB_ID}.out` from its first line (`tail -n +1 -f`), so output the script writes before the streamer attaches is not lost.
-
 For PBS and SLURM direct submissions, the workflow continuously monitors job status until completion or until the job is no longer found in the queue. If the workflow is canceled, the cleanup logic automatically terminates the remote job (`qdel` or `scancel`) to prevent orphaned workloads.
 
 Direct SSH runs follow the same submit-and-monitor pattern: the script is launched detached (via `setsid`/`nohup`) with its PID recorded in `run.${PW_JOB_ID}.pid`, and the workflow polls the process until it exits. If the workflow is canceled, the cleanup logic kills the process group.

@@ -245,9 +245,15 @@ async def _poll_ray_api():
                             head["node_id"] = n["node_id"]
                         break
 
-                # Remove dead nodes from topology — align with Ray's view
+                # Remove dead nodes from topology — align with Ray's view. A node that
+                # just registered through /api/worker may not be in Ray's /nodes yet
+                # (that view lags the GCS by seconds); dropping it then hid remote
+                # workers until their next heartbeat re-registered them, so a fresh
+                # node gets a grace period before its absence counts as death.
                 alive_ips = {n["ip"] for n in ray_info if n["alive"] and not n["is_head"]}
-                dead_ips = [ip for ip in state["nodes"] if ip not in alive_ips]
+                now = time.time()
+                dead_ips = [ip for ip, n in state["nodes"].items()
+                            if ip not in alive_ips and now - n.get("joined_at", 0) > 60]
                 for ip in dead_ips:
                     node_data = state["nodes"].pop(ip)
                     site_id = node_data.get("site_id", "")

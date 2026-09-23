@@ -774,6 +774,9 @@ cleanup() {
     for pf in "\${WORK}/.proxy_fwd_"*.pid; do
         [ -f "\${pf}" ] && kill \$(cat "\${pf}" 2>/dev/null) 2>/dev/null || true
     done
+    # The log streamer (tail -f on the SLURM log) would otherwise hold the SSH
+    # channel open after this script exits
+    pkill -f "tail -f \${WORK}/slurm_worker.out" 2>/dev/null || true
     # Cancel the SLURM job
     if [ -f "\${WORK}/slurm_jobid" ]; then
         local jid=\$(cat "\${WORK}/slurm_jobid" 2>/dev/null)

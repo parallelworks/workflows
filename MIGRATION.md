@@ -126,6 +126,99 @@ so beyond the global rules:
   `.run.env` target it, and it is exported in `inputs.sh`.
 - `start-template.sh`: launches `start_service.sh` from (and cancels via) `${rag_appdir}`.
 
+## burst-render-demo (from parallelworks/burst-render-demo)
+
+Migrated 2026-09-23 from `parallelworks/burst-render-demo@main` (ae9ad9b), the
+multi-site burst demo: a FastAPI dashboard on one resource and Mandelbrot tiles rendered
+in parallel on N compute sites, which POST them back through reverse SSH tunnels. The
+source served the dashboard through a platform **session** (`sessions:` block +
+`parallelworks/update-session`, its own `wait_for_dashboard` poll of coordination
+files) and its remote sites cloned the source repo for the scripts. Here it follows the
+repository's endpoint pattern end to end: the run **completes** once the tiles are
+rendered and the dashboard outlives it behind `burst-render-<run-slug>`.
+
+| Old | New |
+|---|---|
+| `scripts/*` (runtime) | `workflows/burst-render-demo/app/*` (incl. `templates/index.html`) |
+| `scripts/setup.sh` + the dependency install in `scripts/start_dashboard.sh` | `app/controller.sh`: Python check, shared `uv` (`${service_parent_install_dir}/.uv/uv`), dashboard virtualenv at `${service_parent_install_dir}/burst-render-demo/venv`, idempotent, verified by importing the app |
+| `scripts/start_dashboard.sh` (port from `pw agent open-port`, `nohup uvicorn`, `HOSTNAME`/`SESSION_PORT`/`job.started` files, keep-alive loop) | `app/start-template.sh`: `pw endpoints run ${pw_endpoints_args} -- ./launch-dashboard.sh`; the launcher publishes the port `pw endpoints run` assigned (`PORT`) as `SESSION_PORT` and execs uvicorn |
+| `scripts/setup_tunnel.sh` (unused by the workflow) | dropped |
+| `workflow.yaml` (`sessions:`, jobs `checkout`, `start_dashboard`, `wait_for_dashboard`, `update_session`, `configure_dashboard`, `render`, `complete`) | `yamls/general.yaml`, `yamls/hsp.yaml`: `preprocessing` → `session_runner` (`script_submitter/v3.6/<variant>.yaml`, login node) + `wait_for_endpoint` (shared subworkflow) → `render` (configure, dispatch, summary) |
+| checkout `parallelworks/burst-render-demo@main`, sparse `scripts` | `parallelworks/workflows@burst-render-demo`, sparse `workflows/burst-render-demo/app` |
+| remote site: `git clone --sparse burst-render-demo.git` + `sparse-checkout set scripts` + `bash scripts/setup.sh` into `~/pw/jobs/burst_render_remote` | clone of this repo (`REPO_URL`/`REPO_BRANCH` from the YAML) + `sparse-checkout set workflows/burst-render-demo/app` into `~/pw/jobs/burst_render_remote/<run-slug>/`; a `python3` presence check replaces `setup.sh` (nothing on a render site needs `uv`) |
+| `thumbnail.png` | `thumbnails/burst-render-demo.png` |
+
+`renderer.py`, `post_tile.py`, `dashboard.py` and `templates/index.html` are verbatim.
+`render_tiles.sh` locates `renderer.py`/`post_tile.py` next to itself instead of under
+`${PW_PARENT_JOB_DIR}/scripts`. `dispatch_renders.sh` changes beyond the paths:
+
+- **Local mode.** A site on the dashboard host's own resource renders without a tunnel:
+  `render_tiles.sh` on the login node, or under `srun` with the dashboard reached on the
+  login node's hostname. The source always dispatched over `ssh -i ~/.ssh/pwcli`, which
+  a cloud cluster's login node does not have (only the workspace and `existing`
+  resources do; verified on gcpsmall, the workspace and `a30gpuserver`), so the demo
+  could not run with a cloud login node as its dashboard host.
+- **Remote mode** keeps the reverse tunnel, adds `-o ControlMaster=no -o ControlPath=none`
+  (the workspace's ssh config multiplexes connections; a tunnel-carrying connection must
+  not be shared, same fix as ray-cluster) and a clear error when `~/.ssh/pwcli` is
+  missing on the dashboard host.
+- **`#SBATCH` directives reach `srun`.** The form's Additional Directives were parsed
+  and never used (the source hid the field); they are now appended to the `srun` command
+  as options, which is how `general` takes an account or QoS and `hsp` its
+  `--constraint=mla` hint. Commented `##SBATCH` lines and trailing comments are dropped.
+- **Failures count.** Every site function ended in `| sed` (prefixing the output), so a
+  failed site returned 0 and `FAILED` never incremented; the script runs under
+  `pipefail` now, so a failed site fails the `render` job.
+- The `pkill -f render_tiles.sh` / `renderer.py` "stale process" sweep on remote sites is
+  gone: it would kill a concurrent run's renders on a shared login node. Remote work
+  dirs are per run instead.
+- `CLUSTER_NAME` is passed to every site (the dashboard labels sites by resource name;
+  the `pw cluster list` discovery in `render_tiles.sh` remains as the fallback).
+
+**Form.** The `head` / `targets` / `render_settings` groups are kept (multi-resource form,
+same reasoning as ray-cluster judgment call 4); the hidden `render_settings.name`
+(`burst-render`) is the endpoint prefix. The `pbs` group and the `is_disabled` markers
+are gone: the dispatcher only ever scheduled through `srun`, so a PBS (or any non-SLURM)
+site renders on its login node and the **Schedule Job?** toggle only shows for SLURM
+resources. `general.yaml` drops the per-site SLURM account/QoS dropdowns (they go in the
+directives editor, as in every `general` variant here); `hsp.yaml` keeps them, shown for
+`existing` resources like the other hsp forms, and pre-fills the DSRC constraint hint.
+The dashboard host has no scheduler option: the sites' tunnels terminate on the host
+that dispatches them, so the submitter runs the start script on the login node.
+
+**Cancel.** The `render` job runs the dispatcher in its own process group (`set -m`) and
+its step cleanup kills the group, so a cancel during the render stops the local renders,
+the `srun` allocation and the site SSH sessions (the remote `bash -s` trees get the
+hangup).
+
+**Test results (2026-09-23, `pw://alvaro/gcpsmall`, branch `burst-render-demo`):**
+pass = the run completed (its `wait_for_endpoint` saw the endpoint answer, then the
+`render` job reported every site `COMPLETED` with 0 tile errors) and
+`burst-render-<run-slug>` was listed; teardown = `pw endpoints delete`, after which no
+dashboard, endpoint wrapper, dispatcher or render process was left on the resource. Rows
+are in `workflows/burst-render-demo/tests/*/*.csv`; 4x4 grids of 128 px tiles.
+
+| Test | Result |
+|---|---|
+| `general/gcp-dashboard-gcp-login` (dashboard and site on the gcpsmall login node) | PASS `willing-hawk` (cold: `uv` already cached at `~/pw/software/.uv` from ray-cluster, venv built in seconds; 16 tiles OK; endpoint `HTTP 200` after 0 s; 37 s) |
+| `general/gcp-dashboard-gcp-compute` (site scheduled: `srun --partition=compute`) | PASS `included-ox` (warm, 38 s): tiles rendered on `gcpsmall-…-1-0001`, posted to the login node's hostname and port |
+| `hsp/gcp-dashboard-gcp-login` | PASS `adequate-hen` (warm, 38 s) through `script_submitter/v3.6/hsp.yaml` |
+| `hsp/gcp-dashboard-gcp-compute` | PASS `dynamic-dogfish` (warm, 38 s) |
+| `general/workspace-dashboard-gcp-compute` (dashboard on the user workspace, site gcpsmall over `pw ssh`) | PASS `pure-boxer` (38 s): SSH probe, reverse tunnel, sparse clone of this branch into `~/pw/jobs/burst_render_remote/pure-boxer/`, TCP proxy on the login node, `srun` on a compute node, 16 tiles OK; the probe ran from the workspace (`host` rendered empty) |
+
+**Cancel mid-render** (`easy-sunfish`, 16x16 grid of 512 px tiles, single worker, login
+node): with the dispatcher, `render_tiles.sh`, `xargs` and a `renderer.py` alive in the
+dispatcher's process group, `pw workflows runs cancel` left only the dashboard tree
+(`pw endpoints run` + uvicorn, released by the skip file as designed), `squeue` empty and
+the endpoint listed; the dashboard's `/api/state` held the 2 tiles finished before the
+cancel, and `pw endpoints delete` then removed the two remaining processes and the
+endpoint. The compute tests carry `"scheduler": true` in `_test` for the runner's
+`squeue` check that the ray-cluster branch adds; this branch's runner ignores the key.
+
+Not exercised: a PBS or SSH-mode remote site, multi-node `srun` allocations, a dashboard
+host older than Python 3.8 (the `uv python install` path) and a site whose login shell is
+tcsh — the remote script transport for those is verbatim upstream.
+
 ## Dead branches (pre-existing breakage, now fixed)
 
 Three selected YAMLs checked out branches that **no longer exist upstream** — those
@@ -239,6 +332,12 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   stay on the old repo or the yaml bumped to v3.6).
 - Readme/thumbnail paths in registrations (`workflow/readmes/...`,
   `workflow/thumbnails/...`) → the files inside each `workflows/<name>/thumbnails/`.
+
+- The burst-render-demo entry pins `parallelworks/burst-render-demo`'s `workflow.yaml` →
+  `workflows/burst-render-demo/yamls/<variant>.yaml` here (`hsp` on `activate.hpc.mil`,
+  `general` elsewhere; thumbnail `workflows/burst-render-demo/thumbnails/burst-render-demo.png`).
+  The YAMLs and the remote-site clone reference branch `burst-render-demo` until the
+  branch lands on canary (`branch:` in the checkout and `REPO_BRANCH` in the `render` job).
 
 ## Test results (2026-08-31, repo public, canary pushed)
 

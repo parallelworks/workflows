@@ -430,6 +430,11 @@ non-repetitive; point at an existing tutorial instead.
 - **Input group named `env` + a top-level `env:` block** referencing `${{ inputs.env.* }}`
   → `Expression Parser Error: max recursion exceeded`, failing **both `--dry-run` and
   `pw workflows run`** (the web UI may still submit). Rename the group (e.g. `env_vars`).
+- **Only the workspace and `existing` resources carry the platform SSH key** (`~/.ssh/pwcli`,
+  verified 2026-09-23: present on the workspace and `a30gpuserver`, absent on gcpsmall's login
+  node, where `pw ssh` outside a run also has no context). A job that opens `ssh -i
+  ~/.ssh/pwcli ... -R` tunnels to other resources must run on one of those hosts; a
+  same-resource target needs no tunnel at all (see `workflows/burst-render-demo`).
 - **Cross-cluster filesystems are separate:** a code/data path staged on one resource is
   absent on another — stage it on the resource that runs it. If a required path is missing,
   **fail loud (exit non-zero), don't silently skip**: a silent skip upstream plus a

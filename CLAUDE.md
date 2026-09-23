@@ -3,7 +3,7 @@
 ## Project Overview
 
 This repository is the home of the **ACTIVATE platform workflows** (interactive
-sessions, model servers, k8s services) for [Parallel Works](https://parallelworks.com):
+sessions, model servers, k8s services, batch jobs) for [Parallel Works](https://parallelworks.com):
 **one workflow = one self-contained directory** under `workflows/`. Provenance and
 anything predating this layout: MIGRATION.md.
 
@@ -57,7 +57,8 @@ docs/                        # developer + AI docs
 
 ## The endpoint pattern
 
-Every workflow here serves through a **`pw` endpoint** (`pw endpoints list`) named
+Every workflow here but `activate-batch` (a batch job that runs a command script to
+completion and fails when it fails) serves through a **`pw` endpoint** (`pw endpoints list`) named
 `<service>-${PW_RUN_SLUG}`. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
@@ -154,6 +155,7 @@ those platforms — validate them statically.
 - Run with the **absolute** YAML path (a relative path is parsed as a git host):
   `pw workflows run /abs/path/workflows/<name>/yamls/general.yaml -i '{"cluster":{"resource":"<cluster>","scheduler":false}}'`
 - **Pass = the run completes and `pw endpoints list` shows `<service.name>-<run-slug>`.**
+  A batch workflow's test sets `_test.endpoint: false`; then pass = the run completes.
   The run only completes after the workflow's own health check saw the URL answer, so
   the runner does not probe URLs. The service keeps running after the run completes.
 - **Tear down:** `pw endpoints delete <name>` kills the remote process tree; verify

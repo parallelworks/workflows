@@ -1,0 +1,271 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Create Command Script
+        run: |
+          set -e
+          # The submitter never inspects the script's exit status, so the script records it itself
+          cat <<EOF > commands.sh
+          set -e
+          trap 'echo \$? > ${PWD}/commands.exit' EXIT
+          EOF
+          cat <<'EOF' >> commands.sh
+          echo "=============================================="
+          echo "  Hello World from Parallel Works ACTIVATE"
+          echo "=============================================="
+          echo ""
+          echo "System Information:"
+          echo "  Hostname:    $(hostname)"
+          echo "  Date:        $(date)"
+          echo "  User:        $(whoami)"
+          echo "  Directory:   $(pwd)"
+          echo ""
+          echo "----------------------------------------------"
+          echo "  Executing Commands"
+          echo "----------------------------------------------"
+          echo ""
+          EOF
+          cat <<'EOF' >> commands.sh
+          ${{ inputs.service.commands }}
+          EOF
+          cat <<'EOF' >> commands.sh
+
+          echo ""
+          echo "----------------------------------------------"
+          echo "  All commands completed"
+          echo "----------------------------------------------"
+          echo "Finished at: $(date)"
+          echo "=============================================="
+          EOF
+          cat commands.sh
+          echo "SCRIPT_PATH=${PWD}/commands.sh" | tee -a $OUTPUTS
+          echo "EXIT_FILE=${PWD}/commands.exit" | tee -a $OUTPUTS
+
+  script_submitter:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Submit Commands
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/script_submitter/v3.6/hsp.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: false
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            account: ${{ inputs.cluster.slurm.account }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            qos: ${{ inputs.cluster.slurm.qos }}
+            cpus_per_task: ${{ inputs.cluster.slurm.cpus_per_task }}
+            nodes: ${{ inputs.cluster.slurm.nodes }}
+            node_type: ${{ inputs.cluster.slurm.node_type }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            time: ${{ inputs.cluster.slurm.time }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            account: ${{ inputs.cluster.pbs.account }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Check Exit Status
+        run: |
+          exit_file="${{ needs.preprocessing.outputs.EXIT_FILE }}"
+          if [ ! -f "${exit_file}" ]; then
+            echo "::error title=Error::No exit status recorded in ${exit_file}; the command script did not run to its end"
+            exit 1
+          fi
+          status=$(cat "${exit_file}")
+          if [ "${status}" != "0" ]; then
+            echo "::error title=Error::Commands exited with status ${status}"
+            exit 1
+          fi
+          echo "::notice::Commands exited with status 0"
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: Resource where the commands run
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Job?
+            tooltip: |
+              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
+              No  → Job is executed in the controller or login node instead
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+                tooltip: Select a partition from the drop down menu.
+              qos:
+                label: Quality of Service [QoS]
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              cpus_per_task:
+                label: CPUs per task
+                type: number
+                default: 1
+                tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              nodes:
+                label: Number of nodes
+                type: number
+                default: 1
+                tooltip: '--nodes=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              node_type:
+                label: Node Type
+                type: dropdown
+                optional: true
+                default: ""
+                option-key: ${{ inputs.resource.ip }}
+                tooltip: '--constraint=<value> slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider || (inputs.resource.ip != 'blueback.navydsrc.hpc.mil' && inputs.resource.ip != 'narwhal.navydsrc.hpc.mil' && inputs.resource.ip != 'nautilus.navydsrc.hpc.mil' && inputs.resource.ip != 'raider.afrl.hpc.mil' && inputs.resource.ip != 'crux.mhpcc.hpc.mil') }}
+                hidden: ${{ .ignore }}
+                options:
+                  blueback.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  narwhal.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - smla
+                    - dmla
+                    - viz
+                    - transfer
+                  nautilus.navydsrc.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  raider.afrl.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  crux.mhpcc.hpc.mil:
+                    - AMD
+                    - Intel
+              time:
+                label: Walltime
+                type: string
+                default: '00:30:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job (format: D-HH:MM:SS or HH:MM:SS, e.g. 7-00:00:00 or 01:00:00)'
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+                default: |
+                  ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              account:
+                label: Account
+                type: string
+                tooltip: PBS account for job submission (-A)
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+                default: |
+                  # Parameters that apply to all sites
+                  #PBS -l walltime=00:30:00
+                  #PBS -V
+                  #PBS -q standard
+                  # Remove first # to activate specific lines
+                  #=====Ruth (Lustre, only vis has NVIDIA)=====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128
+                  #=====Warhawk (Lustre)====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128
+                  #=====Wheat (WEKA, nmlas=4|6)====
+                  ##PBS -l select=1:ncpus=92:mpiprocs=92:nmlas=4
+                  #=====Carpenter=====
+                  ##PBS -l select=1:ncpus=192:mpiprocs=192:nmlas=4
+      service:
+        type: group
+        label: Batch Job
+        items:
+          commands:
+            label: Commands to Execute
+            type: editor
+            default: |
+              hostname
+              date
+              whoami
+              pwd
+              uname -a
+              echo "Environment variables:"
+              env | sort | head -20
+            tooltip: |
+              Shell commands to run on the resource, in order. They run under `set -e`,
+              so the job stops at the first failing command; append `|| true` to a
+              command that may fail, e.g. `nvidia-smi || true`.

@@ -7,7 +7,8 @@ The home of the Parallel Works / ACTIVATE platform workflows.
 in `app/` or an implementation subdir — the only subtree checked out at run time),
 README, build tooling, and marketplace thumbnails (in `thumbnails/`) all live together. There are **no
 version suffixes** — every file is the latest version; git tags version the repo.
-Every workflow serves through the **`pw` endpoint pattern**.
+Every workflow but [activate-batch](workflows/activate-batch/) serves through the
+**`pw` endpoint pattern**; that one runs a batch script to completion.
 
 How this repo was assembled, and where anything older lives, is recorded in
 [MIGRATION.md](MIGRATION.md).
@@ -16,6 +17,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 
 | Workflow | What it serves | Variants |
 |---|---|---|
+| [activate-batch](workflows/activate-batch/) | Batch job: a list of commands run on the login node or via SLURM/PBS (no endpoint) | general, hsp |
 | [agent-orchestrator](workflows/agent-orchestrator/) | Multi-agent orchestrator service | general |
 | [hermes-agent](workflows/hermes-agent/) | Hermes agent with auth/TCP proxies | general |
 | [jupyter](workflows/jupyter/) | Jupyter Notebook (classic) | general, emed, noaa |
@@ -82,7 +84,8 @@ When testing a workflow, also verify cleanup: cancel a run mid-flight and confir
 nothing is left behind (processes, scheduler jobs, containers), and delete test
 endpoints when done — see [DeveloperGuide.md](DeveloperGuide.md).
 
-Every workflow registers a **`pw` endpoint** (check `pw endpoints list`).
+Every endpoint workflow registers a **`pw` endpoint** (check `pw endpoints list`);
+`activate-batch` runs its commands to completion instead.
 Note that workflow YAMLs pull this repo from GitHub at runtime
 (`parallelworks/checkout` + subworkflow `uses:`), so local YAML edits only take full
 effect once pushed to the referenced branch (**canary**).

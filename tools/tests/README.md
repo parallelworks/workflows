@@ -34,7 +34,7 @@ The runner picks the lane from the inputs:
 
 | lane | how it is recognised | pass | teardown |
 |---|---|---|---|
-| cluster | `cluster.resource` (or `resource`) is a resource name or `pw://` URI | the run reaches `completed` and an endpoint named `*-<run-slug>` is listed | `pw endpoints delete`; leftovers are checked over `pw ssh` |
+| cluster | `cluster.resource` (or `resource`) is a resource name or `pw://` URI | the run reaches `completed` and an endpoint named `*-<run-slug>` is listed (`completed` alone when `_test.endpoint` is `false`) | `pw endpoints delete`; leftovers are checked over `pw ssh` |
 | k8s | `resource` is an object with `"type": "kubernetes"` (hybrid `*_k8s.yaml`) or the inputs carry `k8s.cluster` (standalone `k8s.yaml`) | the run is still `running` when its `wait_for_endpoint_k8s` job completes and an endpoint named `*-<run-slug>` is listed | `pw workflows runs cancel`; leftovers are Kubernetes objects |
 
 A hybrid `*_k8s.yaml` runs either lane, so it takes one test per lane: a k8s-lane test
@@ -61,6 +61,7 @@ Optional, stripped before launch.
 | key | lane | meaning | default |
 |---|---|---|---|
 | `timeout_s` | both | seconds to wait for the verdict | 1800 |
+| `endpoint` | cluster | `false` for a workflow that registers no endpoint (a batch job such as `activate-batch`): pass = the run reaches `completed`; teardown has nothing to delete but still checks leftovers and queued jobs | `true` |
 | `warm_marker` | cluster | path or list of paths on the resource; all exist → phase `warm`, none → `cold`, some → `partial` | none |
 | `setup` | cluster | shell snippet run on the resource before launch; must be idempotent (seed files, create dirs) | none |
 | `leftover_patterns` | cluster | process patterns that must not survive teardown, matched against `ps -u $USER -o args` | `["pw endpoints"]` |
@@ -74,7 +75,8 @@ Cluster lane:
 
 - the run reaches `completed` (which the workflow only allows after its own health
   check of the endpoint URL passed)
-- `pw endpoints list` shows an endpoint named `*-<run-slug>`
+- `pw endpoints list` shows an endpoint named `*-<run-slug>` (skipped when the test
+  sets `_test.endpoint: false`: a batch workflow passes on `completed` alone)
 
 Cleanup is verified separately after `pw endpoints delete` of every endpoint ending in
 the run slug (a multi-service workflow registers several): no matching processes

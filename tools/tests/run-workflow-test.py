@@ -31,6 +31,8 @@ completes has already proven its service healthy.
 The optional "_test" object is stripped before launch:
 
     timeout_s          seconds to wait for the verdict (default 1800)
+    endpoint           false when the workflow registers no endpoint (a batch job): pass = the
+                       run completes; teardown still checks leftovers (cluster lane; default true)
     warm_marker        path, or list of paths, on the resource: all present -> phase "warm",
                        none -> "cold", some -> "partial" (cluster lane)
     setup              shell snippet run on the resource before launch (idempotent; cluster lane)
@@ -78,7 +80,7 @@ FINAL_STATUSES = {"completed", "error", "canceled", "failed"}
 COLUMNS = ["date", "phase", "result", "cleanup", "workflow_tree", "submitter_tree",
            "tools_tree", "commit", "fetched", "branch", "user", "run_slug", "duration_s", "error"]
 COMPUTE_RESOURCES_RE = re.compile(r"^\s*type:\s*compute-resources\s*$", re.M)
-DEFAULTS = {"timeout_s": 1800, "warm_marker": "", "setup": "", "resource": "",
+DEFAULTS = {"timeout_s": 1800, "endpoint": True, "warm_marker": "", "setup": "", "resource": "",
             "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
             "leftover_kinds": ["deployments", "services", "pods", "persistentvolumeclaims", "secrets"]}
 
@@ -557,6 +559,9 @@ def run_test(test, args, user):
             elif status != "completed":
                 summary, detail = errors(slug)
                 row["result"], row["error"] = "fail", f"run {status}: {summary}"
+            elif not test.meta["endpoint"]:
+                row["result"] = "pass"
+                log("  run completed; no endpoint expected")
             else:
                 endpoint_name, url = endpoint(slug)
                 if not endpoint_name:

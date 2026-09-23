@@ -1,0 +1,18 @@
+{
+  "_test": {
+    "timeout_s": 1500,
+    "endpoint": false
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "00:30:00"
+    }
+  },
+  "service": {
+    "commands": "hostname\ndate\nwhoami\necho \"SLURM job: ${SLURM_JOB_ID:-none} on ${SLURM_JOB_NODELIST:-?}\"\nnproc\nfree -h"
+  }
+}

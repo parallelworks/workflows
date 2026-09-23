@@ -821,7 +821,7 @@ jobs:
             optional: true
             hidden: ${{ inputs.container.container_mode != 'sif_path' }}
             ignore: ${{ inputs.container.container_mode != 'sif_path' }}
-            tooltip: Absolute path to a prebuilt .sif on the cluster.
+            tooltip: Absolute path and filename to a prebuilt .sif on the cluster.
           requirements_file:
             label: Pin Set (build mode)
             type: dropdown

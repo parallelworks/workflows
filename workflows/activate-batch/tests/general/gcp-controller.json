@@ -1,0 +1,11 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "endpoint": false
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": false
+  },
+  "service": {}
+}

@@ -1,0 +1,186 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Create Command Script
+        run: |
+          set -e
+          # The submitter never inspects the script's exit status, so the script records it itself
+          cat <<EOF > commands.sh
+          set -e
+          trap 'echo \$? > ${PWD}/commands.exit' EXIT
+          EOF
+          cat <<'EOF' >> commands.sh
+          echo "=============================================="
+          echo "  Hello World from Parallel Works ACTIVATE"
+          echo "=============================================="
+          echo ""
+          echo "System Information:"
+          echo "  Hostname:    $(hostname)"
+          echo "  Date:        $(date)"
+          echo "  User:        $(whoami)"
+          echo "  Directory:   $(pwd)"
+          echo ""
+          echo "----------------------------------------------"
+          echo "  Executing Commands"
+          echo "----------------------------------------------"
+          echo ""
+          EOF
+          cat <<'EOF' >> commands.sh
+          ${{ inputs.service.commands }}
+          EOF
+          cat <<'EOF' >> commands.sh
+
+          echo ""
+          echo "----------------------------------------------"
+          echo "  All commands completed"
+          echo "----------------------------------------------"
+          echo "Finished at: $(date)"
+          echo "=============================================="
+          EOF
+          cat commands.sh
+          echo "SCRIPT_PATH=${PWD}/commands.sh" | tee -a $OUTPUTS
+          echo "EXIT_FILE=${PWD}/commands.exit" | tee -a $OUTPUTS
+
+  script_submitter:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Submit Commands
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.cluster.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: false
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            time: ${{ inputs.cluster.slurm.time }}
+            gpus: ${{ inputs.cluster.slurm.gpus }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Check Exit Status
+        run: |
+          exit_file="${{ needs.preprocessing.outputs.EXIT_FILE }}"
+          if [ ! -f "${exit_file}" ]; then
+            echo "::error title=Error::No exit status recorded in ${exit_file}; the command script did not run to its end"
+            exit 1
+          fi
+          status=$(cat "${exit_file}")
+          if [ "${status}" != "0" ]; then
+            echo "::error title=Error::Commands exited with status ${status}"
+            exit 1
+          fi
+          echo "::notice::Commands exited with status 0"
+
+'on':
+  execute:
+    inputs:
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          resource:
+            type: compute-clusters
+            label: Compute resource
+            include-workspace: false
+            tooltip: Resource where the commands run
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Job?
+            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
+              No  → Job is executed in the controller or login node instead
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.cluster.resource }}
+                tooltip: Select a partition from the drop down menu.
+              time:
+                label: Walltime
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              gpus:
+                label: Number of GPUs
+                type: number
+                optional: true
+                min: 0
+                default: 0
+                hidden: ${{ inputs.cluster.resource.ip != 'dn-slurm-1.parallel.works' }}
+                ignore: ${{ .hidden }}
+                tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+      service:
+        type: group
+        label: Batch Job
+        items:
+          commands:
+            label: Commands to Execute
+            type: editor
+            default: |
+              hostname
+              date
+              whoami
+              pwd
+              uname -a
+              echo "Environment variables:"
+              env | sort | head -20
+            tooltip: |
+              Shell commands to run on the resource, in order. They run under `set -e`,
+              so the job stops at the first failing command; append `|| true` to a
+              command that may fail, e.g. `nvidia-smi || true`.

@@ -298,7 +298,10 @@ ollama-gguf-container implementation paths not separately exercised.
 
 1. Keep `canary` as the long-lived default branch, or rename to `main` after the
    migration lands? (Mechanical find/replace either way.)
-2. Migrate `workflow/batch/` in a follow-up?
+2. Migrate `workflow/batch/` in a follow-up? **Partly (2026-09-23):** the standalone
+   `parallelworks/activate-batch` repo's hello-world batch submitter joined as
+   `workflows/activate-batch/`, re-pointed from `marketplace/job_runner/v4.0` to
+   `workflows/script_submitter/v3.6`; the helios/kestrel examples remain open.
 3. Thumbnail guesses in judgment call 6 — confirm against the actual registrations.
 4. Converting the left-behind legacy variants (emed etc.) to the endpoint pattern so
    they can join this repo — who/when? **emed done (2026-09-02):** kasmvnc (+ the

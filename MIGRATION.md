@@ -171,8 +171,27 @@ the first test exposed (all pre-existing upstream):
 - In fire-and-forget mode `dispatch_workers.sh` disowned every background process,
   including a same-resource site's log streamer (`tail -f` on the worker log), which
   then outlived the add-worker run (three were found on the login node after three
-  runs). The script now kills those streamers and disowns only the remote SSH sessions
-  (the one change to `app/` outside the paths and the ssh options).
+  runs). The script now kills those streamers and disowns only the remote SSH sessions.
+- **Adding a remote site never completed** (`blessed-ferret`, 20 min until the runner's
+  timeout): the disowned `ssh … | stream_logs.py` pipeline kept writing the remote
+  worker's status into the step's stdout, so the step could not end; when the run was
+  cancelled the tunnel session died and the worker was orphaned (SLURM job + 14
+  login-node proxies), and the cluster run's cleanup would not have found it either
+  (it only knows its own `workers` input). Now, in fire-and-forget mode, each remote
+  dispatch runs in its own process group (`set -m`) with its own log
+  (`logs/dispatch_<site>.out`), the add-worker step appends its `workers` rows to the
+  cluster run's `added_workers.jsonl`, and the cluster cleanup merges that file into
+  the sites it tears down. Verified: `peaceful-catfish` completed in 80 s, the tunnel
+  session and the worker survived it, and cancelling the cluster `scancel`led the added
+  job through the merged list.
+- The remote SLURM worker script backgrounds a `tail -f` on its SLURM log and never
+  killed it; after the job ended the tail held the SSH channel open, so the detached
+  pipeline lingered on the head. The remote cleanup trap now kills it.
+- `dashboard.py`: the Ray poller dropped a node that had just registered through
+  `/api/worker` because Ray's `/nodes` view lags the GCS by seconds; remote workers
+  therefore stayed invisible in the topology until their next heartbeat (about two
+  minutes), which is what the default configuration (workspace head, remote worker)
+  hits first. A node now gets a 60 s grace period before its absence counts as death.
 
 **Judgment calls:**
 
@@ -228,9 +247,8 @@ session on the resource. Rows are in `workflows/ray-cluster/tests/*/*.csv`.
 | `hsp_add_worker/gcp-worker` | PASS `sure-mite` against `dashing-wahoo` (22 s): second SLURM worker joined (cluster at 2 CPUs), both job ids in the cluster run's `slurm_jobids`, no streamer left behind (`dispatch_workers.sh` in the leftover patterns); cancelling the cluster run then left no job, process or session |
 | `general/workspace-head-gcp-worker` (remote dispatch: head on the user workspace, worker on gcpsmall over `pw ssh` tunnels) | `magical-rhino` FAIL at "Failed to allocate dashboard tunnel port" (the ssh ControlPath problem, judgment call 6; the unmodified upstream YAML failed the same way as `unbiased-chigger`), then PASS `sensible-squid` (302 s, cleanup ok on both hosts): the worker site cloned `workflows/ray-cluster/app` from this repo for `setup.sh`, joined through the reverse tunnel and ran the benchmark |
 
-Not exercised: PBS sites, SSH-mode (unscheduled) remote workers, multi-node sites, GPU
-detection, the `fractal` workload and the `cluster_only` user script — the scripts for
-those are verbatim upstream.
+Not exercised: PBS sites, unscheduled remote workers, multi-node sites, GPU
+detection and the `fractal` workload — the scripts for those are verbatim upstream.
 
 **Endpoint conversion (second pass, same day):** pass now also requires
 `ray-cluster-<run-slug>` in `pw endpoints list`; the workflow's `wait_for_endpoint` job
@@ -246,6 +264,15 @@ second (the runner's follow-up `pw endpoints delete` finds no session).
 | `hsp/gcp-head-gcp-worker` | PASS `fit-rattler` (warm, 53 s, cleanup ok) |
 | `hsp/gcp-head-gcp-worker` (kept) + `hsp_add_worker/gcp-worker` | `picked-hyena` PASS kept; `generous-kitten` PASS (21 s): second worker's job registered with the cluster run (`slurm_jobids` 15 16); the endpoint URL fetched with a user token showed the dashboard's `/api/state` (phase `complete`, head `gcpsmall`); cancelling the cluster run removed the endpoint, both jobs and every process |
 | `general/workspace-head-gcp-worker` | PASS `wealthy-grizzly` (85 s, cleanup ok on both hosts): with the head on the workspace the subworkflow's `host` rendered empty and the probe ran from the workspace (HTTP 200) |
+
+**Defaults and the user's job path (third pass, same day):**
+
+| Test | Result |
+|---|---|
+| `general/defaults-workspace-head` — the form's defaults as the UI sends them: workspace head, one gcpsmall worker with the default row (`scheduler` on, no partition, no gres, `01:00:00`), `ray_settings`/`workload_settings` omitted so their defaults apply (`cluster_only`, no user script, Ray 2.40.0) | `funky-emu` PASS kept: omitted groups rendered their defaults (`RAY_VERSION=2.40.0`, endpoint `ray-cluster-<slug>`, workload `cluster_only`), the sbatch script carried only `--nodes=1 --time=01:00:00`, the worker joined (`ray status`: 2 nodes, 1 CPU) and the workflow set phase `cluster_ready` 3.5 min after launch. A job submitted from the head the way the Connect tab shows (`ray job submit --address http://127.0.0.1:8265 --working-dir … -- python fake_job.py`, 12 remote tasks) succeeded with every task on the SLURM compute node. Cancelling removed the endpoint and every process on both hosts |
+| `general/head-only-workspace` + `general_add_worker/workspace-head-gcp-remote-worker` (a remote site attached to a running cluster) | `strong-owl` + `blessed-ferret`: FAIL as described above (timeout, orphaned worker); `novel-boa` + `peaceful-catfish` after the fixes: PASS in 80 s, worker attached and still alive a minute after the add-worker run ended (`ray status` 1 CPU, tunnel session alive), Ray lists it under its tunnel IP `127.0.2.1`, the dashboard topology shows it (`site-2`, `gcpsmall`), and cancelling the cluster cancelled the added job (`Cancelling SLURM job 25`) |
+| `hsp/defaults-user-script` — hsp form defaults for the worker row (no partition, gres, account or QoS; the `##SBATCH --constraint=mla` hint left in place), `cluster_only` with **Run User Script** on and a script that runs 12 Ray tasks and fails unless they ran off the head | `powerful-albacore` PASS (48 s to `complete`, cleanup ok): the hint rendered as a harmless `##SBATCH` comment, the script ran on the head with `RAY_ADDRESS` set and every task executed on the SLURM compute node |
+| final remote check (`becoming-fawn` + `glorious-hog`) | after the streamer-trap and dashboard fixes: add-worker PASS in 84 s, the dashboard listed the tunnel worker (`site-2`, `gcpsmall`) at once and kept it, and 60 s after cancelling the cluster there was no endpoint, no process on the workspace and no SLURM job or remote-worker process on gcpsmall |
 ## Dead branches (pre-existing breakage, now fixed)
 
 Three selected YAMLs checked out branches that **no longer exist upstream** — those

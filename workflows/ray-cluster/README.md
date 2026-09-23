@@ -88,8 +88,12 @@ on `auto` (the latest job directory with a Ray head is used) or point it at the
 cluster run's job directory, and add the new sites. The added workers connect to the
 existing head and appear in its dashboard; this run completes once they are dispatched
 and the workers stay attached. Same-resource workers are SLURM/PBS jobs whose ids are
-also recorded in the cluster run's `slurm_jobids`, so cancelling the cluster run cancels
-them too.
+also recorded in the cluster run's `slurm_jobids`; a remote site's SSH tunnel session
+is detached from the run (its output goes to `logs/dispatch_<site>.out` in the
+add-worker run's job directory) and its rows are appended to the cluster run's
+`added_workers.jsonl`. Cancelling the cluster run therefore tears down the added
+workers too. Add one site per remote resource: a second dispatch to a resource that
+already hosts a remote worker replaces that worker's tunnels.
 
 ## Dashboard
 
@@ -160,8 +164,12 @@ the SLURM worker joined and the benchmark ran across it; the runner also checks 
 the endpoint is listed, then cancels the run and verifies that no endpoint wrapper,
 Ray, dashboard or dispatcher process and no SLURM job is left on the resource.
 
-The `*_add_worker` tests need a running cluster: keep one from the main test, run the
-add-worker test against it, then cancel the cluster run.
+`tests/general/defaults-workspace-head.json` is the form's defaults as the UI sends
+them (workspace head, one gcpsmall worker with the default row, `cluster_only`);
+`tests/hsp/defaults-user-script.json` runs the user-script path with a Ray job that
+fails unless its tasks ran on the worker. The `*_add_worker` tests need a running
+cluster: keep one from a main test (`head-only-workspace.json` for the remote-site
+add), run the add-worker test against it, then cancel the cluster run.
 
 ```bash
 python3 tools/tests/run-workflow-test.py --keep workflows/ray-cluster/tests/general/gcp-head-gcp-worker.json

@@ -126,6 +126,55 @@ so beyond the global rules:
   `.run.env` target it, and it is exported in `inputs.sh`.
 - `start-template.sh`: launches `start_service.sh` from (and cancels via) `${rag_appdir}`.
 
+## ray-cluster (from parallelworks/ray-cluster)
+
+Migrated 2026-09-23 from `parallelworks/ray-cluster@main` (98bb3dd, 2026-07-22), a
+multi-site Ray cluster: a Ray head + FastAPI dashboard on one resource, workers
+dispatched to SLURM/PBS/SSH sites (same-resource sites via the local scheduler, other
+resources over `pw ssh` tunnels), served through a platform **session**
+(`parallelworks/update-session`). The source repo checked out its own `scripts/` and the
+remote worker sites cloned it again for `setup.sh`.
+
+| Old | New |
+|---|---|
+| `scripts/*` (runtime) | `workflows/ray-cluster/app/*` (incl. `templates/index.html`) |
+| `scripts/diagnose.sh`, `scripts/generate_thumbnail.py` (dev tools) | `workflows/ray-cluster/diagnose.sh`, `generate-thumbnail.py` (outside `app/`; thumbnail now written to `thumbnails/ray-cluster.png`) |
+| `workflow.yaml` | `yamls/hsp.yaml` (the form already carried the HSP fields: SLURM account/QoS, `--constraint=mla` hint, PBS account) and `yamls/general.yaml` (those fields dropped; account/QoS go in the directives editor like every other `general` variant) |
+| `add_worker.yaml` | `yamls/hsp_add_worker.yaml`, `yamls/general_add_worker.yaml` (same split) |
+| `thumbnail.png` | `thumbnails/ray-cluster.png` |
+| checkout `parallelworks/ray-cluster@main`, sparse `scripts` | `parallelworks/workflows@canary`, sparse `workflows/ray-cluster/app` |
+| `bash scripts/<x>.sh` in the YAMLs; `SCRIPT_DIR="${JOB_DIR}/scripts"` in `start_ray_head.sh`, `dispatch_workers.sh`, `run_benchmark.sh` | `workflows/ray-cluster/app/...` |
+| remote worker clone: `git clone --sparse ray-cluster.git` + `sparse-checkout set scripts` + `bash scripts/setup.sh` (3 dispatch modes) | clone of this repo (`REPO_URL`/`REPO_BRANCH`, overridable with `RAY_REPO_URL`/`RAY_REPO_BRANCH`, default `canary`) + `sparse-checkout set workflows/ray-cluster/app` + `bash workflows/ray-cluster/app/setup.sh` |
+
+Everything else in the scripts and the job graph is verbatim. Small YAML-only changes:
+banner comments removed; `add_worker`'s `auto` job-dir detection also accepts the flat
+`~/pw/jobs/<run-slug>/` directory of a CLI file run (registered runs keep their numbered
+subdirectories).
+
+**Judgment calls:**
+
+1. **Session pattern kept.** The dashboard stays behind `update-session` rather than a
+   `pw` endpoint: the brief was to move the workflow with as few code changes as
+   possible, and the conversion (start the dashboard under `pw endpoints run`, replace
+   `wait_for_ray`/`update_session` with the `wait_for_endpoint` subworkflow) is a
+   separate step per `references/session-to-endpoint-upgrade.md`. It is the one
+   session-pattern workflow in this repo; README.md and CLAUDE.md say so.
+2. **The run holds the cluster** (like the k8s workflows: cancel = teardown) — the
+   `start_ray_head`, `dispatch_workers` and `cluster_ready` jobs loop until cancelled.
+   The test runner gained `_test.ready_job` (pass = that job completes while the run is
+   still running; teardown = cancel) and `_test.scheduler` for this; documented in
+   `tools/tests/README.md`.
+3. **`add_worker` as `<variant>_add_worker.yaml` variants** of the same directory (it
+   shares `app/`), following `general_rstudio.yaml` / `general-all.yaml`; a marketplace
+   entry for it points at those files.
+4. **Form input groups kept** (`head`, `workers`, `ray_settings`, `workload_settings`)
+   instead of the `cluster`/`service` convention: a multi-resource form, and renaming
+   would touch every expression in the job graph. The tests name the resource the
+   runner checks through `_test.resource`.
+5. Remote-site dispatch needs `~/.ssh/pwcli` on the head (pre-existing); the workspace
+   has it, a cloud login node does not, so a cluster login node can head same-resource
+   workers but not remote sites.
+
 ## Dead branches (pre-existing breakage, now fixed)
 
 Three selected YAMLs checked out branches that **no longer exist upstream** — those

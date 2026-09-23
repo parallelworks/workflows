@@ -58,7 +58,10 @@ docs/                        # developer + AI docs
 ## The endpoint pattern
 
 Every workflow here but `activate-batch` (a batch job that runs a command script to
-completion and fails when it fails) serves through a **`pw` endpoint** (`pw endpoints list`) named
+completion and fails when it fails) and `ray-cluster` (a platform session behind
+`parallelworks/update-session`; the run holds the cluster and cancelling it is the
+teardown — the last session-pattern workflow, see MIGRATION.md) serves through a
+**`pw` endpoint** (`pw endpoints list`) named
 `<service>-${PW_RUN_SLUG}`. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles

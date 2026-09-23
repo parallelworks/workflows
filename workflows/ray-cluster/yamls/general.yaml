@@ -1,0 +1,702 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+sessions:
+  session:
+    useTLS: false
+    redirect: true
+
+jobs:
+  checkout:
+    steps:
+      - name: Checkout scripts to head node
+        uses: parallelworks/checkout
+        ssh:
+          remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: ray-cluster
+          sparse_checkout:
+            - workflows/ray-cluster/app
+
+  start_ray_head:
+    needs: [checkout]
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
+    steps:
+      - name: Setup and start Ray head + dashboard
+        early-cancel: any-job-failed
+        run: |
+          set -e
+          export RAY_VERSION="${{ inputs.ray_settings.ray_version }}"
+          bash workflows/ray-cluster/app/start_ray_head.sh
+        cleanup: |
+          echo "Cleaning up Ray head + workers..."
+          JOB_DIR="${PW_PARENT_JOB_DIR%/}"
+
+          # --- Cancel local SLURM jobs (IDs saved by dispatch_workers.sh) ---
+          if [ -f "${JOB_DIR}/slurm_jobids" ]; then
+            echo "Cancelling local SLURM jobs..."
+            while IFS= read -r jid; do
+              [ -n "${jid}" ] && echo "  scancel ${jid}" && scancel "${jid}" 2>/dev/null || true
+            done < "${JOB_DIR}/slurm_jobids"
+          fi
+
+          # --- Cancel SLURM/PBS jobs on remote worker resources ---
+          export WORKERS_JSON='${{ inputs.workers }}'
+          export PW_USER="${PW_USER}"
+          export PW_CMD=""
+          for try_cmd in pw ~/pw/pw; do
+            command -v ${try_cmd} &>/dev/null && { PW_CMD=${try_cmd}; break; }
+            [ -x "${try_cmd}" ] && { PW_CMD=${try_cmd}; break; }
+          done
+          export PW_CMD
+
+          python3 -c "
+          import json, os, subprocess
+
+          workers = json.loads(os.environ.get('WORKERS_JSON', '[]'))
+          head_ip = os.environ.get('PW_RESOURCE_IP', '')
+          pw_user = os.environ.get('PW_USER', '')
+          pw_cmd = os.environ.get('PW_CMD', 'pw')
+
+          # Build scheduler type lookup from pw cluster ls
+          cluster_types = {}
+          try:
+              out = subprocess.check_output([pw_cmd, 'cluster', 'ls'], text=True, timeout=10)
+              for line in out.strip().split('\n'):
+                  parts = line.split()
+                  if len(parts) >= 3 and parts[0].startswith('pw://'):
+                      cname = parts[0].split('/')[-1]
+                      ctype = parts[2]
+                      if 'slurm' in ctype: cluster_types[cname] = 'slurm'
+                      elif 'pbs' in ctype: cluster_types[cname] = 'pbs'
+                      else: cluster_types[cname] = ctype
+          except Exception as e:
+              print(f'Warning: could not list clusters: {e}')
+
+          seen = set()
+          for w in workers:
+              res = w.get('resource', {})
+              # Handle resource as string (name) or object (with ip/name/schedulerType)
+              if isinstance(res, str):
+                  name = res
+                  sched = cluster_types.get(name, '')
+              else:
+                  name = res.get('name', res.get('ip', ''))
+                  sched = res.get('schedulerType', cluster_types.get(name, ''))
+              if not name or name in seen:
+                  continue
+              seen.add(name)
+
+              print(f'Cleaning up {name} (scheduler={sched})...')
+
+              ssh_base = [
+                  'ssh', '-i', os.path.expanduser('~/.ssh/pwcli'),
+                  '-o', 'StrictHostKeyChecking=no',
+                  '-o', 'UserKnownHostsFile=/dev/null',
+                  '-o', 'ConnectTimeout=15',
+                  '-o', f'ProxyCommand={pw_cmd} ssh --proxy-command %h',
+                  f'{pw_user}@{name}',
+              ]
+
+              if sched == 'slurm':
+                  subprocess.run(
+                      ssh_base + [
+                          'WORK=\${PW_PARENT_JOB_DIR:-\${HOME}/pw/jobs/ray_worker_remote}; '
+                          'if [ -f \"\${WORK}/slurm_jobid\" ]; then '
+                          '  jid=\$(cat \"\${WORK}/slurm_jobid\"); '
+                          '  echo \"Cancelling SLURM job \${jid}\"; '
+                          '  scancel \"\${jid}\" 2>/dev/null; '
+                          'fi; '
+                          'scancel --name=\"ray-worker-*\" 2>/dev/null; '
+                          'ray stop --force 2>/dev/null; '
+                          'echo \"SLURM cleanup done\"'],
+                      timeout=30, capture_output=False
+                  )
+              elif sched == 'pbs':
+                  subprocess.run(
+                      ssh_base + [
+                          'WORK=\${PW_PARENT_JOB_DIR:-\${HOME}/pw/jobs/ray_worker_remote}; '
+                          'if [ -f \"\${WORK}/pbs_jobid\" ]; then '
+                          '  jid=\$(cat \"\${WORK}/pbs_jobid\"); '
+                          '  echo \"Cancelling PBS job \${jid}\"; '
+                          '  qdel \"\${jid}\" 2>/dev/null; '
+                          'fi; '
+                          'ray stop --force 2>/dev/null; '
+                          'echo \"PBS cleanup done\"'],
+                      timeout=30, capture_output=False
+                  )
+              else:
+                  subprocess.run(
+                      ssh_base + ['ray stop --force 2>/dev/null || true'],
+                      timeout=30, capture_output=False
+                  )
+          " 2>&1 || echo "Remote cleanup had errors (non-fatal)"
+
+          # --- Stop Ray head ---
+          VENV_DIR="$(cat "${JOB_DIR}/RAY_VENV_DIR" 2>/dev/null || echo "")"
+          if [ -n "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/ray" ]; then
+            "${VENV_DIR}/bin/ray" stop --force 2>/dev/null || true
+          elif command -v ray &>/dev/null; then
+            ray stop --force 2>/dev/null || true
+          fi
+
+          # --- Kill dashboard ---
+          if [ -f "${JOB_DIR}/dashboard.pid" ]; then
+            kill "$(cat "${JOB_DIR}/dashboard.pid")" 2>/dev/null || true
+          fi
+          echo "Ray head + worker cleanup done."
+
+  wait_for_ray:
+    needs: [checkout]
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
+    steps:
+      - name: Wait for Ray head and dashboard
+        early-cancel: any-job-failed
+        run: |
+          set -e
+          JOB_DIR="${PW_PARENT_JOB_DIR%/}"
+          MAX_ATTEMPTS=120
+          INTERVAL=3
+
+          echo "Waiting for Ray head and dashboard..."
+
+          # Wait for job.started
+          attempt=1
+          while [ ! -f "${JOB_DIR}/job.started" ]; do
+            [ -f "${JOB_DIR}/job.ended" ] && { echo "ERROR: Job ended before starting"; exit 1; }
+            echo "[${attempt}/${MAX_ATTEMPTS}] Waiting for job.started..."
+            sleep ${INTERVAL}
+            ((attempt++))
+            [ ${attempt} -gt ${MAX_ATTEMPTS} ] && { echo "ERROR: Timeout"; exit 1; }
+          done
+
+          # Wait for HOSTNAME, SESSION_PORT, RAY_HEAD_IP, PYTHON_VERSION
+          for file in HOSTNAME SESSION_PORT RAY_HEAD_IP PYTHON_VERSION; do
+            attempt=1
+            while [ ! -f "${JOB_DIR}/${file}" ]; do
+              echo "Waiting for ${file}..."
+              sleep 2
+              ((attempt++))
+              [ ${attempt} -gt 60 ] && { echo "ERROR: ${file} not found"; exit 1; }
+            done
+          done
+
+          HOSTNAME=$(cat "${JOB_DIR}/HOSTNAME")
+          SESSION_PORT=$(cat "${JOB_DIR}/SESSION_PORT")
+          RAY_HEAD_IP=$(cat "${JOB_DIR}/RAY_HEAD_IP")
+          PYTHON_VERSION=$(cat "${JOB_DIR}/PYTHON_VERSION")
+
+          # Wait for dashboard HTTP response
+          echo "Waiting for http://${HOSTNAME}:${SESSION_PORT}..."
+          attempt=1
+          while [ ${attempt} -le ${MAX_ATTEMPTS} ]; do
+            if curl -s --connect-timeout 5 "http://${HOSTNAME}:${SESSION_PORT}/" -o /dev/null 2>&1; then
+              echo "Dashboard is ready!"
+              echo "HOSTNAME=${HOSTNAME}" >> "${OUTPUTS}"
+              echo "SESSION_PORT=${SESSION_PORT}" >> "${OUTPUTS}"
+              echo "RAY_HEAD_IP=${RAY_HEAD_IP}" >> "${OUTPUTS}"
+              echo "PYTHON_VERSION=${PYTHON_VERSION}" >> "${OUTPUTS}"
+              exit 0
+            fi
+            [ -f "${JOB_DIR}/job.ended" ] && { echo "ERROR: Job ended"; exit 1; }
+            echo "[${attempt}/${MAX_ATTEMPTS}] Dashboard not ready..."
+            sleep ${INTERVAL}
+            ((attempt++))
+          done
+          echo "ERROR: Dashboard timeout"
+          exit 1
+
+  update_session:
+    needs: [wait_for_ray]
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
+    steps:
+      - name: Get local port
+        run: |
+          local_port=$(pw agent open-port)
+          echo "local_port=${local_port}" | tee -a $OUTPUTS
+
+      - name: Update session
+        uses: parallelworks/update-session
+        with:
+          target: ${{ inputs.head.resource.id }}
+          name: ${{ sessions.session }}
+          remoteHost: ${{ needs.wait_for_ray.outputs.HOSTNAME }}
+          remotePort: ${{ needs.wait_for_ray.outputs.SESSION_PORT }}
+          local_port: ${{ needs.update_session.outputs.local_port }}
+
+  dispatch_workers:
+    needs: [wait_for_ray, checkout]
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
+    steps:
+      - name: Dispatch workers to compute sites
+        early-cancel: any-job-failed
+        run: |
+          set -e
+          export RAY_VERSION="${{ inputs.ray_settings.ray_version }}"
+          export DASHBOARD_PORT=$(cat "${PW_PARENT_JOB_DIR}/SESSION_PORT")
+          export RAY_HEAD_IP=$(cat "${PW_PARENT_JOB_DIR}/RAY_HEAD_IP")
+          export PYTHON_VERSION=$(cat "${PW_PARENT_JOB_DIR}/PYTHON_VERSION")
+          export WORKERS_JSON='${{ inputs.workers }}'
+          export HEAD_RESOURCE_NAME='${{ inputs.head.resource.name }}'
+          export RAY_REPO_BRANCH="ray-cluster"
+
+          bash workflows/ray-cluster/app/dispatch_workers.sh
+        cleanup: |
+          # NOTE: Worker cleanup (scancel, remote SSH) is handled by
+          # start_ray_head cleanup, NOT here. This step's SSH may drop
+          # on intermittent connection issues — we must not kill workers
+          # just because dispatch_workers reconnected or exited.
+          echo "dispatch_workers cleanup done (worker teardown deferred to start_ray_head)."
+
+  run_benchmark:
+    needs: [wait_for_ray]
+    if: ${{ inputs.workload_settings.workload_type != 'cluster_only' }}
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
+    steps:
+      - name: Run distributed benchmark
+        run: |
+          set -e
+          export DASHBOARD_URL="http://localhost:$(cat ${PW_PARENT_JOB_DIR}/SESSION_PORT)"
+          export RAY_HEAD_IP=$(cat "${PW_PARENT_JOB_DIR}/RAY_HEAD_IP")
+          export WORKLOAD_TYPE="${{ inputs.workload_settings.workload_type }}"
+          export NUM_TASKS="${{ inputs.workload_settings.num_tasks }}"
+          export MATRIX_SIZE="${{ inputs.workload_settings.matrix_size }}"
+          export GRID_SIZE="${{ inputs.workload_settings.grid_size }}"
+          export IMAGE_SIZE="${{ inputs.workload_settings.image_size }}"
+          export PALETTE="${{ inputs.workload_settings.palette }}"
+          # Count worker sites
+          export WORKERS_JSON='${{ inputs.workers }}'
+          export NUM_WORKER_SITES=$(python3 -c "import json,os; print(len(json.loads(os.environ.get('WORKERS_JSON','[]'))))")
+          bash workflows/ray-cluster/app/run_benchmark.sh
+
+  cluster_ready:
+    needs: [wait_for_ray]
+    if: ${{ inputs.workload_settings.workload_type == 'cluster_only' }}
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
+    steps:
+      - name: Set cluster ready
+        early-cancel: any-job-failed
+        run: |
+          set -e
+          DASHBOARD_URL="http://localhost:$(cat ${PW_PARENT_JOB_DIR}/SESSION_PORT)"
+          RAY_HEAD_IP=$(cat "${PW_PARENT_JOB_DIR}/RAY_HEAD_IP")
+
+          # Tell the dashboard we're in cluster_only mode BEFORE waiting for workers.
+          # This must happen first because /api/config triggers _reset_state() which
+          # clears nodes — if we wait for workers first, their registrations get wiped.
+          curl -s -X POST "${DASHBOARD_URL}/api/config" \
+            -H "Content-Type: application/json" \
+            -d "{\"workload_type\": \"cluster_only\", \"ray_head_ip\": \"${RAY_HEAD_IP}\"}"
+
+          # Wait for at least 1 worker to connect before announcing ready
+          echo "Waiting for at least 1 worker CPU..."
+          VENV_DIR="$(cat "${PW_PARENT_JOB_DIR%/}/RAY_VENV_DIR" 2>/dev/null || echo "${PW_PARENT_JOB_DIR%/}/.venv")"
+          [ -f "${VENV_DIR}/bin/activate" ] && source "${VENV_DIR}/bin/activate"
+          MAX_WAIT=600
+          WAITED=0
+          while true; do
+            CPUS=$(python3 -c "import ray; ray.init(address='${RAY_HEAD_IP}:6379', ignore_reinit_error=True); print(int(ray.cluster_resources().get('CPU', 0)))" 2>/dev/null || echo "0")
+            if [ "${CPUS}" -gt 0 ] 2>/dev/null; then
+              echo "Cluster has ${CPUS} CPUs available"
+              break
+            fi
+            if [ ${WAITED} -ge ${MAX_WAIT} ]; then
+              echo "WARNING: No workers after ${MAX_WAIT}s — proceeding anyway"
+              break
+            fi
+            sleep 5
+            WAITED=$((WAITED + 5))
+            [ $((WAITED % 30)) -eq 0 ] && echo "  Still waiting for workers... (${WAITED}s elapsed)"
+          done
+
+          # Signal that the cluster is ready (workers connected)
+          curl -s -X POST "${DASHBOARD_URL}/api/phase" \
+            -H "Content-Type: application/json" \
+            -d '{"phase": "cluster_ready"}'
+
+          echo "=========================================="
+          echo "Ray Cluster Ready (cluster_only mode)"
+          echo "=========================================="
+          echo "  Ray head: ${RAY_HEAD_IP}:6379"
+          echo "  Dashboard: ${DASHBOARD_URL}"
+          echo ""
+          echo "See the dashboard for connection instructions."
+          echo "=========================================="
+
+          # Run user script or keep alive
+          RUN_USER_SCRIPT='${{ inputs.workload_settings.run_user_script }}'
+          KEEP_ALIVE='${{ inputs.workload_settings.keep_alive }}'
+
+          if [ "${RUN_USER_SCRIPT}" = "true" ]; then
+            echo "User script enabled — preparing to execute..."
+
+            curl -s -X POST "${DASHBOARD_URL}/api/phase" \
+              -H "Content-Type: application/json" \
+              -d '{"phase": "user_script"}'
+
+            JOB_DIR="${PW_PARENT_JOB_DIR}"
+            SCRIPT_FILE="${JOB_DIR}/user_script"
+
+            cat > "${SCRIPT_FILE}" << 'USERSCRIPT_EOF'
+          ${{ inputs.workload_settings.user_script }}
+          USERSCRIPT_EOF
+
+            # If no shebang, prepend #!/bin/bash
+            if ! head -1 "${SCRIPT_FILE}" | grep -q '^#!'; then
+              sed -i '1i#!/bin/bash' "${SCRIPT_FILE}"
+            fi
+            chmod +x "${SCRIPT_FILE}"
+
+            # Activate the venv and set Ray address
+            VENV_DIR="$(cat "${JOB_DIR%/}/RAY_VENV_DIR" 2>/dev/null || echo "${JOB_DIR%/}/.venv")"
+            [ -f "${VENV_DIR}/bin/activate" ] && source "${VENV_DIR}/bin/activate"
+            export RAY_ADDRESS="${RAY_HEAD_IP}:6379"
+
+            echo "Running user script..."
+            if "${SCRIPT_FILE}"; then
+              echo "User script completed successfully."
+              curl -s -X POST "${DASHBOARD_URL}/api/phase" \
+                -H "Content-Type: application/json" \
+                -d '{"phase": "complete"}'
+            else
+              echo "ERROR: User script failed with exit code $?"
+              curl -s -X POST "${DASHBOARD_URL}/api/phase" \
+                -H "Content-Type: application/json" \
+                -d '{"phase": "script_failed"}'
+            fi
+
+            # After script: keep alive or exit
+            if [ "${KEEP_ALIVE}" = "true" ]; then
+              echo "Keeping cluster alive after script. Cancel the workflow to terminate."
+              while true; do sleep 30; done
+            else
+              echo "Script finished — workflow will terminate."
+            fi
+          else
+            # No script — just keep the cluster alive
+            echo "Cluster is ready. It will remain active until the workflow is cancelled."
+            while true; do sleep 30; done
+          fi
+        cleanup: |
+          echo "Cleaning up cluster_ready step..."
+          # Ray and dashboard cleanup is handled by start_ray_head cleanup
+          echo "cluster_ready cleanup done."
+
+  complete:
+    needs: [run_benchmark, cluster_ready, update_session]
+    steps:
+      - name: Workflow complete
+        run: |
+          basepath="/me/session/${PW_USER}/${{ sessions.session }}"
+          local_port="${{ needs.update_session.outputs.local_port }}"
+          echo "=========================================="
+          echo "Multi-Site Ray Cluster Ready!"
+          echo "=========================================="
+          echo "  Ray Version: ${{ inputs.ray_settings.ray_version }}"
+          echo ""
+          echo "  Dashboard: ${PW_PLATFORM_HOST}${basepath}/"
+          echo "  Local tunnel: ssh -L ${local_port}:localhost:${local_port} -o ProxyCommand=\"pw ssh --proxy-command %h\" ${PW_USER}@workspace"
+          echo "  Then access: http://localhost:${local_port}/"
+          echo "=========================================="
+
+'on':
+  execute:
+    inputs:
+      head:
+        type: group
+        label: Head Node
+        items:
+          resource:
+            label: Resource
+            type: compute-clusters
+            include-workspace: true
+            autoselect: true
+            tooltip: |
+              Runs the Ray coordinator and live dashboard.
+              No compute tasks run here — this is a pure coordinator node.
+              Select a login node, cloud VM, or the user workspace.
+
+      workers:
+        type: list
+        label: Compute Workers
+        tooltip: Add one or more compute worker sites. Workers connect to the head node and process Ray tasks. For same-site SLURM workers, select the same resource as the head.
+        template:
+          resource:
+            label: Resource
+            type: compute-clusters
+            include-workspace: false
+            tooltip: Select a compute resource for Ray workers.
+
+          scheduler:
+            type: boolean
+            default: true
+            label: Schedule Job?
+            hidden: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' && inputs.workers.[index].resource.schedulerType != 'pbs' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes - Workers are submitted to the scheduler using sbatch, qsub, etc. (recommended)
+              No  - Workers run directly on the login/controller node via SSH.
+
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
+            items:
+              is_disabled:
+                type: boolean
+                hidden: true
+                default: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
+
+              partition:
+                type: slurm-partitions
+                label: Partition
+                optional: true
+                resource: ${{ inputs.workers.[index].resource }}
+                tooltip: Select a SLURM partition
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
+
+              nodes:
+                label: Nodes
+                type: number
+                slider: true
+                default: 1
+                min: 1
+                max: 16
+                step: 1
+                tooltip: Number of compute nodes to request. Each node runs a Ray worker.
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
+
+              gres:
+                label: GPUs per Node (gres)
+                type: dropdown
+                default: ""
+                tooltip: "GPUs per node (--gres). For example, 4 GPUs/node × 2 nodes = 8 GPUs total."
+                options:
+                  - value: ""
+                    label: "None (CPU only)"
+                  - value: "gpu:1"
+                    label: "1 GPU/node"
+                  - value: "gpu:2"
+                    label: "2 GPUs/node"
+                  - value: "gpu:4"
+                    label: "4 GPUs/node"
+                  - value: "gpu:8"
+                    label: "8 GPUs/node"
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
+
+              time:
+                label: Walltime
+                type: string
+                default: "01:00:00"
+                tooltip: "SLURM walltime (HH:MM:SS). Workers terminate when this expires. Use a longer walltime for cluster_only mode or large workloads."
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
+
+              scheduler_directives:
+                type: editor
+                label: Additional Directives
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --account=<account>
+                  #SBATCH --qos=<qos>
+                  #SBATCH --exclusive
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
+
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
+            items:
+              is_disabled:
+                type: boolean
+                hidden: true
+                default: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
+
+              queue:
+                label: Queue
+                type: string
+                optional: true
+                tooltip: PBS queue name (-q). Leave empty to use the default queue.
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
+
+              nodes:
+                label: Nodes
+                type: number
+                slider: true
+                default: 1
+                min: 1
+                max: 16
+                step: 1
+                tooltip: Number of compute nodes to request. Each node runs a Ray worker.
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
+
+              select:
+                label: Resource Selection
+                type: string
+                optional: true
+                placeholder: "1:ncpus=44:ngpus=4"
+                tooltip: "PBS resource selection string (-l select=). Overrides the Nodes slider when set. Example: 1:ncpus=44:ngpus=4"
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
+
+              walltime:
+                label: Walltime
+                type: string
+                default: "01:00:00"
+                tooltip: "PBS walltime (HH:MM:SS). Workers terminate when this expires. Use a longer walltime for cluster_only mode or large workloads."
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
+
+              scheduler_directives:
+                label: Additional Directives
+                type: editor
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -A <account>
+                  #PBS -l mem=16gb
+                optional: true
+                ignore: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
+
+      ray_settings:
+        type: group
+        label: Ray Configuration
+        items:
+          ray_version:
+            type: dropdown
+            label: Ray Version
+            tooltip: Version of Ray to install on all nodes
+            default: "2.40.0"
+            options:
+              - value: "2.40.0"
+                label: "2.40.0 (latest stable)"
+              - value: "2.39.0"
+                label: "2.39.0"
+              - value: "2.38.0"
+                label: "2.38.0"
+
+          # Each worker node registers 1 Ray task slot. Ray handles placement
+          # across nodes; tasks use internal parallelism (OpenMP, MPI, PyTorch)
+          # for multi-core/GPU work within each node.
+
+      workload_settings:
+        type: group
+        label: Workload Settings
+        items:
+          workload_type:
+            type: dropdown
+            label: Workload Type
+            tooltip: Deploy a Ray cluster, or run a built-in workload (fractal rendering or benchmark)
+            default: cluster_only
+            options:
+              - value: cluster_only
+                label: "Cluster Only"
+              - value: fractal
+                label: "Fractal Rendering"
+              - value: benchmark
+                label: "Mathematical Benchmark"
+
+          run_user_script:
+            type: boolean
+            label: Run User Script
+            default: false
+            tooltip: "Run a custom script on the head node after the cluster is ready. If disabled, the cluster stays alive until you cancel the workflow."
+            hidden: ${{ inputs.workload_settings.workload_type != 'cluster_only' }}
+            ignore: ${{ inputs.workload_settings.workload_type != 'cluster_only' }}
+
+          user_script:
+            type: editor
+            label: User Script
+            default: "#!/bin/bash\n"
+            tooltip: "Script to run on the head node after the cluster is ready. The Ray venv is activated and RAY_ADDRESS is set. Change the shebang to #!/usr/bin/env python3 for Python scripts."
+            optional: true
+            hidden: ${{ inputs.workload_settings.workload_type != 'cluster_only' || inputs.workload_settings.run_user_script == false }}
+            ignore: ${{ inputs.workload_settings.workload_type != 'cluster_only' || inputs.workload_settings.run_user_script == false }}
+
+          keep_alive:
+            type: boolean
+            label: Keep Cluster Alive After Script
+            default: false
+            tooltip: "Keep the cluster running after the script completes. If disabled, the workflow terminates when the script finishes."
+            hidden: ${{ inputs.workload_settings.workload_type != 'cluster_only' || inputs.workload_settings.run_user_script == false }}
+            ignore: ${{ inputs.workload_settings.workload_type != 'cluster_only' || inputs.workload_settings.run_user_script == false }}
+
+          grid_size:
+            type: dropdown
+            label: Grid Size
+            tooltip: Number of tiles per side (total tiles = N x N)
+            default: "16"
+            hidden: ${{ inputs.workload_settings.workload_type != 'fractal' }}
+            ignore: ${{ inputs.workload_settings.workload_type != 'fractal' }}
+            options:
+              - value: "8"
+                label: "8x8 (64 tiles)"
+              - value: "16"
+                label: "16x16 (256 tiles)"
+              - value: "32"
+                label: "32x32 (1024 tiles)"
+
+          image_size:
+            type: dropdown
+            label: Tile Resolution
+            tooltip: Size of each tile in pixels
+            default: "256"
+            hidden: ${{ inputs.workload_settings.workload_type != 'fractal' }}
+            options:
+              - value: "128"
+                label: "128px (fast)"
+              - value: "256"
+                label: "256px (default)"
+              - value: "512"
+                label: "512px (high quality)"
+
+          palette:
+            type: dropdown
+            label: Color Palette
+            default: electric
+            hidden: ${{ inputs.workload_settings.workload_type != 'fractal' }}
+            options:
+              - value: electric
+                label: Electric Blue
+              - value: fire
+                label: Fire
+              - value: ocean
+                label: Ocean
+              - value: cosmic
+                label: Cosmic Purple
+
+          num_tasks:
+            type: dropdown
+            label: Task Count
+            tooltip: Number of benchmark tasks to distribute across the Ray cluster
+            default: "500"
+            hidden: ${{ inputs.workload_settings.workload_type != 'benchmark' }}
+            options:
+              - value: "100"
+                label: "100 tasks (quick test)"
+              - value: "500"
+                label: "500 tasks (default)"
+              - value: "1000"
+                label: "1,000 tasks"
+              - value: "2000"
+                label: "2,000 tasks (intensive)"
+
+          matrix_size:
+            type: dropdown
+            label: Matrix Size
+            tooltip: Size of matrices for CPU compute benchmark (NxN)
+            default: "500"
+            hidden: ${{ inputs.workload_settings.workload_type != 'benchmark' }}
+            options:
+              - value: "200"
+                label: "200x200 (fast)"
+              - value: "500"
+                label: "500x500 (default)"
+              - value: "1000"
+                label: "1000x1000 (compute-heavy)"

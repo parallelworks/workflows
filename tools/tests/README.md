@@ -37,6 +37,12 @@ The runner picks the lane from the inputs:
 | cluster | `cluster.resource` (or `resource`) is a resource name or `pw://` URI | the run reaches `completed` and an endpoint named `*-<run-slug>` is listed (`completed` alone when `_test.endpoint` is `false`) | `pw endpoints delete`; leftovers are checked over `pw ssh` |
 | k8s | `resource` is an object with `"type": "kubernetes"` (hybrid `*_k8s.yaml`) or the inputs carry `k8s.cluster` (standalone `k8s.yaml`) | the run is still `running` when its `wait_for_endpoint_k8s` job completes and an endpoint named `*-<run-slug>` is listed | `pw workflows runs cancel`; leftovers are Kubernetes objects |
 
+A cluster-lane run that **holds its service** instead of completing — `ray-cluster`
+keeps the Ray head, the dashboard session and the workers alive until it is cancelled —
+names the job whose completion means "up" in `_test.ready_job`; the runner then judges
+the run while it is still `running` and tears it down with `pw workflows runs cancel`,
+the same lifecycle as the k8s lane.
+
 A hybrid `*_k8s.yaml` runs either lane, so it takes one test per lane: a k8s-lane test
 with the `resource` object and a cluster-lane test with a `pw://` string. On the
 cluster lane the runner expands that string into the full resource object from
@@ -68,6 +74,8 @@ Optional, stripped before launch.
 | `leftover_commands` | cluster | `{name: shell snippet}`; each snippet must print `0` after teardown, e.g. `docker ps -q \| wc -l` for containers `ps` cannot see | none |
 | `leftover_kinds` | k8s | object kinds that must be gone after teardown; drop `persistentvolumeclaims` for a test that sets `pvc_persist: true` | `deployments`, `services`, `pods`, `persistentvolumeclaims`, `secrets` |
 | `resource` | cluster | the resource the runner checks (warm marker, leftovers) when the form has no `cluster.resource`, e.g. librechat `general-all` with its `librechat_resource` | none |
+| `ready_job` | cluster | for a run that holds its service and never completes on its own (`ray-cluster` keeps the head, dashboard and workers alive): pass = this job reaches `completed` while the run is still `running` (plus the endpoint check unless `endpoint` is `false`); teardown = `pw workflows runs cancel` followed by the usual leftover checks, and `--keep` leaves the run running | none |
+| `scheduler` | cluster | `true` when the run submits scheduler jobs through an input the runner cannot see (`ray-cluster`'s `workers[].scheduler`), so teardown also checks `squeue` | from `cluster.scheduler` |
 
 ## Pass criteria
 
@@ -77,6 +85,8 @@ Cluster lane:
   check of the endpoint URL passed)
 - `pw endpoints list` shows an endpoint named `*-<run-slug>` (skipped when the test
   sets `_test.endpoint: false`: a batch workflow passes on `completed` alone)
+- with `_test.ready_job`, the named job reaches `completed` while the run is still
+  `running` (a run that holds its service never completes on its own)
 
 Cleanup is verified separately after `pw endpoints delete` of every endpoint ending in
 the run slug (a multi-service workflow registers several): no matching processes

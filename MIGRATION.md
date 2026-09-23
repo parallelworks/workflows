@@ -146,9 +146,10 @@ remote worker sites cloned it again for `setup.sh`.
 | `bash scripts/<x>.sh` in the YAMLs; `SCRIPT_DIR="${JOB_DIR}/scripts"` in `start_ray_head.sh`, `dispatch_workers.sh`, `run_benchmark.sh` | `workflows/ray-cluster/app/...` |
 | remote worker clone: `git clone --sparse ray-cluster.git` + `sparse-checkout set scripts` + `bash scripts/setup.sh` (3 dispatch modes) | clone of this repo (`REPO_URL`/`REPO_BRANCH`, overridable with `RAY_REPO_URL`/`RAY_REPO_BRANCH`, default `canary`) + `sparse-checkout set workflows/ray-cluster/app` + `bash workflows/ray-cluster/app/setup.sh` |
 
-Everything else in the scripts and the job graph is verbatim. YAML-only changes beyond
-the paths: banner comments removed, and four fixes to the `add_worker` forms that the
-first test exposed (all pre-existing upstream; none touch `app/`):
+Everything else in the job graph is verbatim, and the scripts change in two places
+beyond the paths (judgment call 6, and the log-streamer fix below). YAML-only changes
+beyond the paths: banner comments removed, and four fixes to the `add_worker` forms that
+the first test exposed (all pre-existing upstream):
 
 - `auto` job-dir detection also accepts the flat `~/pw/jobs/<run-slug>/` directory of a
   CLI file run (registered runs keep their numbered subdirectories).
@@ -165,6 +166,11 @@ first test exposed (all pre-existing upstream; none touch `app/`):
   same-resource workers added later were orphaned until walltime. The dispatch step now
   appends its `slurm_jobids` to the cluster run's (job dir published as an output of the
   validate step).
+- In fire-and-forget mode `dispatch_workers.sh` disowned every background process,
+  including a same-resource site's log streamer (`tail -f` on the worker log), which
+  then outlived the add-worker run (three were found on the login node after three
+  runs). The script now kills those streamers and disowns only the remote SSH sessions
+  (the one change to `app/` outside the paths and the ssh options).
 
 **Judgment calls:**
 
@@ -189,6 +195,15 @@ first test exposed (all pre-existing upstream; none touch `app/`):
 5. Remote-site dispatch needs `~/.ssh/pwcli` on the head (pre-existing); the workspace
    has it, a cloud login node does not, so a cluster login node can head same-resource
    workers but not remote sites.
+6. **One script change beyond paths: the worker-site ssh calls in `dispatch_workers.sh`
+   pass `-o ControlMaster=no -o ControlPath=none`.** The workspace's `~/.ssh/config`
+   sets `ControlMaster auto` with `ControlPath ~/.ssh/control:%h:%p:%r`; with the
+   `pw://owner/cluster` target the script uses, the socket path contains slashes and the
+   session dies right after authenticating (`unix_listener: cannot bind ... No such file
+   or directory`), so remote dispatch failed with "Failed to allocate dashboard tunnel
+   port". The unmodified upstream `workflow.yaml` failed identically from the same
+   workspace (`unbiased-chigger`), so this is environmental, not a regression; the
+   tunnel-carrying connection should not be multiplexed in any case.
 
 **Test results (2026-09-23, `pw://alvaro/gcpsmall`, Ray 2.40.0, branch `ray-cluster`):**
 pass = the `complete` job finished while the run still held the cluster (head up,
@@ -202,7 +217,11 @@ session on the resource. Rows are in `workflows/ray-cluster/tests/*/*.csv`.
 | `general_add_worker/gcp-worker` | 3 rows: `witty-duckling` passed the runner's criterion but its worker died (`ray: command not found`, the venv-marker bug above); `endless-bluegill` after the venv + cleanup fixes: worker joined, cluster at 2 CPUs, cleanup skipped; `musical-grubworm` after the job-id fix: `slurm_jobids` of the cluster run held both jobs and cancelling it removed both |
 | `hsp/gcp-head-gcp-worker` | PASS `good-titmouse` (warm, 53 s: the compute node was still up from the previous run, cleanup ok); `dashing-wahoo` PASS kept as the target of the hsp add-worker test |
 | `hsp_add_worker/gcp-worker` | PASS `sure-mite` against `dashing-wahoo` (22 s): second SLURM worker joined (cluster at 2 CPUs), both job ids in the cluster run's `slurm_jobids`, no streamer left behind (`dispatch_workers.sh` in the leftover patterns); cancelling the cluster run then left no job, process or session |
-TEST_RESULTS_PLACEHOLDER
+| `general/workspace-head-gcp-worker` (remote dispatch: head on the user workspace, worker on gcpsmall over `pw ssh` tunnels) | `magical-rhino` FAIL at "Failed to allocate dashboard tunnel port" (the ssh ControlPath problem, judgment call 6; the unmodified upstream YAML failed the same way as `unbiased-chigger`), then PASS `sensible-squid` (302 s, cleanup ok on both hosts): the worker site cloned `workflows/ray-cluster/app` from this repo for `setup.sh`, joined through the reverse tunnel and ran the benchmark |
+
+Not exercised: PBS sites, SSH-mode (unscheduled) remote workers, multi-node sites, GPU
+detection, the `fractal` workload and the `cluster_only` user script — the scripts for
+those are verbatim upstream.
 ## Dead branches (pre-existing breakage, now fixed)
 
 Three selected YAMLs checked out branches that **no longer exist upstream** — those

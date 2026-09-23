@@ -211,6 +211,10 @@ Moved from the standalone `parallelworks/ray-cluster` repository (`main` @ `98bb
 2026-07-22). Its `scripts/` became `app/`, `workflow.yaml` became `yamls/hsp.yaml`
 (the form already carried the HSP fields) with `yamls/general.yaml` derived from it,
 and `add_worker.yaml` became the two `*_add_worker.yaml` forms. The scripts changed
-only where they locate themselves and each other: `SCRIPT_DIR` and the remote worker
-clone point at `workflows/ray-cluster/app` in this repository (`RAY_REPO_URL` /
-`RAY_REPO_BRANCH` override the clone target). Details: `MIGRATION.md`.
+where they locate themselves and each other (`SCRIPT_DIR` and the remote worker clone
+point at `workflows/ray-cluster/app` in this repository; `RAY_REPO_URL` /
+`RAY_REPO_BRANCH` override the clone target) and in two behaviors the tests exposed:
+the worker-site ssh calls disable connection multiplexing, and the add-worker mode no
+longer leaves a log streamer behind. The add-worker YAMLs also gained the fixes that
+make same-resource workers work (venv marker, cleanup only on failure, job ids
+registered with the cluster run). Details and test results: `MIGRATION.md`.

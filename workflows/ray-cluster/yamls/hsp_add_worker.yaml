@@ -11,7 +11,7 @@ jobs:
           remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: ray-cluster
+          branch: canary
           sparse_checkout:
             - workflows/ray-cluster/app
 
@@ -151,7 +151,6 @@ jobs:
           export HEAD_RESOURCE_NAME='${{ inputs.head.resource.name }}'
           export SITE_INDEX_OFFSET="${{ needs.validate_cluster.outputs.SITE_INDEX_OFFSET }}"
           export DISPATCH_AND_EXIT=true
-          export RAY_REPO_BRANCH="ray-cluster"
 
           bash workflows/ray-cluster/app/dispatch_workers.sh
           # Same-resource workers are SLURM jobs recorded in this run's slurm_jobids; the

@@ -15,7 +15,7 @@ jobs:
           remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: ray-cluster
+          branch: canary
           sparse_checkout:
             - workflows/ray-cluster/app
 
@@ -243,7 +243,6 @@ jobs:
           export PYTHON_VERSION=$(cat "${PW_PARENT_JOB_DIR}/PYTHON_VERSION")
           export WORKERS_JSON='${{ inputs.workers }}'
           export HEAD_RESOURCE_NAME='${{ inputs.head.resource.name }}'
-          export RAY_REPO_BRANCH="ray-cluster"
 
           bash workflows/ray-cluster/app/dispatch_workers.sh
         cleanup: |

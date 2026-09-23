@@ -12,7 +12,8 @@ jobs:
         early-cancel: any-job-failed
         run: |
           touch run.${PW_JOB_ID}.out
-          tail -f run.${PW_JOB_ID}.out
+          # -n +1: the script can write a burst before this job attaches; tail's default keeps only the last 10 lines
+          tail -n +1 -f run.${PW_JOB_ID}.out
   preprocessing:
     working-directory: ${{ inputs.rundir }}
     ssh:

@@ -11,7 +11,7 @@ jobs:
           remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: ray-cluster
           sparse_checkout:
             - workflows/ray-cluster/app
 
@@ -238,6 +238,7 @@ jobs:
           export WORKERS_JSON='${{ inputs.workers }}'
           export HEAD_RESOURCE_NAME='${{ inputs.head.resource.name }}'
 
+          export RAY_REPO_BRANCH="ray-cluster"
           bash workflows/ray-cluster/app/dispatch_workers.sh
         cleanup: |
           # NOTE: Worker cleanup (scancel, remote SSH) is handled by

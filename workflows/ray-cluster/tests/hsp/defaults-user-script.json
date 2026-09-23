@@ -1,0 +1,37 @@
+{
+  "_test": {
+    "timeout_s": 1500,
+    "ready_job": "complete",
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "leftover_patterns": [
+      "pw endpoints run",
+      "gcs_server",
+      "raylet",
+      "uvicorn dashboard:app",
+      "start_ray_head.sh",
+      "dispatch_workers.sh"
+    ]
+  },
+  "head": {
+    "resource": "pw://alvaro/gcpsmall"
+  },
+  "workers": [
+    {
+      "resource": "pw://alvaro/gcpsmall",
+      "scheduler": true,
+      "slurm": {
+        "nodes": 1,
+        "gres": "",
+        "time": "01:00:00",
+        "scheduler_directives": "##SBATCH --constraint=mla  # uncomment for Navy and AFRL DSRC systems"
+      }
+    }
+  ],
+  "workload_settings": {
+    "workload_type": "cluster_only",
+    "run_user_script": true,
+    "keep_alive": false,
+    "user_script": "#!/bin/bash\nset -e\necho \"user script on $(hostname); RAY_ADDRESS=${RAY_ADDRESS}\"\npython - <<'PYEOF'\nimport ray, socket, time\nray.init(address='auto')\n@ray.remote\ndef where(i):\n    time.sleep(0.5)\n    return socket.gethostname()\nhosts = ray.get([where.remote(i) for i in range(12)])\nhead = socket.gethostname()\nprint('cluster CPUs:', ray.cluster_resources().get('CPU'), '| head:', head, '| 12 tasks ran on:', sorted(set(hosts)))\nassert hosts and all(h != head for h in hosts), 'tasks ran on the head (it has 0 CPUs) or nowhere'\nPYEOF\n"
+  }
+}

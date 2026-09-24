@@ -72,6 +72,10 @@ while true; do
         echo "Cluster has ${CPUS} CPUs available — starting workload"
         break
     fi
+    if [ -f "${JOB_DIR}/DISPATCH_FAILED" ]; then
+        echo "[ERROR] Worker dispatch failed and no worker joined (see logs/dispatch.out)"
+        exit 1
+    fi
     if [ ${WAITED} -ge ${MAX_WAIT} ]; then
         echo "WARNING: No workers after ${MAX_WAIT}s — starting anyway (tasks will queue)"
         break

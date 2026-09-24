@@ -1,9 +1,10 @@
 #!/bin/bash
 if [ -z "${BASH_VERSION:-}" ]; then exec /bin/bash "$0" "$@"; fi
-# start_ray_head.sh — Start Ray head node + custom dashboard
+# start_ray_head.sh — Start Ray head node + custom dashboard, dispatch the workers
 #
 # The head is a pure coordinator (--num-cpus=0): no compute tasks run here.
-# Workers are dispatched separately by dispatch_workers.sh.
+# Workers are dispatched by dispatch_workers.sh, started from here once the
+# dashboard is up. This script lives as long as the dashboard's pw endpoint.
 #
 # Creates coordination files:
 #   - HOSTNAME      — Dashboard hostname
@@ -180,24 +181,23 @@ mkdir -p logs
 
 export DASHBOARD_PORT="${service_port}"
 export RAY_HEAD_IP="${HEAD_IP}"
+export PYTHON_VERSION="${PYTHON_MICRO}"
 
 # The endpoint pins the local port to the one allocated above: workers reach the
 # dashboard on it through their tunnels and SESSION_PORT is already written. The
-# wrapper is the process this job keeps alive; killing it stops the dashboard and
-# deregisters the endpoint.
+# wrapper's process tree is the cluster's lifetime: pw endpoints delete kills it,
+# this script then returns and its caller's trap tears the workers down.
 ENDPOINT_NAME="${RAY_ENDPOINT_NAME:-ray-cluster-${PW_RUN_SLUG}}"
 echo "${ENDPOINT_NAME}" > ENDPOINT_NAME
 echo "Endpoint: ${ENDPOINT_NAME}"
 
-nohup ${PW_CMD} endpoints run --name "${ENDPOINT_NAME}" --port "${service_port}" \
+${PW_CMD} endpoints run --name "${ENDPOINT_NAME}" --port "${service_port}" \
     -- ${PYTHON_CMD} -m uvicorn dashboard:app \
     --host 0.0.0.0 \
     --port "${service_port}" \
     --app-dir "${SCRIPT_DIR}" \
     > logs/dashboard.log 2>&1 &
-disown
 SERVER_PID=$!
-
 echo "Dashboard PID: ${SERVER_PID}"
 echo "${SERVER_PID}" > dashboard.pid
 
@@ -208,77 +208,102 @@ for _i in $(seq 1 30); do
     sleep 2
 done
 
-if kill -0 ${SERVER_PID} 2>/dev/null; then
-    echo "=========================================="
-    echo "Ray Head + Dashboard RUNNING"
-    echo "  Ray: ${HEAD_IP}:${RAY_PORT}"
-    echo "  Dashboard: port ${service_port}"
-    echo "=========================================="
-
-    # Auto-detect cluster name and register head node with dashboard
-    CLUSTER_NAME=""
-    SCHEDULER_TYPE=""
-    PW_CMD=""
-    for cmd in pw ~/pw/pw; do
-        command -v $cmd &>/dev/null && { PW_CMD=$cmd; break; }
-        [ -x "$cmd" ] && { PW_CMD=$cmd; break; }
-    done
-    if [ -n "${PW_CMD}" ]; then
-        MY_HOST=$(hostname -s)
-        while IFS= read -r line; do
-            uri=$(echo "$line" | awk '{print $1}')
-            ctype=$(echo "$line" | awk '{print $3}')
-            name="${uri##*/}"
-            if echo "${MY_HOST}" | grep -qi "${name}"; then
-                CLUSTER_NAME="${name}"
-                case "${ctype}" in
-                    *slurm*) SCHEDULER_TYPE="slurm" ;;
-                    *pbs*)   SCHEDULER_TYPE="pbs" ;;
-                    existing) SCHEDULER_TYPE="ssh" ;;
-                    *)       SCHEDULER_TYPE="${ctype}" ;;
-                esac
-                break
-            fi
-        done < <(${PW_CMD} cluster list 2>/dev/null | grep "^pw://${PW_USER}/" | grep "active")
-    fi
-    [ -z "${CLUSTER_NAME}" ] && CLUSTER_NAME="$(hostname -s)"
-    [ -z "${SCHEDULER_TYPE}" ] && SCHEDULER_TYPE="ssh"
-
-    echo "Registering head node: ${CLUSTER_NAME} (${SCHEDULER_TYPE})"
-    curl -s -X POST "http://localhost:${service_port}/api/head" \
-        -H "Content-Type: application/json" \
-        -d "{\"ip\": \"${HEAD_IP}\", \"cluster_name\": \"${CLUSTER_NAME}\", \"scheduler_type\": \"${SCHEDULER_TYPE}\"}" \
-        2>/dev/null || echo "Warning: Could not register head node with dashboard"
-
-    # Keep SSH session alive AND watch Ray itself. The dashboard staying up
-    # tells us nothing about GCS/raylet — those can die independently
-    # (seen on rerun: gcs_server exits ~10s after start without errors in
-    # its logs). Detect persistent `ray status` failures so the workflow
-    # surfaces a hard failure instead of spinning forever while every
-    # worker can't reach localhost:6379 via the reverse tunnel.
-    RAY_FAILS=0
-    RAY_FAIL_THRESHOLD=3
-    while kill -0 ${SERVER_PID} 2>/dev/null; do
-        if ray status >/dev/null 2>&1; then
-            RAY_FAILS=0
-        else
-            RAY_FAILS=$((RAY_FAILS + 1))
-            echo "Ray health check FAILED (${RAY_FAILS}/${RAY_FAIL_THRESHOLD}): $(date)"
-            if [ ${RAY_FAILS} -ge ${RAY_FAIL_THRESHOLD} ]; then
-                echo "[FATAL] Ray head ($(cat /tmp/ray/session_latest/node_ip_address 2>/dev/null || echo "${HEAD_IP}"):${RAY_PORT}) is unreachable after ${RAY_FAILS} checks." >&2
-                echo "[FATAL] GCS or raylet died on the workspace; worker tunnels will fail. Failing the step so the workflow exits cleanly." >&2
-                # Drop the custom dashboard too — workers will see /api/worker fail
-                # immediately instead of timing out, and the user gets a clear
-                # workflow failure to retry from.
-                kill ${SERVER_PID} 2>/dev/null || true
-                exit 1
-            fi
-        fi
-        sleep 10
-    done
-    echo "Dashboard process exited"
-else
+if ! kill -0 ${SERVER_PID} 2>/dev/null; then
     echo "[ERROR] Dashboard failed to start"
     cat logs/dashboard.log >&2
     exit 1
 fi
+
+echo "=========================================="
+echo "Ray Head + Dashboard RUNNING"
+echo "  Ray: ${HEAD_IP}:${RAY_PORT}"
+echo "  Dashboard: port ${service_port}"
+echo "=========================================="
+
+# Auto-detect cluster name and register head node with dashboard
+CLUSTER_NAME=""
+SCHEDULER_TYPE=""
+PW_CMD=""
+for cmd in pw ~/pw/pw; do
+    command -v $cmd &>/dev/null && { PW_CMD=$cmd; break; }
+    [ -x "$cmd" ] && { PW_CMD=$cmd; break; }
+done
+if [ -n "${PW_CMD}" ]; then
+    MY_HOST=$(hostname -s)
+    while IFS= read -r line; do
+        uri=$(echo "$line" | awk '{print $1}')
+        ctype=$(echo "$line" | awk '{print $3}')
+        name="${uri##*/}"
+        if echo "${MY_HOST}" | grep -qi "${name}"; then
+            CLUSTER_NAME="${name}"
+            case "${ctype}" in
+                *slurm*) SCHEDULER_TYPE="slurm" ;;
+                *pbs*)   SCHEDULER_TYPE="pbs" ;;
+                existing) SCHEDULER_TYPE="ssh" ;;
+                *)       SCHEDULER_TYPE="${ctype}" ;;
+            esac
+            break
+        fi
+    done < <(${PW_CMD} cluster list 2>/dev/null | grep "^pw://${PW_USER}/" | grep "active")
+fi
+[ -z "${CLUSTER_NAME}" ] && CLUSTER_NAME="$(hostname -s)"
+[ -z "${SCHEDULER_TYPE}" ] && SCHEDULER_TYPE="ssh"
+
+echo "Registering head node: ${CLUSTER_NAME} (${SCHEDULER_TYPE})"
+curl -s -X POST "http://localhost:${service_port}/api/head" \
+    -H "Content-Type: application/json" \
+    -d "{\"ip\": \"${HEAD_IP}\", \"cluster_name\": \"${CLUSTER_NAME}\", \"scheduler_type\": \"${SCHEDULER_TYPE}\"}" \
+    2>/dev/null || echo "Warning: Could not register head node with dashboard"
+
+
+# cluster_only mode: tell the dashboard before any worker registers (the config
+# post resets the topology)
+if [ "${WORKLOAD_TYPE:-}" = "cluster_only" ]; then
+    curl -s -X POST "http://localhost:${service_port}/api/config" \
+        -H "Content-Type: application/json" \
+        -d "{\"workload_type\": \"cluster_only\", \"ray_head_ip\": \"${HEAD_IP}\"}" >/dev/null 2>&1 || true
+fi
+
+# Dispatch the workers. The dispatcher lives as long as remote SSH tunnels do; its
+# exit status is recorded for the jobs that wait for the workers.
+rm -f DISPATCH_FAILED
+(
+    bash "${SCRIPT_DIR}/dispatch_workers.sh" 2>&1 | tee logs/dispatch.out
+    rc=${PIPESTATUS[0]}
+    [ ${rc} -ne 0 ] && touch DISPATCH_FAILED
+    echo "dispatch_workers.sh exited with status ${rc}"
+) &
+echo $! > dispatch.pid
+
+# Watch Ray itself while the endpoint wrapper lives. The dashboard staying up
+# tells us nothing about GCS/raylet — those can die independently (seen on
+# rerun: gcs_server exits ~10s after start without errors in its logs). Detect
+# persistent `ray status` failures and drop the dashboard: workers see
+# /api/worker fail immediately instead of timing out, the endpoint disappears
+# and the teardown runs.
+RAY_FAILS=0
+RAY_FAIL_THRESHOLD=3
+while kill -0 ${SERVER_PID} 2>/dev/null; do
+    if ray status >/dev/null 2>&1; then
+        RAY_FAILS=0
+    else
+        RAY_FAILS=$((RAY_FAILS + 1))
+        echo "Ray health check FAILED (${RAY_FAILS}/${RAY_FAIL_THRESHOLD}): $(date)"
+        if [ ${RAY_FAILS} -ge ${RAY_FAIL_THRESHOLD} ]; then
+            echo "[FATAL] Ray head ($(cat /tmp/ray/session_latest/node_ip_address 2>/dev/null || echo "${HEAD_IP}"):${RAY_PORT}) is unreachable after ${RAY_FAILS} checks." >&2
+            echo "[FATAL] GCS or raylet died; worker tunnels will fail. Ending the cluster." >&2
+            kill ${SERVER_PID} 2>/dev/null || true
+            exit 1
+        fi
+    fi
+    sleep 10
+done
+
+# The wrapper is gone: pw endpoints delete killed it, or it died. Either way the
+# cluster ends here.
+if ${PW_CMD} endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${ENDPOINT_NAME}"; then
+    echo "Dashboard wrapper exited while endpoint ${ENDPOINT_NAME} is still listed"
+    exit 0
+fi
+echo "Endpoint ${ENDPOINT_NAME} is gone: the cluster ends"
+exit 1

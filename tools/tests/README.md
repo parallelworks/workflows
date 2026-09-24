@@ -76,6 +76,7 @@ Optional, stripped before launch.
 | `resource` | cluster | the resource the runner checks (warm marker, leftovers) when the form has no `cluster.resource`, e.g. librechat `general-all` with its `librechat_resource` | none |
 | `ready_job` | cluster | for a run that holds its service and never completes on its own (`ray-cluster` keeps the head, dashboard and workers alive): pass = this job reaches `completed` while the run is still `running` (plus the endpoint check unless `endpoint` is `false`); teardown = `pw workflows runs cancel` followed by the usual leftover checks, and `--keep` leaves the run running | none |
 | `scheduler` | cluster | `true` when the run submits scheduler jobs through an input the runner cannot see (`ray-cluster`'s `workers[].scheduler`), so teardown also checks `squeue` | from `cluster.scheduler` |
+| `expect` | cluster | the final run status that means pass: `completed`, or `error` for a test of a failure path (a rejected scheduler directive, a failing user script); no endpoint is expected then and the leftover checks still run | `completed` |
 
 ## Pass criteria
 

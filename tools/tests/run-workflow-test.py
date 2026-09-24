@@ -51,6 +51,9 @@ The optional "_test" object is stripped before launch:
     scheduler          true when the run submits scheduler jobs through an input the runner
                        cannot see (ray-cluster's workers[].scheduler), so teardown also checks
                        squeue (cluster lane; default: cluster.scheduler)
+    expect             the final run status that means pass: "completed" (default) or, for a
+                       test of a failure path, "error"; no endpoint is expected then and the
+                       leftover checks still run (cluster lane)
 
 Failing runs keep their platform record and get their `pw workflows runs errors`
 output (plus the namespace events on the k8s lane) saved under
@@ -89,7 +92,7 @@ COLUMNS = ["date", "phase", "result", "cleanup", "workflow_tree", "submitter_tre
            "tools_tree", "commit", "fetched", "branch", "user", "run_slug", "duration_s", "error"]
 COMPUTE_RESOURCES_RE = re.compile(r"^\s*type:\s*compute-resources\s*$", re.M)
 DEFAULTS = {"timeout_s": 1800, "endpoint": True, "warm_marker": "", "setup": "", "resource": "",
-            "ready_job": "", "scheduler": None,
+            "ready_job": "", "scheduler": None, "expect": "completed",
             "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
             "leftover_kinds": ["deployments", "services", "pods", "persistentvolumeclaims", "secrets"]}
 
@@ -596,9 +599,13 @@ def run_test(test, args, user):
             if status == "timeout":
                 pw("workflows", "runs", "cancel", slug)
                 row["result"], row["error"] = "fail", f"timeout after {test.meta['timeout_s']}s; run canceled"
-            elif status != "completed":
-                summary, detail = errors(slug)
-                row["result"], row["error"] = "fail", f"run {status}: {summary}"
+            elif status != test.meta["expect"]:
+                summary, detail = errors(slug) if status != "completed" else ("run completed", "")
+                row["result"], row["error"] = "fail", f"run {status}, expected {test.meta['expect']}: {summary}"
+            elif test.meta["expect"] != "completed":
+                summary, _ = errors(slug)
+                row["result"] = "pass"
+                log(f"  run {status} as expected: {summary}")
             elif not test.meta["endpoint"]:
                 row["result"] = "pass"
                 log("  run completed; no endpoint expected")

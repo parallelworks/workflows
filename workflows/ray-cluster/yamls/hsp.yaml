@@ -3,220 +3,102 @@ permissions:
   - '*'
 
 jobs:
-  checkout:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
     steps:
-      - name: Checkout scripts to head node
+      - name: Checkout
         uses: parallelworks/checkout
-        ssh:
-          remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: ray-cluster-2
           sparse_checkout:
             - workflows/ray-cluster/app
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          ray_version="${{ inputs.ray_settings.ray_version }}"
+          endpoint_name="${{ inputs.ray_settings.name }}-${PW_RUN_SLUG}"
+          head_resource_name="${{ inputs.head.resource.name }}"
+          workload_type="${{ inputs.workload_settings.workload_type }}"
+          RAY_REPO_BRANCH="ray-cluster-2"
+          EOF
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh # remove var=""
+          # Add export= to all lines
+          sed -i 's/^/export /' inputs.sh
+          # The worker rows are JSON: the dispatcher and the teardown read them from this file
+          echo '${{ inputs.workers }}' > workers.json
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT RAY_HEAD_IP PYTHON_VERSION ENDPOINT_NAME job.started job.ended dashboard.pid dispatch.pid DISPATCH_FAILED TEARDOWN_DONE slurm_jobids added_workers.jsonl
+          # This script starts the cluster
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
 
-  start_ray_head:
-    needs: [checkout]
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/ray-cluster/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  session_runner:
+    needs:
+      - preprocessing
     ssh:
       remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
     steps:
-      - name: Setup and start Ray head + dashboard
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
         early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/hsp.yaml
+          resource: ${{ inputs.head.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: false
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
         run: |
-          set -e
-          export RAY_VERSION="${{ inputs.ray_settings.ray_version }}"
-          export RAY_ENDPOINT_NAME="${{ inputs.ray_settings.name }}-${PW_RUN_SLUG}"
-          bash workflows/ray-cluster/app/start_ray_head.sh
-        cleanup: |
-          echo "Cleaning up Ray head + workers..."
-          JOB_DIR="${PW_PARENT_JOB_DIR%/}"
-
-          # --- Cancel local SLURM jobs (IDs saved by dispatch_workers.sh) ---
-          if [ -f "${JOB_DIR}/slurm_jobids" ]; then
-            echo "Cancelling local SLURM jobs..."
-            while IFS= read -r jid; do
-              [ -n "${jid}" ] && echo "  scancel ${jid}" && scancel "${jid}" 2>/dev/null || true
-            done < "${JOB_DIR}/slurm_jobids"
-          fi
-
-          # --- Cancel SLURM/PBS jobs on remote worker resources ---
-          export WORKERS_JSON='${{ inputs.workers }}'
-          export PW_USER="${PW_USER}"
-          export PW_CMD=""
-          for try_cmd in pw ~/pw/pw; do
-            command -v ${try_cmd} &>/dev/null && { PW_CMD=${try_cmd}; break; }
-            [ -x "${try_cmd}" ] && { PW_CMD=${try_cmd}; break; }
-          done
-          export PW_CMD
-
-          python3 -c "
-          import json, os, subprocess
-
-          workers = json.loads(os.environ.get('WORKERS_JSON', '[]'))
-          # Sites attached later by the add_worker workflow
-          added = os.path.join(os.environ.get('PW_PARENT_JOB_DIR', '.'), 'added_workers.jsonl')
-          if os.path.exists(added):
-              for line in open(added):
-                  if line.strip():
-                      workers += json.loads(line)
-          head_ip = os.environ.get('PW_RESOURCE_IP', '')
-          pw_user = os.environ.get('PW_USER', '')
-          pw_cmd = os.environ.get('PW_CMD', 'pw')
-
-          # Build scheduler type lookup from pw cluster ls
-          cluster_types = {}
-          try:
-              out = subprocess.check_output([pw_cmd, 'cluster', 'ls'], text=True, timeout=10)
-              for line in out.strip().split('\n'):
-                  parts = line.split()
-                  if len(parts) >= 3 and parts[0].startswith('pw://'):
-                      cname = parts[0].split('/')[-1]
-                      ctype = parts[2]
-                      if 'slurm' in ctype: cluster_types[cname] = 'slurm'
-                      elif 'pbs' in ctype: cluster_types[cname] = 'pbs'
-                      else: cluster_types[cname] = ctype
-          except Exception as e:
-              print(f'Warning: could not list clusters: {e}')
-
-          seen = set()
-          for w in workers:
-              res = w.get('resource', {})
-              # Handle resource as string (name) or object (with ip/name/schedulerType)
-              if isinstance(res, str):
-                  name = res
-                  sched = cluster_types.get(name, '')
-              else:
-                  name = res.get('name', res.get('ip', ''))
-                  sched = res.get('schedulerType', cluster_types.get(name, ''))
-              if not name or name in seen:
-                  continue
-              seen.add(name)
-
-              print(f'Cleaning up {name} (scheduler={sched})...')
-
-              ssh_base = [
-                  'ssh', '-i', os.path.expanduser('~/.ssh/pwcli'),
-                  '-o', 'StrictHostKeyChecking=no',
-                  '-o', 'UserKnownHostsFile=/dev/null',
-                  '-o', 'ConnectTimeout=15',
-                  '-o', f'ProxyCommand={pw_cmd} ssh --proxy-command %h',
-                  f'{pw_user}@{name}',
-              ]
-
-              if sched == 'slurm':
-                  subprocess.run(
-                      ssh_base + [
-                          'WORK=\${PW_PARENT_JOB_DIR:-\${HOME}/pw/jobs/ray_worker_remote}; '
-                          'if [ -f \"\${WORK}/slurm_jobid\" ]; then '
-                          '  jid=\$(cat \"\${WORK}/slurm_jobid\"); '
-                          '  echo \"Cancelling SLURM job \${jid}\"; '
-                          '  scancel \"\${jid}\" 2>/dev/null; '
-                          'fi; '
-                          'scancel --name=\"ray-worker-*\" 2>/dev/null; '
-                          'ray stop --force 2>/dev/null; '
-                          'echo \"SLURM cleanup done\"'],
-                      timeout=30, capture_output=False
-                  )
-              elif sched == 'pbs':
-                  subprocess.run(
-                      ssh_base + [
-                          'WORK=\${PW_PARENT_JOB_DIR:-\${HOME}/pw/jobs/ray_worker_remote}; '
-                          'if [ -f \"\${WORK}/pbs_jobid\" ]; then '
-                          '  jid=\$(cat \"\${WORK}/pbs_jobid\"); '
-                          '  echo \"Cancelling PBS job \${jid}\"; '
-                          '  qdel \"\${jid}\" 2>/dev/null; '
-                          'fi; '
-                          'ray stop --force 2>/dev/null; '
-                          'echo \"PBS cleanup done\"'],
-                      timeout=30, capture_output=False
-                  )
-              else:
-                  subprocess.run(
-                      ssh_base + ['ray stop --force 2>/dev/null || true'],
-                      timeout=30, capture_output=False
-                  )
-          " 2>&1 || echo "Remote cleanup had errors (non-fatal)"
-
-          # --- Stop Ray head ---
-          VENV_DIR="$(cat "${JOB_DIR}/RAY_VENV_DIR" 2>/dev/null || echo "")"
-          if [ -n "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/ray" ]; then
-            "${VENV_DIR}/bin/ray" stop --force 2>/dev/null || true
-          elif command -v ray &>/dev/null; then
-            ray stop --force 2>/dev/null || true
-          fi
-
-          # --- Kill dashboard (the pw endpoints run wrapper; its endpoint goes with it) ---
-          if [ -f "${JOB_DIR}/dashboard.pid" ]; then
-            kill "$(cat "${JOB_DIR}/dashboard.pid")" 2>/dev/null || true
-          fi
-          if [ -f "${JOB_DIR}/ENDPOINT_NAME" ] && [ -n "${PW_CMD}" ]; then
-            ${PW_CMD} endpoints delete "$(cat "${JOB_DIR}/ENDPOINT_NAME")" 2>/dev/null || true
-          fi
-          echo "Ray head + worker cleanup done."
-
-  wait_for_ray:
-    needs: [checkout]
-    ssh:
-      remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
-    steps:
-      - name: Wait for Ray head and dashboard
-        early-cancel: any-job-failed
-        run: |
-          set -e
-          JOB_DIR="${PW_PARENT_JOB_DIR%/}"
-          MAX_ATTEMPTS=120
-          INTERVAL=3
-
-          echo "Waiting for Ray head and dashboard..."
-
-          # Wait for job.started
-          attempt=1
-          while [ ! -f "${JOB_DIR}/job.started" ]; do
-            [ -f "${JOB_DIR}/job.ended" ] && { echo "ERROR: Job ended before starting"; exit 1; }
-            echo "[${attempt}/${MAX_ATTEMPTS}] Waiting for job.started..."
-            sleep ${INTERVAL}
-            ((attempt++))
-            [ ${attempt} -gt ${MAX_ATTEMPTS} ] && { echo "ERROR: Timeout"; exit 1; }
-          done
-
-          # Wait for HOSTNAME, SESSION_PORT, RAY_HEAD_IP, PYTHON_VERSION
-          for file in HOSTNAME SESSION_PORT RAY_HEAD_IP PYTHON_VERSION; do
-            attempt=1
-            while [ ! -f "${JOB_DIR}/${file}" ]; do
-              echo "Waiting for ${file}..."
-              sleep 2
-              ((attempt++))
-              [ ${attempt} -gt 60 ] && { echo "ERROR: ${file} not found"; exit 1; }
-            done
-          done
-
-          HOSTNAME=$(cat "${JOB_DIR}/HOSTNAME")
-          SESSION_PORT=$(cat "${JOB_DIR}/SESSION_PORT")
-          RAY_HEAD_IP=$(cat "${JOB_DIR}/RAY_HEAD_IP")
-          PYTHON_VERSION=$(cat "${JOB_DIR}/PYTHON_VERSION")
-
-          # Wait for dashboard HTTP response
-          echo "Waiting for http://${HOSTNAME}:${SESSION_PORT}..."
-          attempt=1
-          while [ ${attempt} -le ${MAX_ATTEMPTS} ]; do
-            if curl -s --connect-timeout 5 "http://${HOSTNAME}:${SESSION_PORT}/" -o /dev/null 2>&1; then
-              echo "Dashboard is ready!"
-              echo "HOSTNAME=${HOSTNAME}" >> "${OUTPUTS}"
-              echo "SESSION_PORT=${SESSION_PORT}" >> "${OUTPUTS}"
-              echo "RAY_HEAD_IP=${RAY_HEAD_IP}" >> "${OUTPUTS}"
-              echo "PYTHON_VERSION=${PYTHON_VERSION}" >> "${OUTPUTS}"
-              exit 0
-            fi
-            [ -f "${JOB_DIR}/job.ended" ] && { echo "ERROR: Job ended"; exit 1; }
-            echo "[${attempt}/${MAX_ATTEMPTS}] Dashboard not ready..."
-            sleep ${INTERVAL}
-            ((attempt++))
-          done
-          echo "ERROR: Dashboard timeout"
+          echo "::error title=Error::The Ray head ended before its endpoint came online"
           exit 1
 
   wait_for_endpoint:
-    needs: [wait_for_ray]
+    needs:
+      - preprocessing
     ssh:
       remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
     steps:
@@ -227,33 +109,15 @@ jobs:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: ${{ inputs.ray_settings.name }}-${PW_RUN_SLUG}
           host: ${{ inputs.head.resource.ip }}
-
-  dispatch_workers:
-    needs: [wait_for_ray, checkout]
-    ssh:
-      remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
-    steps:
-      - name: Dispatch workers to compute sites
-        early-cancel: any-job-failed
-        run: |
-          set -e
-          export RAY_VERSION="${{ inputs.ray_settings.ray_version }}"
-          export DASHBOARD_PORT=$(cat "${PW_PARENT_JOB_DIR}/SESSION_PORT")
-          export RAY_HEAD_IP=$(cat "${PW_PARENT_JOB_DIR}/RAY_HEAD_IP")
-          export PYTHON_VERSION=$(cat "${PW_PARENT_JOB_DIR}/PYTHON_VERSION")
-          export WORKERS_JSON='${{ inputs.workers }}'
-          export HEAD_RESOURCE_NAME='${{ inputs.head.resource.name }}'
-
-          bash workflows/ray-cluster/app/dispatch_workers.sh
-        cleanup: |
-          # NOTE: Worker cleanup (scancel, remote SSH) is handled by
-          # start_ray_head cleanup, NOT here. This step's SSH may drop
-          # on intermittent connection issues — we must not kill workers
-          # just because dispatch_workers reconnected or exited.
-          echo "dispatch_workers cleanup done (worker teardown deferred to start_ray_head)."
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
 
   run_benchmark:
-    needs: [wait_for_ray]
+    needs: [wait_for_endpoint]
     if: ${{ inputs.workload_settings.workload_type != 'cluster_only' }}
     ssh:
       remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
@@ -270,126 +134,128 @@ jobs:
           export IMAGE_SIZE="${{ inputs.workload_settings.image_size }}"
           export PALETTE="${{ inputs.workload_settings.palette }}"
           # Count worker sites
-          export WORKERS_JSON='${{ inputs.workers }}'
-          export NUM_WORKER_SITES=$(python3 -c "import json,os; print(len(json.loads(os.environ.get('WORKERS_JSON','[]'))))")
+          export NUM_WORKER_SITES=$(python3 -c "import json; print(len(json.load(open('${PW_PARENT_JOB_DIR%/}/workers.json'))))")
           bash workflows/ray-cluster/app/run_benchmark.sh
 
   cluster_ready:
-    needs: [wait_for_ray]
+    needs: [wait_for_endpoint]
     if: ${{ inputs.workload_settings.workload_type == 'cluster_only' }}
     ssh:
       remoteHost: ${{ inputs.head.resource.ip ?? localhost }}
     steps:
-      - name: Set cluster ready
-        early-cancel: any-job-failed
+      - name: Wait for the workers
         run: |
           set -e
-          DASHBOARD_URL="http://localhost:$(cat ${PW_PARENT_JOB_DIR}/SESSION_PORT)"
-          RAY_HEAD_IP=$(cat "${PW_PARENT_JOB_DIR}/RAY_HEAD_IP")
-
-          # Tell the dashboard we're in cluster_only mode BEFORE waiting for workers.
-          # This must happen first because /api/config triggers _reset_state() which
-          # clears nodes — if we wait for workers first, their registrations get wiped.
-          curl -s -X POST "${DASHBOARD_URL}/api/config" \
-            -H "Content-Type: application/json" \
-            -d "{\"workload_type\": \"cluster_only\", \"ray_head_ip\": \"${RAY_HEAD_IP}\"}"
-
-          # Wait for at least 1 worker to connect before announcing ready
-          echo "Waiting for at least 1 worker CPU..."
-          VENV_DIR="$(cat "${PW_PARENT_JOB_DIR%/}/RAY_VENV_DIR" 2>/dev/null || echo "${PW_PARENT_JOB_DIR%/}/.venv")"
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          JOB_DIR="${PW_PARENT_JOB_DIR%/}"
+          DASHBOARD_URL="http://localhost:$(cat "${JOB_DIR}/SESSION_PORT")"
+          RAY_HEAD_IP=$(cat "${JOB_DIR}/RAY_HEAD_IP")
+          ENDPOINT_NAME=$(cat "${JOB_DIR}/ENDPOINT_NAME")
+          NUM_SITES=$(python3 -c "import json; print(len(json.load(open('${JOB_DIR}/workers.json'))))" 2>/dev/null || echo 0)
+          VENV_DIR="$(cat "${JOB_DIR}/RAY_VENV_DIR" 2>/dev/null || echo "${JOB_DIR}/.venv")"
           [ -f "${VENV_DIR}/bin/activate" ] && source "${VENV_DIR}/bin/activate"
-          MAX_WAIT=600
-          WAITED=0
-          while true; do
-            CPUS=$(python3 -c "import ray; ray.init(address='${RAY_HEAD_IP}:6379', ignore_reinit_error=True); print(int(ray.cluster_resources().get('CPU', 0)))" 2>/dev/null || echo "0")
-            if [ "${CPUS}" -gt 0 ] 2>/dev/null; then
-              echo "Cluster has ${CPUS} CPUs available"
-              break
-            fi
-            if [ ${WAITED} -ge ${MAX_WAIT} ]; then
-              echo "WARNING: No workers after ${MAX_WAIT}s — proceeding anyway"
-              break
-            fi
-            sleep 5
-            WAITED=$((WAITED + 5))
-            [ $((WAITED % 30)) -eq 0 ] && echo "  Still waiting for workers... (${WAITED}s elapsed)"
-          done
 
-          # Signal that the cluster is ready (workers connected)
+          if [ "${NUM_SITES}" -eq 0 ]; then
+            echo "No worker sites configured: head-only cluster"
+          else
+            echo "Waiting for at least 1 worker CPU (dispatcher output follows)..."
+            touch "${JOB_DIR}/logs/dispatch.out"
+            tail -n +1 -f "${JOB_DIR}/logs/dispatch.out" &
+            TAIL_PID=$!
+            MAX_WAIT=600
+            WAITED=0
+            while true; do
+              CPUS=$(python3 -c "import ray; ray.init(address='${RAY_HEAD_IP}:6379', ignore_reinit_error=True); print(int(ray.cluster_resources().get('CPU', 0)))" 2>/dev/null || echo "0")
+              if [ "${CPUS}" -gt 0 ] 2>/dev/null; then
+                echo "Cluster has ${CPUS} CPUs available"
+                break
+              fi
+              # The dispatcher gave up (sbatch/qsub rejected, site unreachable): a cluster
+              # nobody can compute on is torn down and the run fails
+              if [ -f "${JOB_DIR}/DISPATCH_FAILED" ]; then
+                kill ${TAIL_PID} 2>/dev/null || true
+                echo "::error title=Error::Worker dispatch failed and no worker joined; tearing the cluster down"
+                pw endpoints delete "${ENDPOINT_NAME}" 2>/dev/null || true
+                exit 1
+              fi
+              if [ ${WAITED} -ge ${MAX_WAIT} ]; then
+                echo "WARNING: No workers after ${MAX_WAIT}s — proceeding anyway"
+                break
+              fi
+              sleep 5
+              WAITED=$((WAITED + 5))
+            done
+            kill ${TAIL_PID} 2>/dev/null || true
+          fi
+
           curl -s -X POST "${DASHBOARD_URL}/api/phase" \
             -H "Content-Type: application/json" \
             -d '{"phase": "cluster_ready"}'
-
+          echo ""
           echo "=========================================="
           echo "Ray Cluster Ready (cluster_only mode)"
           echo "=========================================="
           echo "  Ray head: ${RAY_HEAD_IP}:6379"
           echo "  Dashboard: ${DASHBOARD_URL}"
-          echo ""
-          echo "See the dashboard for connection instructions."
           echo "=========================================="
-
-          # Run user script or keep alive
-          RUN_USER_SCRIPT='${{ inputs.workload_settings.run_user_script }}'
+      - name: Run the user script
+        if: ${{ inputs.workload_settings.run_user_script == true }}
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          JOB_DIR="${PW_PARENT_JOB_DIR%/}"
+          DASHBOARD_URL="http://localhost:$(cat "${JOB_DIR}/SESSION_PORT")"
+          RAY_HEAD_IP=$(cat "${JOB_DIR}/RAY_HEAD_IP")
+          ENDPOINT_NAME=$(cat "${JOB_DIR}/ENDPOINT_NAME")
           KEEP_ALIVE='${{ inputs.workload_settings.keep_alive }}'
 
-          if [ "${RUN_USER_SCRIPT}" = "true" ]; then
-            echo "User script enabled — preparing to execute..."
+          curl -s -X POST "${DASHBOARD_URL}/api/phase" \
+            -H "Content-Type: application/json" \
+            -d '{"phase": "user_script"}'
 
-            curl -s -X POST "${DASHBOARD_URL}/api/phase" \
-              -H "Content-Type: application/json" \
-              -d '{"phase": "user_script"}'
-
-            JOB_DIR="${PW_PARENT_JOB_DIR}"
-            SCRIPT_FILE="${JOB_DIR}/user_script"
-
-            cat > "${SCRIPT_FILE}" << 'USERSCRIPT_EOF'
+          SCRIPT_FILE="${JOB_DIR}/user_script"
+          cat > "${SCRIPT_FILE}" << 'USERSCRIPT_EOF'
           ${{ inputs.workload_settings.user_script }}
           USERSCRIPT_EOF
 
-            # If no shebang, prepend #!/bin/bash
-            if ! head -1 "${SCRIPT_FILE}" | grep -q '^#!'; then
-              sed -i '1i#!/bin/bash' "${SCRIPT_FILE}"
-            fi
-            chmod +x "${SCRIPT_FILE}"
-
-            # Activate the venv and set Ray address
-            VENV_DIR="$(cat "${JOB_DIR%/}/RAY_VENV_DIR" 2>/dev/null || echo "${JOB_DIR%/}/.venv")"
-            [ -f "${VENV_DIR}/bin/activate" ] && source "${VENV_DIR}/bin/activate"
-            export RAY_ADDRESS="${RAY_HEAD_IP}:6379"
-
-            echo "Running user script..."
-            if "${SCRIPT_FILE}"; then
-              echo "User script completed successfully."
-              curl -s -X POST "${DASHBOARD_URL}/api/phase" \
-                -H "Content-Type: application/json" \
-                -d '{"phase": "complete"}'
-            else
-              echo "ERROR: User script failed with exit code $?"
-              curl -s -X POST "${DASHBOARD_URL}/api/phase" \
-                -H "Content-Type: application/json" \
-                -d '{"phase": "script_failed"}'
-            fi
-
-            # After script: keep alive or exit
-            if [ "${KEEP_ALIVE}" = "true" ]; then
-              echo "Keeping cluster alive after script. Cancel the workflow to terminate."
-              while true; do sleep 30; done
-            else
-              echo "Script finished — workflow will terminate."
-            fi
-          else
-            # No script — just keep the cluster alive
-            echo "Cluster is ready. It will remain active until the workflow is cancelled."
-            while true; do sleep 30; done
+          # If no shebang, prepend #!/bin/bash
+          if ! head -1 "${SCRIPT_FILE}" | grep -q '^#!'; then
+            sed -i '1i#!/bin/bash' "${SCRIPT_FILE}"
           fi
-        cleanup: |
-          echo "Cleaning up cluster_ready step..."
-          # Ray and dashboard cleanup is handled by start_ray_head cleanup
-          echo "cluster_ready cleanup done."
+          chmod +x "${SCRIPT_FILE}"
+
+          # Activate the venv and set Ray address
+          VENV_DIR="$(cat "${JOB_DIR}/RAY_VENV_DIR" 2>/dev/null || echo "${JOB_DIR}/.venv")"
+          [ -f "${VENV_DIR}/bin/activate" ] && source "${VENV_DIR}/bin/activate"
+          export RAY_ADDRESS="${RAY_HEAD_IP}:6379"
+
+          echo "Running user script..."
+          status=0
+          "${SCRIPT_FILE}" || status=$?
+          if [ ${status} -eq 0 ]; then
+            echo "User script completed successfully."
+            curl -s -X POST "${DASHBOARD_URL}/api/phase" -H "Content-Type: application/json" -d '{"phase": "complete"}'
+          else
+            echo "::error title=Error::User script failed with exit code ${status}"
+            curl -s -X POST "${DASHBOARD_URL}/api/phase" -H "Content-Type: application/json" -d '{"phase": "script_failed"}'
+          fi
+
+          if [ "${KEEP_ALIVE}" = "true" ]; then
+            echo "Keeping the cluster alive after the script; stop it with: pw endpoints delete ${ENDPOINT_NAME}"
+          else
+            # Deleting the endpoint kills the dashboard wrapper; the supervisor's trap then
+            # runs the teardown, which touches TEARDOWN_DONE when the workers are gone
+            echo "Script finished; tearing the cluster down (pw endpoints delete ${ENDPOINT_NAME})"
+            pw endpoints delete "${ENDPOINT_NAME}" 2>/dev/null || true
+            for _i in $(seq 1 36); do
+              [ -f "${JOB_DIR}/TEARDOWN_DONE" ] && break
+              sleep 5
+            done
+            cat "${JOB_DIR}/logs/teardown.log" 2>/dev/null || echo "(teardown log not written yet)"
+          fi
+          exit ${status}
 
   complete:
-    needs: [run_benchmark, cluster_ready, wait_for_endpoint]
+    needs: [run_benchmark, cluster_ready]
     steps:
       - name: Workflow complete
         run: |
@@ -397,12 +263,19 @@ jobs:
           endpoint_name="${{ inputs.ray_settings.name }}-${PW_RUN_SLUG}"
           url=$(pw endpoints list | awk -F'\t' -v name="${endpoint_name}" '$1 == name {print $3}')
           echo "=========================================="
-          echo "Multi-Site Ray Cluster Ready!"
-          echo "=========================================="
-          echo "  Ray Version: ${{ inputs.ray_settings.ray_version }}"
-          echo ""
-          echo "  Dashboard: ${url:-endpoint ${endpoint_name} (see pw endpoints list)}"
-          echo "  The cluster runs until this workflow run is cancelled."
+          if [ -n "${url}" ]; then
+            echo "Multi-Site Ray Cluster Ready!"
+            echo "=========================================="
+            echo "  Ray Version: ${{ inputs.ray_settings.ray_version }}"
+            echo ""
+            echo "  Dashboard: ${url}"
+            echo "  The cluster keeps running after this run."
+            echo "  Stop it with: pw endpoints delete ${endpoint_name}"
+          else
+            echo "Multi-Site Ray Cluster run finished"
+            echo "=========================================="
+            echo "  The cluster has been torn down (endpoint ${endpoint_name} is gone)."
+          fi
           echo "=========================================="
 
 'on':

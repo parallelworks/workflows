@@ -1,7 +1,6 @@
 {
   "_test": {
-    "timeout_s": 900,
-    "ready_job": "wait_for_endpoint",
+    "timeout_s": 1500,
     "resource": "pw://alvaro/gcpsmall",
     "scheduler": true,
     "leftover_patterns": [

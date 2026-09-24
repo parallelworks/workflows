@@ -1,7 +1,6 @@
 {
   "_test": {
     "timeout_s": 2400,
-    "ready_job": "complete",
     "resource": "pw://alvaro/gcpsmall",
     "scheduler": true,
     "warm_marker": "${HOME}/pw/software/ray-2.40.0/bin/python",
@@ -11,7 +10,8 @@
       "raylet",
       "uvicorn dashboard:app",
       "start_ray_head.sh",
-      "dispatch_workers.sh"
+      "dispatch_workers.sh",
+      "start-service-"
     ]
   },
   "head": {

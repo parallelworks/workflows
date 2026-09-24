@@ -129,12 +129,12 @@ so beyond the global rules:
 ## ray-cluster (from parallelworks/ray-cluster)
 
 Migrated 2026-09-23/24 from `parallelworks/ray-cluster@main` (98bb3dd): a Ray head and
-FastAPI dashboard on one resource, workers dispatched to SLURM/PBS/SSH sites
-(same-resource sites through the local scheduler, other resources over `pw ssh` tunnels).
-The source served the dashboard through a platform **session** and kept its run alive for
-the cluster's life. Here it follows the endpoint pattern: one start script under
-`script_submitter`, the run completes once the workload step is done, and
-**`pw endpoints delete ray-cluster-<run-slug>` tears the whole cluster down**.
+FastAPI dashboard on one resource, workers dispatched to SLURM/PBS/SSH sites. The source
+served the dashboard through a platform **session** and kept its run alive for the
+cluster's life. Here one start script runs under `script_submitter`, the run completes once
+the workload step is done, and `pw endpoints delete` tears the whole cluster down. How that
+works: the workflow README (behaviour, limits) and the ray-cluster section of
+`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md` (the recipe).
 
 | Old | New |
 |---|---|
@@ -146,31 +146,15 @@ the cluster's life. Here it follows the endpoint pattern: one start script under
 | checkout `ray-cluster@main`, sparse `scripts` | `workflows@canary`, sparse `workflows/ray-cluster/app` |
 | remote sites clone `ray-cluster.git` (`scripts`) | remote sites clone this repo (`workflows/ray-cluster/app`; `RAY_REPO_URL`/`RAY_REPO_BRANCH`, default `canary`) |
 
-**Lifecycle.** `preprocessing` writes `inputs.sh` and `workers.json`; `session_runner`
-submits `app/start-template.sh` on the head's login node or the workspace
-(`scheduler: false`: the head needs `pw ssh` and `~/.ssh/pwcli`); `wait_for_endpoint`
-releases it; `run_benchmark` or `cluster_ready` (worker wait, optional user script)
-completes the run. The start script writes `cancel.sh`, runs `start_ray_head.sh` (Ray
-head, dashboard under `pw endpoints run --port <allocated port>`, dispatcher, Ray health
-loop) and returns when the wrapper exits. Its trap runs `cancel.sh`, which starts
-`app/teardown.sh` in its own session: local SLURM jobs from `slurm_jobids`, every
-dispatch session (its own and add_worker's), Ray, the endpoint.
+**Code changes beyond the paths**, each found by a test:
 
-**Changes beyond the paths**, each found by a test:
-
-- **Remote sites tear themselves down.** The run's `PW_API_KEY` expires with the run, so
-  the teardown cannot `pw ssh` to a remote site. Each remote login-node script watches its
-  `sshd` parent and exits through its cleanup trap (cancel the job, kill the proxies) when
-  the session closes; upstream orphaned such sites whenever a dispatcher died.
-- **`cancel.sh` waits for the teardown to detach** before the trap's `kill -- -$$` (the
-  first test lost the teardown that way).
-- **A cancelled or failed workload step deletes the endpoint.** `cluster_ready` fails the
-  run when the dispatcher gave up; in batch mode (user script, Keep Cluster Alive off) the
-  run deletes the endpoint itself.
+- **`start-template.sh` and `teardown.sh`** (new) and `start_ray_head.sh` implement that
+  recipe; the remote worker scripts in `dispatch_workers.sh` now exit through their cleanup
+  trap when their ssh session closes (upstream orphaned them whenever a dispatcher died).
 - **add_worker** copies the cluster's `RAY_VENV_DIR` (added workers died with
-  `ray: command not found`), keeps its workers on success (its step cleanup ran after
-  success too), registers its SLURM jobs and remote sessions with the cluster's teardown,
-  and detaches remote dispatches (`set -m`, own log) so its run can complete.
+  `ray: command not found`), stops tearing its workers down after a successful dispatch,
+  registers its SLURM jobs and remote sessions with the cluster's teardown, and detaches
+  remote dispatches (`set -m`, own log) so its run can complete.
 - **Dispatcher:** `-o ControlMaster=no -o ControlPath=none` on the site connections (the
   workspace's `ControlPath` broke on `pw://` host names), no leaked `tail -f` streamers,
   and a rejected `sbatch`/`qsub` reports the scheduler's message instead of ending the
@@ -183,21 +167,11 @@ dispatch session (its own and add_worker's), Ray, the endpoint.
 **Judgment calls:**
 
 1. The endpoint pattern replaces the source's session.
-2. Test runner additions: `_test.scheduler` (teardown also checks `squeue` when workers are
-   scheduled through an input the runner cannot see) and `_test.expect: error`
-   (failure-path tests).
+2. The test runner gained `_test.scheduler` and `_test.expect` (`tools/tests/README.md`).
 3. add_worker ships as `<variant>_add_worker.yaml` in the same directory (it shares `app/`).
 4. The form keeps its own groups (`head`, `workers`, `ray_settings`, `workload_settings`)
    instead of `cluster`/`service`: a multi-resource form, and renaming would touch every
    expression in the job graph.
-5. The workers' SSH tunnels need `~/.ssh/pwcli` on the head, which only the workspace and
-   `existing` resources have: a cloud login node can only head same-resource workers.
-
-**Known limits (upstream):** one Ray head per host (starting a head stops any other Ray
-there); one Ray worker per compute node (a worker starts with `ray stop --force`, so an
-added same-resource job placed on an occupied node replaces that worker; ask for
-`#SBATCH --exclusive`); a head that dies leaves the endpoint listed as `stopped` until
-`pw endpoints delete`.
 
 **Tests** (2026-09-23/24, `pw://alvaro/gcpsmall` and the workspace; rows in
 `workflows/ray-cluster/tests/*/*.csv`): general, hsp and noaa with a same-resource

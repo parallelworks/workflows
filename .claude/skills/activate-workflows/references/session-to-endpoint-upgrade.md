@@ -244,13 +244,12 @@ configures and that N compute sites POST to through tunnels, so a later job need
 `pw endpoints delete` must stop all of it. On top of the section above:
 
 - **The start script returns when the wrapper exits** (deleted, or killed by the head's
-  health check); its trap runs `cancel.sh`.
-- **`cancel.sh` starts the teardown with `setsid` and waits until it has detached** (the
-  trap's `kill -- -$$` follows), with a lock for the second call (trap and submitter
-  cleanup).
-- **No `pw` once the run has ended**: its key has expired, so remote sites cannot be
-  reached to cancel them. Each remote script exits through its cleanup trap when its ssh
-  session closes, and the teardown only kills the local sessions.
+  health check). Its trap runs `cancel.sh`, which starts `teardown.sh` detached and waits
+  for it (the `setsid` race in the SKILL's pitfalls), with a lock for the second call from
+  the submitter's cleanup.
+- **Remote sites tear themselves down** when their ssh session closes: the teardown runs
+  after the run's key has expired, and an `ssh 'bash -s'` script is not signalled (both in
+  the SKILL's pitfalls). The teardown only kills the local sessions.
 - **The steps after the release delete the endpoint** when the dispatcher failed, when a
   cancel or failure stops them before their success marker, and after a batch-mode user
   script.

@@ -463,13 +463,10 @@ non-repetitive; point at an existing tutorial instead.
 - **A trap that backgrounds `setsid helper &` and then runs `kill -- -$$` can kill the helper
   before it detaches**: wait for a marker the helper writes first
   (`workflows/ray-cluster/app/start-template.sh`).
-- **A step's `cleanup:` also runs when the step succeeds**: guard a cancel-only teardown with a
-  marker the step writes on success.
 - **`faulted`** is the status of a run whose job failed while the others wind down; it never
   completes, so treat it as final.
-- **`pgrep`/`pkill -f` over `pw ssh` match the remote shell running them** (the pattern is on
-  its command line): bracket a character (`dispatch_workers[.]sh`), and on a shared login node
-  match the run's job directory, not a script name.
+- **`pgrep -f`/`pkill -f` run over `pw ssh` also match the remote shell carrying the command**
+  (the pattern is on its command line): bracket one character, e.g. `dispatch_workers[.]sh`.
 - **Cross-cluster filesystems are separate:** a code/data path staged on one resource is
   absent on another — stage it on the resource that runs it. If a required path is missing,
   **fail loud (exit non-zero), don't silently skip**: a silent skip upstream plus a

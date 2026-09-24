@@ -42,13 +42,9 @@
 #   PALETTE            - Color palette
 #   PARALLELISM        - Worker count ("auto" or number)
 #   REPO_URL           - Repository remote sites clone for the render scripts
-<<<<<<< HEAD
 #                        (default: the origin of the checkout in the job directory)
 #   REPO_BRANCH        - Branch of that repository
 #                        (default: the branch that checkout is on, else canary)
-=======
-#   REPO_BRANCH        - Branch of that repository
->>>>>>> origin/canary
 #   PW_RUN_SLUG        - Names the per-run work directory on remote sites
 
 set -eo pipefail
@@ -56,7 +52,6 @@ set -eo pipefail
 JOB_DIR="${PW_PARENT_JOB_DIR%/}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_REL="workflows/burst-render-demo/app"
-<<<<<<< HEAD
 # Remote sites clone the same repository and branch the dashboard host checked out, so a
 # run started from a development branch dispatches that branch's scripts and there is no
 # second place to keep in sync. parallelworks/checkout leaves its clone in the job dir;
@@ -69,10 +64,6 @@ if [ -z "${REPO_BRANCH}" ]; then
 fi
 case "${REPO_URL}" in '') REPO_URL="https://github.com/parallelworks/workflows.git" ;; esac
 case "${REPO_BRANCH}" in ''|HEAD) REPO_BRANCH="canary" ;; esac
-=======
-REPO_URL="${REPO_URL:-https://github.com/parallelworks/workflows.git}"
-REPO_BRANCH="${REPO_BRANCH:-canary}"
->>>>>>> origin/canary
 WORK_DIR=$(mktemp -d)
 trap "rm -rf ${WORK_DIR}" EXIT
 
@@ -96,7 +87,6 @@ if [ -z "${PW_CMD}" ]; then
     exit 1
 fi
 
-<<<<<<< HEAD
 # Parse targets JSON to get site list with scheduler config.
 # Every python -c below is single-quoted and reads its JSON from the environment or
 # stdin: a JSON document pasted into a python string literal is un-escaped by python
@@ -143,49 +133,6 @@ print(json.dumps(sites))
 export SITES_JSON
 
 NUM_SITES=$(${PYTHON_CMD} -c 'import json, os; print(len(json.loads(os.environ["SITES_JSON"])))')
-=======
-# Parse targets JSON to get site list with scheduler config
-SITES_JSON=$(${PYTHON_CMD} -c "
-import json, sys, os
-
-targets = json.loads(os.environ['TARGETS_JSON'])
-head_name = os.environ.get('HEAD_RESOURCE_NAME', '')
-sites = []
-for i, t in enumerate(targets):
-    res = t.get('resource', {})
-    # Handle resource as string (CLI) or object (UI)
-    if isinstance(res, str):
-        res = {'name': res.rsplit('/', 1)[-1]}
-    # Scheduler config
-    use_scheduler = t.get('scheduler', False)
-    if isinstance(use_scheduler, str):
-        use_scheduler = use_scheduler.lower() == 'true'
-    scheduler_type = res.get('schedulerType', '')
-    # Default to slurm when scheduler requested but type unknown
-    if use_scheduler and not scheduler_type:
-        scheduler_type = 'slurm'
-    slurm = t.get('slurm', {}) or {}
-    name = res.get('name', f'site-{i}')
-    sites.append({
-        'index': i,
-        'name': name,
-        'ip': res.get('ip', ''),
-        'user': res.get('user', ''),
-        'scheduler_type': scheduler_type,
-        'use_scheduler': use_scheduler,
-        'is_local': bool(head_name) and name == head_name,
-        'slurm_partition': slurm.get('partition', ''),
-        'slurm_account': slurm.get('account', ''),
-        'slurm_qos': slurm.get('qos', ''),
-        'slurm_time': slurm.get('time', '00:05:00'),
-        'slurm_nodes': slurm.get('nodes', '1'),
-        'slurm_directives': slurm.get('scheduler_directives', ''),
-    })
-print(json.dumps(sites))
-")
-
-NUM_SITES=$(echo "${SITES_JSON}" | ${PYTHON_CMD} -c "import sys,json;print(len(json.load(sys.stdin)))")
->>>>>>> origin/canary
 
 echo "=========================================="
 echo "Dispatch Renders: $(date)"
@@ -199,19 +146,11 @@ echo "Dashboard host: ${HEAD_RESOURCE_NAME:-unknown}"
 echo "Render scripts: ${REPO_URL}@${REPO_BRANCH} (${APP_REL})"
 
 # Calculate tile ranges for each site
-<<<<<<< HEAD
 TILE_RANGES=$(${PYTHON_CMD} -c '
 import json, os
 
 sites = json.loads(os.environ["SITES_JSON"])
 total = int(os.environ["TOTAL_TILES"])
-=======
-TILE_RANGES=$(${PYTHON_CMD} -c "
-import json, sys, os, math
-
-sites = json.loads('''${SITES_JSON}''')
-total = int(os.environ['TOTAL_TILES'])
->>>>>>> origin/canary
 n = len(sites)
 
 # Distribute tiles as evenly as possible
@@ -221,7 +160,6 @@ start = 0
 ranges = []
 for i in range(n):
     count = base + (1 if i < extra else 0)
-<<<<<<< HEAD
     ranges.append({"index": i, "name": sites[i]["name"], "start": start, "end": start + count})
     start += count
 print(json.dumps(ranges))
@@ -241,25 +179,6 @@ for r in ranges:
     print("  Site {} ({}): tiles {}-{} ({} tiles) [{}, {}]".format(
         r["index"], r["name"], r["start"], r["end"] - 1, r["end"] - r["start"], mode, where))
 '
-=======
-    ranges.append({'index': i, 'name': sites[i]['name'], 'start': start, 'end': start + count})
-    start += count
-print(json.dumps(ranges))
-")
-
-echo ""
-echo "Tile assignments:"
-echo "${TILE_RANGES}" | ${PYTHON_CMD} -c "
-import sys, json, os
-ranges = json.load(sys.stdin)
-sites = json.loads('''${SITES_JSON}''')
-for r in ranges:
-    s = sites[r['index']]
-    mode = s.get('scheduler_type', 'ssh') if s.get('use_scheduler') else 'ssh'
-    where = 'this host' if s.get('is_local') else 'remote'
-    print(f\"  Site {r['index']} ({r['name']}): tiles {r['start']}-{r['end']-1} ({r['end']-r['start']} tiles) [{mode}, {where}]\")
-"
->>>>>>> origin/canary
 
 # srun options for a SLURM site. Additional directives arrive as #SBATCH lines; srun
 # takes the same long options, so they are appended as options (trailing comments and
@@ -509,24 +428,15 @@ PIDS=()
 SITE_NAMES=()
 
 for i in $(seq 0 $((NUM_SITES - 1))); do
-<<<<<<< HEAD
     site() { SITE_KEY="$1" SITE_INDEX="${i}" ${PYTHON_CMD} -c 'import json, os; print(json.loads(os.environ["SITES_JSON"])[int(os.environ["SITE_INDEX"])].get(os.environ["SITE_KEY"], ""))'; }
-=======
-    site() { echo "${SITES_JSON}" | ${PYTHON_CMD} -c "import sys,json;print(json.load(sys.stdin)[${i}].get('$1',''))"; }
->>>>>>> origin/canary
     site_name=$(site name)
     site_ip=$(site ip)
     is_local=$(site is_local)
     use_scheduler=$(site use_scheduler)
     scheduler_type=$(site scheduler_type)
-<<<<<<< HEAD
     range() { RANGE_KEY="$1" SITE_INDEX="${i}" ${PYTHON_CMD} -c 'import json, os; print(json.loads(os.environ["TILE_RANGES"])[int(os.environ["SITE_INDEX"])][os.environ["RANGE_KEY"]])'; }
     tile_start=$(range start)
     tile_end=$(range end)
-=======
-    tile_start=$(echo "${TILE_RANGES}" | ${PYTHON_CMD} -c "import sys,json;print(json.load(sys.stdin)[${i}]['start'])")
-    tile_end=$(echo "${TILE_RANGES}" | ${PYTHON_CMD} -c "import sys,json;print(json.load(sys.stdin)[${i}]['end'])")
->>>>>>> origin/canary
 
     dispatch_mode="ssh"
     srun_cmd=""

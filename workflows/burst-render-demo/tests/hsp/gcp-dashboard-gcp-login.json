@@ -24,6 +24,8 @@
     "grid_size": "4",
     "image_size": "128",
     "palette": "electric",
-    "parallelism": "2"
+    "parallelism": "2",
+    "name": "",
+    "parent_install_dir": ""
   }
 }

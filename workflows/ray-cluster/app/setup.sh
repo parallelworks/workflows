@@ -6,7 +6,9 @@ if [ -z "${BASH_VERSION:-}" ]; then exec /bin/bash "$0" "$@"; fi
 # Python via uv's standalone builds. No containers or root access needed.
 #
 # Environment variables:
-#   RAY_VERSION - Ray version to install (default: 2.40.0)
+#   RAY_VERSION      - Ray version to install (default: 2.40.0)
+#   RAY_SOFTWARE_DIR - Install directory (default: first writable of WORKDIR, SCRATCH,
+#                      WORK, SCRATCHDIR + /pw/software, else ~/pw/software)
 
 set -e
 
@@ -26,6 +28,8 @@ for _workdir in "${WORKDIR:-}" "${SCRATCH:-}" "${WORK:-}" "${SCRATCHDIR:-}"; do
         break
     fi
 done
+# An explicit install directory (the noaa variant's /contrib/pw) wins over the search
+[ -n "${RAY_SOFTWARE_DIR:-}" ] && SOFTWARE_DIR="${RAY_SOFTWARE_DIR%/}"
 VENV_DIR="${SOFTWARE_DIR}/ray-${RAY_VERSION}"
 UV_DIR="${SOFTWARE_DIR}/.uv"
 UV_BIN="${UV_DIR}/uv"

@@ -430,31 +430,46 @@ non-repetitive; point at an existing tutorial instead.
 - **Input group named `env` + a top-level `env:` block** referencing `${{ inputs.env.* }}`
   → `Expression Parser Error: max recursion exceeded`, failing **both `--dry-run` and
   `pw workflows run`** (the web UI may still submit). Rename the group (e.g. `env_vars`).
-- **The run's `PW_API_KEY` dies with the run** (verified 2026-09-24, ray-cluster-2): a
-  service that outlives its run cannot call `pw` afterwards (`Authentication has
-  expired`) — the step's key overrides the workspace's own and a cloud login node has no
-  stored context. Established `pw endpoints run` / `pw ssh` connections keep working, so
-  plan teardowns that need no `pw` call (kill the local end of a tunnel and let the
-  remote end notice).
-- **`ssh host 'bash -s'` without a tty never signals the remote script when the client
-  dies**: the remote side runs on, orphaned. Have it find its `sshd` ancestor at start
-  (`ps -o comm=` up the parent chain) and exit through its cleanup trap when that
-  process is gone (workflows/ray-cluster/app/dispatch_workers.sh).
-- **A trap that starts a detached helper (`setsid … &`) and then `kill -- -$$` races**:
-  the fork can be killed before it calls `setsid()`. Have the helper touch a marker as
-  its first action and wait for it before returning.
-- **A step's `cleanup:` runs after a successful step too** (verified 2026-09-23 on
-  ray-cluster's add_worker): a cleanup written for cancellation tore down what the step
-  had just set up. Guard it with a marker the run block touches on success.
-- **A run whose job errored shows status `faulted`** while it winds down; treat it as final
-  (the test runner does) — it never completes from there.
-- **`pkill -f <pattern>` over `pw ssh` matches its own remote shell** (the command line
-  carries the pattern) and any other run's process with that script name: bracket a
-  character (`dispatch_workers[.]sh`) and never kill by script name on a login node where
-  another run of the same workflow may be live — anchor patterns to the run's job dir.
-- **List items of type `compute-clusters` are hydrated** like top-level ones: `-i` can pass
-  `"workers": [{"resource": "pw://user/cluster", ...}]` and the run sees the full object
-  (`name`, `ip`, `schedulerType`, ...). The workspace is passed as `"workspace"`.
+- **Never paste JSON into a `python -c` source string.** In `json.loads('''${SITES_JSON}''')`
+  python un-escapes the document first, so a `\n` inside a value becomes a real newline and
+  parsing dies with `Invalid control character` — one multi-line `editor` input is enough
+  (the hsp directives default ends in one; burst-render-demo on `jean`, 2026-09-24). Read it
+  from the environment (`os.environ["FOO_JSON"]`) or stdin, and single-quote the python
+  source. Keep a multi-line directives value in one recorded test so it stays covered.
+- **An empty group item is default-filled** (verified 2026-09-24): a hidden input sent as
+  `"render_settings": {"name": ""}` reached the workflow as its default, like a top-level
+  input; only a **list-template** field keeps `""` (reference §12). Reruns built from a past
+  run's INPUTS tab send `""` for every hidden field, so this is the normal path. Still build
+  a name several jobs must agree on **once**, published as a preprocessing output
+  (`workflows/burst-render-demo`).
+- **`parallelworks/checkout` leaves no `.git`** (verified 2026-09-24): it materializes the
+  files only, so a script cannot read back which repo or branch the run used. To give another
+  machine the same code, send what this one already has
+  (`tar -czf - ... | ssh <site> "tar -xzf - -C ..."`) instead of cloning there: one branch
+  reference instead of two, and it works where the site has no GitHub access
+  (`workflows/burst-render-demo`).
+- **Only the workspace and `existing` resources carry the platform SSH key** (`~/.ssh/pwcli`,
+  verified 2026-09-23: present on the workspace and `a30gpuserver`, absent on gcpsmall's login
+  node, where `pw ssh` outside a run also has no context). A job that opens `ssh -i
+  ~/.ssh/pwcli ... -R` tunnels to other resources must run on one of those hosts; a
+  same-resource target needs no tunnel at all (see `workflows/burst-render-demo`).
+- **A run's `PW_API_KEY` expires when the run ends** (verified 2026-09-24): a service it
+  started can no longer call `pw` (`Authentication has expired`). Open `pw endpoints run` and
+  `pw ssh` connections keep working, so plan a teardown that needs no `pw` call
+  (`workflows/ray-cluster`).
+- **`ssh host 'bash -s'` has no tty, so the remote script gets no signal when the client
+  dies**; if it is not writing output it runs on, orphaned. Have it watch its `sshd` parent
+  and exit through its cleanup trap when that is gone (`workflows/ray-cluster/app/dispatch_workers.sh`).
+- **A trap that backgrounds `setsid helper &` and then runs `kill -- -$$` can kill the helper
+  before it detaches**: wait for a marker the helper writes first
+  (`workflows/ray-cluster/app/start-template.sh`).
+- **A step's `cleanup:` also runs when the step succeeds**: guard a cancel-only teardown with a
+  marker the step writes on success.
+- **`faulted`** is the status of a run whose job failed while the others wind down; it never
+  completes, so treat it as final.
+- **`pgrep`/`pkill -f` over `pw ssh` match the remote shell running them** (the pattern is on
+  its command line): bracket a character (`dispatch_workers[.]sh`), and on a shared login node
+  match the run's job directory, not a script name.
 - **Cross-cluster filesystems are separate:** a code/data path staged on one resource is
   absent on another — stage it on the resource that runs it. If a required path is missing,
   **fail loud (exit non-zero), don't silently skip**: a silent skip upstream plus a

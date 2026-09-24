@@ -1,0 +1,34 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "leftover_patterns": [
+      "pw endpoints run",
+      "burst_render_remote",
+      "render_tiles.sh",
+      "renderer.py"
+    ]
+  },
+  "head": {
+    "resource": "workspace"
+  },
+  "targets": [
+    {
+      "resource": "pw://alvaro/gcpsmall",
+      "scheduler": true,
+      "slurm": {
+        "partition": "compute",
+        "nodes": "1",
+        "time": "00:10:00",
+        "scheduler_directives": ""
+      }
+    }
+  ],
+  "render_settings": {
+    "grid_size": "4",
+    "image_size": "128",
+    "palette": "ocean",
+    "parallelism": "2"
+  }
+}

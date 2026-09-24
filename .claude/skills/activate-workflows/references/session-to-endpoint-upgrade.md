@@ -210,58 +210,51 @@ Contract differences vs v3:
 7. `parallelworks/checkout` → your **dev branch** while testing; **flip to `main`
    after merge** (both openvscode and jupyterlab needed this follow-up).
 
-## Variant — a multi-resource service whose start script dispatches to other clusters (ray-cluster, 2026-09-24)
+## Variant — a service the run's other jobs must reach (burst-render-demo, 2026-09-23)
 
-`workflows/ray-cluster` first joined with its head job running `pw endpoints run` and the
-run holding the cluster (k8s-style, cancel = teardown); it was then reshaped into the
-standard lifecycle. What it took, beyond Steps 2–3:
+`workflows/burst-render-demo` serves a dashboard that the same run's `render` job
+configures and that N compute sites POST to through tunnels, so a later job needs the
+**local port** the endpoint assigned. Steps 2–3 apply as written, plus:
 
-- **Keep the port allocation** when other components already need the number
-  (`pw agent open-port` → `SESSION_PORT`, read by the workers' tunnels) and pass it to
-  the wrapper with **`pw endpoints run --port <n>`**; `{port}` is for services nobody
-  else has to know about.
-- **Everything the cluster needs runs under the submitted start script**: the head, the
-  dashboard wrapper (in the background, its PID watched by a Ray health loop that kills
-  it when the head dies) and the dispatcher that opens the SSH tunnels to the other
-  sites. `script_submitter` starts the script with `setsid`, so the whole tree outlives
-  the run; the start script returns only when the wrapper is gone.
-- **`cancel.sh` runs the teardown detached** (`setsid teardown.sh … &`): tearing a
-  multi-site cluster down means ssh round trips to cancel remote jobs, which must not die
-  with the process group the trap is killing (`kill -- -$$`). Guard against the double
-  call (trap + submitter cleanup) with a lock, and leave a marker (`TEARDOWN_DONE`) the
-  run can wait for when it tears the cluster down itself.
-- **Jobs that need the workers run after the release** and fail the run when the
-  dispatcher gave up (a marker file) instead of waiting on a cluster nobody can compute
-  on; the run completes when they finish, the cluster lives on under the endpoint.
-- **A batch mode inside a service workflow** (run a user script, then stop) deletes the
-  endpoint itself from the run and waits for the teardown marker; a failing script fails
-  the run.
-- Test the failure paths on purpose with the runner's `_test.expect: error` (a rejected
-  scheduler directive, a failing user script) and check the leftovers after each.
+- **Let `pw endpoints run` pick the port and publish it from inside the wrapped
+  command**: the start template writes a two-line launcher (`echo "${PORT}" >
+  ${PW_PARENT_JOB_DIR}/SESSION_PORT; exec <server> --port "${PORT}"`) and runs
+  `pw endpoints run ${pw_endpoints_args} -- ./launch.sh`. No `pw agent open-port`, no
+  race between allocation and bind; the job that needs the number reads the file after
+  `wait_for_endpoint` (the endpoint answered, so the launcher ran). Write the file under
+  `${PW_PARENT_JOB_DIR}`: the start script's CWD is the submitter's step dir.
+- **The run completes when the work is done, not when the service is up**: the job that
+  drives the work `needs: [wait_for_endpoint]`, and the standard cancel-jobs step in
+  `wait_for_endpoint` has already released the submitter, so the service (skip file
+  touched) outlives the run and `pw endpoints delete` is the teardown, as everywhere.
+- **Sites on the dashboard host's own resource render locally.** A cloud cluster's
+  login node has no `~/.ssh/pwcli` (the workspace and `existing` resources do), so a
+  "dispatch everything over ssh -R" script cannot run from it even to itself; detect
+  `resource.name == head resource name` and skip the tunnel (compute nodes reach the
+  login node's hostname directly).
+- **A long child the step should be able to cancel gets its own process group**: `set -m;
+  bash dispatch.sh & pid=$!; set +m; echo $pid > dispatch.pid; wait $pid`, and the
+  step's `cleanup:` does `kill -- -$(cat dispatch.pid)`; a plain background child stays
+  in the step shell's group and the cancel leaves its ssh/srun children running.
 
-## Variant — a service started by a long-lived job, not by `script_submitter` (superseded, kept for the k8s-style lifecycle)
+## Variant — a start script that also runs a multi-site cluster (ray-cluster, 2026-09-24)
 
-`workflows/ray-cluster` starts its dashboard from a job that then keeps running (it
-holds a Ray cluster; cancelling the run is the teardown, as on k8s), so Steps 2–3 do
-not apply literally. What did:
+`workflows/ray-cluster`'s start script runs the Ray head, the dashboard under
+`pw endpoints run` and the dispatcher that tunnels to other sites, so
+`pw endpoints delete` must stop all of it. On top of the section above:
 
-- **Keep the port allocation** when other components already need the number
-  (`pw agent open-port` → `SESSION_PORT`, read by the workers' tunnels) and pass it to
-  the wrapper with **`pw endpoints run --port <n>`**; `{port}` is for services nobody
-  else has to know about.
-- Start the wrapper **in the background** (`nohup pw endpoints run --name <svc>-${PW_RUN_SLUG}
-  --port <n> -- <server> ... &`), record its PID (it is what the job's monitor loop
-  watches and what the cleanup kills — the tree and the endpoint go with it) and the
-  name (`ENDPOINT_NAME`), and **wait for the local port to answer** before talking to
-  the service: the wrapper registers the endpoint first, so the app comes up a few
-  seconds later than a bare launch did.
-- Replace the `sessions:` block + `update-session` job with a `wait_for_endpoint` job
-  calling the subworkflow **without** `skip_cleanups_file` (nothing to release) and with
-  `host: ${{ inputs.<head>.ip }}` — it renders empty for the workspace, which makes the
-  probe run there. No `cancel-jobs` step: the run must stay alive.
-- Cleanup: `kill $(cat dashboard.pid)` then a best-effort `pw endpoints delete`.
-- Tests: `_test.ready_job` (pass = the job completes while the run still runs, plus the
-  endpoint listed; teardown = cancel) instead of the completed-run criterion.
+- **The start script returns when the wrapper exits** (deleted, or killed by the head's
+  health check); its trap runs `cancel.sh`.
+- **`cancel.sh` starts the teardown with `setsid` and waits until it has detached** (the
+  trap's `kill -- -$$` follows), with a lock for the second call (trap and submitter
+  cleanup).
+- **No `pw` once the run has ended**: its key has expired, so remote sites cannot be
+  reached to cancel them. Each remote script exits through its cleanup trap when its ssh
+  session closes, and the teardown only kills the local sessions.
+- **The steps after the release delete the endpoint** when the dispatcher failed, when a
+  cancel or failure stops them before their success marker, and after a batch-mode user
+  script.
+- Test the failure paths with the runner's `_test.expect: error`.
 
 ## Step 4 — the Kubernetes half (`general_k8s.yaml`, standalone `k8s.yaml`)
 

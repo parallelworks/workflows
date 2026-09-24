@@ -19,6 +19,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 |---|---|---|
 | [activate-batch](workflows/activate-batch/) | Batch job: a list of commands run on the login node or via SLURM/PBS (no endpoint) | general, hsp |
 | [agent-orchestrator](workflows/agent-orchestrator/) | Multi-agent orchestrator service | general |
+| [burst-render-demo](workflows/burst-render-demo/) | Multi-site burst demo: Mandelbrot tiles rendered on N sites in parallel, assembled live in a dashboard | general, hsp, noaa |
 | [hermes-agent](workflows/hermes-agent/) | Hermes agent with auth/TCP proxies | general |
 | [jupyter](workflows/jupyter/) | Jupyter Notebook (classic) | general, emed, noaa |
 | [jupyterlab](workflows/jupyterlab/) | JupyterLab | general, emed, hsp, noaa, general_k8s, k8s |
@@ -34,7 +35,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [openvscode](workflows/openvscode/) | OpenVSCode Server | general, emed, hsp, noaa, general_k8s, k8s |
 | [rag-service](workflows/rag-service/) | RAG search/index service | general |
 | [rag-vllm](workflows/rag-vllm/) | vLLM inference server + optional RAG stack | general, hsp, noaa |
-| [ray-cluster](workflows/ray-cluster/) | Multi-site Ray cluster: head + live dashboard on one resource, SLURM/PBS/SSH workers on any others (deleting the endpoint tears the whole cluster down) | general, hsp, noaa, general_add_worker, hsp_add_worker, noaa_add_worker |
+| [ray-cluster](workflows/ray-cluster/) | Multi-site Ray cluster: head and live dashboard on one resource, SLURM/PBS/SSH workers on any others | general, hsp, noaa, general_add_worker, hsp_add_worker, noaa_add_worker |
 | [streamlit](workflows/streamlit/) | Streamlit apps (Singularity) | general, hsp |
 | [vncserver](workflows/vncserver/) | Host desktop (KasmVNC, no container) | emed, emed_{rstudio, matlab, firefox, fsl, schrodinger, vmd} |
 | [webshell](workflows/webshell/) | Web terminal (ttyd) | general, noaa |

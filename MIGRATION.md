@@ -128,290 +128,255 @@ so beyond the global rules:
 
 ## ray-cluster (from parallelworks/ray-cluster)
 
-Migrated 2026-09-23 from `parallelworks/ray-cluster@main` (98bb3dd, 2026-07-22), a
-multi-site Ray cluster: a Ray head + FastAPI dashboard on one resource, workers
-dispatched to SLURM/PBS/SSH sites (same-resource sites via the local scheduler, other
-resources over `pw ssh` tunnels). The source served its dashboard through a platform
-**session** (`parallelworks/update-session`); it is a `pw` endpoint here (judgment call
-1). The source repo checked out its own `scripts/` and the remote worker sites cloned it
-again for `setup.sh`.
+Migrated 2026-09-23/24 from `parallelworks/ray-cluster@main` (98bb3dd): a Ray head and
+FastAPI dashboard on one resource, workers dispatched to SLURM/PBS/SSH sites
+(same-resource sites through the local scheduler, other resources over `pw ssh` tunnels).
+The source served the dashboard through a platform **session** and kept its run alive for
+the cluster's life. Here it follows the endpoint pattern: one start script under
+`script_submitter`, the run completes once the workload step is done, and
+**`pw endpoints delete ray-cluster-<run-slug>` tears the whole cluster down**.
 
 | Old | New |
 |---|---|
-| `scripts/*` (runtime) | `workflows/ray-cluster/app/*` (incl. `templates/index.html`) |
-| `scripts/diagnose.sh`, `scripts/generate_thumbnail.py` (dev tools) | `workflows/ray-cluster/diagnose.sh`, `generate-thumbnail.py` (outside `app/`; thumbnail now written to `thumbnails/ray-cluster.png`) |
-| `workflow.yaml` | `yamls/hsp.yaml` (the form already carried the HSP fields: SLURM account/QoS, `--constraint=mla` hint, PBS account) and `yamls/general.yaml` (those fields dropped; account/QoS go in the directives editor like every other `general` variant) |
-| `add_worker.yaml` | `yamls/hsp_add_worker.yaml`, `yamls/general_add_worker.yaml` (same split) |
+| `scripts/*` | `workflows/ray-cluster/app/*`, plus `start-template.sh` and `teardown.sh` |
+| `scripts/diagnose.sh`, `scripts/generate_thumbnail.py` | `workflows/ray-cluster/diagnose.sh`, `generate-thumbnail.py` (dev tools, outside `app/`) |
+| `workflow.yaml` | `yamls/hsp.yaml` (the source form already had the HSP fields), `yamls/general.yaml`, `yamls/noaa.yaml` |
+| `add_worker.yaml` | `yamls/{general,hsp,noaa}_add_worker.yaml` |
 | `thumbnail.png` | `thumbnails/ray-cluster.png` |
-| checkout `parallelworks/ray-cluster@main`, sparse `scripts` | `parallelworks/workflows@canary`, sparse `workflows/ray-cluster/app` |
-| `bash scripts/<x>.sh` in the YAMLs; `SCRIPT_DIR="${JOB_DIR}/scripts"` in `start_ray_head.sh`, `dispatch_workers.sh`, `run_benchmark.sh` | `workflows/ray-cluster/app/...` |
-| remote worker clone: `git clone --sparse ray-cluster.git` + `sparse-checkout set scripts` + `bash scripts/setup.sh` (3 dispatch modes) | clone of this repo (`REPO_URL`/`REPO_BRANCH`, overridable with `RAY_REPO_URL`/`RAY_REPO_BRANCH`, default `canary`) + `sparse-checkout set workflows/ray-cluster/app` + `bash workflows/ray-cluster/app/setup.sh` |
+| checkout `ray-cluster@main`, sparse `scripts` | `workflows@canary`, sparse `workflows/ray-cluster/app` |
+| remote sites clone `ray-cluster.git` (`scripts`) | remote sites clone this repo (`workflows/ray-cluster/app`; `RAY_REPO_URL`/`RAY_REPO_BRANCH`, default `canary`) |
 
-Everything else in the job graph is verbatim but for the endpoint conversion (judgment
-call 1), and the scripts change in three places beyond the paths (the endpoint launch in
-`start_ray_head.sh`, judgment call 6, and the log-streamer fix below). YAML-only changes
-beyond the paths: banner comments removed, and four fixes to the `add_worker` forms that
-the first test exposed (all pre-existing upstream):
+**Lifecycle.** `preprocessing` writes `inputs.sh` and `workers.json`; `session_runner`
+submits `app/start-template.sh` on the head's login node or the workspace
+(`scheduler: false`: the head needs `pw ssh` and `~/.ssh/pwcli`); `wait_for_endpoint`
+releases it; `run_benchmark` or `cluster_ready` (worker wait, optional user script)
+completes the run. The start script writes `cancel.sh`, runs `start_ray_head.sh` (Ray
+head, dashboard under `pw endpoints run --port <allocated port>`, dispatcher, Ray health
+loop) and returns when the wrapper exits. Its trap runs `cancel.sh`, which starts
+`app/teardown.sh` in its own session: local SLURM jobs from `slurm_jobids`, every
+dispatch session (its own and add_worker's), Ray, the endpoint.
 
-- `auto` job-dir detection also accepts the flat `~/pw/jobs/<run-slug>/` directory of a
-  CLI file run (registered runs keep their numbered subdirectories).
-- A same-resource worker's sbatch script activates the venv named in `RAY_VENV_DIR` of
-  the job dir it was submitted from — the add-worker run's, which had none, so the job
-  died with `ray: command not found` (SLURM job 4 in the first test). The validate step
-  now copies the cluster run's `RAY_VENV_DIR` into the add-worker run's dir.
-- A step `cleanup:` block runs after a successful step too (platform semantics, observed
-  live), so the dispatch step's cleanup — written for cancellation — ran right after
-  attaching the workers; on a remote SLURM site it `scancel`s the job it just added. The
-  run block now touches `WORKERS_DISPATCHED` on success and the cleanup exits early when
-  the marker exists.
-- The cluster run's cancel only `scancel`s the jobs listed in its own `slurm_jobids`, so
-  same-resource workers added later were orphaned until walltime. The dispatch step now
-  appends its `slurm_jobids` to the cluster run's (job dir published as an output of the
-  validate step).
-- In fire-and-forget mode `dispatch_workers.sh` disowned every background process,
-  including a same-resource site's log streamer (`tail -f` on the worker log), which
-  then outlived the add-worker run (three were found on the login node after three
-  runs). The script now kills those streamers and disowns only the remote SSH sessions.
-- **Adding a remote site never completed** (`blessed-ferret`, 20 min until the runner's
-  timeout): the disowned `ssh … | stream_logs.py` pipeline kept writing the remote
-  worker's status into the step's stdout, so the step could not end; when the run was
-  cancelled the tunnel session died and the worker was orphaned (SLURM job + 14
-  login-node proxies), and the cluster run's cleanup would not have found it either
-  (it only knows its own `workers` input). Now, in fire-and-forget mode, each remote
-  dispatch runs in its own process group (`set -m`) with its own log
-  (`logs/dispatch_<site>.out`), the add-worker step appends its `workers` rows to the
-  cluster run's `added_workers.jsonl`, and the cluster cleanup merges that file into
-  the sites it tears down. Verified: `peaceful-catfish` completed in 80 s, the tunnel
-  session and the worker survived it, and cancelling the cluster `scancel`led the added
-  job through the merged list.
-- The remote SLURM worker script backgrounds a `tail -f` on its SLURM log and never
-  killed it; after the job ended the tail held the SSH channel open, so the detached
-  pipeline lingered on the head. The remote cleanup trap now kills it.
-- `dashboard.py`: the Ray poller dropped a node that had just registered through
-  `/api/worker` because Ray's `/nodes` view lags the GCS by seconds; remote workers
-  therefore stayed invisible in the topology until their next heartbeat (about two
-  minutes), which is what the default configuration (workspace head, remote worker)
-  hits first. A node now gets a 60 s grace period before its absence counts as death.
+**Changes beyond the paths**, each found by a test:
+
+- **Remote sites tear themselves down.** The run's `PW_API_KEY` expires with the run, so
+  the teardown cannot `pw ssh` to a remote site. Each remote login-node script watches its
+  `sshd` parent and exits through its cleanup trap (cancel the job, kill the proxies) when
+  the session closes; upstream orphaned such sites whenever a dispatcher died.
+- **`cancel.sh` waits for the teardown to detach** before the trap's `kill -- -$$` (the
+  first test lost the teardown that way).
+- **A cancelled or failed workload step deletes the endpoint.** `cluster_ready` fails the
+  run when the dispatcher gave up; in batch mode (user script, Keep Cluster Alive off) the
+  run deletes the endpoint itself.
+- **add_worker** copies the cluster's `RAY_VENV_DIR` (added workers died with
+  `ray: command not found`), keeps its workers on success (its step cleanup ran after
+  success too), registers its SLURM jobs and remote sessions with the cluster's teardown,
+  and detaches remote dispatches (`set -m`, own log) so its run can complete.
+- **Dispatcher:** `-o ControlMaster=no -o ControlPath=none` on the site connections (the
+  workspace's `ControlPath` broke on `pw://` host names), no leaked `tail -f` streamers,
+  and a rejected `sbatch`/`qsub` reports the scheduler's message instead of ending the
+  script under `set -e`.
+- **Dashboard:** a node that just registered gets 60 s before the Ray poller may drop it
+  (remote workers were hidden for minutes).
+- **`setup.sh`** honours `RAY_SOFTWARE_DIR`; `noaa.yaml` sets it to `/contrib/pw` when that
+  is writable.
 
 **Judgment calls:**
 
-1. **Converted to the endpoint pattern** (second pass, same day; the first pass had
-   kept the session to stay code-neutral). `start_ray_head.sh` still allocates the
-   dashboard port with `pw agent open-port` and writes `SESSION_PORT` first — the
-   workers reach the dashboard on that port through their tunnels — then wraps the
-   dashboard in `pw endpoints run --name <ray_settings.name>-${PW_RUN_SLUG} --port
-   <that port>` in the background (the wrapper's PID is `dashboard.pid`, the name is in
-   `ENDPOINT_NAME`) and waits for the port to answer before registering the head. The
-   `sessions:` block and the `update_session` job are gone; a `wait_for_endpoint` job
-   calls the shared subworkflow (`host` = the head's IP, empty for the workspace, no
-   skip file: there is no submitter to release), and `complete` prints the endpoint URL.
-   Because the run holds the cluster, there is no `script_submitter`; the cancel path
-   kills the wrapper and `pw endpoints delete`s the name. The recipe for this "service
-   started by a long-lived job" shape is in `references/session-to-endpoint-upgrade.md`.
-2. **The run holds the cluster** (like the k8s workflows: cancel = teardown) — the
-   `start_ray_head`, `dispatch_workers` and `cluster_ready` jobs loop until cancelled.
-   The test runner gained `_test.ready_job` (pass = that job completes while the run is
-   still running; teardown = cancel) and `_test.scheduler` for this; documented in
-   `tools/tests/README.md`.
-3. **`add_worker` as `<variant>_add_worker.yaml` variants** of the same directory (it
-   shares `app/`), following `general_rstudio.yaml` / `general-all.yaml`; a marketplace
-   entry for it points at those files.
-4. **Form input groups kept** (`head`, `workers`, `ray_settings`, `workload_settings`)
-   instead of the `cluster`/`service` convention: a multi-resource form, and renaming
-   would touch every expression in the job graph. The tests name the resource the
-   runner checks through `_test.resource`.
-5. Remote-site dispatch needs `~/.ssh/pwcli` on the head (pre-existing); the workspace
-   has it, a cloud login node does not, so a cluster login node can head same-resource
-   workers but not remote sites.
-6. **One script change beyond paths: the worker-site ssh calls in `dispatch_workers.sh`
-   pass `-o ControlMaster=no -o ControlPath=none`.** The workspace's `~/.ssh/config`
-   sets `ControlMaster auto` with `ControlPath ~/.ssh/control:%h:%p:%r`; with the
-   `pw://owner/cluster` target the script uses, the socket path contains slashes and the
-   session dies right after authenticating (`unix_listener: cannot bind ... No such file
-   or directory`), so remote dispatch failed with "Failed to allocate dashboard tunnel
-   port". The unmodified upstream `workflow.yaml` failed identically from the same
-   workspace (`unbiased-chigger`), so this is environmental, not a regression; the
-   tunnel-carrying connection should not be multiplexed in any case.
+1. The endpoint pattern replaces the source's session.
+2. Test runner additions: `_test.scheduler` (teardown also checks `squeue` when workers are
+   scheduled through an input the runner cannot see) and `_test.expect: error`
+   (failure-path tests).
+3. add_worker ships as `<variant>_add_worker.yaml` in the same directory (it shares `app/`).
+4. The form keeps its own groups (`head`, `workers`, `ray_settings`, `workload_settings`)
+   instead of `cluster`/`service`: a multi-resource form, and renaming would touch every
+   expression in the job graph.
+5. The workers' SSH tunnels need `~/.ssh/pwcli` on the head, which only the workspace and
+   `existing` resources have: a cloud login node can only head same-resource workers.
 
-**Test results (2026-09-23, `pw://alvaro/gcpsmall`, Ray 2.40.0, branch `ray-cluster`):**
-pass = the `complete` job finished while the run still held the cluster (head up,
-session `running`, the SLURM worker joined and ran the 208-task benchmark), then
-`pw workflows runs cancel` left no Ray/dashboard/dispatcher process, no SLURM job and no
-session on the resource. Rows are in `workflows/ray-cluster/tests/*/*.csv`.
+**Known limits (upstream):** one Ray head per host (starting a head stops any other Ray
+there); one Ray worker per compute node (a worker starts with `ray stop --force`, so an
+added same-resource job placed on an occupied node replaces that worker; ask for
+`#SBATCH --exclusive`); a head that dies leaves the endpoint listed as `stopped` until
+`pw endpoints delete`.
+
+**Tests** (2026-09-23/24, `pw://alvaro/gcpsmall` and the workspace; rows in
+`workflows/ray-cluster/tests/*/*.csv`): general, hsp and noaa with a same-resource
+worker running the benchmark; the form defaults (workspace head, remote gcpsmall worker:
+the cluster still served 8 min after its run completed, and a `ray job submit` ran on the
+worker); the user-script batch mode; add_worker same-resource (all variants) and remote;
+failure paths (rejected partition, failing user script). Manual: cancel before the
+endpoint is up, cancel during the benchmark, `kill -9` of the head's GCS after the run
+(torn down 2.3 min later). Each ended with no endpoint, process or SLURM job left. Not
+exercised: PBS and SSH-mode remote sites, multi-node sites, GPUs, the fractal workload,
+and the noaa `/contrib/pw` and `existing`-only branches (no such resource here).
+
+## burst-render-demo (from parallelworks/burst-render-demo)
+
+Migrated 2026-09-23 from `parallelworks/burst-render-demo@main` (ae9ad9b), the
+multi-site burst demo: a FastAPI dashboard on one resource and Mandelbrot tiles rendered
+in parallel on N compute sites, which POST them back through reverse SSH tunnels. The
+source served the dashboard through a platform **session** (`sessions:` block +
+`parallelworks/update-session`, its own `wait_for_dashboard` poll of coordination
+files) and its remote sites cloned the source repo for the scripts. Here it follows the
+repository's endpoint pattern end to end: the run **completes** once the tiles are
+rendered and the dashboard outlives it behind `burst-render-<run-slug>`.
+
+| Old | New |
+|---|---|
+| `scripts/*` (runtime) | `workflows/burst-render-demo/app/*` (incl. `templates/index.html`) |
+| `scripts/setup.sh` + the dependency install in `scripts/start_dashboard.sh` | `app/controller.sh`: Python check, shared `uv` (`${service_parent_install_dir}/.uv/uv`), dashboard virtualenv at `${service_parent_install_dir}/burst-render-demo/venv`, idempotent, verified by importing the app |
+| `scripts/start_dashboard.sh` (port from `pw agent open-port`, `nohup uvicorn`, `HOSTNAME`/`SESSION_PORT`/`job.started` files, keep-alive loop) | `app/start-template.sh`: `pw endpoints run ${pw_endpoints_args} -- ./launch-dashboard.sh`; the launcher publishes the port `pw endpoints run` assigned (`PORT`) as `SESSION_PORT` and execs uvicorn |
+| `scripts/setup_tunnel.sh` (unused by the workflow) | dropped |
+| `workflow.yaml` (`sessions:`, jobs `checkout`, `start_dashboard`, `wait_for_dashboard`, `update_session`, `configure_dashboard`, `render`, `complete`) | `yamls/general.yaml`, `yamls/hsp.yaml`: `preprocessing` → `session_runner` (`script_submitter/v3.6/<variant>.yaml`, login node) + `wait_for_endpoint` (shared subworkflow) → `render` (configure, dispatch, summary) |
+| checkout `parallelworks/burst-render-demo@main`, sparse `scripts` | `parallelworks/workflows@burst-render-demo`, sparse `workflows/burst-render-demo/app` |
+| remote site: `git clone --sparse burst-render-demo.git` + `sparse-checkout set scripts` + `bash scripts/setup.sh` into `~/pw/jobs/burst_render_remote` | clone of this repo (`REPO_URL`/`REPO_BRANCH` from the YAML) + `sparse-checkout set workflows/burst-render-demo/app` into `~/pw/jobs/burst_render_remote/<run-slug>/`; a `python3` presence check replaces `setup.sh` (nothing on a render site needs `uv`) |
+| `thumbnail.png` | `thumbnails/burst-render-demo.png` |
+
+`renderer.py`, `post_tile.py`, `dashboard.py` and `templates/index.html` are verbatim.
+`render_tiles.sh` locates `renderer.py`/`post_tile.py` next to itself instead of under
+`${PW_PARENT_JOB_DIR}/scripts`. `dispatch_renders.sh` changes beyond the paths:
+
+- **Local mode.** A site on the dashboard host's own resource renders without a tunnel:
+  `render_tiles.sh` on the login node, or under `srun` with the dashboard reached on the
+  login node's hostname. The source always dispatched over `ssh -i ~/.ssh/pwcli`, which
+  a cloud cluster's login node does not have (only the workspace and `existing`
+  resources do; verified on gcpsmall, the workspace and `a30gpuserver`), so the demo
+  could not run with a cloud login node as its dashboard host.
+- **Remote mode** keeps the reverse tunnel, adds `-o ControlMaster=no -o ControlPath=none`
+  (the workspace's ssh config multiplexes connections; a tunnel-carrying connection must
+  not be shared, same fix as ray-cluster) and a clear error when `~/.ssh/pwcli` is
+  missing on the dashboard host.
+- **`#SBATCH` directives reach `srun`.** The form's Additional Directives were parsed
+  and never used (the source hid the field); they are now appended to the `srun` command
+  as options, which is how `general` takes an account or QoS and `hsp` its
+  `--constraint=mla` hint. Commented `##SBATCH` lines and trailing comments are dropped.
+- **Failures count.** Every site function ended in `| sed` (prefixing the output), so a
+  failed site returned 0 and `FAILED` never incremented; the script runs under
+  `pipefail` now, so a failed site fails the `render` job.
+- The `pkill -f render_tiles.sh` / `renderer.py` "stale process" sweep on remote sites is
+  gone: it would kill a concurrent run's renders on a shared login node. Remote work
+  dirs are per run instead.
+- `CLUSTER_NAME` is passed to every site (the dashboard labels sites by resource name;
+  the `pw cluster list` discovery in `render_tiles.sh` remains as the fallback).
+
+**Form.** The `head` / `targets` / `render_settings` groups are kept (multi-resource form,
+same reasoning as ray-cluster judgment call 4); the hidden `render_settings.name`
+(`burst-render`) is the endpoint prefix. The `pbs` group and the `is_disabled` markers
+are gone: the dispatcher only ever scheduled through `srun`, so a PBS (or any non-SLURM)
+site renders on its login node and the **Schedule Job?** toggle only shows for SLURM
+resources. `general.yaml` drops the per-site SLURM account/QoS dropdowns (they go in the
+directives editor, as in every `general` variant here); `hsp.yaml` keeps them, shown for
+`existing` resources like the other hsp forms, and pre-fills the DSRC constraint hint.
+The dashboard host has no scheduler option: the sites' tunnels terminate on the host
+that dispatches them, so the submitter runs the start script on the login node.
+
+**`noaa.yaml` (added 2026-09-24, no counterpart in the source repository).** The general
+form plus the three things a NOAA variant carries here: the `noaa` script submitter, the
+per-site SLURM **Account** and **QoS** dropdowns shown for `existing` resources (as in
+`hsp.yaml`), and a **Set Up Install Parent Directory** step. That step picks the install
+tree at run time because NOAA home quotas are small and this workflow builds a virtualenv
+there (and downloads a standalone python when the system one predates FastAPI's minimum):
+`/contrib/pw` on Hera, Mercury and Ursa, `/usw/rdhpcs/software/pw` on Gaea, `${HOME}/pw/software`
+on PPAN, cloud clusters and anything unrecognised. Unlike the staged-tarball workflows
+(`webshell`), which let a non-privileged account reuse a shared copy read-only, this one
+**must** be able to write to the tree it uses — the controller rebuilds the virtualenv
+whenever it fails to import — so the shared directory is taken only when a `mkdir` probe
+succeeds. `render_settings.parent_install_dir` therefore carries no default here; an
+explicit value still wins.
+
+**Cancel.** The `render` job runs the dispatcher in its own process group (`set -m`) and
+its step cleanup kills the group, so a cancel during the render stops the local renders,
+the `srun` allocation and the site SSH sessions (the remote `bash -s` trees get the
+hangup).
+
+**Test results (2026-09-23, `pw://alvaro/gcpsmall`, branch `burst-render-demo`):**
+pass = the run completed (its `wait_for_endpoint` saw the endpoint answer, then the
+`render` job reported every site `COMPLETED` with 0 tile errors) and
+`burst-render-<run-slug>` was listed; teardown = `pw endpoints delete`, after which no
+dashboard, endpoint wrapper, dispatcher or render process was left on the resource. Rows
+are in `workflows/burst-render-demo/tests/*/*.csv`; 4x4 grids of 128 px tiles.
 
 | Test | Result |
 |---|---|
-| `general/gcp-head-gcp-worker` | probe `splendid-bat` (cold: Ray venv built in ~20 s with uv, head + SLURM worker + benchmark + session in 5m50s) then recorded PASS `upright-earwig` (warm, 177 s, cleanup ok). The `evolved-tarpon` fail row is not the workflow: a `pkill -f dispatch_workers.sh` run on the login node to remove orphans from earlier add-worker runs also hit this run's dispatcher (exit 143), which is what added `faulted` to the runner's final statuses |
-| `general_add_worker/gcp-worker` | 3 rows: `witty-duckling` passed the runner's criterion but its worker died (`ray: command not found`, the venv-marker bug above); `endless-bluegill` after the venv + cleanup fixes: worker joined, cluster at 2 CPUs, cleanup skipped; `musical-grubworm` after the job-id fix: `slurm_jobids` of the cluster run held both jobs and cancelling it removed both |
-| `hsp/gcp-head-gcp-worker` | PASS `good-titmouse` (warm, 53 s: the compute node was still up from the previous run, cleanup ok); `dashing-wahoo` PASS kept as the target of the hsp add-worker test |
-| `hsp_add_worker/gcp-worker` | PASS `sure-mite` against `dashing-wahoo` (22 s): second SLURM worker joined (cluster at 2 CPUs), both job ids in the cluster run's `slurm_jobids`, no streamer left behind (`dispatch_workers.sh` in the leftover patterns); cancelling the cluster run then left no job, process or session |
+| `general/gcp-dashboard-gcp-login` (dashboard and site on the gcpsmall login node) | PASS `willing-hawk` (cold: `uv` already cached at `~/pw/software/.uv` from ray-cluster, venv built in seconds; 16 tiles OK; endpoint `HTTP 200` after 0 s; 37 s) |
+| `general/gcp-dashboard-gcp-compute` (site scheduled: `srun --partition=compute`) | PASS `included-ox` (warm, 38 s): tiles rendered on `gcpsmall-…-1-0001`, posted to the login node's hostname and port |
+| `hsp/gcp-dashboard-gcp-login` | PASS `adequate-hen` (warm, 38 s) through `script_submitter/v3.6/hsp.yaml` |
+| `hsp/gcp-dashboard-gcp-compute` | PASS `dynamic-dogfish` (warm, 38 s) |
+| `general/workspace-dashboard-gcp-compute` (dashboard on the user workspace, site gcpsmall over `pw ssh`) | PASS `pure-boxer` (38 s): SSH probe, reverse tunnel, sparse clone of this branch into `~/pw/jobs/burst_render_remote/pure-boxer/`, TCP proxy on the login node, `srun` on a compute node, 16 tiles OK; the probe ran from the workspace (`host` rendered empty) |
 
-**Correction (2026-09-24):** the "cluster at 2 CPUs" readings above for the same-resource
-add-worker tests were most likely stale. gcpsmall's scheduler put the added job on the
-node that already ran the cluster's worker, and the local worker script starts with
-`ray stop --force` (upstream: one Ray worker per node), which stops that worker's Ray; the
-head keeps a vanished node counted for up to 90 s (`RAY_HEALTH_CHECK_*` in
-`start_ray_head.sh`), and those readings were taken within that window. The ray-cluster-2
-and noaa runs show it plainly (`cool-rabbit`: jobs 26 and 27 on the same node, the added
-worker's log "Stopped all 4 Ray processes", `ray status` 1.0 CPU). A same-resource add
-therefore only adds capacity when the new job lands on a free node — ask for one with
-`#SBATCH --exclusive` in the worker row's directives (not tested here). Upstream
-behaviour, left unchanged.
-| `general/workspace-head-gcp-worker` (remote dispatch: head on the user workspace, worker on gcpsmall over `pw ssh` tunnels) | `magical-rhino` FAIL at "Failed to allocate dashboard tunnel port" (the ssh ControlPath problem, judgment call 6; the unmodified upstream YAML failed the same way as `unbiased-chigger`), then PASS `sensible-squid` (302 s, cleanup ok on both hosts): the worker site cloned `workflows/ray-cluster/app` from this repo for `setup.sh`, joined through the reverse tunnel and ran the benchmark |
+**Cancel mid-render** (`easy-sunfish`, 16x16 grid of 512 px tiles, single worker, login
+node): with the dispatcher, `render_tiles.sh`, `xargs` and a `renderer.py` alive in the
+dispatcher's process group, `pw workflows runs cancel` left only the dashboard tree
+(`pw endpoints run` + uvicorn, released by the skip file as designed), `squeue` empty and
+the endpoint listed; the dashboard's `/api/state` held the 2 tiles finished before the
+cancel, and `pw endpoints delete` then removed the two remaining processes and the
+endpoint. The compute tests carry `"scheduler": true` in `_test` for the runner's
+`squeue` check (added with ray-cluster).
 
-Not exercised: PBS sites, unscheduled remote workers, multi-node sites, GPU
-detection and the `fractal` workload — the scripts for those are verbatim upstream.
+Not exercised: a PBS or SSH-mode remote site, multi-node `srun` allocations, a dashboard
+host older than Python 3.8 (the `uv python install` path) and a site whose login shell is
+tcsh — the remote script transport for those is verbatim upstream.
 
-**Endpoint conversion (second pass, same day):** pass now also requires
-`ray-cluster-<run-slug>` in `pw endpoints list`; the workflow's `wait_for_endpoint` job
-probed the URL with the run's key and, in addition, the URL was fetched by hand with a
-user token during `causal-stallion` (anonymous: `307` to the login page; with the token:
-`200`, `<title>Ray Cluster Dashboard</title>`, `/api/state` JSON with the head
-registered). Cancelling the run kills the wrapper and the endpoint is gone within a
-second (the runner's follow-up `pw endpoints delete` finds no session).
+**Fixes after the first HSP run (2026-09-24, `jean.arl.hpc.mil`).** The merged workflow
+failed on jean at *Dispatch Renders* with
+`json.decoder.JSONDecodeError: Invalid control character at: line 1 column 357`:
 
-| Test | Result |
-|---|---|
-| `general/gcp-head-gcp-worker` | PASS `causal-stallion` (warm, 178 s, cleanup ok; endpoint `https://coherent-cod.activate.pw/`) |
-| `hsp/gcp-head-gcp-worker` | PASS `fit-rattler` (warm, 53 s, cleanup ok) |
-| `hsp/gcp-head-gcp-worker` (kept) + `hsp_add_worker/gcp-worker` | `picked-hyena` PASS kept; `generous-kitten` PASS (21 s): second worker's job registered with the cluster run (`slurm_jobids` 15 16); the endpoint URL fetched with a user token showed the dashboard's `/api/state` (phase `complete`, head `gcpsmall`); cancelling the cluster run removed the endpoint, both jobs and every process |
-| `general/workspace-head-gcp-worker` | PASS `wealthy-grizzly` (85 s, cleanup ok on both hosts): with the head on the workspace the subworkflow's `host` rendered empty and the probe ran from the workspace (HTTP 200) |
+- **JSON must never be pasted into `python -c` source.** The dispatcher built its site
+  list with `json.loads('''${SITES_JSON}''')`, so python un-escaped the document before
+  json.loads saw it and the `\n` that `json.dumps` had written inside a value became a
+  real newline. The trigger is any multi-line form value: on jean that was the hsp
+  **SLURM directives default**, which ends in a newline — the form's own default, while
+  every gcpsmall test had passed `""` for that field and never saw it. Every `python -c`
+  in the script now reads its JSON from the environment and is single-quoted so the
+  shell cannot expand into it either; the two compute tests carry multi-line directives
+  so the shape stays covered.
+- **Remote sites are sent the scripts instead of cloning them.** `REPO_URL`/`REPO_BRANCH`
+  were hardcoded in the YAMLs, and the canary merge (#63–#65) flipped the checkout
+  `branch:` to canary while leaving `REPO_BRANCH: burst-render-demo`, so a remote site
+  would have cloned different code than the dashboard host was running. Deriving the
+  branch from the checkout does not work — **`parallelworks/checkout` leaves no `.git` in
+  the job directory** (verified on the workspace after run `engaging-eft`, which
+  therefore cloned canary while its dashboard host ran the dev branch). So the three
+  files a site needs (`render_tiles.sh`, `renderer.py`, `post_tile.py`) are now tarred
+  over the SSH connection the dispatcher already opens, into
+  `~/pw/jobs/burst_render_remote/<run-slug>/app/`. The site runs exactly what the
+  dashboard host checked out, needs no GitHub access (an HPC site's login node may have
+  none), and the workflow has one branch reference again — the checkout's.
+- **The endpoint name is built once** (tidy-up, not a fix). It was composed from
+  `${{ inputs.render_settings.name }}` in three places that had to stay in step. The jean
+  request sent `""` for that hidden field, as a rerun built from a past run's INPUTS tab
+  does; that turned out to be harmless — **the platform default-fills an empty group
+  item** (verified 2026-09-24 on `activate.parallel.works`: a request with
+  `"name": ""` produced `export service_name="burst-render"` in `inputs.sh`), so the
+  name was never malformed. Preprocessing now publishes `ENDPOINT_NAME`, computed once
+  with a `${service_name:-burst-render}` fallback, and the waiter and the summary read
+  that output. The hsp login test carries the empty-field request shape.
 
-**Defaults and the user's job path (third pass, same day):**
-
-| Test | Result |
-|---|---|
-| `general/defaults-workspace-head` — the form's defaults as the UI sends them: workspace head, one gcpsmall worker with the default row (`scheduler` on, no partition, no gres, `01:00:00`), `ray_settings`/`workload_settings` omitted so their defaults apply (`cluster_only`, no user script, Ray 2.40.0) | `funky-emu` PASS kept: omitted groups rendered their defaults (`RAY_VERSION=2.40.0`, endpoint `ray-cluster-<slug>`, workload `cluster_only`), the sbatch script carried only `--nodes=1 --time=01:00:00`, the worker joined (`ray status`: 2 nodes, 1 CPU) and the workflow set phase `cluster_ready` 3.5 min after launch. A job submitted from the head the way the Connect tab shows (`ray job submit --address http://127.0.0.1:8265 --working-dir … -- python fake_job.py`, 12 remote tasks) succeeded with every task on the SLURM compute node. Cancelling removed the endpoint and every process on both hosts |
-| `general/head-only-workspace` + `general_add_worker/workspace-head-gcp-remote-worker` (a remote site attached to a running cluster) | `strong-owl` + `blessed-ferret`: FAIL as described above (timeout, orphaned worker); `novel-boa` + `peaceful-catfish` after the fixes: PASS in 80 s, worker attached and still alive a minute after the add-worker run ended (`ray status` 1 CPU, tunnel session alive), Ray lists it under its tunnel IP `127.0.2.1`, the dashboard topology shows it (`site-2`, `gcpsmall`), and cancelling the cluster cancelled the added job (`Cancelling SLURM job 25`) |
-| `hsp/defaults-user-script` — hsp form defaults for the worker row (no partition, gres, account or QoS; the `##SBATCH --constraint=mla` hint left in place), `cluster_only` with **Run User Script** on and a script that runs 12 Ray tasks and fails unless they ran off the head | `powerful-albacore` PASS (48 s to `complete`, cleanup ok): the hint rendered as a harmless `##SBATCH` comment, the script ran on the head with `RAY_ADDRESS` set and every task executed on the SLURM compute node |
-| final remote check (`becoming-fawn` + `glorious-hog`) | after the streamer-trap and dashboard fixes: add-worker PASS in 84 s, the dashboard listed the tunnel worker (`site-2`, `gcpsmall`) at once and kept it, and 60 s after cancelling the cluster there was no endpoint, no process on the workspace and no SLURM job or remote-worker process on gcpsmall |
-### ray-cluster-2: the run exits, the endpoint owns the cluster (2026-09-24)
-
-Branch `ray-cluster-2` (on top of `ray-cluster`) reshapes the workflow into the repo's
-standard lifecycle. Before, the head job ran `pw endpoints run` itself and the run stayed
-`running` for the cluster's life (cancel = teardown, like the k8s workflows). Now:
-
-- **One start script under `script_submitter`.** `preprocessing` checks out `app/`,
-  writes `inputs.sh` (`ray_version`, `endpoint_name`, `head_resource_name`,
-  `workload_type`) and `workers.json` (the worker rows), and assembles
-  `inputs.sh` + the generic cleanup trap + `app/start-template.sh`. `session_runner`
-  submits it through `workflows/script_submitter/v3.6/<variant>.yaml` with
-  `scheduler: false` (the head needs `pw ssh` and the pwcli key, so it runs on the login
-  node or the workspace) and `skip_cleanups_file`; `wait_for_endpoint` releases it once
-  `ray-cluster-<slug>` answers. The submitter's `setsid` makes the start script its own
-  process group, so the run's end does not touch it.
-- **`start-template.sh` writes `cancel.sh` first**, then runs `start_ray_head.sh`, which
-  installs Ray, starts the head, writes the coordination files, runs
-  `pw endpoints run --port <allocated port>` around the dashboard, posts the
-  `cluster_only` config to the dashboard before any worker can register, launches
-  `dispatch_workers.sh` (output to `logs/dispatch.out`, failure recorded in
-  `DISPATCH_FAILED`) and watches Ray. It returns when the wrapper is gone — deleted, or
-  killed by the Ray health monitor — and exits non-zero unless the endpoint is somehow
-  still listed. The trap then runs `cancel.sh`.
-- **`cancel.sh` starts `app/teardown.sh` detached (`setsid`)** so the ssh round trips to
-  remote sites survive the process-group kill: local SLURM jobs from `slurm_jobids`,
-  remote sites from `workers.json` + `added_workers.jsonl`, the dispatcher, Ray, the
-  wrapper and the endpoint; a lock directory keeps a second caller (trap and submitter
-  cleanup can both run `cancel.sh`) from running it twice; `TEARDOWN_DONE` marks the end.
-- **Jobs after the release.** `run_benchmark` (benchmark/fractal) and `cluster_ready`
-  (`cluster_only`) run once the endpoint is healthy; the run completes when they finish.
-  `cluster_ready` streams `logs/dispatch.out` while waiting up to 10 min for the first
-  worker CPU (skipped for a head-only cluster), **fails the run and deletes the endpoint
-  when the dispatcher gave up** (`DISPATCH_FAILED`: rejected `sbatch`/`qsub`, unreachable
-  site) instead of proceeding with nothing to compute on, then runs the user script; with
-  **Keep Cluster Alive** off it deletes the endpoint itself and waits for `TEARDOWN_DONE`
-  (a batch job), and a failing script fails the run. `run_benchmark.sh` also stops on
-  `DISPATCH_FAILED`. `complete` prints the endpoint URL and the delete command, or says
-  the cluster was torn down.
-- **add_worker** is unchanged: it reads the same coordination files from the cluster's
-  job dir and appends to `slurm_jobids` / `added_workers.jsonl`, which `teardown.sh`
-  reads.
-- **Tests** use the runner's standard criterion (run completes, endpoint listed, `pw
-  endpoints delete` + leftover checks). The runner gained `_test.expect` for failure-path
-  tests (`error` = pass when the run fails as designed and nothing is left behind).
-
-- **The teardown cannot use `pw` once the run has completed.** The start script
-  inherits the run's `PW_API_KEY` (the step's key overrides the workspace's own, and a
-  cloud login node has no stored context at all); the key expires with the run, so
-  every `pw` call in the teardown answered "Authentication has expired" (first
-  `optimal-reindeer` teardown log). Established `pw ssh` tunnels keep working, so the
-  workers are unaffected; only reaching a remote site to cancel it is. Remote sites
-  therefore **tear themselves down**: each login-node script (SLURM, PBS and direct-SSH
-  modes) finds its session's `sshd` process at start and, in its long-running loop,
-  exits through its existing cleanup trap (cancel the job, kill the proxies, stop Ray)
-  when that process is gone — a session without a tty gets no signal when the client
-  disappears, which is also how upstream orphaned sites when a dispatcher died. The
-  teardown kills the dispatcher trees (its own and add_worker's detached sessions,
-  recorded as process groups in `added_dispatch_pgids`) and the remote ends follow
-  within one loop interval. The `pw ssh` cleanup calls stay as a best effort for the
-  cancel-before-ready path, when the key is still valid, and skip the head's own
-  resource (its jobs are in `slurm_jobids`; upstream's `scancel --name=ray-worker-*`
-  there could hit another cluster of the same user). Verified in isolation first: a
-  dispatcher-style `ssh … 'bash -s'` session from the workspace to gcpsmall, its local
-  client killed, the remote side ran its trap 2 s later.
-- **`cancel.sh` waits for the teardown to detach.** The first test's teardown log was
-  empty: the background fork was killed by the trap's `kill -- -$$` before it called
-  `setsid()`. `teardown.sh` now touches `.teardown.started` as its first action (it is in
-  its own session by then) and `cancel.sh` returns only after seeing it, then waits up
-  to 4 min for `TEARDOWN_DONE`.
-
-- **noaa variant** (`yamls/noaa.yaml`, `yamls/noaa_add_worker.yaml`): the general job
-  graph with `workflows/script_submitter/v3.6/noaa.yaml`, the worker rows' SLURM
-  **Account**/**QoS** shown and passed only for `existing` (on-prem) resources, no DSRC
-  constraint hint, and the noaa "Set Up Install Parent Directory" step: when the head has
-  a writable `/contrib/pw`, `inputs.sh` gets `RAY_SOFTWARE_DIR=/contrib/pw`, which
-  `setup.sh` now honours ahead of its work-directory search (one added line; unset, the
-  behaviour is unchanged). Added same-resource workers reuse the head's environment; a
-  remote site installs in its own default location.
-
-What is lost, deliberately: the run no longer mirrors the cluster's health after it
-completes (a dead head shows up as the endpoint disappearing, with the reason in
-`run.<id>.out` and `logs/dashboard.log`), and the dispatcher's output streams into the
-run only until the endpoint is up (afterwards: `logs/dispatch.out`, the `cluster_ready`
-job's log while it waits, and the dashboard's Logs tab).
-
-Also fixed on this branch (upstream): a rejected same-resource `sbatch`/`qsub` killed the
-dispatcher silently under `set -e` (`x=$(sbatch …)` and the job-id `grep` both abort the
-script), so neither its error line nor the dashboard's error card ever appeared; both
-now reach the dispatcher's error branch (`fail-bad-partition` shows "ERROR: sbatch
-failed: … invalid partition specified" in the run log and one `/api/worker/error` post).
-
-**Test results (ray-cluster-2, 2026-09-24, gcpsmall + workspace):** pass = the runner's
-standard criterion (run completes, endpoint listed, `pw endpoints delete`, no endpoint
-wrapper / Ray / dashboard / dispatcher / start-script process and no SLURM job left),
-or, for failure paths, the run ends in `error` with the same leftover checks.
+**Re-tested after the HSP fixes (2026-09-24, `pw://alvaro/gcpsmall`):** all five tests
+pass with `cleanup=ok`. The two compute tests now carry multi-line SLURM directives (the
+hsp one carries jean's exact values, including the empty walltime), so the parse that
+broke there is covered; the hsp login test sends the hidden fields as `""` like a rerun
+built from a past run's INPUTS tab.
 
 | Test | Result |
 |---|---|
-| `general/gcp-head-gcp-worker` | `loving-snake` pass with `cleanup=leftover` (the detach race: teardown killed before `setsid()`), then `optimal-reindeer` PASS, teardown 2 s after the delete (`scancel 2`, Ray stopped) |
-| `general/defaults-workspace-head` — the form defaults (workspace head, remote gcpsmall worker, `cluster_only`), kept | `enabling-llama`: run completed at 10:20; at 10:29 both Ray nodes alive and a `ray job submit` from the head ran 12 tasks on the compute node; `pw endpoints delete` → workspace clean in 2 s, the remote site noticed its session gone 7 s later and cancelled its SLURM job; nothing left on either host |
-| `hsp/gcp-head-gcp-worker` | `huge-stork` PASS (48 s to complete) |
-| `general/fail-bad-partition` (`expect: error`) | `lenient-rattler` PASS (run error, cluster torn down, no reason in the log), fix above, `hopeful-lizard` PASS (scheduler's reason shown), `firm-loon` PASS (also the dispatcher's error line and dashboard card) |
-| `hsp/fail-user-script` (`expect: error`) | `suitable-halibut` PASS: "User script failed with exit code 3", run error, teardown cancelled the worker |
-| `hsp/defaults-user-script` (batch, keep-alive off) | `new-pheasant` PASS: 12 tasks on the worker, the run deleted the endpoint and waited for `TEARDOWN_DONE`, `complete` says the cluster was torn down |
-| `general_add_worker/gcp-worker`, `hsp_add_worker/gcp-worker` against kept clusters | `climbing-muskox`, `boss-salmon` PASS on the runner's criterion: added job registered in the cluster's `slurm_jobids`; one endpoint delete cancelled both jobs. Capacity did not grow (`ray status` 1.0 CPU): the added job shared the existing worker's node, see the correction above |
-| `general_add_worker/workspace-head-gcp-remote-worker` against `head-only-workspace` | `engaged-tuna` PASS: the add-worker run completed, its detached session recorded in `added_dispatch_pgids`; the endpoint delete closed that session group and the remote site cancelled SLURM job 14 by itself |
-| cancel before the endpoint is up (manual; cold Ray 2.39.0 install) | `super-bass`: cancelled with no head, job or skip file yet; the submitter killed the start script, its trap ran the teardown once, nothing left |
-| cancel during the benchmark (manual) | `sterling-hornet`: the benchmark step's guard deleted the endpoint, teardown cancelled SLURM job 8, nothing left (`light-humpback`, meant as a before-ready cancel, hit the same after-release path) |
-| the Ray head dies after the run completed (manual: `kill -9` of the GCS) | `model-dassie`: three failed checks (~46 s each), FATAL 2 min 18 s after the kill, teardown cancelled SLURM job 16, all processes gone; the endpoint stayed listed as `stopped` (the wrapper cannot deregister with the ended run's key) until `pw endpoints delete`. A first attempt (`together-doberman`) was confounded by the next test starting a second head on the same host: one Ray head per host, as upstream |
+| `hsp/gcp-dashboard-gcp-compute` | PASS `upright-fowl`, re-run `daring-sawfish` after the transfer change: the directives default parsed, and `srun --partition=compute --nodes=1 --ntasks=1` carried neither the commented `##SBATCH` line nor an empty `--time=` |
+| `hsp/gcp-dashboard-gcp-login` | PASS `many-hawk`: `"name": ""` and `"parent_install_dir": ""` were default-filled by the platform, endpoint `burst-render-many-hawk`, `HTTP 200` |
+| `general/gcp-dashboard-gcp-compute` | PASS `good-monkfish` (3 min: the compute node was powering up) |
+| `general/gcp-dashboard-gcp-login` | PASS `oriented-quetzal` |
+| `general/workspace-dashboard-gcp-compute` | PASS `engaging-eft`, re-run `giving-tahr` after the transfer change: the scripts were tarred to `~/pw/jobs/burst_render_remote/giving-tahr/app/` over the dispatcher's SSH connection and rendered under `srun` on a compute node |
 
-**noaa variant (same day, gcpsmall):** `setup.sh` with `RAY_SOFTWARE_DIR` set (a scratch
-directory, trailing slash included) installed uv and Ray 2.40.0 there and recorded that
-venv, then the directory was removed; gcpsmall has no `/contrib/pw`, so the variant's
-step fell back to the default location, like the repo's other noaa variants there.
+Three runs failed in between — `communal-wildcat`, `brave-marlin`, `probable-reindeer`,
+all `Dispatch Renders ... syntax error near unexpected token` — because the canary merge
+left conflict markers in `dispatch_renders.sh` and they were pushed. Their rows are in
+the CSVs.
 
-| Test | Result |
-|---|---|
-| `noaa/gcp-head-gcp-worker` | `amazing-hedgehog` PASS (48 s to complete; submitted through `script_submitter/v3.6/noaa.yaml`, the install-directory step in preprocessing, benchmark 100/100) |
-| `noaa_add_worker/gcp-worker` against a kept `noaa/gcp-head-gcp-worker` (`choice-akita`) | `cool-rabbit` PASS on the runner's criterion; both jobs in the cluster's `slurm_jobids` and cancelled by one endpoint delete; capacity unchanged (same node, see the correction above) |
-| `noaa/defaults-workspace-head` (workspace head, remote gcpsmall worker) | `positive-walrus` PASS (80 s); after the delete the remote site noticed its session gone and cancelled SLURM job 28 |
-
-The on-prem account/QoS fields are only shown for `existing` resources, which this
-account has no SLURM one of; they are statically checked (dry-run) only.
-
-Not exercised on this branch either: PBS sites, unscheduled (SSH-mode) remote workers,
-multi-node sites, GPUs and the fractal workload; the PBS and SSH-mode remote scripts got
-the same session watch as the SLURM one (rendered and syntax-checked, not run).
+**noaa tests, 2026-09-24 (`pw://alvaro/gcpsmall`):** PASS `engaging-sunfish` (login node,
+37 s) and PASS `humble-robin` (`srun` on a compute node, 170 s), both `cleanup=ok`. As for
+the other `noaa` variants here, a cloud cluster exercises the form, the `noaa` submitter and
+the fallback branch of the install-directory step (`/home/alvaro/pw/software`); the
+per-cluster shared-directory branches and the `existing`-only account/QoS fields are
+static-only until the variant runs on a NOAA system.
 
 ## Dead branches (pre-existing breakage, now fixed)
 
@@ -526,9 +491,16 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   stay on the old repo or the yaml bumped to v3.6).
 - Readme/thumbnail paths in registrations (`workflow/readmes/...`,
   `workflow/thumbnails/...`) → the files inside each `workflows/<name>/thumbnails/`.
-- The ray-cluster entries (cluster + add-worker) pin `parallelworks/ray-cluster`'s
+- The ray-cluster entries (cluster and Add Worker) pin `parallelworks/ray-cluster`'s
   `workflow.yaml` / `add_worker.yaml` → `workflows/ray-cluster/yamls/<variant>.yaml` /
-  `<variant>_add_worker.yaml` here (`hsp` on `activate.hpc.mil`, `general` elsewhere).
+  `<variant>_add_worker.yaml` here (`hsp` on `activate.hpc.mil`, `noaa` on
+  `noaa.parallel.works`, `general` elsewhere; thumbnail `workflows/ray-cluster/thumbnails/ray-cluster.png`).
+
+- The burst-render-demo entry pins `parallelworks/burst-render-demo`'s `workflow.yaml` →
+  `workflows/burst-render-demo/yamls/<variant>.yaml` here (`hsp` on `activate.hpc.mil`,
+  `general` elsewhere; thumbnail `workflows/burst-render-demo/thumbnails/burst-render-demo.png`).
+  The YAMLs and the remote-site clone reference branch `burst-render-demo` until the
+  branch lands on canary (`branch:` in the checkout and `REPO_BRANCH` in the `render` job).
 
 ## Test results (2026-08-31, repo public, canary pushed)
 
@@ -593,12 +565,6 @@ ollama-gguf-container implementation paths not separately exercised.
    `workflows/activate-batch/`, re-pointed from `marketplace/job_runner/v4.0` to
    `workflows/script_submitter/v3.6`; the helios/kestrel examples remain open.
 3. Thumbnail guesses in judgment call 6 — confirm against the actual registrations.
-5. **ray-cluster marketplace entries** (2026-09-23): the workflow joined on the
-   endpoint pattern (its run still holds the cluster; cancel = teardown).
-   Its marketplace entries (the multi-site cluster and "Add Worker") still point at
-   `parallelworks/ray-cluster`'s `workflow.yaml`/`add_worker.yaml` and must be re-pointed
-   at `workflows/ray-cluster/yamls/{hsp,general}.yaml` and `{hsp,general}_add_worker.yaml`
-   here (thumbnail `workflows/ray-cluster/thumbnails/ray-cluster.png`).
 4. Converting the left-behind legacy variants (emed etc.) to the endpoint pattern so
    they can join this repo — who/when? **emed done (2026-09-02):** kasmvnc (+ the
    rstudio/schrodinger/firefox desktop-app variants replacing the legacy vncserver

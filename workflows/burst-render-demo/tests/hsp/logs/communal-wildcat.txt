@@ -1,0 +1,9 @@
+Run communal-wildcat: error (23s)
+
+Failed jobs/steps:
+
+  render > Dispatch Renders (error, 0s)
+    workflows/burst-render-demo/app/dispatch_renders.sh: line 45: syntax error near unexpected token `<<<'
+    workflows/burst-render-demo/app/dispatch_renders.sh: line 45: `<<<<<<< HEAD'
+
+Summary: 1 job(s) failed, 1 step(s) failed

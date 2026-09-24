@@ -151,8 +151,6 @@ jobs:
           export PARALLELISM="${{ inputs.render_settings.parallelism }}"
           export TARGETS_JSON='${{ inputs.targets }}'
           export HEAD_RESOURCE_NAME='${{ inputs.head.resource.name }}'
-          export REPO_URL=https://github.com/parallelworks/workflows.git
-          export REPO_BRANCH=burst-render-demo
           # Own process group, so a cancel takes down the ssh sessions, srun and local
           # renders with the dispatcher
           set -m

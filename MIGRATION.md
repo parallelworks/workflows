@@ -186,6 +186,20 @@ directives editor, as in every `general` variant here); `hsp.yaml` keeps them, s
 The dashboard host has no scheduler option: the sites' tunnels terminate on the host
 that dispatches them, so the submitter runs the start script on the login node.
 
+**`noaa.yaml` (added 2026-09-24, no counterpart in the source repository).** The general
+form plus the three things a NOAA variant carries here: the `noaa` script submitter, the
+per-site SLURM **Account** and **QoS** dropdowns shown for `existing` resources (as in
+`hsp.yaml`), and a **Set Up Install Parent Directory** step. That step picks the install
+tree at run time because NOAA home quotas are small and this workflow builds a virtualenv
+there (and downloads a standalone python when the system one predates FastAPI's minimum):
+`/contrib/pw` on Hera, Mercury and Ursa, `/usw/rdhpcs/software/pw` on Gaea, `${HOME}/pw/software`
+on PPAN, cloud clusters and anything unrecognised. Unlike the staged-tarball workflows
+(`webshell`), which let a non-privileged account reuse a shared copy read-only, this one
+**must** be able to write to the tree it uses — the controller rebuilds the virtualenv
+whenever it fails to import — so the shared directory is taken only when a `mkdir` probe
+succeeds. `render_settings.parent_install_dir` therefore carries no default here; an
+explicit value still wins.
+
 **Cancel.** The `render` job runs the dispatcher in its own process group (`set -m`) and
 its step cleanup kills the group, so a cancel during the render stops the local renders,
 the `srun` allocation and the site SSH sessions (the remote `bash -s` trees get the
@@ -272,6 +286,13 @@ Three runs failed in between — `communal-wildcat`, `brave-marlin`, `probable-r
 all `Dispatch Renders ... syntax error near unexpected token` — because the canary merge
 left conflict markers in `dispatch_renders.sh` and they were pushed. Their rows are in
 the CSVs.
+
+**noaa tests, 2026-09-24 (`pw://alvaro/gcpsmall`):** PASS `engaging-sunfish` (login node,
+37 s) and PASS `humble-robin` (`srun` on a compute node, 170 s), both `cleanup=ok`. As for
+the other `noaa` variants here, a cloud cluster exercises the form, the `noaa` submitter and
+the fallback branch of the install-directory step (`/home/alvaro/pw/software`); the
+per-cluster shared-directory branches and the `existing`-only account/QoS fields are
+static-only until the variant runs on a NOAA system.
 
 ## Dead branches (pre-existing breakage, now fixed)
 

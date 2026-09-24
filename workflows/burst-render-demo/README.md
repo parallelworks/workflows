@@ -91,8 +91,14 @@ across the tasks by `SLURM_PROCID`.
 account and QoS go in the **Additional Directives** editor. `yamls/hsp.yaml` is the
 HSP (`activate.hpc.mil`) form: it submits the dashboard through the `hsp` script
 submitter and adds the SLURM **Account** and **QoS** dropdowns per site (shown for
-on-prem `existing` resources) plus the DSRC `--constraint=mla` hint. The scripts are
-identical; on a cloud cluster the two variants behave the same.
+on-prem `existing` resources) plus the DSRC `--constraint=mla` hint.
+`yamls/noaa.yaml` is the NOAA (`noaa.parallel.works`) form: the `noaa` script
+submitter, the same per-site **Account** and **QoS** dropdowns, and an install
+directory chosen at run time — NOAA home directories are small, so the dashboard's
+virtualenv goes in the cluster's shared software tree (`/contrib/pw` on Hera, Mercury
+and Ursa, `/usw/rdhpcs/software/pw` on Gaea) when the account can write there, and in
+`${HOME}/pw/software` otherwise. The scripts are identical across all three; on a
+cloud cluster the variants behave the same.
 
 ## Running from the CLI
 
@@ -124,7 +130,8 @@ tiles fill in; opening it after the render shows the finished image.
 workflows/burst-render-demo/
 ├── yamls/
 │   ├── general.yaml         # Standard cloud/on-prem SLURM clusters
-│   └── hsp.yaml             # HSP form (SLURM account/QoS per site, DSRC hint)
+│   ├── hsp.yaml             # HSP form (SLURM account/QoS per site, DSRC hint)
+│   └── noaa.yaml            # NOAA form (same, plus the shared install directory)
 ├── app/                     # The only subtree a run checks out
 │   ├── controller.sh        # Dashboard host: Python, uv, dashboard virtualenv
 │   ├── start-template.sh    # Dashboard behind pw endpoints run; publishes SESSION_PORT

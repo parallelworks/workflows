@@ -4,3 +4,6 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-09-23T14:49:22Z,warm,pass,ok,6142e63,572f319,4979618,c5cf2de,c5cf2de,ray-cluster,alvaro,causal-stallion,178,
 2026-09-24T08:02:07Z,warm,pass,leftover:proc:gcs_server+squeue,ce919a2,572f319,128f406,2f5167c,2f5167c,ray-cluster-2,alvaro,loving-snake,227,
 2026-09-24T10:06:05Z,warm,pass,ok,fdcd454,572f319,128f406,2c2cede,2c2cede,ray-cluster-2,alvaro,optimal-reindeer,258,
+2026-09-24T10:44:27Z,warm,pass,kept,6c1b283,572f319,128f406,7eb0e4d,7eb0e4d,ray-cluster-2,alvaro,together-doberman,53,
+2026-09-24T10:47:10Z,warm,pass,kept,6c1b283,572f319,128f406,7eb0e4d,7eb0e4d,ray-cluster-2,alvaro,huge-moccasin,53,
+2026-09-24T10:58:23Z,warm,pass,kept,6c1b283,572f319,128f406,7eb0e4d,7eb0e4d,ray-cluster-2,alvaro,model-dassie,52,

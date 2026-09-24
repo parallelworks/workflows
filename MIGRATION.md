@@ -349,7 +349,34 @@ completes (a dead head shows up as the endpoint disappearing, with the reason in
 run only until the endpoint is up (afterwards: `logs/dispatch.out`, the `cluster_ready`
 job's log while it waits, and the dashboard's Logs tab).
 
-RAY2_RESULTS_PLACEHOLDER
+Also fixed on this branch (upstream): a rejected same-resource `sbatch`/`qsub` killed the
+dispatcher silently under `set -e` (`x=$(sbatch …)` and the job-id `grep` both abort the
+script), so neither its error line nor the dashboard's error card ever appeared; both
+now reach the dispatcher's error branch (`fail-bad-partition` shows "ERROR: sbatch
+failed: … invalid partition specified" in the run log and one `/api/worker/error` post).
+
+**Test results (ray-cluster-2, 2026-09-24, gcpsmall + workspace):** pass = the runner's
+standard criterion (run completes, endpoint listed, `pw endpoints delete`, no endpoint
+wrapper / Ray / dashboard / dispatcher / start-script process and no SLURM job left),
+or, for failure paths, the run ends in `error` with the same leftover checks.
+
+| Test | Result |
+|---|---|
+| `general/gcp-head-gcp-worker` | `loving-snake` pass with `cleanup=leftover` (the detach race: teardown killed before `setsid()`), then `optimal-reindeer` PASS, teardown 2 s after the delete (`scancel 2`, Ray stopped) |
+| `general/defaults-workspace-head` — the form defaults (workspace head, remote gcpsmall worker, `cluster_only`), kept | `enabling-llama`: run completed at 10:20; at 10:29 both Ray nodes alive and a `ray job submit` from the head ran 12 tasks on the compute node; `pw endpoints delete` → workspace clean in 2 s, the remote site noticed its session gone 7 s later and cancelled its SLURM job; nothing left on either host |
+| `hsp/gcp-head-gcp-worker` | `huge-stork` PASS (48 s to complete) |
+| `general/fail-bad-partition` (`expect: error`) | `lenient-rattler` PASS (run error, cluster torn down, no reason in the log), fix above, `hopeful-lizard` PASS (scheduler's reason shown), `firm-loon` PASS (also the dispatcher's error line and dashboard card) |
+| `hsp/fail-user-script` (`expect: error`) | `suitable-halibut` PASS: "User script failed with exit code 3", run error, teardown cancelled the worker |
+| `hsp/defaults-user-script` (batch, keep-alive off) | `new-pheasant` PASS: 12 tasks on the worker, the run deleted the endpoint and waited for `TEARDOWN_DONE`, `complete` says the cluster was torn down |
+| `general_add_worker/gcp-worker`, `hsp_add_worker/gcp-worker` against kept clusters | `climbing-muskox`, `boss-salmon` PASS: added job registered in the cluster's `slurm_jobids`; one endpoint delete cancelled both jobs |
+| `general_add_worker/workspace-head-gcp-remote-worker` against `head-only-workspace` | `engaged-tuna` PASS: the add-worker run completed, its detached session recorded in `added_dispatch_pgids`; the endpoint delete closed that session group and the remote site cancelled SLURM job 14 by itself |
+| cancel before the endpoint is up (manual; cold Ray 2.39.0 install) | `super-bass`: cancelled with no head, job or skip file yet; the submitter killed the start script, its trap ran the teardown once, nothing left |
+| cancel during the benchmark (manual) | `sterling-hornet`: the benchmark step's guard deleted the endpoint, teardown cancelled SLURM job 8, nothing left (`light-humpback`, meant as a before-ready cancel, hit the same after-release path) |
+| the Ray head dies after the run completed (manual: `kill -9` of the GCS) | `model-dassie`: three failed checks (~46 s each), FATAL 2 min 18 s after the kill, teardown cancelled SLURM job 16, all processes gone; the endpoint stayed listed as `stopped` (the wrapper cannot deregister with the ended run's key) until `pw endpoints delete`. A first attempt (`together-doberman`) was confounded by the next test starting a second head on the same host: one Ray head per host, as upstream |
+
+Not exercised on this branch either: PBS sites, unscheduled (SSH-mode) remote workers,
+multi-node sites, GPUs and the fractal workload; the PBS and SSH-mode remote scripts got
+the same session watch as the SLURM one (rendered and syntax-checked, not run).
 
 ## Dead branches (pre-existing breakage, now fixed)
 

@@ -75,10 +75,9 @@ never answers within the budget the wait job fails without touching the skip fil
 the submitter's cleanup tears the job down and the run ends in error. Which HTTP codes
 count as healthy and how long to retry are set per workflow through the call's inputs.
 
-**ray-cluster** is the compute-cluster exception to the submitter mechanics: its head
-job runs `pw endpoints run` itself (no `script_submitter`), the run stays alive holding
-the Ray cluster, and **cancelling the run is the teardown** (its tests use the runner's
-`ready_job`).
+**ray-cluster** follows the same pattern with one start script that also dispatches
+workers to other resources: `pw endpoints delete` on its endpoint tears the whole
+cluster down through the script's `cancel.sh` (a detached `teardown.sh`).
 
 **Kubernetes** (`yamls/k8s.yaml` = k8s-only example, `yamls/general_k8s.yaml` = hybrid):
 the same endpoint, registered by a `pw-cli` sidecar inside the pod; the run stays alive

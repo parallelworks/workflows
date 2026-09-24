@@ -19,6 +19,22 @@ run before the endpoint is up tears down the same way. In `cluster_only` mode wi
 **Run User Script** on and **Keep Cluster Alive** off, the run itself deletes the
 endpoint when the script finishes (a batch job), and fails if the script failed.
 
+Good to know:
+
+- **One cluster head per host.** Ray's head is host-wide: starting a head runs
+  `ray stop --force` and kills any other Ray on that host, and the head's health check
+  (`ray status`) reads whichever GCS answers on the host. Run a second cluster with its
+  head on another resource (another cluster, or the workspace).
+- **If the Ray head dies**, the head's health check notices after three failed checks
+  (a few minutes: each check against a dead GCS takes about 45 s to time out), stops
+  the dashboard and tears the workers down. The endpoint then stays listed as
+  `stopped`, because the run that registered it has ended; `pw endpoints delete
+  ray-cluster-<run-slug>` removes the entry.
+- **Cancelling the run** before it completes tears the cluster down (before the
+  endpoint is up, the script submitter's cleanup does it; after, the benchmark or
+  worker-wait step deletes the endpoint). Once the run has completed, only the
+  endpoint delete stops the cluster.
+
 ## Architecture
 
 ```

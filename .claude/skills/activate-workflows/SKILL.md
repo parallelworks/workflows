@@ -430,6 +430,19 @@ non-repetitive; point at an existing tutorial instead.
 - **Input group named `env` + a top-level `env:` block** referencing `${{ inputs.env.* }}`
   → `Expression Parser Error: max recursion exceeded`, failing **both `--dry-run` and
   `pw workflows run`** (the web UI may still submit). Rename the group (e.g. `env_vars`).
+- **The run's `PW_API_KEY` dies with the run** (verified 2026-09-24, ray-cluster-2): a
+  service that outlives its run cannot call `pw` afterwards (`Authentication has
+  expired`) — the step's key overrides the workspace's own and a cloud login node has no
+  stored context. Established `pw endpoints run` / `pw ssh` connections keep working, so
+  plan teardowns that need no `pw` call (kill the local end of a tunnel and let the
+  remote end notice).
+- **`ssh host 'bash -s'` without a tty never signals the remote script when the client
+  dies**: the remote side runs on, orphaned. Have it find its `sshd` ancestor at start
+  (`ps -o comm=` up the parent chain) and exit through its cleanup trap when that
+  process is gone (workflows/ray-cluster/app/dispatch_workers.sh).
+- **A trap that starts a detached helper (`setsid … &`) and then `kill -- -$$` races**:
+  the fork can be killed before it calls `setsid()`. Have the helper touch a marker as
+  its first action and wait for it before returning.
 - **A step's `cleanup:` runs after a successful step too** (verified 2026-09-23 on
   ray-cluster's add_worker): a cleanup written for cancellation tore down what the step
   had just set up. Guard it with a marker the run block touches on success.

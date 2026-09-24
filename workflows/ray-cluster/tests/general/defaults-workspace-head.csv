@@ -1,2 +1,3 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-09-23T16:18:04Z,,pass,kept,aee4c6c,572f319,4979618,a438ed6,a438ed6,ray-cluster,alvaro,funky-emu,22,
+2026-09-24T10:16:07Z,,pass,kept,3bf959f,572f319,128f406,e5b0cab,e5b0cab,ray-cluster-2,alvaro,enabling-llama,275,

@@ -39,7 +39,7 @@ jobs:
           echo '${{ inputs.workers }}' > workers.json
       - name: Create Service Script
         run: |
-          rm -rf HOSTNAME SESSION_PORT RAY_HEAD_IP PYTHON_VERSION ENDPOINT_NAME job.started job.ended dashboard.pid dispatch.pid DISPATCH_FAILED TEARDOWN_DONE slurm_jobids added_workers.jsonl .teardown.started .teardown.lock
+          rm -rf HOSTNAME SESSION_PORT RAY_HEAD_IP PYTHON_VERSION ENDPOINT_NAME job.started job.ended dashboard.pid dispatch.pid DISPATCH_FAILED TEARDOWN_DONE WORKLOAD_DONE WORKERS_READY USER_SCRIPT_DONE slurm_jobids added_workers.jsonl .teardown.started .teardown.lock
           # This script starts the cluster
           cp inputs.sh start-service-${PW_JOB_ID}.sh
 
@@ -136,6 +136,15 @@ jobs:
           # Count worker sites
           export NUM_WORKER_SITES=$(python3 -c "import json; print(len(json.load(open('${PW_PARENT_JOB_DIR%/}/workers.json'))))")
           bash workflows/ray-cluster/app/run_benchmark.sh
+          touch "${PW_PARENT_JOB_DIR%/}/WORKLOAD_DONE"
+        cleanup: |
+          # Cancelled or failed before the workload step finished: a cluster left behind a
+          # run that did not complete is torn down (the run's pw key is still valid here)
+          if [ ! -f "${PW_PARENT_JOB_DIR%/}/WORKLOAD_DONE" ] && [ -f "${PW_PARENT_JOB_DIR%/}/ENDPOINT_NAME" ]; then
+            command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+            echo "Workload step did not finish; deleting endpoint $(cat "${PW_PARENT_JOB_DIR%/}/ENDPOINT_NAME")"
+            pw endpoints delete "$(cat "${PW_PARENT_JOB_DIR%/}/ENDPOINT_NAME")" 2>/dev/null || true
+          fi
 
   cluster_ready:
     needs: [wait_for_endpoint]
@@ -198,6 +207,15 @@ jobs:
           echo "  Ray head: ${RAY_HEAD_IP}:6379"
           echo "  Dashboard: ${DASHBOARD_URL}"
           echo "=========================================="
+          touch "${JOB_DIR}/WORKERS_READY"
+        cleanup: |
+          # Cancelled or failed before the workload step finished: a cluster left behind a
+          # run that did not complete is torn down (the run's pw key is still valid here)
+          if [ ! -f "${PW_PARENT_JOB_DIR%/}/WORKERS_READY" ] && [ -f "${PW_PARENT_JOB_DIR%/}/ENDPOINT_NAME" ]; then
+            command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+            echo "Workload step did not finish; deleting endpoint $(cat "${PW_PARENT_JOB_DIR%/}/ENDPOINT_NAME")"
+            pw endpoints delete "$(cat "${PW_PARENT_JOB_DIR%/}/ENDPOINT_NAME")" 2>/dev/null || true
+          fi
       - name: Run the user script
         if: ${{ inputs.workload_settings.run_user_script == true }}
         run: |
@@ -252,7 +270,16 @@ jobs:
             done
             cat "${JOB_DIR}/logs/teardown.log" 2>/dev/null || echo "(teardown log not written yet)"
           fi
+          touch "${JOB_DIR}/USER_SCRIPT_DONE"
           exit ${status}
+        cleanup: |
+          # Cancelled or failed before the workload step finished: a cluster left behind a
+          # run that did not complete is torn down (the run's pw key is still valid here)
+          if [ ! -f "${PW_PARENT_JOB_DIR%/}/USER_SCRIPT_DONE" ] && [ -f "${PW_PARENT_JOB_DIR%/}/ENDPOINT_NAME" ]; then
+            command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+            echo "Workload step did not finish; deleting endpoint $(cat "${PW_PARENT_JOB_DIR%/}/ENDPOINT_NAME")"
+            pw endpoints delete "$(cat "${PW_PARENT_JOB_DIR%/}/ENDPOINT_NAME")" 2>/dev/null || true
+          fi
 
   complete:
     needs: [run_benchmark, cluster_ready]

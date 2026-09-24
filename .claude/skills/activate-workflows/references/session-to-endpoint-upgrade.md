@@ -210,7 +210,36 @@ Contract differences vs v3:
 7. `parallelworks/checkout` → your **dev branch** while testing; **flip to `main`
    after merge** (both openvscode and jupyterlab needed this follow-up).
 
-## Variant — a service started by a long-lived job, not by `script_submitter` (ray-cluster, 2026-09-23)
+## Variant — a multi-resource service whose start script dispatches to other clusters (ray-cluster, 2026-09-24)
+
+`workflows/ray-cluster` first joined with its head job running `pw endpoints run` and the
+run holding the cluster (k8s-style, cancel = teardown); it was then reshaped into the
+standard lifecycle. What it took, beyond Steps 2–3:
+
+- **Keep the port allocation** when other components already need the number
+  (`pw agent open-port` → `SESSION_PORT`, read by the workers' tunnels) and pass it to
+  the wrapper with **`pw endpoints run --port <n>`**; `{port}` is for services nobody
+  else has to know about.
+- **Everything the cluster needs runs under the submitted start script**: the head, the
+  dashboard wrapper (in the background, its PID watched by a Ray health loop that kills
+  it when the head dies) and the dispatcher that opens the SSH tunnels to the other
+  sites. `script_submitter` starts the script with `setsid`, so the whole tree outlives
+  the run; the start script returns only when the wrapper is gone.
+- **`cancel.sh` runs the teardown detached** (`setsid teardown.sh … &`): tearing a
+  multi-site cluster down means ssh round trips to cancel remote jobs, which must not die
+  with the process group the trap is killing (`kill -- -$$`). Guard against the double
+  call (trap + submitter cleanup) with a lock, and leave a marker (`TEARDOWN_DONE`) the
+  run can wait for when it tears the cluster down itself.
+- **Jobs that need the workers run after the release** and fail the run when the
+  dispatcher gave up (a marker file) instead of waiting on a cluster nobody can compute
+  on; the run completes when they finish, the cluster lives on under the endpoint.
+- **A batch mode inside a service workflow** (run a user script, then stop) deletes the
+  endpoint itself from the run and waits for the teardown marker; a failing script fails
+  the run.
+- Test the failure paths on purpose with the runner's `_test.expect: error` (a rejected
+  scheduler directive, a failing user script) and check the leftovers after each.
+
+## Variant — a service started by a long-lived job, not by `script_submitter` (superseded, kept for the k8s-style lifecycle)
 
 `workflows/ray-cluster` starts its dashboard from a job that then keeps running (it
 holds a Ray cluster; cancelling the run is the teardown, as on k8s), so Steps 2–3 do

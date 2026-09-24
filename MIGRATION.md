@@ -273,6 +273,84 @@ second (the runner's follow-up `pw endpoints delete` finds no session).
 | `general/head-only-workspace` + `general_add_worker/workspace-head-gcp-remote-worker` (a remote site attached to a running cluster) | `strong-owl` + `blessed-ferret`: FAIL as described above (timeout, orphaned worker); `novel-boa` + `peaceful-catfish` after the fixes: PASS in 80 s, worker attached and still alive a minute after the add-worker run ended (`ray status` 1 CPU, tunnel session alive), Ray lists it under its tunnel IP `127.0.2.1`, the dashboard topology shows it (`site-2`, `gcpsmall`), and cancelling the cluster cancelled the added job (`Cancelling SLURM job 25`) |
 | `hsp/defaults-user-script` — hsp form defaults for the worker row (no partition, gres, account or QoS; the `##SBATCH --constraint=mla` hint left in place), `cluster_only` with **Run User Script** on and a script that runs 12 Ray tasks and fails unless they ran off the head | `powerful-albacore` PASS (48 s to `complete`, cleanup ok): the hint rendered as a harmless `##SBATCH` comment, the script ran on the head with `RAY_ADDRESS` set and every task executed on the SLURM compute node |
 | final remote check (`becoming-fawn` + `glorious-hog`) | after the streamer-trap and dashboard fixes: add-worker PASS in 84 s, the dashboard listed the tunnel worker (`site-2`, `gcpsmall`) at once and kept it, and 60 s after cancelling the cluster there was no endpoint, no process on the workspace and no SLURM job or remote-worker process on gcpsmall |
+### ray-cluster-2: the run exits, the endpoint owns the cluster (2026-09-24)
+
+Branch `ray-cluster-2` (on top of `ray-cluster`) reshapes the workflow into the repo's
+standard lifecycle. Before, the head job ran `pw endpoints run` itself and the run stayed
+`running` for the cluster's life (cancel = teardown, like the k8s workflows). Now:
+
+- **One start script under `script_submitter`.** `preprocessing` checks out `app/`,
+  writes `inputs.sh` (`ray_version`, `endpoint_name`, `head_resource_name`,
+  `workload_type`) and `workers.json` (the worker rows), and assembles
+  `inputs.sh` + the generic cleanup trap + `app/start-template.sh`. `session_runner`
+  submits it through `workflows/script_submitter/v3.6/<variant>.yaml` with
+  `scheduler: false` (the head needs `pw ssh` and the pwcli key, so it runs on the login
+  node or the workspace) and `skip_cleanups_file`; `wait_for_endpoint` releases it once
+  `ray-cluster-<slug>` answers. The submitter's `setsid` makes the start script its own
+  process group, so the run's end does not touch it.
+- **`start-template.sh` writes `cancel.sh` first**, then runs `start_ray_head.sh`, which
+  installs Ray, starts the head, writes the coordination files, runs
+  `pw endpoints run --port <allocated port>` around the dashboard, posts the
+  `cluster_only` config to the dashboard before any worker can register, launches
+  `dispatch_workers.sh` (output to `logs/dispatch.out`, failure recorded in
+  `DISPATCH_FAILED`) and watches Ray. It returns when the wrapper is gone — deleted, or
+  killed by the Ray health monitor — and exits non-zero unless the endpoint is somehow
+  still listed. The trap then runs `cancel.sh`.
+- **`cancel.sh` starts `app/teardown.sh` detached (`setsid`)** so the ssh round trips to
+  remote sites survive the process-group kill: local SLURM jobs from `slurm_jobids`,
+  remote sites from `workers.json` + `added_workers.jsonl`, the dispatcher, Ray, the
+  wrapper and the endpoint; a lock directory keeps a second caller (trap and submitter
+  cleanup can both run `cancel.sh`) from running it twice; `TEARDOWN_DONE` marks the end.
+- **Jobs after the release.** `run_benchmark` (benchmark/fractal) and `cluster_ready`
+  (`cluster_only`) run once the endpoint is healthy; the run completes when they finish.
+  `cluster_ready` streams `logs/dispatch.out` while waiting up to 10 min for the first
+  worker CPU (skipped for a head-only cluster), **fails the run and deletes the endpoint
+  when the dispatcher gave up** (`DISPATCH_FAILED`: rejected `sbatch`/`qsub`, unreachable
+  site) instead of proceeding with nothing to compute on, then runs the user script; with
+  **Keep Cluster Alive** off it deletes the endpoint itself and waits for `TEARDOWN_DONE`
+  (a batch job), and a failing script fails the run. `run_benchmark.sh` also stops on
+  `DISPATCH_FAILED`. `complete` prints the endpoint URL and the delete command, or says
+  the cluster was torn down.
+- **add_worker** is unchanged: it reads the same coordination files from the cluster's
+  job dir and appends to `slurm_jobids` / `added_workers.jsonl`, which `teardown.sh`
+  reads.
+- **Tests** use the runner's standard criterion (run completes, endpoint listed, `pw
+  endpoints delete` + leftover checks). The runner gained `_test.expect` for failure-path
+  tests (`error` = pass when the run fails as designed and nothing is left behind).
+
+- **The teardown cannot use `pw` once the run has completed.** The start script
+  inherits the run's `PW_API_KEY` (the step's key overrides the workspace's own, and a
+  cloud login node has no stored context at all); the key expires with the run, so
+  every `pw` call in the teardown answered "Authentication has expired" (first
+  `optimal-reindeer` teardown log). Established `pw ssh` tunnels keep working, so the
+  workers are unaffected; only reaching a remote site to cancel it is. Remote sites
+  therefore **tear themselves down**: each login-node script (SLURM, PBS and direct-SSH
+  modes) finds its session's `sshd` process at start and, in its long-running loop,
+  exits through its existing cleanup trap (cancel the job, kill the proxies, stop Ray)
+  when that process is gone — a session without a tty gets no signal when the client
+  disappears, which is also how upstream orphaned sites when a dispatcher died. The
+  teardown kills the dispatcher trees (its own and add_worker's detached sessions,
+  recorded as process groups in `added_dispatch_pgids`) and the remote ends follow
+  within one loop interval. The `pw ssh` cleanup calls stay as a best effort for the
+  cancel-before-ready path, when the key is still valid, and skip the head's own
+  resource (its jobs are in `slurm_jobids`; upstream's `scancel --name=ray-worker-*`
+  there could hit another cluster of the same user). Verified in isolation first: a
+  dispatcher-style `ssh … 'bash -s'` session from the workspace to gcpsmall, its local
+  client killed, the remote side ran its trap 2 s later.
+- **`cancel.sh` waits for the teardown to detach.** The first test's teardown log was
+  empty: the background fork was killed by the trap's `kill -- -$$` before it called
+  `setsid()`. `teardown.sh` now touches `.teardown.started` as its first action (it is in
+  its own session by then) and `cancel.sh` returns only after seeing it, then waits up
+  to 4 min for `TEARDOWN_DONE`.
+
+What is lost, deliberately: the run no longer mirrors the cluster's health after it
+completes (a dead head shows up as the endpoint disappearing, with the reason in
+`run.<id>.out` and `logs/dashboard.log`), and the dispatcher's output streams into the
+run only until the endpoint is up (afterwards: `logs/dispatch.out`, the `cluster_ready`
+job's log while it waits, and the dashboard's Logs tab).
+
+RAY2_RESULTS_PLACEHOLDER
+
 ## Dead branches (pre-existing breakage, now fixed)
 
 Three selected YAMLs checked out branches that **no longer exist upstream** — those

@@ -430,6 +430,24 @@ non-repetitive; point at an existing tutorial instead.
 - **Input group named `env` + a top-level `env:` block** referencing `${{ inputs.env.* }}`
   → `Expression Parser Error: max recursion exceeded`, failing **both `--dry-run` and
   `pw workflows run`** (the web UI may still submit). Rename the group (e.g. `env_vars`).
+- **Never paste JSON into a `python -c` source string.** In `json.loads('''${SITES_JSON}''')`
+  python un-escapes the document first, so a `\n` inside a value becomes a real newline and
+  parsing dies with `Invalid control character` — one multi-line `editor` input is enough
+  (the hsp directives default ends in one; burst-render-demo on `jean`, 2026-09-24). Read it
+  from the environment (`os.environ["FOO_JSON"]`) or stdin, and single-quote the python
+  source. Keep a multi-line directives value in one recorded test so it stays covered.
+- **An empty group item is default-filled** (verified 2026-09-24): a hidden input sent as
+  `"render_settings": {"name": ""}` reached the workflow as its default, like a top-level
+  input; only a **list-template** field keeps `""` (reference §12). Reruns built from a past
+  run's INPUTS tab send `""` for every hidden field, so this is the normal path. Still build
+  a name several jobs must agree on **once**, published as a preprocessing output
+  (`workflows/burst-render-demo`).
+- **`parallelworks/checkout` leaves no `.git`** (verified 2026-09-24): it materializes the
+  files only, so a script cannot read back which repo or branch the run used. To give another
+  machine the same code, send what this one already has
+  (`tar -czf - ... | ssh <site> "tar -xzf - -C ..."`) instead of cloning there: one branch
+  reference instead of two, and it works where the site has no GitHub access
+  (`workflows/burst-render-demo`).
 - **Only the workspace and `existing` resources carry the platform SSH key** (`~/.ssh/pwcli`,
   verified 2026-09-23: present on the workspace and `a30gpuserver`, absent on gcpsmall's login
   node, where `pw ssh` outside a run also has no context). A job that opens `ssh -i

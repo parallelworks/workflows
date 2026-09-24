@@ -6,10 +6,11 @@
 #     this node, or on compute nodes through srun, which reach the dashboard on this
 #     node's hostname. No tunnel and no platform SSH key are needed, which is what
 #     makes a cloud login node (no ~/.ssh/pwcli) a valid dashboard host for itself.
-#   - any other site is reached over SSH with a reverse tunnel back to the dashboard;
-#     the site clones this repository (sparse, the app/ directory) and runs
-#     render_tiles.sh, through srun plus a TCP proxy that exposes the tunnel to the
-#     compute nodes when the site schedules.
+#   - any other site is reached over SSH with a reverse tunnel back to the dashboard.
+#     The render scripts are copied to it over that same SSH path (no clone, so the site
+#     needs no GitHub access and always runs this host's copy) and run there, through
+#     srun plus a TCP proxy that exposes the tunnel to the compute nodes when the site
+#     schedules.
 #
 # REMOTE-SHELL COMPATIBILITY (bash, tcsh, sh)
 # ===========================================
@@ -41,8 +42,6 @@
 #   IMAGE_SIZE         - Tile resolution
 #   PALETTE            - Color palette
 #   PARALLELISM        - Worker count ("auto" or number)
-#   REPO_URL           - Repository remote sites clone for the render scripts
-#   REPO_BRANCH        - Branch of that repository
 #   PW_RUN_SLUG        - Names the per-run work directory on remote sites
 
 set -eo pipefail
@@ -50,8 +49,6 @@ set -eo pipefail
 JOB_DIR="${PW_PARENT_JOB_DIR%/}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_REL="workflows/burst-render-demo/app"
-REPO_URL="${REPO_URL:-https://github.com/parallelworks/workflows.git}"
-REPO_BRANCH="${REPO_BRANCH:-canary}"
 WORK_DIR=$(mktemp -d)
 trap "rm -rf ${WORK_DIR}" EXIT
 
@@ -75,47 +72,52 @@ if [ -z "${PW_CMD}" ]; then
     exit 1
 fi
 
-# Parse targets JSON to get site list with scheduler config
-SITES_JSON=$(${PYTHON_CMD} -c "
-import json, sys, os
+# Parse targets JSON to get site list with scheduler config.
+# Every python -c below is single-quoted and reads its JSON from the environment or
+# stdin: a JSON document pasted into a python string literal is un-escaped by python
+# first, so a form value containing a newline (the hsp directives default) or a quote
+# reaches json.loads as an invalid control character.
+SITES_JSON=$(${PYTHON_CMD} -c '
+import json, os
 
-targets = json.loads(os.environ['TARGETS_JSON'])
-head_name = os.environ.get('HEAD_RESOURCE_NAME', '')
+targets = json.loads(os.environ["TARGETS_JSON"])
+head_name = os.environ.get("HEAD_RESOURCE_NAME", "")
 sites = []
 for i, t in enumerate(targets):
-    res = t.get('resource', {})
+    res = t.get("resource", {})
     # Handle resource as string (CLI) or object (UI)
     if isinstance(res, str):
-        res = {'name': res.rsplit('/', 1)[-1]}
+        res = {"name": res.rsplit("/", 1)[-1]}
     # Scheduler config
-    use_scheduler = t.get('scheduler', False)
+    use_scheduler = t.get("scheduler", False)
     if isinstance(use_scheduler, str):
-        use_scheduler = use_scheduler.lower() == 'true'
-    scheduler_type = res.get('schedulerType', '')
+        use_scheduler = use_scheduler.lower() == "true"
+    scheduler_type = res.get("schedulerType", "")
     # Default to slurm when scheduler requested but type unknown
     if use_scheduler and not scheduler_type:
-        scheduler_type = 'slurm'
-    slurm = t.get('slurm', {}) or {}
-    name = res.get('name', f'site-{i}')
+        scheduler_type = "slurm"
+    slurm = t.get("slurm", {}) or {}
+    name = res.get("name", "site-%d" % i)
     sites.append({
-        'index': i,
-        'name': name,
-        'ip': res.get('ip', ''),
-        'user': res.get('user', ''),
-        'scheduler_type': scheduler_type,
-        'use_scheduler': use_scheduler,
-        'is_local': bool(head_name) and name == head_name,
-        'slurm_partition': slurm.get('partition', ''),
-        'slurm_account': slurm.get('account', ''),
-        'slurm_qos': slurm.get('qos', ''),
-        'slurm_time': slurm.get('time', '00:05:00'),
-        'slurm_nodes': slurm.get('nodes', '1'),
-        'slurm_directives': slurm.get('scheduler_directives', ''),
+        "index": i,
+        "name": name,
+        "ip": res.get("ip", ""),
+        "user": res.get("user", ""),
+        "scheduler_type": scheduler_type,
+        "use_scheduler": use_scheduler,
+        "is_local": bool(head_name) and name == head_name,
+        "slurm_partition": slurm.get("partition", ""),
+        "slurm_account": slurm.get("account", ""),
+        "slurm_qos": slurm.get("qos", ""),
+        "slurm_time": slurm.get("time", "00:05:00"),
+        "slurm_nodes": slurm.get("nodes", "1"),
+        "slurm_directives": slurm.get("scheduler_directives", ""),
     })
 print(json.dumps(sites))
-")
+')
+export SITES_JSON
 
-NUM_SITES=$(echo "${SITES_JSON}" | ${PYTHON_CMD} -c "import sys,json;print(len(json.load(sys.stdin)))")
+NUM_SITES=$(${PYTHON_CMD} -c 'import json, os; print(len(json.loads(os.environ["SITES_JSON"])))')
 
 echo "=========================================="
 echo "Dispatch Renders: $(date)"
@@ -126,14 +128,14 @@ echo "Grid:           ${GRID_SIZE}x${GRID_SIZE}"
 echo "Image size:     ${IMAGE_SIZE}px"
 echo "Dashboard:      localhost:${DASHBOARD_PORT} on $(hostname)"
 echo "Dashboard host: ${HEAD_RESOURCE_NAME:-unknown}"
-echo "Render scripts: ${REPO_URL}@${REPO_BRANCH} (${APP_REL})"
+echo "Render scripts: ${SCRIPT_DIR}"
 
 # Calculate tile ranges for each site
-TILE_RANGES=$(${PYTHON_CMD} -c "
-import json, sys, os, math
+TILE_RANGES=$(${PYTHON_CMD} -c '
+import json, os
 
-sites = json.loads('''${SITES_JSON}''')
-total = int(os.environ['TOTAL_TILES'])
+sites = json.loads(os.environ["SITES_JSON"])
+total = int(os.environ["TOTAL_TILES"])
 n = len(sites)
 
 # Distribute tiles as evenly as possible
@@ -143,23 +145,25 @@ start = 0
 ranges = []
 for i in range(n):
     count = base + (1 if i < extra else 0)
-    ranges.append({'index': i, 'name': sites[i]['name'], 'start': start, 'end': start + count})
+    ranges.append({"index": i, "name": sites[i]["name"], "start": start, "end": start + count})
     start += count
 print(json.dumps(ranges))
-")
+')
+export TILE_RANGES
 
 echo ""
 echo "Tile assignments:"
-echo "${TILE_RANGES}" | ${PYTHON_CMD} -c "
-import sys, json, os
-ranges = json.load(sys.stdin)
-sites = json.loads('''${SITES_JSON}''')
+${PYTHON_CMD} -c '
+import json, os
+ranges = json.loads(os.environ["TILE_RANGES"])
+sites = json.loads(os.environ["SITES_JSON"])
 for r in ranges:
-    s = sites[r['index']]
-    mode = s.get('scheduler_type', 'ssh') if s.get('use_scheduler') else 'ssh'
-    where = 'this host' if s.get('is_local') else 'remote'
-    print(f\"  Site {r['index']} ({r['name']}): tiles {r['start']}-{r['end']-1} ({r['end']-r['start']} tiles) [{mode}, {where}]\")
-"
+    s = sites[r["index"]]
+    mode = s.get("scheduler_type", "ssh") if s.get("use_scheduler") else "ssh"
+    where = "this host" if s.get("is_local") else "remote"
+    print("  Site {} ({}): tiles {}-{} ({} tiles) [{}, {}]".format(
+        r["index"], r["name"], r["start"], r["end"] - 1, r["end"] - r["start"], mode, where))
+'
 
 # srun options for a SLURM site. Additional directives arrive as #SBATCH lines; srun
 # takes the same long options, so they are appended as options (trailing comments and
@@ -305,26 +309,32 @@ PYEOF
     fi
     echo "[${site_id}] Tunnel port: ${tunnel_port} (remote localhost -> dashboard)"
 
-    # Build the remote render script: a per-run work directory, a sparse clone of this
-    # repository for the render scripts, then render_tiles.sh
+    # Ship the render scripts over this same SSH path rather than having the site clone
+    # the repository: it runs exactly the files the dashboard host checked out, needs no
+    # GitHub access (restricted HPC networks have none), and there is no second branch
+    # reference to keep in step with the workflow's own checkout. The remote command
+    # stays POSIX-common so a tcsh login shell can interpret it.
+    local remote_work="pw/jobs/burst_render_remote/${PW_RUN_SLUG:-manual}"
+    echo "[${site_id}] Shipping the render scripts to ${site_name}:~/${remote_work}/app..."
+    if ! tar -C "${SCRIPT_DIR}" -czf - render_tiles.sh renderer.py post_tile.py | \
+        ssh "${ssh_base[@]}" "${PW_USER}@${site_name}" \
+            "mkdir -p \$HOME/${remote_work}/app && tar -xzf - -C \$HOME/${remote_work}/app"; then
+        echo "[${site_id}] [ERROR] Could not copy the render scripts to ${site_name}"
+        return 1
+    fi
+
+    # Build the remote render script
     local script_file="${WORK_DIR}/render_${site_id}.sh"
     cat > "${script_file}" <<RENDER_SCRIPT
 #!/bin/bash
 set -eo pipefail
-WORK="\${HOME}/pw/jobs/burst_render_remote/${PW_RUN_SLUG:-manual}"
-mkdir -p "\${WORK}"
+WORK="\${HOME}/${remote_work}"
 cd "\${WORK}"
 echo "Work dir: \${WORK} on \$(hostname)"
 
 command -v python3 >/dev/null 2>&1 || { echo "[ERROR] python3 not found on \$(hostname)"; exit 1; }
 echo "Python: \$(python3 --version 2>&1)"
-
-echo "Checking out ${REPO_URL}@${REPO_BRANCH} (${APP_REL})..."
-rm -rf _checkout_tmp workflows
-git clone --quiet --depth 1 --branch ${REPO_BRANCH} --sparse --filter=blob:none ${REPO_URL} _checkout_tmp
-(cd _checkout_tmp && git sparse-checkout set ${APP_REL})
-cp -r _checkout_tmp/workflows . && rm -rf _checkout_tmp
-[ -f "${APP_REL}/render_tiles.sh" ] || { echo "[ERROR] ${APP_REL}/render_tiles.sh missing after checkout"; exit 1; }
+[ -f app/render_tiles.sh ] || { echo "[ERROR] the render scripts are missing in \${WORK}/app"; exit 1; }
 
 export SITE_ID='${site_id}'
 export CLUSTER_NAME='${site_name}'
@@ -376,8 +386,8 @@ trap cleanup EXIT
 export DASHBOARD_URL="http://\${LOGIN_HOST}:\${PROXY_PORT}"
 export SCHEDULER_TYPE='slurm'
 
-echo "Submitting to SLURM: ${srun_cmd} bash ${APP_REL}/render_tiles.sh"
-${srun_cmd} bash ${APP_REL}/render_tiles.sh
+echo "Submitting to SLURM: ${srun_cmd} bash app/render_tiles.sh"
+${srun_cmd} bash app/render_tiles.sh
 RENDER_SCRIPT
     else
         # SSH mode: run directly on the remote host; the dashboard is reachable
@@ -387,7 +397,7 @@ RENDER_SCRIPT
 export DASHBOARD_URL='http://localhost:${tunnel_port}'
 export SCHEDULER_TYPE='ssh'
 
-bash ${APP_REL}/render_tiles.sh
+bash app/render_tiles.sh
 RENDER_SCRIPT
     fi
 
@@ -409,14 +419,15 @@ PIDS=()
 SITE_NAMES=()
 
 for i in $(seq 0 $((NUM_SITES - 1))); do
-    site() { echo "${SITES_JSON}" | ${PYTHON_CMD} -c "import sys,json;print(json.load(sys.stdin)[${i}].get('$1',''))"; }
+    site() { SITE_KEY="$1" SITE_INDEX="${i}" ${PYTHON_CMD} -c 'import json, os; print(json.loads(os.environ["SITES_JSON"])[int(os.environ["SITE_INDEX"])].get(os.environ["SITE_KEY"], ""))'; }
     site_name=$(site name)
     site_ip=$(site ip)
     is_local=$(site is_local)
     use_scheduler=$(site use_scheduler)
     scheduler_type=$(site scheduler_type)
-    tile_start=$(echo "${TILE_RANGES}" | ${PYTHON_CMD} -c "import sys,json;print(json.load(sys.stdin)[${i}]['start'])")
-    tile_end=$(echo "${TILE_RANGES}" | ${PYTHON_CMD} -c "import sys,json;print(json.load(sys.stdin)[${i}]['end'])")
+    range() { RANGE_KEY="$1" SITE_INDEX="${i}" ${PYTHON_CMD} -c 'import json, os; print(json.loads(os.environ["TILE_RANGES"])[int(os.environ["SITE_INDEX"])][os.environ["RANGE_KEY"]])'; }
+    tile_start=$(range start)
+    tile_end=$(range end)
 
     dispatch_mode="ssh"
     srun_cmd=""

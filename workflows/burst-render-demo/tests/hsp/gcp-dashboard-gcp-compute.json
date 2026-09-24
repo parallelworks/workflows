@@ -22,8 +22,10 @@
       "slurm": {
         "partition": "compute",
         "nodes": "1",
-        "time": "00:10:00",
-        "scheduler_directives": ""
+        "time": "",
+        "scheduler_directives": "##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems\n",
+        "account": "",
+        "qos": ""
       }
     }
   ],

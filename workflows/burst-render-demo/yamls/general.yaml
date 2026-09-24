@@ -25,7 +25,8 @@ jobs:
           cat <<'EOF' >> inputs.sh
           PATH=$HOME/pw:$PATH
           service_parent_install_dir="${{ inputs.render_settings.parent_install_dir }}"
-          pw_endpoints_args="--name ${{ inputs.render_settings.name }}-${PW_RUN_SLUG}"
+          service_name="${{ inputs.render_settings.name }}"
+          pw_endpoints_args="--name ${service_name:-burst-render}-${PW_RUN_SLUG}"
           EOF
           # Remove empty variables
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
@@ -64,6 +65,8 @@ jobs:
           echo "::notice::Starting service"
           EOF
           cat workflows/burst-render-demo/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          service_name="${{ inputs.render_settings.name }}"
+          echo "ENDPOINT_NAME=${service_name:-burst-render}-${PW_RUN_SLUG}" | tee -a $OUTPUTS
           echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
           echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
 
@@ -114,7 +117,7 @@ jobs:
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
-          endpoint_name: ${{ inputs.render_settings.name }}-${PW_RUN_SLUG}
+          endpoint_name: ${{ needs.preprocessing.outputs.ENDPOINT_NAME }}
           host: ${{ inputs.head.resource.ip }}
           skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
       - name: Cancel Script Submitter
@@ -125,6 +128,7 @@ jobs:
 
   render:
     needs:
+      - preprocessing
       - wait_for_endpoint
     ssh:
       remoteHost: ${{ inputs.head.resource.ip }}
@@ -151,8 +155,6 @@ jobs:
           export PARALLELISM="${{ inputs.render_settings.parallelism }}"
           export TARGETS_JSON='${{ inputs.targets }}'
           export HEAD_RESOURCE_NAME='${{ inputs.head.resource.name }}'
-          export REPO_URL=https://github.com/parallelworks/workflows.git
-          export REPO_BRANCH=burst-render-demo
           # Own process group, so a cancel takes down the ssh sessions, srun and local
           # renders with the dispatcher
           set -m
@@ -167,7 +169,7 @@ jobs:
       - name: Summary
         run: |
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          endpoint_name="${{ inputs.render_settings.name }}-${PW_RUN_SLUG}"
+          endpoint_name="${{ needs.preprocessing.outputs.ENDPOINT_NAME }}"
           url=$(pw endpoints list | awk -F'\t' -v name="${endpoint_name}" '$1 == name {print $3}')
           grid_size=${{ inputs.render_settings.grid_size }}
           echo "=========================================="
@@ -275,6 +277,7 @@ jobs:
             type: string
             hidden: true
             default: burst-render
+            tooltip: Endpoint name prefix; an empty value falls back to burst-render
           parent_install_dir:
             label: Parent Install Directory
             type: string

@@ -71,7 +71,16 @@ try:
 except Exception as e:
     print(f'Warning: could not list clusters: {e}')
 
-seen = set()
+# The head's own resource is a same-resource site: its jobs are in slurm_jobids, and
+# a `scancel --name=ray-worker-*` there would hit other clusters of the same user
+head_name = ''
+try:
+    for line in open(os.path.join(job_dir, 'inputs.sh')):
+        if 'head_resource_name=' in line:
+            head_name = line.split('=', 1)[1].strip().strip('"')
+except Exception:
+    pass
+seen = {head_name} if head_name else set()
 for w in workers:
     res = w.get('resource', {})
     if isinstance(res, str):
@@ -111,11 +120,29 @@ for w in workers:
         print(f'  {name}: remote cleanup failed: {e}')
 PY
 
-# --- Dispatcher and its SSH tunnels (normally gone with the supervisor's process group) ---
+# --- Dispatchers and their SSH sessions ---
+# Closing a remote site's session is what tears that site down: its login-node
+# script watches the session and cancels its job and proxies when it goes (the
+# ssh calls above need pw, whose run key is gone once the run has completed).
+kill_tree() {
+    local pid=$1 child
+    for child in $(pgrep -P "${pid}" 2>/dev/null); do
+        kill_tree "${child}"
+    done
+    kill "${pid}" 2>/dev/null || true
+}
 if [ -f dispatch.pid ]; then
-    dpid=$(cat dispatch.pid)
-    pkill -TERM -P "${dpid}" 2>/dev/null || true
-    kill "${dpid}" 2>/dev/null || true
+    kill_tree "$(cat dispatch.pid)"
+fi
+# add_worker's detached dispatches, one process group each
+if [ -f added_dispatch_pgids ]; then
+    while IFS= read -r pgid; do
+        [ -n "${pgid}" ] || continue
+        if ps -o args= -p "${pgid}" 2>/dev/null | grep -q dispatch_workers; then
+            echo "Closing add_worker dispatch session group ${pgid}"
+            kill -- "-${pgid}" 2>/dev/null || true
+        fi
+    done < added_dispatch_pgids
 fi
 
 # --- Stop Ray head ---

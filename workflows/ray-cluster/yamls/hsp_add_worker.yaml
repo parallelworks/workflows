@@ -162,6 +162,9 @@ jobs:
           # Remote sites are torn down by the cluster run's cleanup from its worker list;
           # tell it about the sites added here
           echo '${{ inputs.workers }}' >> "${{ needs.validate_cluster.outputs.CLUSTER_JOB_DIR }}/added_workers.jsonl"
+          if [ -f "${PW_PARENT_JOB_DIR%/}/dispatch_pgids" ]; then
+            cat "${PW_PARENT_JOB_DIR%/}/dispatch_pgids" >> "${{ needs.validate_cluster.outputs.CLUSTER_JOB_DIR }}/added_dispatch_pgids"
+          fi
           touch "${PW_PARENT_JOB_DIR%/}/WORKERS_DISPATCHED"
         cleanup: |
           # The cleanup also runs after a successful dispatch; the workers must then stay

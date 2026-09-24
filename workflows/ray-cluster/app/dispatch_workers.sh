@@ -726,6 +726,29 @@ mkdir -p "\${WORK}"
 cd "\${WORK}"
 export PW_PARENT_JOB_DIR="\${WORK}"
 
+# This script runs under the dispatcher's ssh session. When the head goes away
+# the session closes, but a session without a tty sends no signal, so the site
+# would run until walltime; find the session's sshd process and watch it.
+SESSION_SSHD=""
+_p=\$PPID
+for _i in 1 2 3 4 5 6; do
+    if [ -z "\${_p}" ] || [ "\${_p}" -le 1 ]; then break; fi
+    case "\$(ps -o comm= -p \${_p} 2>/dev/null)" in
+        sshd*) SESSION_SSHD=\${_p}; break ;;
+    esac
+    _p=\$(ps -o ppid= -p \${_p} 2>/dev/null | tr -d ' ')
+done
+session_gone() {
+    [ -n "\${SESSION_SSHD}" ] && [ -z "\$(ps -o pid= -p \${SESSION_SSHD} 2>/dev/null)" ]
+}
+leave_if_session_gone() {
+    if session_gone; then
+        exec >> "\${WORK}/session_closed.log" 2>&1
+        echo "\$(date) The dispatcher's ssh session is gone: tearing this worker site down"
+        exit 0
+    fi
+}
+
 # Always fetch latest scripts
 echo 'Checking out scripts...'
 rm -rf _checkout_tmp workflows
@@ -1222,6 +1245,7 @@ while true; do
         echo "SLURM job \${SLURM_JOBID} completed."
         break
     fi
+    leave_if_session_gone
     sleep 10
 done
 WORKER_SCRIPT
@@ -1258,6 +1282,29 @@ WORK=\${PW_PARENT_JOB_DIR:-\${HOME}/pw/jobs/ray_worker_remote}
 mkdir -p "\${WORK}"
 cd "\${WORK}"
 export PW_PARENT_JOB_DIR="\${WORK}"
+
+# This script runs under the dispatcher's ssh session. When the head goes away
+# the session closes, but a session without a tty sends no signal, so the site
+# would run until walltime; find the session's sshd process and watch it.
+SESSION_SSHD=""
+_p=\$PPID
+for _i in 1 2 3 4 5 6; do
+    if [ -z "\${_p}" ] || [ "\${_p}" -le 1 ]; then break; fi
+    case "\$(ps -o comm= -p \${_p} 2>/dev/null)" in
+        sshd*) SESSION_SSHD=\${_p}; break ;;
+    esac
+    _p=\$(ps -o ppid= -p \${_p} 2>/dev/null | tr -d ' ')
+done
+session_gone() {
+    [ -n "\${SESSION_SSHD}" ] && [ -z "\$(ps -o pid= -p \${SESSION_SSHD} 2>/dev/null)" ]
+}
+leave_if_session_gone() {
+    if session_gone; then
+        exec >> "\${WORK}/session_closed.log" 2>&1
+        echo "\$(date) The dispatcher's ssh session is gone: tearing this worker site down"
+        exit 0
+    fi
+}
 
 # Always fetch latest scripts
 echo 'Checking out scripts...'
@@ -1761,6 +1808,7 @@ echo "Forward proxies ready!"
 
 # Wait for PBS job to finish
 while qstat \${PBS_JOBID} 2>/dev/null | grep -q "\${PBS_JOBID}"; do
+    leave_if_session_gone
     sleep 10
 done
 echo "PBS job \${PBS_JOBID} completed."
@@ -1781,6 +1829,29 @@ WORK=\${PW_PARENT_JOB_DIR:-\${HOME}/pw/jobs/ray_worker_remote}
 mkdir -p "\${WORK}"
 cd "\${WORK}"
 export PW_PARENT_JOB_DIR="\${WORK}"
+
+# This script runs under the dispatcher's ssh session. When the head goes away
+# the session closes, but a session without a tty sends no signal, so the site
+# would run until walltime; find the session's sshd process and watch it.
+SESSION_SSHD=""
+_p=\$PPID
+for _i in 1 2 3 4 5 6; do
+    if [ -z "\${_p}" ] || [ "\${_p}" -le 1 ]; then break; fi
+    case "\$(ps -o comm= -p \${_p} 2>/dev/null)" in
+        sshd*) SESSION_SSHD=\${_p}; break ;;
+    esac
+    _p=\$(ps -o ppid= -p \${_p} 2>/dev/null | tr -d ' ')
+done
+session_gone() {
+    [ -n "\${SESSION_SSHD}" ] && [ -z "\$(ps -o pid= -p \${SESSION_SSHD} 2>/dev/null)" ]
+}
+leave_if_session_gone() {
+    if session_gone; then
+        exec >> "\${WORK}/session_closed.log" 2>&1
+        echo "\$(date) The dispatcher's ssh session is gone: tearing this worker site down"
+        exit 0
+    fi
+}
 
 _exit_code=0
 cleanup() {
@@ -2004,6 +2075,7 @@ CONSECUTIVE_FAILS=0
 DEATH_THRESHOLD=3
 HEARTBEAT=0
 while true; do
+    leave_if_session_gone
     if ray status >/dev/null 2>&1; then
         CONSECUTIVE_FAILS=0
         HEARTBEAT=\$((HEARTBEAT + 1))
@@ -2141,6 +2213,9 @@ for i in $(seq 0 $((NUM_WORKERS - 1))); do
             dispatch_worker "${remote_args[@]}" \
                 > "${JOB_DIR}/logs/dispatch_site-${remote_site_index}.out" 2>&1 < /dev/null &
             set +m
+            # Its process group id, for the cluster's teardown (closing the session makes
+            # the remote site tear itself down)
+            echo $! >> "${JOB_DIR}/dispatch_pgids"
             echo "[site-${remote_site_index}] Dispatch log: ${JOB_DIR}/logs/dispatch_site-${remote_site_index}.out"
         else
             dispatch_worker "${remote_args[@]}" &

@@ -232,13 +232,18 @@ failed on jean at *Dispatch Renders* with
   in the script now reads its JSON from the environment and is single-quoted so the
   shell cannot expand into it either; the two compute tests carry multi-line directives
   so the shape stays covered.
-- **The remote clone target follows the checkout.** `REPO_URL`/`REPO_BRANCH` were
-  hardcoded in the YAMLs, and the canary merge (#63–#65) flipped the checkout `branch:`
-  to canary while leaving `REPO_BRANCH: burst-render-demo`, so a remote site would have
-  cloned different code than the dashboard host was running. The YAMLs no longer set
-  either; the script reads the origin and branch of the checkout in the job directory
-  (`git -C "${JOB_DIR}"`) and falls back to this repository on canary. There is now one
-  branch reference per YAML to flip.
+- **Remote sites are sent the scripts instead of cloning them.** `REPO_URL`/`REPO_BRANCH`
+  were hardcoded in the YAMLs, and the canary merge (#63–#65) flipped the checkout
+  `branch:` to canary while leaving `REPO_BRANCH: burst-render-demo`, so a remote site
+  would have cloned different code than the dashboard host was running. Deriving the
+  branch from the checkout does not work — **`parallelworks/checkout` leaves no `.git` in
+  the job directory** (verified on the workspace after run `engaging-eft`, which
+  therefore cloned canary while its dashboard host ran the dev branch). So the three
+  files a site needs (`render_tiles.sh`, `renderer.py`, `post_tile.py`) are now tarred
+  over the SSH connection the dispatcher already opens, into
+  `~/pw/jobs/burst_render_remote/<run-slug>/app/`. The site runs exactly what the
+  dashboard host checked out, needs no GitHub access (an HPC site's login node may have
+  none), and the workflow has one branch reference again — the checkout's.
 - **The endpoint name is built once** (tidy-up, not a fix). It was composed from
   `${{ inputs.render_settings.name }}` in three places that had to stay in step. The jean
   request sent `""` for that hidden field, as a rerun built from a past run's INPUTS tab
@@ -248,6 +253,25 @@ failed on jean at *Dispatch Renders* with
   name was never malformed. Preprocessing now publishes `ENDPOINT_NAME`, computed once
   with a `${service_name:-burst-render}` fallback, and the waiter and the summary read
   that output. The hsp login test carries the empty-field request shape.
+
+**Re-tested after the HSP fixes (2026-09-24, `pw://alvaro/gcpsmall`):** all five tests
+pass with `cleanup=ok`. The two compute tests now carry multi-line SLURM directives (the
+hsp one carries jean's exact values, including the empty walltime), so the parse that
+broke there is covered; the hsp login test sends the hidden fields as `""` like a rerun
+built from a past run's INPUTS tab.
+
+| Test | Result |
+|---|---|
+| `hsp/gcp-dashboard-gcp-compute` | PASS `upright-fowl`, re-run `daring-sawfish` after the transfer change: the directives default parsed, and `srun --partition=compute --nodes=1 --ntasks=1` carried neither the commented `##SBATCH` line nor an empty `--time=` |
+| `hsp/gcp-dashboard-gcp-login` | PASS `many-hawk`: `"name": ""` and `"parent_install_dir": ""` were default-filled by the platform, endpoint `burst-render-many-hawk`, `HTTP 200` |
+| `general/gcp-dashboard-gcp-compute` | PASS `good-monkfish` (3 min: the compute node was powering up) |
+| `general/gcp-dashboard-gcp-login` | PASS `oriented-quetzal` |
+| `general/workspace-dashboard-gcp-compute` | PASS `engaging-eft`, re-run `giving-tahr` after the transfer change: the scripts were tarred to `~/pw/jobs/burst_render_remote/giving-tahr/app/` over the dispatcher's SSH connection and rendered under `srun` on a compute node |
+
+Three runs failed in between — `communal-wildcat`, `brave-marlin`, `probable-reindeer`,
+all `Dispatch Renders ... syntax error near unexpected token` — because the canary merge
+left conflict markers in `dispatch_renders.sh` and they were pushed. Their rows are in
+the CSVs.
 
 ## Dead branches (pre-existing breakage, now fixed)
 

@@ -449,6 +449,12 @@ non-repetitive; point at an existing tutorial instead.
   name that several jobs must agree on **once** — in preprocessing, published as an output the
   others read (`workflows/burst-render-demo`, `tutorials/endpoint-workflows/04-subworkflow.yaml`)
   — rather than repeating the expression in each job.
+- **`parallelworks/checkout` leaves no `.git` in the job directory** (verified 2026-09-24 on
+  the workspace): it materializes the files only, so a script cannot read back which repo or
+  branch the run was started from. A job that must deliver the same code to *another* machine
+  should send the files it already has (`tar -czf - ... | ssh <site> "tar -xzf - -C ..."`)
+  rather than have that machine clone the repository — one branch reference instead of two,
+  and it works on sites with no GitHub access (see `workflows/burst-render-demo`).
 - **Only the workspace and `existing` resources carry the platform SSH key** (`~/.ssh/pwcli`,
   verified 2026-09-23: present on the workspace and `a30gpuserver`, absent on gcpsmall's login
   node, where `pw ssh` outside a run also has no context). A job that opens `ssh -i

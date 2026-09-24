@@ -6,10 +6,11 @@
 #     this node, or on compute nodes through srun, which reach the dashboard on this
 #     node's hostname. No tunnel and no platform SSH key are needed, which is what
 #     makes a cloud login node (no ~/.ssh/pwcli) a valid dashboard host for itself.
-#   - any other site is reached over SSH with a reverse tunnel back to the dashboard;
-#     the site clones this repository (sparse, the app/ directory) and runs
-#     render_tiles.sh, through srun plus a TCP proxy that exposes the tunnel to the
-#     compute nodes when the site schedules.
+#   - any other site is reached over SSH with a reverse tunnel back to the dashboard.
+#     The render scripts are copied to it over that same SSH path (no clone, so the site
+#     needs no GitHub access and always runs this host's copy) and run there, through
+#     srun plus a TCP proxy that exposes the tunnel to the compute nodes when the site
+#     schedules.
 #
 # REMOTE-SHELL COMPATIBILITY (bash, tcsh, sh)
 # ===========================================
@@ -41,10 +42,6 @@
 #   IMAGE_SIZE         - Tile resolution
 #   PALETTE            - Color palette
 #   PARALLELISM        - Worker count ("auto" or number)
-#   REPO_URL           - Repository remote sites clone for the render scripts
-#                        (default: the origin of the checkout in the job directory)
-#   REPO_BRANCH        - Branch of that repository
-#                        (default: the branch that checkout is on, else canary)
 #   PW_RUN_SLUG        - Names the per-run work directory on remote sites
 
 set -eo pipefail
@@ -52,18 +49,6 @@ set -eo pipefail
 JOB_DIR="${PW_PARENT_JOB_DIR%/}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_REL="workflows/burst-render-demo/app"
-# Remote sites clone the same repository and branch the dashboard host checked out, so a
-# run started from a development branch dispatches that branch's scripts and there is no
-# second place to keep in sync. parallelworks/checkout leaves its clone in the job dir;
-# the defaults apply when it cannot be read (no git, detached HEAD, a copied job dir).
-if [ -z "${REPO_URL}" ]; then
-    REPO_URL=$(git -C "${JOB_DIR}" config --get remote.origin.url 2>/dev/null || true)
-fi
-if [ -z "${REPO_BRANCH}" ]; then
-    REPO_BRANCH=$(git -C "${JOB_DIR}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
-fi
-case "${REPO_URL}" in '') REPO_URL="https://github.com/parallelworks/workflows.git" ;; esac
-case "${REPO_BRANCH}" in ''|HEAD) REPO_BRANCH="canary" ;; esac
 WORK_DIR=$(mktemp -d)
 trap "rm -rf ${WORK_DIR}" EXIT
 
@@ -143,7 +128,7 @@ echo "Grid:           ${GRID_SIZE}x${GRID_SIZE}"
 echo "Image size:     ${IMAGE_SIZE}px"
 echo "Dashboard:      localhost:${DASHBOARD_PORT} on $(hostname)"
 echo "Dashboard host: ${HEAD_RESOURCE_NAME:-unknown}"
-echo "Render scripts: ${REPO_URL}@${REPO_BRANCH} (${APP_REL})"
+echo "Render scripts: ${SCRIPT_DIR}"
 
 # Calculate tile ranges for each site
 TILE_RANGES=$(${PYTHON_CMD} -c '
@@ -324,26 +309,32 @@ PYEOF
     fi
     echo "[${site_id}] Tunnel port: ${tunnel_port} (remote localhost -> dashboard)"
 
-    # Build the remote render script: a per-run work directory, a sparse clone of this
-    # repository for the render scripts, then render_tiles.sh
+    # Ship the render scripts over this same SSH path rather than having the site clone
+    # the repository: it runs exactly the files the dashboard host checked out, needs no
+    # GitHub access (restricted HPC networks have none), and there is no second branch
+    # reference to keep in step with the workflow's own checkout. The remote command
+    # stays POSIX-common so a tcsh login shell can interpret it.
+    local remote_work="pw/jobs/burst_render_remote/${PW_RUN_SLUG:-manual}"
+    echo "[${site_id}] Shipping the render scripts to ${site_name}:~/${remote_work}/app..."
+    if ! tar -C "${SCRIPT_DIR}" -czf - render_tiles.sh renderer.py post_tile.py | \
+        ssh "${ssh_base[@]}" "${PW_USER}@${site_name}" \
+            "mkdir -p \$HOME/${remote_work}/app && tar -xzf - -C \$HOME/${remote_work}/app"; then
+        echo "[${site_id}] [ERROR] Could not copy the render scripts to ${site_name}"
+        return 1
+    fi
+
+    # Build the remote render script
     local script_file="${WORK_DIR}/render_${site_id}.sh"
     cat > "${script_file}" <<RENDER_SCRIPT
 #!/bin/bash
 set -eo pipefail
-WORK="\${HOME}/pw/jobs/burst_render_remote/${PW_RUN_SLUG:-manual}"
-mkdir -p "\${WORK}"
+WORK="\${HOME}/${remote_work}"
 cd "\${WORK}"
 echo "Work dir: \${WORK} on \$(hostname)"
 
 command -v python3 >/dev/null 2>&1 || { echo "[ERROR] python3 not found on \$(hostname)"; exit 1; }
 echo "Python: \$(python3 --version 2>&1)"
-
-echo "Checking out ${REPO_URL}@${REPO_BRANCH} (${APP_REL})..."
-rm -rf _checkout_tmp workflows
-git clone --quiet --depth 1 --branch ${REPO_BRANCH} --sparse --filter=blob:none ${REPO_URL} _checkout_tmp
-(cd _checkout_tmp && git sparse-checkout set ${APP_REL})
-cp -r _checkout_tmp/workflows . && rm -rf _checkout_tmp
-[ -f "${APP_REL}/render_tiles.sh" ] || { echo "[ERROR] ${APP_REL}/render_tiles.sh missing after checkout"; exit 1; }
+[ -f app/render_tiles.sh ] || { echo "[ERROR] the render scripts are missing in \${WORK}/app"; exit 1; }
 
 export SITE_ID='${site_id}'
 export CLUSTER_NAME='${site_name}'
@@ -395,8 +386,8 @@ trap cleanup EXIT
 export DASHBOARD_URL="http://\${LOGIN_HOST}:\${PROXY_PORT}"
 export SCHEDULER_TYPE='slurm'
 
-echo "Submitting to SLURM: ${srun_cmd} bash ${APP_REL}/render_tiles.sh"
-${srun_cmd} bash ${APP_REL}/render_tiles.sh
+echo "Submitting to SLURM: ${srun_cmd} bash app/render_tiles.sh"
+${srun_cmd} bash app/render_tiles.sh
 RENDER_SCRIPT
     else
         # SSH mode: run directly on the remote host; the dashboard is reachable
@@ -406,7 +397,7 @@ RENDER_SCRIPT
 export DASHBOARD_URL='http://localhost:${tunnel_port}'
 export SCHEDULER_TYPE='ssh'
 
-bash ${APP_REL}/render_tiles.sh
+bash app/render_tiles.sh
 RENDER_SCRIPT
     fi
 

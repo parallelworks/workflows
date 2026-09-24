@@ -219,6 +219,36 @@ Not exercised: a PBS or SSH-mode remote site, multi-node `srun` allocations, a d
 host older than Python 3.8 (the `uv python install` path) and a site whose login shell is
 tcsh — the remote script transport for those is verbatim upstream.
 
+**Fixes after the first HSP run (2026-09-24, `jean.arl.hpc.mil`).** The merged workflow
+failed on jean at *Dispatch Renders* with
+`json.decoder.JSONDecodeError: Invalid control character at: line 1 column 357`:
+
+- **JSON must never be pasted into `python -c` source.** The dispatcher built its site
+  list with `json.loads('''${SITES_JSON}''')`, so python un-escaped the document before
+  json.loads saw it and the `\n` that `json.dumps` had written inside a value became a
+  real newline. The trigger is any multi-line form value: on jean that was the hsp
+  **SLURM directives default**, which ends in a newline — the form's own default, while
+  every gcpsmall test had passed `""` for that field and never saw it. Every `python -c`
+  in the script now reads its JSON from the environment and is single-quoted so the
+  shell cannot expand into it either; the two compute tests carry multi-line directives
+  so the shape stays covered.
+- **The remote clone target follows the checkout.** `REPO_URL`/`REPO_BRANCH` were
+  hardcoded in the YAMLs, and the canary merge (#63–#65) flipped the checkout `branch:`
+  to canary while leaving `REPO_BRANCH: burst-render-demo`, so a remote site would have
+  cloned different code than the dashboard host was running. The YAMLs no longer set
+  either; the script reads the origin and branch of the checkout in the job directory
+  (`git -C "${JOB_DIR}"`) and falls back to this repository on canary. There is now one
+  branch reference per YAML to flip.
+- **The endpoint name is built once** (tidy-up, not a fix). It was composed from
+  `${{ inputs.render_settings.name }}` in three places that had to stay in step. The jean
+  request sent `""` for that hidden field, as a rerun built from a past run's INPUTS tab
+  does; that turned out to be harmless — **the platform default-fills an empty group
+  item** (verified 2026-09-24 on `activate.parallel.works`: a request with
+  `"name": ""` produced `export service_name="burst-render"` in `inputs.sh`), so the
+  name was never malformed. Preprocessing now publishes `ENDPOINT_NAME`, computed once
+  with a `${service_name:-burst-render}` fallback, and the waiter and the summary read
+  that output. The hsp login test carries the empty-field request shape.
+
 ## Dead branches (pre-existing breakage, now fixed)
 
 Three selected YAMLs checked out branches that **no longer exist upstream** — those

@@ -60,13 +60,13 @@ The jobs follow the repository's endpoint pattern:
   the login node's hostname. No tunnel and no SSH key are involved, so a cloud
   cluster's login node is a valid dashboard host for itself.
 - **A site on another resource** is reached with `ssh` over `pw ssh --proxy-command`
-  carrying a reverse tunnel back to the dashboard port. The site clones this
-  repository (sparse, `workflows/burst-render-demo/app`) into
-  `~/pw/jobs/burst_render_remote/<run-slug>/` and runs `render_tiles.sh`; with
-  **Schedule Job?** on, a TCP proxy on the site's login node exposes the tunnel to the
-  compute nodes and the tiles render under `srun`. This needs the platform SSH key
-  (`~/.ssh/pwcli`) on the dashboard host, which the user workspace and on-prem
-  resources have and a cloud cluster's login node does not.
+  carrying a reverse tunnel back to the dashboard port. The three render scripts are
+  copied to `~/pw/jobs/burst_render_remote/<run-slug>/app/` over that same SSH path and
+  run there; with **Schedule Job?** on, a TCP proxy on the site's login node exposes the
+  tunnel to the compute nodes and the tiles render under `srun`. The site needs no
+  GitHub access and always runs the code the dashboard host checked out. This does need
+  the platform SSH key (`~/.ssh/pwcli`) on the dashboard host, which the user workspace
+  and on-prem resources have and a cloud cluster's login node does not.
 
 Only SLURM sites can schedule; every other site renders on its login node. The
 **Additional Directives** editor takes `#SBATCH` lines, which are passed to `srun` as

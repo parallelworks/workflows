@@ -430,6 +430,25 @@ non-repetitive; point at an existing tutorial instead.
 - **Input group named `env` + a top-level `env:` block** referencing `${{ inputs.env.* }}`
   → `Expression Parser Error: max recursion exceeded`, failing **both `--dry-run` and
   `pw workflows run`** (the web UI may still submit). Rename the group (e.g. `env_vars`).
+- **Never paste JSON into a `python -c` source string** (verified 2026-09-24, burst-render-demo
+  on `jean`): `json.loads('''${SITES_JSON}''')` makes python un-escape the document before
+  json.loads sees it, so the `\n` that `json.dumps` wrote inside a value becomes a real
+  newline and parsing dies with `Invalid control character at: line 1 column N`. One
+  multi-line `editor` input is enough to trigger it — the hsp SLURM-directives default ends
+  in a newline, so the form's own default broke the run while the tests that passed `""`
+  never saw it. Pass the document through the **environment**
+  (`FOO_JSON="${FOO_JSON}" python3 -c 'import json,os; json.loads(os.environ["FOO_JSON"])'`)
+  or stdin, and single-quote the python source so the shell cannot expand into it either.
+  Cover it in a test: give one recorded test a multi-line directives value.
+- **An empty group item IS default-filled** (verified 2026-09-24 on `activate.parallel.works`,
+  burst-render-demo): a request carrying `"render_settings": {"name": ""}` for a hidden input
+  whose default is `burst-render` rendered `export service_name="burst-render"` in `inputs.sh`.
+  Group items behave like top-level inputs here; the **list-template** field is still the
+  exception that keeps `""` (reference §12). Reruns built from a past run's INPUTS tab send
+  `""` for every hidden field, so this is the common path, not a corner case. Even so, build a
+  name that several jobs must agree on **once** — in preprocessing, published as an output the
+  others read (`workflows/burst-render-demo`, `tutorials/endpoint-workflows/04-subworkflow.yaml`)
+  — rather than repeating the expression in each job.
 - **Only the workspace and `existing` resources carry the platform SSH key** (`~/.ssh/pwcli`,
   verified 2026-09-23: present on the workspace and `a30gpuserver`, absent on gcpsmall's login
   node, where `pw ssh` outside a run also has no context). A job that opens `ssh -i

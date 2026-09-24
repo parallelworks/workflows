@@ -39,7 +39,7 @@ jobs:
           echo '${{ inputs.workers }}' > workers.json
       - name: Create Service Script
         run: |
-          rm -f HOSTNAME SESSION_PORT RAY_HEAD_IP PYTHON_VERSION ENDPOINT_NAME job.started job.ended dashboard.pid dispatch.pid DISPATCH_FAILED TEARDOWN_DONE slurm_jobids added_workers.jsonl
+          rm -rf HOSTNAME SESSION_PORT RAY_HEAD_IP PYTHON_VERSION ENDPOINT_NAME job.started job.ended dashboard.pid dispatch.pid DISPATCH_FAILED TEARDOWN_DONE slurm_jobids added_workers.jsonl .teardown.started .teardown.lock
           # This script starts the cluster
           cp inputs.sh start-service-${PW_JOB_ID}.sh
 

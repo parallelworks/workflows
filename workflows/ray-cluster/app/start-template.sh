@@ -15,15 +15,22 @@ mkdir -p "${JOB_DIR}/logs"
 
 # cancel.sh first: script_submitter runs it when the run is cancelled before the
 # endpoint is up, the trap runs it when this script exits. The teardown cancels
-# jobs on remote sites over ssh, so it runs detached from the tree being killed.
+# jobs on remote sites over ssh, so it runs in its own session: the trap kills this
+# script's process group right after cancel.sh returns. cancel.sh returns only once
+# the teardown has left the group (it writes .teardown.started from its new
+# session; a background fork killed before calling setsid lost the whole teardown),
+# and waits for it to finish while nothing is killing it.
 cat > cancel.sh <<CANCEL
 #!/bin/bash
 if command -v setsid >/dev/null 2>&1; then
     setsid bash "${APP_DIR}/teardown.sh" "${JOB_DIR}" >> "${JOB_DIR}/logs/teardown.log" 2>&1 < /dev/null &
 else
-    nohup bash "${APP_DIR}/teardown.sh" "${JOB_DIR}" >> "${JOB_DIR}/logs/teardown.log" 2>&1 < /dev/null &
+    ( set -m; nohup bash "${APP_DIR}/teardown.sh" "${JOB_DIR}" >> "${JOB_DIR}/logs/teardown.log" 2>&1 < /dev/null & )
 fi
 echo "Teardown started: ${JOB_DIR}/logs/teardown.log"
+for _i in \$(seq 1 50); do [ -e "${JOB_DIR}/.teardown.started" ] && break; sleep 0.2; done
+for _i in \$(seq 1 240); do [ -e "${JOB_DIR}/TEARDOWN_DONE" ] && break; sleep 1; done
+[ -e "${JOB_DIR}/TEARDOWN_DONE" ] && echo "Teardown done" || echo "Teardown still running (see the log)"
 CANCEL
 chmod +x cancel.sh
 

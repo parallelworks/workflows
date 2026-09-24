@@ -11,6 +11,8 @@ if [ -z "${BASH_VERSION:-}" ]; then exec /bin/bash "$0" "$@"; fi
 
 JOB_DIR="${1:-${PW_PARENT_JOB_DIR%/}}"
 cd "${JOB_DIR}" || exit 1
+# First action: tells cancel.sh this process is out of the caller's process group
+touch "${JOB_DIR}/.teardown.started"
 # A second caller (trap and submitter cleanup can both run cancel.sh) leaves it to the first
 mkdir "${JOB_DIR}/.teardown.lock" 2>/dev/null || { echo "$(date) teardown already running"; exit 0; }
 

@@ -5,13 +5,19 @@ a Ray head node on any resource, connects workers from one or more additional si
 via SSH tunnels, and provides a live dashboard showing cluster topology and task
 placement.
 
-The dashboard is served through a **`pw` endpoint** named `ray-cluster-<run-slug>`,
-registered by the head job itself (`pw endpoints run` wraps the dashboard; there is no
-`script_submitter`). Unlike the other compute-cluster workflows here, the **run holds
-the cluster**: it stays `running` while the head, the dashboard and the workers are
-alive, and **cancelling the run is the teardown** — its cleanup steps stop Ray, kill the
-dashboard (which deregisters the endpoint) and cancel every SLURM/PBS worker job, local
-and remote. This is the Kubernetes workflows' lifecycle.
+The cluster lives behind a **`pw` endpoint** named `ray-cluster-<run-slug>`, like every
+other service in this repository: one start script, submitted through
+`script_submitter` on the head resource's login node, installs Ray, starts the head,
+dispatches the workers and wraps the dashboard in `pw endpoints run`. The **run
+completes** once the endpoint answers and the workload step is done (the benchmark ran,
+or the first worker joined in `cluster_only` mode); the cluster keeps running after it.
+**`pw endpoints delete ray-cluster-<run-slug>` is the teardown**: it kills the
+dashboard wrapper, the start script's trap runs `cancel.sh`, and a detached
+`teardown.sh` cancels every SLURM/PBS worker job (same-resource and remote, including
+sites attached later by add_worker), stops Ray and removes the endpoint. Cancelling the
+run before the endpoint is up tears down the same way. In `cluster_only` mode with
+**Run User Script** on and **Keep Cluster Alive** off, the run itself deletes the
+endpoint when the script finishes (a batch job), and fails if the script failed.
 
 ## Architecture
 
@@ -42,6 +48,8 @@ and remote. This is the Kubernetes workflows' lifecycle.
 3. Click **Execute**
 4. Open the endpoint `ray-cluster-<run-slug>` (Sessions page, or `pw endpoints list`) to
    view the live dashboard; the run's `complete` job prints its URL
+5. When done, `pw endpoints delete ray-cluster-<run-slug>` (or delete the session in the
+   UI) tears the whole cluster down
 
 ## Workload Modes
 
@@ -112,8 +120,10 @@ workflows/ray-cluster/
 │   ├── general_add_worker.yaml # Attach workers to a running cluster
 │   └── hsp_add_worker.yaml
 ├── app/                        # The only subtree a run checks out
+│   ├── start-template.sh       # The submitted start script: writes cancel.sh, runs start_ray_head.sh
+│   ├── teardown.sh             # Detached teardown run by cancel.sh (workers, head, endpoint)
 │   ├── setup.sh                # Install Ray + NumPy via uv/pip (handles old Python)
-│   ├── start_ray_head.sh       # Start Ray head (--num-cpus=0) + dashboard
+│   ├── start_ray_head.sh       # Start Ray head (--num-cpus=0), dashboard endpoint, dispatcher
 │   ├── dispatch_workers.sh     # Connect workers from all sites (SSH/SLURM/PBS)
 │   ├── run_benchmark.sh        # Run benchmark, POST results to dashboard
 │   ├── benchmark.py            # Ray distributed benchmark + fractal tasks
@@ -151,25 +161,27 @@ pw workflows run "$PWD/workflows/ray-cluster/yamls/general.yaml" -i '{
   "ray_settings": {"ray_version": "2.40.0"},
   "workload_settings": {"workload_type": "cluster_only"}
 }'
-pw workflows runs cancel <slug>     # tears the cluster down
+pw endpoints delete ray-cluster-<slug>     # tears the cluster down
 ```
 
 ## Testing
 
 Tests live under `tests/<variant>/` and run with the repository's runner
-(`tools/tests/README.md`). Because the run holds the cluster, the tests set
-`_test.ready_job`: the `complete` job completing while the run is still `running`
-means the head came up, the `wait_for_endpoint` subworkflow saw the endpoint answer,
-the SLURM worker joined and the benchmark ran across it; the runner also checks that
-the endpoint is listed, then cancels the run and verifies that no endpoint wrapper,
-Ray, dashboard or dispatcher process and no SLURM job is left on the resource.
+(`tools/tests/README.md`) on its standard criterion: the run completes (head up,
+`wait_for_endpoint` saw the endpoint answer, the SLURM worker joined and the benchmark
+ran across it, or `cluster_ready` fired) and `ray-cluster-<run-slug>` is listed; the
+runner then deletes the endpoint and verifies that no endpoint wrapper, Ray, dashboard,
+dispatcher or start-script process and no SLURM job is left on the resource. The batch
+tests (`defaults-user-script`) and the failure-path tests (`fail-bad-partition`,
+`fail-user-script`, with `_test.expect: error`) expect no endpoint: the workflow tears
+the cluster down itself.
 
 `tests/general/defaults-workspace-head.json` is the form's defaults as the UI sends
 them (workspace head, one gcpsmall worker with the default row, `cluster_only`);
 `tests/hsp/defaults-user-script.json` runs the user-script path with a Ray job that
 fails unless its tasks ran on the worker. The `*_add_worker` tests need a running
-cluster: keep one from a main test (`head-only-workspace.json` for the remote-site
-add), run the add-worker test against it, then cancel the cluster run.
+cluster: keep one from a main test (`--keep`; `head-only-workspace.json` for the
+remote-site add), run the add-worker test against it, then delete the endpoint.
 
 ```bash
 python3 tools/tests/run-workflow-test.py --keep workflows/ray-cluster/tests/general/gcp-head-gcp-worker.json
@@ -182,17 +194,21 @@ pw workflows runs cancel <slug of the kept run>
 Everything is in the run's job directory on the head resource (`~/pw/jobs/<run-slug>/`
 for CLI runs, `~/pw/jobs/<workflow-name>/<run-number>/` for registered ones):
 `RAY_HEAD_IP`, `SESSION_PORT`, `HOSTNAME`, `PYTHON_VERSION` and `RAY_VENV_DIR` are the
-coordination files the jobs and the add-worker workflow read, `ENDPOINT_NAME` the
-endpoint's name and `dashboard.pid` the `pw endpoints run` wrapper's PID,
-`logs/dashboard.log` the wrapper's and the dashboard's output,
+coordination files the jobs and the add-worker workflow read, `workers.json` the
+worker rows, `ENDPOINT_NAME` the endpoint's name and `dashboard.pid` the
+`pw endpoints run` wrapper's PID, `DISPATCH_FAILED` a marker the dispatcher leaves when
+it gave up, `logs/dashboard.log` the wrapper's and the dashboard's output,
+`logs/dispatch.out` the dispatcher's, `logs/teardown.log` the teardown's
+(`TEARDOWN_DONE` when it finished), the start script's own output
+`subworkflows/session_runner/step_0/run.<id>.out`,
 `logs/worker_local_<i>.out` a same-resource SLURM worker's
 output, and `slurm_jobids` the SLURM jobs the cleanup cancels. Remote worker sites
 keep theirs under `~/pw/jobs/ray_worker_remote/` on their own login node. From
 anywhere:
 
 ```bash
-pw workflows runs logs <slug> --job start_ray_head
-pw workflows runs logs <slug> --job dispatch_workers
+pw workflows runs logs <slug> --job session_runner     # the start script, until the endpoint came up
+pw workflows runs logs <slug> --job cluster_ready      # worker wait (with the dispatcher output) and user script
 pw workflows runs errors <slug>
 ```
 

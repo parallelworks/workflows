@@ -44,6 +44,10 @@ The optional "_test" object is stripped before launch:
                        default: deployments, services, pods, persistentvolumeclaims, secrets)
     resource           the resource the runner checks (warm marker, leftovers) when the form
                        has no cluster.resource, e.g. librechat general-all's librechat_resource
+    scheduler          true when scheduler jobs are requested through an input the runner cannot
+                       see (ray-cluster's workers), so teardown also checks squeue (cluster lane)
+    expect             "error" for a failure-path test: pass = the run ends in error (cluster lane;
+                       default "completed")
 
 Failing runs keep their platform record and get their `pw workflows runs errors`
 output (plus the namespace events on the k8s lane) saved under
@@ -76,11 +80,13 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 POLL_S = 15
-FINAL_STATUSES = {"completed", "error", "canceled", "failed"}
+# "faulted": a job failed and the run is winding down; it never completes from there
+FINAL_STATUSES = {"completed", "error", "canceled", "failed", "faulted"}
 COLUMNS = ["date", "phase", "result", "cleanup", "workflow_tree", "submitter_tree",
            "tools_tree", "commit", "fetched", "branch", "user", "run_slug", "duration_s", "error"]
 COMPUTE_RESOURCES_RE = re.compile(r"^\s*type:\s*compute-resources\s*$", re.M)
 DEFAULTS = {"timeout_s": 1800, "endpoint": True, "warm_marker": "", "setup": "", "resource": "",
+            "scheduler": None, "expect": "completed",
             "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
             "leftover_kinds": ["deployments", "services", "pods", "persistentvolumeclaims", "secrets"]}
 
@@ -145,6 +151,8 @@ class Test:
                 raise SystemExit(f"{self.id}: a resource object must have type \"kubernetes\"")
             self.resource = resource
             self.scheduler = bool(self.lookup("cluster", "scheduler") or self.lookup("scheduler"))
+            if self.meta["scheduler"] is not None:
+                self.scheduler = bool(self.meta["scheduler"])
             if not self.resource:
                 raise SystemExit(f"{self.id}: no cluster.resource, resource, k8s.cluster or _test.resource input")
             self.resource_path = (("cluster", "resource") if self.lookup("cluster", "resource")
@@ -556,9 +564,12 @@ def run_test(test, args, user):
             if status == "timeout":
                 pw("workflows", "runs", "cancel", slug)
                 row["result"], row["error"] = "fail", f"timeout after {test.meta['timeout_s']}s; run canceled"
-            elif status != "completed":
-                summary, detail = errors(slug)
-                row["result"], row["error"] = "fail", f"run {status}: {summary}"
+            elif status != test.meta["expect"] and not (test.meta["expect"] == "error" and status == "faulted"):
+                summary, detail = errors(slug) if status != "completed" else ("run completed", "")
+                row["result"], row["error"] = "fail", f"run {status}, expected {test.meta['expect']}: {summary}"
+            elif test.meta["expect"] != "completed":
+                row["result"] = "pass"
+                log(f"  run {status} as expected: {errors(slug)[0]}")
             elif not test.meta["endpoint"]:
                 row["result"] = "pass"
                 log("  run completed; no endpoint expected")

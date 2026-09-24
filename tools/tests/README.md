@@ -68,6 +68,8 @@ Optional, stripped before launch.
 | `leftover_commands` | cluster | `{name: shell snippet}`; each snippet must print `0` after teardown, e.g. `docker ps -q \| wc -l` for containers `ps` cannot see | none |
 | `leftover_kinds` | k8s | object kinds that must be gone after teardown; drop `persistentvolumeclaims` for a test that sets `pvc_persist: true` | `deployments`, `services`, `pods`, `persistentvolumeclaims`, `secrets` |
 | `resource` | cluster | the resource the runner checks (warm marker, leftovers) when the form has no `cluster.resource`, e.g. librechat `general-all` with its `librechat_resource` | none |
+| `scheduler` | cluster | `true` when scheduler jobs are requested through an input the runner cannot see (`ray-cluster`'s workers), so teardown also checks `squeue` | from `cluster.scheduler` |
+| `expect` | cluster | `error` for a failure-path test: pass = the run ends in `error`, then the usual leftover checks | `completed` |
 
 ## Pass criteria
 

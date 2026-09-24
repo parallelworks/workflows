@@ -1,0 +1,57 @@
+Run magical-rhino: faulted (33s)
+
+Failed jobs/steps:
+
+  dispatch_workers > Dispatch workers to compute sites (error, 0s)
+    ==========================================
+    Dispatch Workers: Wed Sep 23 14:28:11 UTC 2026
+    ==========================================
+    Worker sites:  1
+    Parsed config: [
+      {
+        "index": 0,
+        "name": "gcpsmall",
+        "ip": "35.223.134.56",
+        "user": "alvaro",
+        "scheduler_type": "slurm",
+        "use_scheduler": true,
+        "is_local": false,
+        "slurm_partition": "compute",
+        "slurm_account": "",
+        "slurm_qos": "",
+        "slurm_time": "00:30:00",
+        "slurm_nodes": 1,
+        "slurm_gres": "",
+        "slurm_directives": "",
+        "pbs_queue": "",
+        "pbs_account": "",
+        "pbs_nodes": "1",
+        "pbs_select": "",
+        "pbs_walltime": "01:00:00",
+        "pbs_directives": ""
+      }
+    ]
+    Head resource: user-workspace
+    Dashboard:     localhost:46358
+    Ray head:      172.17.0.8:6379
+    Python:        3.12.14
+    Ray version:   2.40.0
+    
+    [site-2] Remote worker site: gcpsmall (35.223.134.56)
+    [site-2] Pending notification: {"status":"ok"}
+    
+    All 1 worker site(s) dispatched, waiting...
+    
+    [gcpsmall] Dispatching to gcpsmall (35.223.134.56) [slurm, 1 node(s)]
+    [gcpsmall] Tunnel IPs: 127.0.2.1
+    [gcpsmall] Testing pw ssh pw://alvaro/gcpsmall...
+    [gcpsmall] [ERROR] Failed to allocate dashboard tunnel port (got: '')
+    [site-2] gcpsmall: FAILED (exit 1)
+    {"status":"ok"}
+    ==========================================
+    Worker dispatch FAILED
+      Worker sites: 1
+      Failed: 1
+    ==========================================
+
+Summary: 1 job(s) failed, 1 step(s) failed

@@ -237,6 +237,24 @@ configures and that N compute sites POST to through tunnels, so a later job need
   step's `cleanup:` does `kill -- -$(cat dispatch.pid)`; a plain background child stays
   in the step shell's group and the cancel leaves its ssh/srun children running.
 
+## Variant — a start script that also runs a multi-site cluster (ray-cluster, 2026-09-24)
+
+`workflows/ray-cluster`'s start script runs the Ray head, the dashboard under
+`pw endpoints run` and the dispatcher that tunnels to other sites, so
+`pw endpoints delete` must stop all of it. On top of the section above:
+
+- **The start script returns when the wrapper exits** (deleted, or killed by the head's
+  health check). Its trap runs `cancel.sh`, which starts `teardown.sh` detached and waits
+  for it (the `setsid` race in the SKILL's pitfalls), with a lock for the second call from
+  the submitter's cleanup.
+- **Remote sites tear themselves down** when their ssh session closes: the teardown runs
+  after the run's key has expired, and an `ssh 'bash -s'` script is not signalled (both in
+  the SKILL's pitfalls). The teardown only kills the local sessions.
+- **The steps after the release delete the endpoint** when the dispatcher failed, when a
+  cancel or failure stops them before their success marker, and after a batch-mode user
+  script.
+- Test the failure paths with the runner's `_test.expect: error`.
+
 ## Step 4 — the Kubernetes half (`general_k8s.yaml`, standalone `k8s.yaml`)
 
 The v4 k8s pattern — a top-level `sessions:` block (`useCustomDomain: true`) and a

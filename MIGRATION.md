@@ -126,6 +126,64 @@ so beyond the global rules:
   `.run.env` target it, and it is exported in `inputs.sh`.
 - `start-template.sh`: launches `start_service.sh` from (and cancels via) `${rag_appdir}`.
 
+## ray-cluster (from parallelworks/ray-cluster)
+
+Migrated 2026-09-23/24 from `parallelworks/ray-cluster@main` (98bb3dd): a Ray head and
+FastAPI dashboard on one resource, workers dispatched to SLURM/PBS/SSH sites. The source
+served the dashboard through a platform **session** and kept its run alive for the
+cluster's life. Here one start script runs under `script_submitter`, the run completes once
+the workload step is done, and `pw endpoints delete` tears the whole cluster down. How that
+works: the workflow README (behaviour, limits) and the ray-cluster section of
+`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md` (the recipe).
+
+| Old | New |
+|---|---|
+| `scripts/*` | `workflows/ray-cluster/app/*`, plus `start-template.sh` and `teardown.sh` |
+| `scripts/diagnose.sh`, `scripts/generate_thumbnail.py` | `workflows/ray-cluster/diagnose.sh`, `generate-thumbnail.py` (dev tools, outside `app/`) |
+| `workflow.yaml` | `yamls/hsp.yaml` (the source form already had the HSP fields), `yamls/general.yaml`, `yamls/noaa.yaml` |
+| `add_worker.yaml` | `yamls/{general,hsp,noaa}_add_worker.yaml` |
+| `thumbnail.png` | `thumbnails/ray-cluster.png` |
+| checkout `ray-cluster@main`, sparse `scripts` | `workflows@canary`, sparse `workflows/ray-cluster/app` |
+| remote sites clone `ray-cluster.git` (`scripts`) | remote sites clone this repo (`workflows/ray-cluster/app`; `RAY_REPO_URL`/`RAY_REPO_BRANCH`, default `canary`) |
+
+**Code changes beyond the paths**, each found by a test:
+
+- **`start-template.sh` and `teardown.sh`** (new) and `start_ray_head.sh` implement that
+  recipe; the remote worker scripts in `dispatch_workers.sh` now exit through their cleanup
+  trap when their ssh session closes (upstream orphaned them whenever a dispatcher died).
+- **add_worker** copies the cluster's `RAY_VENV_DIR` (added workers died with
+  `ray: command not found`), stops tearing its workers down after a successful dispatch,
+  registers its SLURM jobs and remote sessions with the cluster's teardown, and detaches
+  remote dispatches (`set -m`, own log) so its run can complete.
+- **Dispatcher:** `-o ControlMaster=no -o ControlPath=none` on the site connections (the
+  workspace's `ControlPath` broke on `pw://` host names), no leaked `tail -f` streamers,
+  and a rejected `sbatch`/`qsub` reports the scheduler's message instead of ending the
+  script under `set -e`.
+- **Dashboard:** a node that just registered gets 60 s before the Ray poller may drop it
+  (remote workers were hidden for minutes).
+- **`setup.sh`** honours `RAY_SOFTWARE_DIR`; `noaa.yaml` sets it to `/contrib/pw` when that
+  is writable.
+
+**Judgment calls:**
+
+1. The endpoint pattern replaces the source's session.
+2. The test runner gained `_test.scheduler` and `_test.expect` (`tools/tests/README.md`).
+3. add_worker ships as `<variant>_add_worker.yaml` in the same directory (it shares `app/`).
+4. The form keeps its own groups (`head`, `workers`, `ray_settings`, `workload_settings`)
+   instead of `cluster`/`service`: a multi-resource form, and renaming would touch every
+   expression in the job graph.
+
+**Tests** (2026-09-23/24, `pw://alvaro/gcpsmall` and the workspace; rows in
+`workflows/ray-cluster/tests/*/*.csv`): general, hsp and noaa with a same-resource
+worker running the benchmark; the form defaults (workspace head, remote gcpsmall worker:
+the cluster still served 8 min after its run completed, and a `ray job submit` ran on the
+worker); the user-script batch mode; add_worker same-resource (all variants) and remote;
+failure paths (rejected partition, failing user script). Manual: cancel before the
+endpoint is up, cancel during the benchmark, `kill -9` of the head's GCS after the run
+(torn down 2.3 min later). Each ended with no endpoint, process or SLURM job left. Not
+exercised: PBS and SSH-mode remote sites, multi-node sites, GPUs, the fractal workload,
+and the noaa `/contrib/pw` and `existing`-only branches (no such resource here).
+
 ## burst-render-demo (from parallelworks/burst-render-demo)
 
 Migrated 2026-09-23 from `parallelworks/burst-render-demo@main` (ae9ad9b), the
@@ -227,7 +285,7 @@ dispatcher's process group, `pw workflows runs cancel` left only the dashboard t
 the endpoint listed; the dashboard's `/api/state` held the 2 tiles finished before the
 cancel, and `pw endpoints delete` then removed the two remaining processes and the
 endpoint. The compute tests carry `"scheduler": true` in `_test` for the runner's
-`squeue` check that the ray-cluster branch adds; this branch's runner ignores the key.
+`squeue` check (added with ray-cluster).
 
 Not exercised: a PBS or SSH-mode remote site, multi-node `srun` allocations, a dashboard
 host older than Python 3.8 (the `uv python install` path) and a site whose login shell is
@@ -407,6 +465,10 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   stay on the old repo or the yaml bumped to v3.6).
 - Readme/thumbnail paths in registrations (`workflow/readmes/...`,
   `workflow/thumbnails/...`) → the files inside each `workflows/<name>/thumbnails/`.
+- The ray-cluster entries (cluster and Add Worker) pin `parallelworks/ray-cluster`'s
+  `workflow.yaml` / `add_worker.yaml` → `workflows/ray-cluster/yamls/<variant>.yaml` /
+  `<variant>_add_worker.yaml` here (`hsp` on `activate.hpc.mil`, `noaa` on
+  `noaa.parallel.works`, `general` elsewhere; thumbnail `workflows/ray-cluster/thumbnails/ray-cluster.png`).
 
 - The burst-render-demo entry pins `parallelworks/burst-render-demo`'s `workflow.yaml` →
   `workflows/burst-render-demo/yamls/<variant>.yaml` here (`hsp` on `activate.hpc.mil`,

@@ -1,0 +1,38 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "leftover_patterns": [
+      "pw endpoints run",
+      "ray_worker_remote",
+      "slurm_worker.out",
+      "gcs_server",
+      "raylet"
+    ]
+  },
+  "head": {
+    "resource": "workspace"
+  },
+  "workers": [
+    {
+      "resource": "pw://alvaro/gcpsmall",
+      "scheduler": true,
+      "slurm": {
+        "partition": "compute",
+        "nodes": 1,
+        "gres": "",
+        "time": "00:30:00",
+        "scheduler_directives": ""
+      }
+    }
+  ],
+  "ray_settings": {
+    "ray_version": "2.40.0"
+  },
+  "workload_settings": {
+    "workload_type": "benchmark",
+    "num_tasks": "100",
+    "matrix_size": "200"
+  }
+}

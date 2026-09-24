@@ -453,6 +453,20 @@ non-repetitive; point at an existing tutorial instead.
   node, where `pw ssh` outside a run also has no context). A job that opens `ssh -i
   ~/.ssh/pwcli ... -R` tunnels to other resources must run on one of those hosts; a
   same-resource target needs no tunnel at all (see `workflows/burst-render-demo`).
+- **A run's `PW_API_KEY` expires when the run ends** (verified 2026-09-24): a service it
+  started can no longer call `pw` (`Authentication has expired`). Open `pw endpoints run` and
+  `pw ssh` connections keep working, so plan a teardown that needs no `pw` call
+  (`workflows/ray-cluster`).
+- **`ssh host 'bash -s'` has no tty, so the remote script gets no signal when the client
+  dies**; if it is not writing output it runs on, orphaned. Have it watch its `sshd` parent
+  and exit through its cleanup trap when that is gone (`workflows/ray-cluster/app/dispatch_workers.sh`).
+- **A trap that backgrounds `setsid helper &` and then runs `kill -- -$$` can kill the helper
+  before it detaches**: wait for a marker the helper writes first
+  (`workflows/ray-cluster/app/start-template.sh`).
+- **`faulted`** is the status of a run whose job failed while the others wind down; it never
+  completes, so treat it as final.
+- **`pgrep -f`/`pkill -f` run over `pw ssh` also match the remote shell carrying the command**
+  (the pattern is on its command line): bracket one character, e.g. `dispatch_workers[.]sh`.
 - **Cross-cluster filesystems are separate:** a code/data path staged on one resource is
   absent on another — stage it on the resource that runs it. If a required path is missing,
   **fail loud (exit non-zero), don't silently skip**: a silent skip upstream plus a

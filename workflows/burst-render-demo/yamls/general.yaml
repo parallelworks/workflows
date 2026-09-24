@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: burst-render-demo
+          branch: canary
           sparse_checkout:
             - workflows/burst-render-demo/app
       - name: Create Inputs

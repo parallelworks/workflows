@@ -25,6 +25,11 @@ Good to know:
   `ray stop --force` and kills any other Ray on that host, and the head's health check
   (`ray status`) reads whichever GCS answers on the host. Run a second cluster with its
   head on another resource (another cluster, or the workspace).
+- **One Ray worker per compute node.** A worker starts with `ray stop --force`, so a
+  second worker job that the scheduler places on a node already running one replaces it
+  instead of adding capacity (upstream behaviour). This matters most for add_worker on
+  the head's resource: add `#SBATCH --exclusive` to the worker row's directives to get a
+  node of its own.
 - **If the Ray head dies**, the head's health check notices after three failed checks
   (a few minutes: each check against a dead GCS takes about 45 s to time out), stops
   the dashboard and tears the workers down. The endpoint then stays listed as
@@ -133,8 +138,10 @@ workflows/ray-cluster/
 ├── yamls/
 │   ├── general.yaml            # Multi-site cluster: standard cloud/on-prem SLURM & PBS clusters
 │   ├── hsp.yaml                # Same, HSP form (SLURM account/QoS fields, DSRC hints)
+│   ├── noaa.yaml               # Same, NOAA form (account/QoS on on-prem sites, /contrib/pw installs)
 │   ├── general_add_worker.yaml # Attach workers to a running cluster
-│   └── hsp_add_worker.yaml
+│   ├── hsp_add_worker.yaml
+│   └── noaa_add_worker.yaml
 ├── app/                        # The only subtree a run checks out
 │   ├── start-template.sh       # The submitted start script: writes cancel.sh, runs start_ray_head.sh
 │   ├── teardown.sh             # Detached teardown run by cancel.sh (workers, head, endpoint)
@@ -163,9 +170,15 @@ workflows/ray-cluster/
 account, QoS and constraints go in the **Additional Directives** editor as `#SBATCH`
 lines, PBS accounts as `#PBS -A`. `yamls/hsp.yaml` is the HSP (`activate.hpc.mil`)
 form: it adds the SLURM **Account** and **QoS** fields and a PBS **Account** field per
-worker site and pre-fills the DSRC `--constraint=mla` hint. The orchestration and
-scripts are identical; on a cloud cluster the two variants behave the same. The
-`*_add_worker.yaml` forms differ in the same way.
+worker site and pre-fills the DSRC `--constraint=mla` hint. `yamls/noaa.yaml` is the
+NOAA (`noaa.parallel.works`) form: it submits through the `noaa` script submitter,
+shows the SLURM **Account** and **QoS** fields only for on-prem (`existing`) worker
+resources, and installs Ray under `/contrib/pw` on a head that has it (NOAA's shared
+software directory; elsewhere the default applies). The orchestration and scripts
+are identical; on a cloud cluster the three variants behave the same. The
+`*_add_worker.yaml` forms differ in the same way (the install directory does not
+apply there: added same-resource workers reuse the cluster's Ray environment, and a
+remote site installs in its own default location).
 
 ## Running from the CLI
 

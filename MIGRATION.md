@@ -245,6 +245,18 @@ session on the resource. Rows are in `workflows/ray-cluster/tests/*/*.csv`.
 | `general_add_worker/gcp-worker` | 3 rows: `witty-duckling` passed the runner's criterion but its worker died (`ray: command not found`, the venv-marker bug above); `endless-bluegill` after the venv + cleanup fixes: worker joined, cluster at 2 CPUs, cleanup skipped; `musical-grubworm` after the job-id fix: `slurm_jobids` of the cluster run held both jobs and cancelling it removed both |
 | `hsp/gcp-head-gcp-worker` | PASS `good-titmouse` (warm, 53 s: the compute node was still up from the previous run, cleanup ok); `dashing-wahoo` PASS kept as the target of the hsp add-worker test |
 | `hsp_add_worker/gcp-worker` | PASS `sure-mite` against `dashing-wahoo` (22 s): second SLURM worker joined (cluster at 2 CPUs), both job ids in the cluster run's `slurm_jobids`, no streamer left behind (`dispatch_workers.sh` in the leftover patterns); cancelling the cluster run then left no job, process or session |
+
+**Correction (2026-09-24):** the "cluster at 2 CPUs" readings above for the same-resource
+add-worker tests were most likely stale. gcpsmall's scheduler put the added job on the
+node that already ran the cluster's worker, and the local worker script starts with
+`ray stop --force` (upstream: one Ray worker per node), which stops that worker's Ray; the
+head keeps a vanished node counted for up to 90 s (`RAY_HEALTH_CHECK_*` in
+`start_ray_head.sh`), and those readings were taken within that window. The ray-cluster-2
+and noaa runs show it plainly (`cool-rabbit`: jobs 26 and 27 on the same node, the added
+worker's log "Stopped all 4 Ray processes", `ray status` 1.0 CPU). A same-resource add
+therefore only adds capacity when the new job lands on a free node — ask for one with
+`#SBATCH --exclusive` in the worker row's directives (not tested here). Upstream
+behaviour, left unchanged.
 | `general/workspace-head-gcp-worker` (remote dispatch: head on the user workspace, worker on gcpsmall over `pw ssh` tunnels) | `magical-rhino` FAIL at "Failed to allocate dashboard tunnel port" (the ssh ControlPath problem, judgment call 6; the unmodified upstream YAML failed the same way as `unbiased-chigger`), then PASS `sensible-squid` (302 s, cleanup ok on both hosts): the worker site cloned `workflows/ray-cluster/app` from this repo for `setup.sh`, joined through the reverse tunnel and ran the benchmark |
 
 Not exercised: PBS sites, unscheduled remote workers, multi-node sites, GPU
@@ -343,6 +355,15 @@ standard lifecycle. Before, the head job ran `pw endpoints run` itself and the r
   its own session by then) and `cancel.sh` returns only after seeing it, then waits up
   to 4 min for `TEARDOWN_DONE`.
 
+- **noaa variant** (`yamls/noaa.yaml`, `yamls/noaa_add_worker.yaml`): the general job
+  graph with `workflows/script_submitter/v3.6/noaa.yaml`, the worker rows' SLURM
+  **Account**/**QoS** shown and passed only for `existing` (on-prem) resources, no DSRC
+  constraint hint, and the noaa "Set Up Install Parent Directory" step: when the head has
+  a writable `/contrib/pw`, `inputs.sh` gets `RAY_SOFTWARE_DIR=/contrib/pw`, which
+  `setup.sh` now honours ahead of its work-directory search (one added line; unset, the
+  behaviour is unchanged). Added same-resource workers reuse the head's environment; a
+  remote site installs in its own default location.
+
 What is lost, deliberately: the run no longer mirrors the cluster's health after it
 completes (a dead head shows up as the endpoint disappearing, with the reason in
 `run.<id>.out` and `logs/dashboard.log`), and the dispatcher's output streams into the
@@ -368,11 +389,25 @@ or, for failure paths, the run ends in `error` with the same leftover checks.
 | `general/fail-bad-partition` (`expect: error`) | `lenient-rattler` PASS (run error, cluster torn down, no reason in the log), fix above, `hopeful-lizard` PASS (scheduler's reason shown), `firm-loon` PASS (also the dispatcher's error line and dashboard card) |
 | `hsp/fail-user-script` (`expect: error`) | `suitable-halibut` PASS: "User script failed with exit code 3", run error, teardown cancelled the worker |
 | `hsp/defaults-user-script` (batch, keep-alive off) | `new-pheasant` PASS: 12 tasks on the worker, the run deleted the endpoint and waited for `TEARDOWN_DONE`, `complete` says the cluster was torn down |
-| `general_add_worker/gcp-worker`, `hsp_add_worker/gcp-worker` against kept clusters | `climbing-muskox`, `boss-salmon` PASS: added job registered in the cluster's `slurm_jobids`; one endpoint delete cancelled both jobs |
+| `general_add_worker/gcp-worker`, `hsp_add_worker/gcp-worker` against kept clusters | `climbing-muskox`, `boss-salmon` PASS on the runner's criterion: added job registered in the cluster's `slurm_jobids`; one endpoint delete cancelled both jobs. Capacity did not grow (`ray status` 1.0 CPU): the added job shared the existing worker's node, see the correction above |
 | `general_add_worker/workspace-head-gcp-remote-worker` against `head-only-workspace` | `engaged-tuna` PASS: the add-worker run completed, its detached session recorded in `added_dispatch_pgids`; the endpoint delete closed that session group and the remote site cancelled SLURM job 14 by itself |
 | cancel before the endpoint is up (manual; cold Ray 2.39.0 install) | `super-bass`: cancelled with no head, job or skip file yet; the submitter killed the start script, its trap ran the teardown once, nothing left |
 | cancel during the benchmark (manual) | `sterling-hornet`: the benchmark step's guard deleted the endpoint, teardown cancelled SLURM job 8, nothing left (`light-humpback`, meant as a before-ready cancel, hit the same after-release path) |
 | the Ray head dies after the run completed (manual: `kill -9` of the GCS) | `model-dassie`: three failed checks (~46 s each), FATAL 2 min 18 s after the kill, teardown cancelled SLURM job 16, all processes gone; the endpoint stayed listed as `stopped` (the wrapper cannot deregister with the ended run's key) until `pw endpoints delete`. A first attempt (`together-doberman`) was confounded by the next test starting a second head on the same host: one Ray head per host, as upstream |
+
+**noaa variant (same day, gcpsmall):** `setup.sh` with `RAY_SOFTWARE_DIR` set (a scratch
+directory, trailing slash included) installed uv and Ray 2.40.0 there and recorded that
+venv, then the directory was removed; gcpsmall has no `/contrib/pw`, so the variant's
+step fell back to the default location, like the repo's other noaa variants there.
+
+| Test | Result |
+|---|---|
+| `noaa/gcp-head-gcp-worker` | `amazing-hedgehog` PASS (48 s to complete; submitted through `script_submitter/v3.6/noaa.yaml`, the install-directory step in preprocessing, benchmark 100/100) |
+| `noaa_add_worker/gcp-worker` against a kept `noaa/gcp-head-gcp-worker` (`choice-akita`) | `cool-rabbit` PASS on the runner's criterion; both jobs in the cluster's `slurm_jobids` and cancelled by one endpoint delete; capacity unchanged (same node, see the correction above) |
+| `noaa/defaults-workspace-head` (workspace head, remote gcpsmall worker) | `positive-walrus` PASS (80 s); after the delete the remote site noticed its session gone and cancelled SLURM job 28 |
+
+The on-prem account/QoS fields are only shown for `existing` resources, which this
+account has no SLURM one of; they are statically checked (dry-run) only.
 
 Not exercised on this branch either: PBS sites, unscheduled (SSH-mode) remote workers,
 multi-node sites, GPUs and the fractal workload; the PBS and SSH-mode remote scripts got

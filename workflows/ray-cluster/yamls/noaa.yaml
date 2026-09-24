@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: ray-cluster-2
+          branch: canary
           sparse_checkout:
             - workflows/ray-cluster/app
       - name: Create Inputs
@@ -28,7 +28,6 @@ jobs:
           endpoint_name="${{ inputs.ray_settings.name }}-${PW_RUN_SLUG}"
           head_resource_name="${{ inputs.head.resource.name }}"
           workload_type="${{ inputs.workload_settings.workload_type }}"
-          RAY_REPO_BRANCH="ray-cluster-2"
           EOF
           # Remove empty variables
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh

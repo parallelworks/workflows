@@ -210,6 +210,33 @@ Contract differences vs v3:
 7. `parallelworks/checkout` → your **dev branch** while testing; **flip to `main`
    after merge** (both openvscode and jupyterlab needed this follow-up).
 
+## Variant — a service the run's other jobs must reach (burst-render-demo, 2026-09-23)
+
+`workflows/burst-render-demo` serves a dashboard that the same run's `render` job
+configures and that N compute sites POST to through tunnels, so a later job needs the
+**local port** the endpoint assigned. Steps 2–3 apply as written, plus:
+
+- **Let `pw endpoints run` pick the port and publish it from inside the wrapped
+  command**: the start template writes a two-line launcher (`echo "${PORT}" >
+  ${PW_PARENT_JOB_DIR}/SESSION_PORT; exec <server> --port "${PORT}"`) and runs
+  `pw endpoints run ${pw_endpoints_args} -- ./launch.sh`. No `pw agent open-port`, no
+  race between allocation and bind; the job that needs the number reads the file after
+  `wait_for_endpoint` (the endpoint answered, so the launcher ran). Write the file under
+  `${PW_PARENT_JOB_DIR}`: the start script's CWD is the submitter's step dir.
+- **The run completes when the work is done, not when the service is up**: the job that
+  drives the work `needs: [wait_for_endpoint]`, and the standard cancel-jobs step in
+  `wait_for_endpoint` has already released the submitter, so the service (skip file
+  touched) outlives the run and `pw endpoints delete` is the teardown, as everywhere.
+- **Sites on the dashboard host's own resource render locally.** A cloud cluster's
+  login node has no `~/.ssh/pwcli` (the workspace and `existing` resources do), so a
+  "dispatch everything over ssh -R" script cannot run from it even to itself; detect
+  `resource.name == head resource name` and skip the tunnel (compute nodes reach the
+  login node's hostname directly).
+- **A long child the step should be able to cancel gets its own process group**: `set -m;
+  bash dispatch.sh & pid=$!; set +m; echo $pid > dispatch.pid; wait $pid`, and the
+  step's `cleanup:` does `kill -- -$(cat dispatch.pid)`; a plain background child stays
+  in the step shell's group and the cancel leaves its ssh/srun children running.
+
 ## Step 4 — the Kubernetes half (`general_k8s.yaml`, standalone `k8s.yaml`)
 
 The v4 k8s pattern — a top-level `sessions:` block (`useCustomDomain: true`) and a

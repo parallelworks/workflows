@@ -473,7 +473,7 @@ WORKER_SCRIPT
         sbatch_output=$(sbatch "${script_file}" 2>&1) || true
         echo "[${site_name}] ${sbatch_output}"
         local slurm_jobid
-        slurm_jobid=$(echo "${sbatch_output}" | grep -oP 'Submitted batch job \K[0-9]+')
+        slurm_jobid=$(echo "${sbatch_output}" | grep -oP 'Submitted batch job \K[0-9]+') || true
         if [ -n "${slurm_jobid}" ]; then
             echo "${slurm_jobid}" >> "${JOB_DIR}/slurm_jobids"
             echo "[${site_name}] SLURM job ID: ${slurm_jobid} (saved to ${JOB_DIR}/slurm_jobids)"

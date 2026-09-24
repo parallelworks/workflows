@@ -338,7 +338,7 @@ PBS_SCRIPT
 
         echo "[${site_name}] Submitting PBS job: qsub ${script_file}"
         local qsub_output
-        qsub_output=$(qsub "${script_file}" 2>&1)
+        qsub_output=$(qsub "${script_file}" 2>&1) || true
         echo "[${site_name}] ${qsub_output}"
         if ! echo "${qsub_output}" | grep -qP '^\d+'; then
             echo "[${site_name}] ERROR: qsub failed: ${qsub_output}"
@@ -468,7 +468,9 @@ WORKER_SCRIPT
 
         # Submit via sbatch and capture job ID
         local sbatch_output
-        sbatch_output=$(sbatch "${script_file}" 2>&1)
+        # || true: under set -e a rejected sbatch would end the script before the error
+        # branch below could report the scheduler's message
+        sbatch_output=$(sbatch "${script_file}" 2>&1) || true
         echo "[${site_name}] ${sbatch_output}"
         local slurm_jobid
         slurm_jobid=$(echo "${sbatch_output}" | grep -oP 'Submitted batch job \K[0-9]+')

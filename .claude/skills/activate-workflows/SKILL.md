@@ -430,31 +430,24 @@ non-repetitive; point at an existing tutorial instead.
 - **Input group named `env` + a top-level `env:` block** referencing `${{ inputs.env.* }}`
   → `Expression Parser Error: max recursion exceeded`, failing **both `--dry-run` and
   `pw workflows run`** (the web UI may still submit). Rename the group (e.g. `env_vars`).
-- **Never paste JSON into a `python -c` source string** (verified 2026-09-24, burst-render-demo
-  on `jean`): `json.loads('''${SITES_JSON}''')` makes python un-escape the document before
-  json.loads sees it, so the `\n` that `json.dumps` wrote inside a value becomes a real
-  newline and parsing dies with `Invalid control character at: line 1 column N`. One
-  multi-line `editor` input is enough to trigger it — the hsp SLURM-directives default ends
-  in a newline, so the form's own default broke the run while the tests that passed `""`
-  never saw it. Pass the document through the **environment**
-  (`FOO_JSON="${FOO_JSON}" python3 -c 'import json,os; json.loads(os.environ["FOO_JSON"])'`)
-  or stdin, and single-quote the python source so the shell cannot expand into it either.
-  Cover it in a test: give one recorded test a multi-line directives value.
-- **An empty group item IS default-filled** (verified 2026-09-24 on `activate.parallel.works`,
-  burst-render-demo): a request carrying `"render_settings": {"name": ""}` for a hidden input
-  whose default is `burst-render` rendered `export service_name="burst-render"` in `inputs.sh`.
-  Group items behave like top-level inputs here; the **list-template** field is still the
-  exception that keeps `""` (reference §12). Reruns built from a past run's INPUTS tab send
-  `""` for every hidden field, so this is the common path, not a corner case. Even so, build a
-  name that several jobs must agree on **once** — in preprocessing, published as an output the
-  others read (`workflows/burst-render-demo`, `tutorials/endpoint-workflows/04-subworkflow.yaml`)
-  — rather than repeating the expression in each job.
-- **`parallelworks/checkout` leaves no `.git` in the job directory** (verified 2026-09-24 on
-  the workspace): it materializes the files only, so a script cannot read back which repo or
-  branch the run was started from. A job that must deliver the same code to *another* machine
-  should send the files it already has (`tar -czf - ... | ssh <site> "tar -xzf - -C ..."`)
-  rather than have that machine clone the repository — one branch reference instead of two,
-  and it works on sites with no GitHub access (see `workflows/burst-render-demo`).
+- **Never paste JSON into a `python -c` source string.** In `json.loads('''${SITES_JSON}''')`
+  python un-escapes the document first, so a `\n` inside a value becomes a real newline and
+  parsing dies with `Invalid control character` — one multi-line `editor` input is enough
+  (the hsp directives default ends in one; burst-render-demo on `jean`, 2026-09-24). Read it
+  from the environment (`os.environ["FOO_JSON"]`) or stdin, and single-quote the python
+  source. Keep a multi-line directives value in one recorded test so it stays covered.
+- **An empty group item is default-filled** (verified 2026-09-24): a hidden input sent as
+  `"render_settings": {"name": ""}` reached the workflow as its default, like a top-level
+  input; only a **list-template** field keeps `""` (reference §12). Reruns built from a past
+  run's INPUTS tab send `""` for every hidden field, so this is the normal path. Still build
+  a name several jobs must agree on **once**, published as a preprocessing output
+  (`workflows/burst-render-demo`).
+- **`parallelworks/checkout` leaves no `.git`** (verified 2026-09-24): it materializes the
+  files only, so a script cannot read back which repo or branch the run used. To give another
+  machine the same code, send what this one already has
+  (`tar -czf - ... | ssh <site> "tar -xzf - -C ..."`) instead of cloning there: one branch
+  reference instead of two, and it works where the site has no GitHub access
+  (`workflows/burst-render-demo`).
 - **Only the workspace and `existing` resources carry the platform SSH key** (`~/.ssh/pwcli`,
   verified 2026-09-23: present on the workspace and `a30gpuserver`, absent on gcpsmall's login
   node, where `pw ssh` outside a run also has no context). A job that opens `ssh -i

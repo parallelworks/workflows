@@ -23,7 +23,7 @@
         "partition": "compute",
         "nodes": "1",
         "time": "00:10:00",
-        "scheduler_directives": ""
+        "scheduler_directives": "##SBATCH --exclusive\n#SBATCH --comment=burst-render-regression\n"
       }
     }
   ],

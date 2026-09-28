@@ -1,0 +1,80 @@
+# Spike 3 — honda-japan.yaml matrix pattern (dcs-workflow@v4) adapted to computed
+# case sets: STATIC matrix list (max width) + job-level guard comparing the matrix
+# value against a RUNTIME OUTPUT (honda guards against a form input), and per-case
+# rundir/script_path composed from a needs-output + ${{ matrix.job_id }}.
+# gen proposes 2 cases; workers 1-2 must run, 3-4 must be skipped.
+# Throwaway: lives only on the optimization branch, never merges.
+permissions:
+  - '*'
+
+jobs:
+  gen:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Propose cases
+        run: |
+          set -x
+          iter_dir="${PWD}/iter_1"
+          for j in 1 2; do
+            mkdir -p "${iter_dir}/case_${j}"
+            {
+              echo "echo \"case ${j} running on \$(hostname) in \$(pwd)\""
+              echo "echo ok > results.out"
+            } > "${iter_dir}/case_${j}/run.sh"
+          done
+          echo "N_CASES=2" | tee -a $OUTPUTS
+          echo "ITER_DIR=${iter_dir}" | tee -a $OUTPUTS
+
+  workers:
+    needs: [gen]
+    strategy:
+      fail-fast: false
+      matrix:
+        job_id:
+          - 1
+          - 2
+          - 3
+          - 4
+    if: ${{ matrix.job_id <= needs.gen.outputs.N_CASES }}
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          rundir: ${{ needs.gen.outputs.ITER_DIR }}/case_${{ matrix.job_id }}
+          use_existing_script: true
+          script_path: ./run.sh
+          scheduler: false
+          use_scheduler_agent: false
+          define_cleanup_script: false
+          submit_and_exit: false
+
+  check:
+    needs: [workers]
+    if: ${{ always }}
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Check results
+        run: |
+          set -x
+          ls -la iter_1/case_1 iter_1/case_2
+          [ -f iter_1/case_1/results.out ] || { echo "::error::case_1 result missing"; exit 1; }
+          [ -f iter_1/case_2/results.out ] || { echo "::error::case_2 result missing"; exit 1; }
+          if [ -d iter_1/case_3 ] || [ -d iter_1/case_4 ]; then
+            echo "::error::workers 3/4 ran but should have been skipped"; exit 1
+          fi
+          echo "::notice::guard worked: 2 of 4 matrix workers ran in their case dirs"
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Resource
+        autoselect: true
+        optional: false

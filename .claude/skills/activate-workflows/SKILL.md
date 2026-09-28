@@ -411,6 +411,11 @@ non-repetitive; point at an existing tutorial instead.
 - **Test the failure path on purpose:** make the start script `exit 1` before
   `pw endpoints run` and check the run ends in `error` — the success path never
   exercises the error-handling steps.
+- **A matrix over a computed list fails at submission** (`Could not expand matrix
+  jobs`, dry-run and real run alike): matrix expansion is static — form inputs and
+  literals only. Fan out over a runtime-computed set by submitting the matrix
+  workflow as a fresh run from a step (`pw workflows run <abs yaml> -i '<json>'`,
+  then poll the slug) — reference §3.
 - **Always `--dry-run`** before a real run; it catches schema/YAML problems cheaply.
 - **`pw workflows run ./relative/path.yaml` is parsed as a git host** and fails with
   a bogus DNS/GitLab error — always pass the **absolute path** for local YAML files.

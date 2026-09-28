@@ -1,0 +1,28 @@
+# Spike 1b — matrix directly over a needs-output (no subworkflow).
+# Expected to fail like spike 1: matrix expansion is static at submission.
+permissions:
+  - '*'
+
+jobs:
+  gen:
+    steps:
+      - name: Generate cases
+        run: |
+          echo 'CASES=[{"name":"alpha"},{"name":"beta"}]' | tee -a $OUTPUTS
+  fan:
+    needs: [gen]
+    strategy:
+      matrix:
+        case: ${{ needs.gen.outputs.CASES }}
+    steps:
+      - name: Run case
+        run: |
+          echo "case=${{ matrix.case.name }}"
+
+'on':
+  execute:
+    inputs:
+      tag:
+        type: string
+        label: Tag
+        default: spike1b

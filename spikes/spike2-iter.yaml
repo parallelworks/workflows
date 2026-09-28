@@ -1,0 +1,44 @@
+# Spike 2 iteration subworkflow — one loop cycle: advance state, run the sweep,
+# then exit 0 (stop) or 1 (parent retry fires the next iteration).
+permissions:
+  - '*'
+
+jobs:
+  iterate:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Advance counter
+        run: |
+          set -x
+          n=$(cat "${{ inputs.state_dir }}/counter" 2>/dev/null || echo 0)
+          n=$((n + 1))
+          echo "$n" > "${{ inputs.state_dir }}/counter"
+          echo "N=$n" | tee -a $OUTPUTS
+      - name: Sweep
+        uses: github/parallelworks/workflows@optimization
+        with:
+          $yaml: spikes/spike2-sweep.yaml
+          resource: ${{ inputs.resource }}
+          state_dir: ${{ inputs.state_dir }}
+          n: ${{ needs.iterate.outputs.N }}
+      - name: Decide
+        run: |
+          n=$(cat "${{ inputs.state_dir }}/counter")
+          if [ "$n" -ge 3 ]; then
+            echo "::notice::iteration $n: converged"
+            exit 0
+          fi
+          echo "::notice::iteration $n: continue (exit 1 drives the parent retry)"
+          exit 1
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Resource
+        optional: false
+      state_dir:
+        type: string
+        label: State directory

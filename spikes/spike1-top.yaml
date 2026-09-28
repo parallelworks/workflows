@@ -1,0 +1,30 @@
+# Spike 1 — can a matrix fan out over a runtime-COMPUTED list?
+# A job emits a JSON array to $OUTPUTS; a second job passes it through `with:`
+# into a subworkflow whose matrix iterates it. This is the contract the
+# optimization sweep needs (every existing matrix iterates a FORM input).
+# Throwaway: lives only on the optimization branch, never merges.
+permissions:
+  - '*'
+
+jobs:
+  gen:
+    steps:
+      - name: Generate cases
+        run: |
+          echo 'CASES=[{"name":"alpha"},{"name":"beta"},{"name":"gamma"}]' | tee -a $OUTPUTS
+  fan:
+    needs: [gen]
+    steps:
+      - name: Fan out over computed cases
+        uses: github/parallelworks/workflows@optimization
+        with:
+          $yaml: spikes/spike1-matrix.yaml
+          cases: ${{ needs.gen.outputs.CASES }}
+
+'on':
+  execute:
+    inputs:
+      tag:
+        type: string
+        label: Tag
+        default: spike1

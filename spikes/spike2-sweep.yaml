@@ -1,0 +1,36 @@
+# Spike 2 sweep subworkflow — the third nesting level: submits one script
+# through script_submitter that writes a per-iteration marker into state_dir.
+permissions:
+  - '*'
+
+jobs:
+  submit:
+    steps:
+      - name: Submit via script_submitter
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: false
+          script: |
+            echo "sweep for iteration ${{ inputs.n }}"
+            touch "${{ inputs.state_dir }}/sweep_${{ inputs.n }}.done"
+          scheduler: false
+          use_scheduler_agent: false
+          define_cleanup_script: false
+          submit_and_exit: false
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Resource
+        optional: false
+      state_dir:
+        type: string
+        label: State directory
+      n:
+        type: integer
+        label: Iteration number

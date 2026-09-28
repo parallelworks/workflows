@@ -26,13 +26,23 @@ jobs:
             --max-iterations "${{ inputs.max_iterations }}" \
             --stall-generations "${{ inputs.stall_generations }}"
           tee -a $OUTPUTS < "${{ inputs.state_dir }}/proposal.env"
+      # A proposal wider than the matrix below would silently evaluate only the
+      # first 8 cases — fail loud instead. A persistent violation ends as FAILED:
+      # the retried attempts find the generation without results and escalate.
+      - name: Check the Proposal Fits the Matrix
+        run: |
+          n="${{ needs.optimize.outputs.N_CASES }}"
+          if [ "${n}" -gt 8 ]; then
+            echo "::error::the optimizer proposed ${n} cases but the workers matrix has 8 slots; extend its job_id list (and the batch_size caps) or fix the optimizer"
+            exit 1
+          fi
 
-  # The guarded static matrix (the honda-japan pattern): a matrix can only expand
-  # over values that are concrete at submission, so the list below is the hardcoded
-  # maximum batch width and the job-level if: compares each slot against the
-  # runtime output N_CASES — surplus workers are skipped, and when the optimizer
-  # stops (N_CASES=0) every worker is skipped, so convergence costs nothing.
-  # To allow bigger batches, extend this list and the batch_size max below.
+  # The guarded static matrix: a matrix can only expand over values that are
+  # concrete at submission, so the list below is the hardcoded maximum batch width
+  # and the job-level if: compares each slot against the runtime output N_CASES —
+  # surplus workers are skipped, and when the optimizer stops (N_CASES=0) every
+  # worker is skipped, so convergence costs nothing. To allow bigger batches,
+  # extend this list and the batch_size max below.
   workers:
     needs: [optimize]
     strategy:

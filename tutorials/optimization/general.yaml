@@ -78,7 +78,7 @@ jobs:
           case "${status}" in
             CONVERGED)
               n=$(($(wc -l < "${state}/pareto.csv") - 1))
-              echo "::notice::optimization converged: ${n} non-dominated points in ${state}/pareto.csv"
+              echo "::notice::optimization converged: ${n} non-dominated points in ${state}/pareto.csv, plotted in ${state}/pareto.svg"
               cut -d, -f1-3 "${state}/pareto.csv" | head -15
               ;;
             FAILED)

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""OpenFOAM placeholder: evaluate one case in the current directory.
+"""Simulator placeholder: evaluate one case in the current directory.
 
-Reads ./params.in (one "<value> <name>" line per variable, Dakota fork-driver
-style), computes the ZDT1 benchmark, sleeps a few seconds to imitate solver time,
-and writes ./results.out (one "<value> <label>" objective per line). The write is
-atomic so the optimizer never ingests a half-written file; on any error the
-process exits non-zero and leaves no results.out, which is the failure signal.
+Reads ./params.in (one "<value> <name>" line per variable), computes the ZDT1
+benchmark, sleeps a few seconds to imitate solver time, and writes ./results.out
+(one "<value> <label>" objective per line). The write is atomic so the optimizer
+never ingests a half-written file; on any error the process exits non-zero and
+leaves no results.out, which is the failure signal.
 
-Swap for OpenFOAM: replace this file with a driver that builds the case from
-params.in, runs the solver, and extracts the objectives into results.out — the
-two-file contract is all the optimizer sees.
+Swapping in a real solver means replacing this file with a driver that builds the
+case from params.in, runs the solver, and extracts the objectives into results.out
+— the two-file contract is all the optimizer sees (see the README's last section).
 """
 
 import math

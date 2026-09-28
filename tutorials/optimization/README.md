@@ -1,36 +1,43 @@
 # Iterative Optimization on ACTIVATE — A Workflow Tutorial
 
-This tutorial builds a **simulation-based optimization loop** as an ACTIVATE
-workflow: run a batch of simulations in parallel, feed their results to an
-optimizer, let it decide *stop or continue*, and repeat with the cases it proposes
-— for as many iterations as it takes.
+This tutorial builds an **optimization loop** as an ACTIVATE workflow: run a batch
+of simulations in parallel on a cluster, feed their results to an optimizer, let it
+decide *stop or continue*, and repeat with the cases it proposes — for as many
+iterations as it takes.
 
 The example minimizes the two objectives of the **ZDT1 benchmark** with a small
-evolutionary algorithm, but both compute pieces are deliberate stand-ins wired
-through Dakota's file conventions: [`app/optimizer.py`](app/optimizer.py) is a
-placeholder for **Dakota** and [`app/simulator.py`](app/simulator.py) a placeholder
-for an **OpenFOAM** case driver. [Swapping them in](#swapping-in-dakota-and-openfoam)
+evolutionary algorithm. Both compute pieces are simple placeholders behind a
+file-based contract, so [swapping in a real optimizer and solver](#swapping-in-dakota-and-openfoam)
 changes neither YAML.
 
-| File | What it is |
-|---|---|
-| [`general.yaml`](general.yaml) | The workflow you run: the form, the checkout, and the loop |
-| [`iteration.yaml`](iteration.yaml) | ONE loop cycle, re-invoked fresh by every attempt of the loop |
-| [`app/optimizer.py`](app/optimizer.py) | Dakota placeholder: ingest results, propose the next batch of cases or stop |
-| [`app/simulator.py`](app/simulator.py) | OpenFOAM placeholder: evaluate one case dir (`params.in` → `results.out`) |
-| [`tests/general/zdt1.json`](tests/general/zdt1.json) | The recorded end-to-end test (see `tools/tests/README.md`) |
+Three stages build it up:
 
-The lesson is in three stages: run the loop **by hand** with no platform at all,
-understand the **three patterns** that turn it into a workflow, then run and scale
-it on a cluster.
+| Stage | File(s) | What it shows |
+|---|---|---|
+| 0 | [`app/`](app/) | The optimizer ↔ simulator contract, run by hand — no platform needed |
+| 1 | [`iteration.yaml`](iteration.yaml) | One cycle as a workflow: propose → evaluate in parallel → decide |
+| 2 | [`general.yaml`](general.yaml) | The cycle repeated until convergence, and a clear verdict either way |
+
+By the end of this tutorial you will understand how to:
+
+- Run an *iterate-until-converged* loop with a retried subworkflow step whose exit
+  code means "go again" or "done"
+- Fan a runtime-computed set of cases out over parallel jobs — and why that needs a
+  static matrix with a guard
+- Pass small values between jobs and layers as step outputs (`$OUTPUTS`), and
+  everything else as files whose *paths* travel as inputs
+- Make a workflow report success and failure explicitly, from state files, with
+  `if: ${{ always }}` steps
+- Keep a loop self-healing: idempotent state updates, safe re-runs after a crashed
+  attempt, and results (CSV + plot) that outlive the run
 
 ---
 
 ## Stage 0 — the loop by hand
 
-Everything the workflow orchestrates can run in a scratch directory on your laptop,
-because the entire optimizer ↔ simulator interface is **files in case directories**.
-Try it (any Python ≥ 3.6, standard library only):
+Everything the workflow will orchestrate runs in a scratch directory on your
+laptop, because the optimizer and the simulator only talk through **files in case
+directories**. Try it (any Python ≥ 3.6, standard library only):
 
 ```bash
 mkdir -p /tmp/opt/state && cd /tmp/opt
@@ -45,126 +52,167 @@ for attempt in $(seq 1 30); do
     (cd $ITER_DIR/case_$j && SIM_SLEEP_S=0 bash run.sh)
   done
 done
-cat state/status && head -3 state/pareto.csv
+cat state/status && open state/pareto.svg       # xdg-open on Linux
 ```
 
-Each `optimizer.py` call ingests whatever results exist for the generation it
-proposed last time, then either writes the next `state/iter_<N>/case_<j>/` set —
-each case holding `params.in` (the design variables, one `<value> <name>` line per
-variable, Dakota fork-driver style) and a `run.sh` — or stops, leaving
-`state/pareto.csv` and a final `state/status` of `CONVERGED` or `FAILED`.
-`simulator.py` is the other half of the contract: run inside one case directory, it
-reads `params.in` and writes `results.out` (one `<value> <label>` objective per
-line), or exits non-zero leaving no `results.out` at all.
+The two sides of the contract:
 
-That is the whole loop. The rest of the tutorial is making the platform drive it:
-the `for j` loop becomes parallel jobs on a cluster, the `for attempt` loop becomes
-a retried step, and the files stay exactly where they are.
+| Script | What it does |
+|---|---|
+| [`optimizer.py`](app/optimizer.py) | Ingests every `results.out` of the generation it proposed last time, then **either** writes the next `state/iter_<N>/case_<j>/` set — each case holding `params.in` (one `<value> <name>` line per design variable) and a `run.sh` — **or** stops, leaving `state/pareto.csv`, `state/pareto.svg` and a final `state/status` of `CONVERGED` or `FAILED` |
+| [`simulator.py`](app/simulator.py) | Runs inside one case directory: reads `params.in`, computes the ZDT1 objectives, sleeps a few seconds to imitate solver time, writes `results.out` (one `<value> <label>` line per objective) — or exits non-zero leaving **no** `results.out`, which is the failure signal |
 
-### The correctness check
+That is the whole loop. The rest of the tutorial makes the platform drive it: the
+`for j` loop becomes parallel jobs on a cluster, the `for attempt` loop becomes a
+retried step, and the files stay exactly where they are.
 
-ZDT1's analytic Pareto front is `f2 = 1 − √f1` (reached when `g = 1`), which makes
-correctness cheap to see: the closer `pareto.csv` hugs that curve — the `g` column
-printed in each row falling toward 1 — the better the loop worked end to end. A
-realistic budget needs no cluster: with `--batch-size 40 --max-iterations 200` the
-loop above runs ~8000 evaluations in a couple of minutes locally (`SIM_SLEEP_S=0`)
-and lands the front at `g ≈ 1.04`, mean `|f2 − (1−√f1)| ≈ 0.03`. Platform-scale
-smoke runs (4 iterations × 4 cases) exercise every moving part but stop far from
-the front — that is expected: it's a budget knob, not a bug.
+### Watching it converge
+
+Every generation, the optimizer redraws **`state/pareto.svg`**: all evaluations so
+far, the current Pareto front, and — because ZDT1's true front is known analytically
+(`f2 = 1 − √f1`) — the target curve to compare against. The closer the orange front
+hugs the dashed curve, the better the loop worked; `state/pareto.csv` has the same
+front as data (`f1, f2, g, x1..x30` per row, with `g → 1` at the true front).
+
+How close it gets is purely a budget question. The platform-sized defaults
+(batches of ≤ 8) exercise every moving part but stop far from the curve; the local
+loop above with `--batch-size 40 --max-iterations 200` runs ~8000 evaluations in a
+couple of minutes and lands on it. That is expected behavior, not a bug.
 
 ---
 
-## Stage 1 — three patterns turn the loop into a workflow
+## Stage 1 — one cycle as a workflow (`iteration.yaml`)
 
-A workflow is a DAG: jobs and `needs` edges, no cycles, and every job known at
-submission. An optimization loop violates that twice — it iterates an unknown
-number of times, and each iteration's case count is decided at runtime. Three
-patterns bridge the gap.
+`iteration.yaml` is **one** pass through the loop body, as three jobs:
 
-### Pattern 1: retry-as-loop
+```
+optimize  ──▶  workers (matrix ×8)  ──▶  decide
+propose or     evaluate the cases        exit 0: loop over
+stop           in parallel               exit 1: run me again
+```
 
-`general.yaml`'s `Iterate` step calls `iteration.yaml` as a subworkflow with a
-`retry` block. The subworkflow's exit status is the loop control, decided by its
-final `decide` job from `state/status`:
+### The `optimize` job
 
-- **exit 1** (status still `CONTINUE`) → the step *fails* → the platform's retry
-  fires the next attempt, which invokes `iteration.yaml` **fresh**: the next
-  iteration.
-- **exit 0** (status `CONVERGED` or `FAILED`) → the step succeeds → the loop ends,
-  and the `Report` step turns the status into the run's verdict.
-
-`max-retries` is therefore the **loop budget**. Two things to keep straight:
-
-- **Attempt ≠ iteration.** The true iteration number is the generation counter in
-  `state/state.json`, never the attempt counter. A crashed attempt re-runs the
-  *same* iteration off the state files (see [self-healing](#failure-semantics))
-  while still consuming budget.
-- **Only the last attempt's logs surface** on the `Iterate` step, and attempts
-  reuse the same directory. Per-iteration history therefore goes to **files under
-  `state/`** and to `::notice` lines, not to step output you expect to keep.
-
-### Pattern 2: the guarded static matrix
-
-The natural way to fan out over the optimizer's cases would be a matrix over a
-computed list — but **a matrix can never expand over runtime values**; submission
-itself fails (`Could not expand matrix jobs`). Matrix lists must be concrete when
-the run is submitted.
-
-The workaround, borrowed from production workflows, is in `iteration.yaml`'s
-`workers` job: a **literal** matrix list of the *maximum* batch width, with a
-job-level guard comparing each slot to a runtime output:
+One step runs `optimizer.py` and publishes its two scalars as step outputs:
 
 ```yaml
-strategy:
-  fail-fast: false
-  matrix:
-    job_id: [1, 2, 3, 4, 5, 6, 7, 8]     # written out as a YAML list
-if: ${{ matrix.job_id <= needs.optimize.outputs.N_CASES }}
+- name: Propose or Stop
+  run: |
+    python3 "${{ inputs.app_dir }}/optimizer.py" --state-dir "${{ inputs.state_dir }}" ...
+    tee -a $OUTPUTS < "${{ inputs.state_dir }}/proposal.env"    # N_CASES, ITER_DIR
 ```
 
-Surplus workers are *skipped*, which costs nothing — including all eight of them on
-the final call, when the optimizer stops and emits `N_CASES=0`. The width is a
-hardcoded ceiling (`preprocessing` validates `batch_size` against it); to raise it,
-extend the list and the `batch_size` max. Each live worker hands its case to the
-repo's `script_submitter` subworkflow with
-`rundir: ${{ needs.optimize.outputs.ITER_DIR }}/case_${{ matrix.job_id }}`, so the
-case directory becomes the working directory on the cluster.
+This is the tutorial's data-flow rule in one line: **small scalars become outputs;
+everything else stays in files, and only paths travel.** The optimizer's state,
+the case definitions and the results never pass through the YAML — just `N_CASES`,
+`ITER_DIR`, and the `state_dir`/`app_dir` paths handed down as inputs.
 
-### Pattern 3: the results-file protocol
+A second step guards the contract: if the optimizer ever proposes more cases than
+the workers matrix can take, the job **fails loudly** instead of silently
+evaluating only the first 8 (see [failure semantics](#failure-semantics) for how
+that ends).
 
-`script_submitter` does **not** forward the submitted script's exit code, so "did
-my simulation succeed?" cannot travel as job status. It travels as a file:
-`run.sh` either produces `results.out` or it doesn't, and the *optimizer* decides
-what a missing result means (here: the individual is dropped from the generation;
-a real study might assign a penalty or re-propose the point). The write is atomic
-(`results.out.tmp` → rename) so a half-written file can never be ingested.
+### The `workers` job — a static matrix with a guard
 
-The same philosophy governs all data flow, in both directions:
+A matrix cannot expand over runtime values — submission itself fails with
+`Could not expand matrix jobs` if the list comes from another job's output. Matrix
+lists must be concrete when the run is submitted.
 
-- **Small scalars** cross job and layer boundaries as step outputs:
-  `preprocessing` publishes `STATE_DIR`/`APP_DIR` with
-  `echo KEY=value | tee -a $OUTPUTS`, the optimizer emits `N_CASES`/`ITER_DIR` the
-  same way, and consumers read `${{ needs.<job>.outputs.KEY }}`.
-- **Everything else** — optimizer state, case definitions, results, the final
-  front — lives in files under `state/`, and only the *path* is passed as an
-  input. Jobs accept their default working directories; nothing assumes a shared
-  environment variable.
+So the matrix is a **literal list of the maximum batch width**, and a job-level
+`if:` compares each slot against the optimizer's runtime output:
 
-### How a run unfolds
-
-```
-general.yaml
-├─ preprocessing            checkout app/, validate batch_size, create state/
-└─ optimization_loop
-   ├─ Iterate  (retry: max_iterations, one attempt per loop cycle)
-   │    └─ iteration.yaml
-   │       ├─ optimize      ingest gen N results → propose gen N+1 (or stop)
-   │       ├─ workers ×8    guarded matrix → script_submitter → run.sh per case
-   │       └─ decide        status CONTINUE → exit 1 (retry) · else exit 0
-   └─ Report (if: always)   CONVERGED → success · FAILED/CONTINUE/missing → error
+```yaml
+workers:
+  needs: [optimize]
+  strategy:
+    fail-fast: false
+    matrix:
+      job_id: [1, 2, 3, 4, 5, 6, 7, 8]
+  if: ${{ matrix.job_id <= needs.optimize.outputs.N_CASES }}
 ```
 
-After a run, the state directory in the parent run's job dir tells the whole story:
+Workers beyond `N_CASES` are *skipped*, which costs nothing — including all eight
+on the final pass, when the optimizer stops and emits `N_CASES=0`. Each live
+worker hands its case to the repo's `script_submitter` subworkflow with
+
+```yaml
+rundir: ${{ needs.optimize.outputs.ITER_DIR }}/case_${{ matrix.job_id }}
+```
+
+so the case directory becomes the working directory, `./run.sh` runs there, and
+the form's scheduler settings (run on the login node, or one SLURM/PBS job per
+case) pass straight through. `fail-fast: false` lets the other cases finish when
+one fails. To allow bigger batches, extend the `job_id` list and the `batch_size`
+caps — the width is a deliberate, validated ceiling, not a magic number.
+
+### The `decide` job — an exit code as the loop signal
+
+`decide` runs `if: ${{ always }}` (even after a crash upstream), reads
+`state/status`, and turns it into this run's exit status:
+
+| `state/status` | `decide` | Meaning for the parent |
+|---|---|---|
+| `CONVERGED` or `FAILED` | exit 0 | the cycle ran to a verdict — stop looping |
+| `CONTINUE` (or missing/stale) | exit 1 | run the next cycle |
+
+That inversion — *failure means "again"* — is what makes the retry in Stage 2 a
+loop.
+
+---
+
+## Stage 2 — the loop (`general.yaml`)
+
+`general.yaml` is what you run. Its `preprocessing` job checks out `app/` from
+this repo, validates `batch_size` against the matrix width, creates `state/` in
+its own job directory and publishes the two absolute paths:
+
+```yaml
+echo "STATE_DIR=${PWD}/state" | tee -a $OUTPUTS
+echo "APP_DIR=${PWD}/tutorials/optimization/app" | tee -a $OUTPUTS
+```
+
+### The `Iterate` step — a retry as a loop
+
+The `optimization_loop` job invokes `iteration.yaml` with a `retry` block:
+
+```yaml
+- name: Iterate
+  retry:
+    max-retries: ${{ inputs.optimizer.max_iterations }}
+    interval: 10s
+  uses: github/parallelworks/workflows@optimization
+  with:
+    $yaml: tutorials/optimization/iteration.yaml
+    ...
+    state_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
+    app_dir: ${{ needs.preprocessing.outputs.APP_DIR }}
+```
+
+Every attempt runs one full cycle. While `decide` exits 1, the step "fails" and
+the platform's retry launches the next cycle; when it exits 0, the loop is over.
+`max-retries` is the **loop budget** — the same number as the optimizer's
+generation budget, taken from the form.
+
+Two things to keep straight when reading a run:
+
+- **Attempt ≠ iteration.** The true iteration number is the generation counter in
+  `state/state.json`. A crashed attempt re-runs the *same* iteration (below) while
+  still consuming one attempt.
+- **Only the last attempt's logs surface** on the `Iterate` step. Per-iteration
+  history lives in the files under `state/` and in the `::notice` lines each
+  attempt prints.
+
+### The `Report` step — the verdict
+
+`Report` runs `if: ${{ always }}` and maps `state/status` to the run's outcome, so
+a finished run always says *why* it finished: `CONVERGED` prints the front and
+succeeds; anything else prints a targeted `::error` and fails the run. The loop's
+success is defined by the optimizer's verdict, never by "the steps happened to
+run".
+
+### What a run leaves behind
+
+On the cluster, the run's job directory holds the whole story:
 
 ```
 state/
@@ -173,103 +221,100 @@ state/
 ├── proposal.env       N_CASES=… ITER_DIR=…   (the optimizer's last word)
 ├── iter_1/case_1..B/  params.in · run.sh · results.out
 ├── iter_2/…
-└── pareto.csv         written when the loop stops: f1, f2, g, x1..x30 per row
+├── pareto.csv         the front as data: f1, f2, g, x1..x30 per row
+└── pareto.svg         the picture: all evaluations, the front, the analytic curve
 ```
-
-### Failure semantics
-
-The loop is built so that every failure lands in one of three explicit outcomes,
-reported by the `Report` step (`if: ${{ always }}` — it must speak even when
-`Iterate` has failed):
-
-| What happened | How it plays out |
-|---|---|
-| Some cases fail in an iteration | `fail-fast: false` lets the rest finish; the optimizer drops the missing results and continues |
-| An attempt crashes (optimize job dies, worker infrastructure fails) | `decide` (`if: ${{ always }}`) still exits 1 → the retry re-runs the **same** iteration: state.json is written atomically *after* the case dirs, so a re-run finds a consistent state and re-proposes the same generation — self-healing, at the price of one budget unit |
-| A whole generation returns zero results, twice in a row | something is systematically broken → the optimizer writes `FAILED`, the loop stops, the run errors |
-| The optimizer never wants to stop | the retry budget runs out with status `CONTINUE` → the run errors with that explanation |
 
 ---
 
-## Stage 2 — run it on a cluster
+## Failure semantics
 
-From the UI, point a form at this file; from a shell (note the **absolute** YAML
-path — a relative one is parsed as a git host):
+Failures escalate through three explicit levels — a case, a generation, the loop —
+and every possible ending is one of two verdicts: **`CONVERGED` (run succeeds)**
+or **an explained error (run fails)**. Nothing ends silently.
 
-```bash
-pw workflows run /abs/path/tutorials/optimization/general.yaml -i '{
-  "cluster":   {"resource": "<cluster>", "scheduler": false},
-  "optimizer": {"max_iterations": 4, "batch_size": 4, "stall_generations": 3}
-}'
-```
+| Level | What happened | What the loop does |
+|---|---|---|
+| Case | one simulation crashes → no `results.out` | `fail-fast: false` lets the rest of the batch finish; the optimizer drops the missing result and continues |
+| Generation | *every* case of a generation came back without results | the next attempt re-proposes the same generation once (the case files are intact); a second all-miss means something is systematically broken → the optimizer writes `FAILED` |
+| Attempt | the cycle crashed mid-flight (node hiccup, worker infrastructure failure) | `decide` still runs (`if: ${{ always }}`) and exits 1, so the retry re-runs the **same** iteration: `state.json` is written atomically *after* the case directories, so a re-run always finds a consistent state — self-healing, at the price of one attempt from the budget |
+| Contract | the optimizer proposed more cases than the matrix width | the guard step fails the cycle rather than silently evaluating a subset; since re-proposals repeat the violation, the generation-level escalation ends it as `FAILED` two attempts later |
+| Budget | the retries ran out while `state/status` still says `CONTINUE` | `Report` fails the run and says so: raise `max_iterations` (crashed attempts also consume budget) or loosen the convergence knobs |
 
-The run completes with success only after the optimizer wrote `CONVERGED`; the
-final front is at `state/pareto.csv` under the run's job dir
-(`~/pw/jobs/<run-slug>/` on the cluster). With `"scheduler": true` each case is
-submitted through SLURM/PBS with the form's directives instead of running on the
-login node — the loop is unchanged, and one walltime knob covers each case.
+And the two decided endings: `CONVERGED` → `Report` prints the front and the run
+**succeeds**; `FAILED` → the loop stops on purpose (`decide` exits 0 — retrying a
+systematic breakage would only burn budget) and `Report` turns it into a run
+**error** pointing at the last generation's worker logs.
 
-Everything the run fetches from GitHub (`app/`, `iteration.yaml`, the `uses:`
-subworkflows) comes from the branch named in `general.yaml` — push before you run,
-or you will test yesterday's code. The recorded end-to-end test runs with:
+---
 
-```bash
-python3 tools/tests/run-workflow-test.py tutorials/optimization/tests/general/zdt1.json
-```
+## Running it
 
-Cancelling a run mid-flight is clean by construction: `script_submitter` owns each
-case's lifecycle (its cleanup cancels the scheduler job or process tree), skipped
-workers never start, and the loop keeps no daemons — nothing outlives the run. If
-a real case driver ever starts things the submitter cannot see (containers,
-license daemons), give each case a `cancel.sh` and set
-`define_cleanup_script: true` on the submitter call.
+Open **Workflows** in the ACTIVATE UI, select this workflow, and fill the two form
+groups: pick the compute resource, and set the optimizer knobs — `max_iterations`
+(the generation *and* loop budget), `batch_size` (parallel cases per iteration,
+capped by the matrix width), and `stall_generations` (declare convergence when the
+front's hypervolume improves by less than 0.001 over that many consecutive
+generations). Leave **Schedule Cases?** off to run every case on the login node,
+or turn it on to give each case its own SLURM/PBS job with the walltime and
+directives from the form. Then click **Execute**.
+
+The run succeeds only after the optimizer wrote `CONVERGED`; the front — CSV and
+plot — is under `state/` in the run's job directory on the cluster
+(`~/pw/jobs/<run-slug>/`). Cancelling a run mid-flight is clean by construction:
+`script_submitter` owns each case's lifecycle (its cleanup cancels the scheduler
+job or process tree), skipped workers never start, and the loop keeps no daemons.
 
 ### Scaling and tuning
 
 - **Wider batches** — extend the `job_id` list in `iteration.yaml` and the
-  `batch_size` max in both forms. Skipped slots are free, so a generous ceiling
-  costs nothing. To cap cluster pressure, add `max-parallel: <n>` under `strategy`.
-- **More iterations** — `max_iterations` is both the optimizer's generation budget
-  and the loop's retry budget; every platform iteration adds scheduling overhead
-  (roughly a minute at small scale), so budget accordingly.
-- **Convergence** — the optimizer stops early when the front's hypervolume gains
-  less than `0.001` over `stall_generations` consecutive generations; widen the
-  window (or raise `max_iterations`) for a deeper search.
+  `batch_size` caps in both forms. Skipped slots are free, so a generous ceiling
+  costs nothing; to cap cluster pressure, add `max-parallel: <n>` under `strategy`.
+- **More iterations** — every platform iteration adds scheduling overhead (roughly
+  a minute at small scale), so budget accordingly; the loop is restartable state,
+  so a deeper search is just a bigger `max_iterations`.
+- **Real workloads** — with **Schedule Cases?** on, each case is its own scheduler
+  job; multi-node solvers fit without touching the YAMLs (see the
+  [swap notes](#swapping-in-dakota-and-openfoam)).
 
 ### Debugging
 
-- `pw workflows runs errors <slug>` from anywhere; the job dir
-  (`~/pw/jobs/<run-slug>/`) on the cluster for everything else.
-- The `Iterate` step shows only the **last** attempt. For history, read
-  `state/state.json` (`hv_history` is the convergence curve), the `::notice`
-  lines each attempt printed, and the per-case `results.out` files.
+- The `Iterate` step shows only the **last** attempt; the history is in
+  `state/state.json` (`hv_history` is the convergence curve), the `::notice` lines
+  each attempt printed, and the per-case files under `state/iter_*/`.
+- `pareto.svg` is redrawn every generation — opening it mid-run shows how far the
+  search has come.
 - A form value that seems ignored: read the rendered step,
-  `logs/<job>/step_N/script-unstable.sh`, which shows every `${{ input }}` as its
-  literal value.
+  `logs/<job>/step_N/script-unstable.sh` in the job directory, which shows every
+  `${{ input }}` as its literal value.
 
 ---
 
 ## Swapping in Dakota and OpenFOAM
 
-The per-case interface *is* Dakota's fork-driver convention on purpose:
-`params.in` in, `results.out` out, one case per directory.
+The placeholders were inspired by a real pairing — **Dakota** driving **OpenFOAM**
+— and deliberately simplified down to the part that matters here: the loop and its
+file contract. The per-case interface mirrors Dakota's fork-driver convention
+(`params.in` in, `results.out` out, one case per directory) on purpose, so both
+pieces swap out without touching either YAML.
 
 **Simulator → OpenFOAM.** Replace `simulator.py` with a driver that reads
 `params.in`, builds the case (mesh/dict templating), runs the solver, and extracts
-the objectives into `results.out` — same two files, same atomic-write-or-die rule.
-The optimizer-side `run.sh` template (in `optimizer.py`'s `write_cases`) is the
-place to add environment setup, module loads, or `srun` decorations; with
-`"scheduler": true` each case already gets its own scheduler job, so parallel
-solvers fit without touching the YAMLs.
+the objectives into `results.out` — same two files, same
+atomic-write-or-exit-nonzero rule. The `run.sh` template (in `optimizer.py`'s
+`write_cases`) is the place for module loads, environment setup, or `srun`
+decorations; with **Schedule Cases?** on, each case already gets its own scheduler
+job, so parallel solvers fit as-is.
 
 **Optimizer → Dakota.** The contract to keep is exactly what each `optimizer.py`
 call does: *read all results so far, then either emit the next batch of case
-directories (+ `status` `CONTINUE`, `proposal.env`) or stop (+ `pareto.csv`,
+directories (+ `CONTINUE`, `proposal.env`) or stop (+ `pareto.csv`,
 `CONVERGED`/`FAILED`)*. Dakota fits this shape through its restart file: each call
 resumes `dakota -read_restart`, lets the strategy generate its next evaluation
 batch (pre/post-run staged execution writes exactly these `params.in` files), and
-stops when Dakota's own convergence criteria hold. State — the restart file — stays
-under `state/`, like everything else.
+stops when Dakota's own convergence criteria hold. Its state — the restart file —
+lives under `state/` like everything else. The `pareto.svg` reference curve is
+ZDT1-specific reporting sugar; drop that with the placeholder.
 
-Neither swap touches `general.yaml` or `iteration.yaml`: they know only paths,
-`N_CASES`, and three status words.
+Neither swap touches `general.yaml` or `iteration.yaml`: the YAMLs know only
+paths, `N_CASES`, and three status words.

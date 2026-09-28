@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dakota placeholder: a small multi-objective EA driving file-based case evaluations.
+"""Optimizer placeholder: a small multi-objective EA driving file-based case evaluations.
 
 Called once per loop iteration:
 
@@ -11,14 +11,15 @@ proposes the next generation or stops:
 
   propose:  S/iter_<N>/case_<j>/{params.in,run.sh}  (j = 1..B)
             S/status = CONTINUE, S/proposal.env with N_CASES=<B> and ITER_DIR=<abs>
-  stop:     S/pareto.csv (the non-dominated front found)
+  stop:     S/pareto.csv + S/pareto.svg (the non-dominated front found)
             S/status = CONVERGED (budget or stagnation) or FAILED, N_CASES=0
 
-The per-case file interface mirrors Dakota's fork driver: `params.in` in
-("<value> <name>" per line), `results.out` out (one "<value> <label>" objective per
-line). A case with a missing or unparseable results.out is treated as a failed
-evaluation and dropped. Swapping in Dakota keeps the contract: read all results so
-far, emit the next batch of case dirs or stop.
+The per-case interface is two files: the optimizer writes `params.in` (one
+"<value> <name>" line per variable) and `run.sh` into each case directory; the
+simulation leaves `results.out` (one "<value> <label>" objective per line) behind.
+A case with a missing or unparseable results.out is treated as a failed evaluation
+and dropped. Swapping in a real optimizer keeps the contract: read all results so
+far, emit the next batch of case dirs or stop (see the README's last section).
 
 Every call is idempotent: mutable state lives in S/state.json, written atomically
 after the case dirs, so a crashed attempt re-runs safely (a generation that comes
@@ -47,9 +48,11 @@ def load_state(state_dir):
     path = os.path.join(state_dir, "state.json")
     if os.path.exists(path):
         with open(path) as fh:
-            return json.load(fh)
+            state = json.load(fh)
+        state.setdefault("history", [])
+        return state
     return {"gen": 0, "pool": [], "front": [], "hv_history": [],
-            "zero_results": 0, "evals": 0}
+            "zero_results": 0, "evals": 0, "history": []}
 
 
 def write_atomic(path, content):
@@ -172,6 +175,70 @@ def hypervolume(fs):
     return hv
 
 
+def write_plot(state_dir, state):
+    """Render state/pareto.svg: every evaluation, the current front, and (as a
+    reference for this ZDT1 example — drop it with the placeholder) the analytic
+    front f2 = 1 - sqrt(f1). Pure stdlib so it renders anywhere the loop runs."""
+    pts = state["history"]
+    if not pts:
+        return
+    front = sorted(ind["f"] for ind in state["front"])
+    width, height = 640, 480
+    ml, mr, mt, mb = 58, 16, 16, 46
+    iw, ih = width - ml - mr, height - mt - mb
+    x_max = max(1.0, max(p[0] for p in pts)) * 1.05
+    y_max = max(1.0, max(p[1] for p in pts)) * 1.05
+
+    def sx(v):
+        return ml + v / x_max * iw
+
+    def sy(v):
+        return mt + ih - v / y_max * ih
+
+    s = ['<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" '
+         'font-family="sans-serif">' % (width, height),
+         '<rect width="100%" height="100%" fill="#fcfcfb"/>']
+    for i in range(6):
+        vx, vy = x_max * i / 5, y_max * i / 5
+        s.append('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="#f0efec"/>'
+                 % (sx(vx), mt, sx(vx), mt + ih))
+        s.append('<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" stroke="#f0efec"/>'
+                 % (ml, sy(vy), ml + iw, sy(vy)))
+        s.append('<text x="%.1f" y="%d" font-size="11" text-anchor="middle" '
+                 'fill="#52514e">%.2f</text>' % (sx(vx), mt + ih + 16, vx))
+        s.append('<text x="%d" y="%.1f" font-size="11" text-anchor="end" '
+                 'fill="#52514e">%.1f</text>' % (ml - 6, sy(vy) + 4, vy))
+    s.append('<rect x="%d" y="%d" width="%d" height="%d" fill="none" stroke="#52514e"/>'
+             % (ml, mt, iw, ih))
+    s.append('<text x="%.1f" y="%d" font-size="13" fill="#0b0b0b" '
+             'text-anchor="middle">f1</text>' % (ml + iw / 2, height - 8))
+    s.append('<text x="16" y="%.1f" font-size="13" fill="#0b0b0b" text-anchor="middle" '
+             'transform="rotate(-90 16 %.1f)">f2</text>' % (mt + ih / 2, mt + ih / 2))
+    analytic = " ".join("%.1f,%.1f" % (sx(u / 50.0), sy(1.0 - (u / 50.0) ** 0.5))
+                        for u in range(51))
+    s.append('<polyline points="%s" fill="none" stroke="#52514e" stroke-width="1.5" '
+             'stroke-dasharray="5,4"/>' % analytic)
+    for f1, f2, _gen in pts:
+        s.append('<circle cx="%.1f" cy="%.1f" r="2.2" fill="#2a78d6"/>' % (sx(f1), sy(f2)))
+    s.append('<polyline points="%s" fill="none" stroke="#eb6834" stroke-width="1.5"/>'
+             % " ".join("%.1f,%.1f" % (sx(f[0]), sy(f[1])) for f in front))
+    for f in front:
+        s.append('<circle cx="%.1f" cy="%.1f" r="3.5" fill="#eb6834"/>' % (sx(f[0]), sy(f[1])))
+    lx, ly = ml + iw - 240, mt + 14
+    s.append('<circle cx="%d" cy="%d" r="3" fill="#2a78d6"/>' % (lx, ly))
+    s.append('<text x="%d" y="%d" font-size="12" fill="#0b0b0b">all evaluations '
+             '(%d)</text>' % (lx + 10, ly + 4, len(pts)))
+    s.append('<circle cx="%d" cy="%d" r="3.5" fill="#eb6834"/>' % (lx, ly + 20))
+    s.append('<text x="%d" y="%d" font-size="12" fill="#0b0b0b">Pareto front '
+             '(%d points)</text>' % (lx + 10, ly + 24, len(front)))
+    s.append('<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#52514e" '
+             'stroke-width="1.5" stroke-dasharray="5,4"/>' % (lx - 6, ly + 40, lx + 6, ly + 40))
+    s.append('<text x="%d" y="%d" font-size="12" fill="#0b0b0b">analytic front '
+             'f2 = 1 - &#8730;f1</text>' % (lx + 10, ly + 44))
+    s.append('</svg>')
+    write_atomic(os.path.join(state_dir, "pareto.svg"), "\n".join(s) + "\n")
+
+
 def write_cases(state_dir, app_dir, gen, population):
     iter_dir = os.path.join(state_dir, "iter_%d" % gen)
     for j, x in enumerate(population, start=1):
@@ -196,9 +263,11 @@ def stop(state_dir, state, status, reason):
         rows.append(",".join(["%.10f" % ind["f"][0], "%.10f" % ind["f"][1],
                               "%.6f" % g] + ["%.6f" % v for v in ind["x"]]))
     write_atomic(os.path.join(state_dir, "pareto.csv"), "\n".join(rows) + "\n")
+    write_plot(state_dir, state)
     save_state(state_dir, state)
     emit(state_dir, status, 0, os.path.join(state_dir, "iter_%d" % state["gen"]))
-    notice("%s after %d generations, %d evaluations: %s (front of %d written to pareto.csv)"
+    notice("%s after %d generations, %d evaluations: %s (front of %d written to "
+           "pareto.csv, plotted in pareto.svg)"
            % (status, state["gen"], state["evals"], reason, len(front)))
 
 
@@ -238,11 +307,13 @@ def main():
             return
         state["zero_results"] = 0
         state["evals"] += len(results)
+        state["history"] += [[r["f"][0], r["f"][1], state["gen"]] for r in results]
         state["front"] = select_front(state["front"] + results)
         state["pool"] = select_best(state["pool"] + results, 2 * args.batch_size)
         hv = hypervolume([ind["f"] for ind in state["front"]])
         gain = hv - state["hv_history"][-1] if state["hv_history"] else hv
         state["hv_history"].append(hv)
+        write_plot(state_dir, state)
         notice("gen %d: %d/%d results, %d evaluations total, front %d, "
                "hypervolume %.4f (%+.4f)"
                % (state["gen"], len(results), args.batch_size, state["evals"],

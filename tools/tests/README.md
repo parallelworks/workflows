@@ -12,6 +12,10 @@ workflows/<name>/tests/<variant>/<test>.csv    one row per launch (created on fi
 workflows/<name>/tests/<variant>/logs/<slug>.txt   `pw workflows runs errors` output of failed launches
 ```
 
+Runnable tutorials record their tests the same way: `tutorials/<name>/tests/<variant>/`
+launches the tutorial's root-level `<variant>.yaml` (tutorials keep their YAMLs at the
+tutorial root, not under `yamls/`).
+
 Start from an existing test, e.g. `workflows/webshell/tests/<variant>/<test-name>.json`
 (compute cluster) or `workflows/mlflow/tests/k8s/k3sgpu.json` (Kubernetes), and
 change the `service` block. Commit the test and the rows the runner appends to

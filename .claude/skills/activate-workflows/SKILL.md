@@ -49,7 +49,9 @@ every workflow: it is what lets the in-workflow
   `workflows/streamlit/` (simple) and `workflows/kasmvnc/` (multi-impl)**; job DAG / outputs
   → `tutorials/endpoint-workflows/` (staged README); **fan-out / sweep →
   `tutorials/endpoint-workflows/05-matrix.yaml`**; retry/failover →
-  `tutorials/endpoint-workflows/07-failover.yaml`; **Kubernetes** (no script_submitter,
+  `tutorials/endpoint-workflows/07-failover.yaml`; **iterative loop over computed
+  cases (retry-as-loop + guarded static matrix) → `tutorials/optimization/`**;
+  **Kubernetes** (no script_submitter,
   no login node) → [references/k8s-workflows.md](references/k8s-workflows.md).
 - **Pick the deployment variant by platform host — don't default to `general`.**
   `script_submitter` ships as `general` / `emed` / `hsp` / `noaa`, and

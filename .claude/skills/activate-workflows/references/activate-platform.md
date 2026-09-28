@@ -238,7 +238,9 @@ graph gives you sequencing, data flow, conditionals, and parallelism:
   skips the excess workers (verified live 2026-09-28: 2 of 4 ran; a downstream
   `if: ${{ always }}` job joined the partially-skipped matrix cleanly, and a per-case
   `rundir: ${{ needs.gen.outputs.ITER_DIR }}/case_${{ matrix.job_id }}` composed
-  fine into script_submitter's `with:`). Fallback when the matrix must live in a
+  fine into script_submitter's `with:`). Worked, tested example:
+  `tutorials/optimization/iteration.yaml` (`workers` job — computed case set from an
+  optimizer, all of the above in one place). Fallback when the matrix must live in a
   separate workflow: a step can submit it as a **fresh run** with the in-run client —
   `pw workflows run <abs yaml> -i '<json>'` (or `-i <file>`) under
   `permissions: ['*']` — and poll `pw workflows runs view <slug>`; the inner run's
@@ -305,7 +307,10 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   job's own working dir (paths passed down as inputs, published via `$OUTPUTS`)
   persists across attempts. Remember attempt ≠ iteration: keep the true iteration
   counter in a state file, and let a trailing `if: ${{ always }}` step map a status
-  file (CONVERGED/CONTINUE/FAILED) to the run's final exit.
+  file (CONVERGED/CONTINUE/FAILED) to the run's final exit. The full pattern —
+  retry-as-loop + guarded static matrix + results-file protocol, tested end-to-end
+  (run dear-crow, 2026-09-28) — is `tutorials/optimization/` (staged README);
+  `retry.max-retries: ${{ inputs.<group>.<n> }}` from a form input also verified there.
 - **`max-retries` can be computed:** `max-retries: ${{ needs.<job>.outputs.N - 1 }}` —
   arithmetic is evaluated in the expression layer. An upstream step writing `N` to
   `$OUTPUTS` lets a later step in the **same job** size its own retries

@@ -79,9 +79,14 @@ def main():
                  "".join("%.12e %s\n" % (val, name) for name, val in pairs))
     write_atomic(os.path.join(case_dir, "param.hash"), key + "\n")
     # run.sh is what script_submitter executes with the case dir as rundir; the
-    # submitter inlines the script body, so bake the absolute case path in
+    # submitter inlines the script body, so bake the absolute case path in.
+    # The .wave_done marker (written on ANY exit, success or failure) is what the
+    # decide job waits for: the platform can start decide while the workers still
+    # run (verified: nested subworkflow job status races ~25s after dispatch), so
+    # wave completion must be provable from files.
     write_atomic(os.path.join(case_dir, "run.sh"),
-                 '#!/bin/bash\ncd "%s"\nMESH_SCALE=%s bash "%s"\n'
+                 '#!/bin/bash\ncd "%s"\ntrap \'touch .wave_done\' EXIT\n'
+                 'MESH_SCALE=%s bash "%s"\n'
                  % (case_dir, os.environ.get("DAK_MESH_SCALE", "1"),
                     os.path.join(app_dir, "simulator.sh")))
 

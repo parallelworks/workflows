@@ -95,6 +95,33 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
+      # needs: is not enough here: when this workflow runs nested (general.yaml's
+      # retried Iterate step), the platform starts this job ~25s after the workers
+      # dispatch, while their script_submitter subworkflows still run (verified
+      # 2026-09-29: exiting then killed every wave slower than ~25s — all
+      # scheduled waves, and unscheduled ones at mesh_scale >= 2). So wait for the
+      # wave's own evidence: every case's run.sh touches .wave_done on any exit.
+      # A timeout falls through to exit 1 = the retry re-runs this generation.
+      - name: Wait for the Wave
+        run: |
+          n="${{ needs.optimize.outputs.N_CASES }}"
+          iter_dir="${{ needs.optimize.outputs.ITER_DIR }}"
+          if ! [ "${n}" -ge 1 ] 2>/dev/null || [ "${n}" -gt 8 ]; then
+            echo "::notice::no wave to wait for (N_CASES='${n}')"
+            exit 0
+          fi
+          budget="${{ inputs.wave_timeout }}"
+          while true; do
+            done_markers=$(ls "${iter_dir}"/case_*/.wave_done 2>/dev/null | wc -l)
+            [ "${done_markers}" -ge "${n}" ] && break
+            if [ "${budget}" -le 0 ]; then
+              echo "::warning::only ${done_markers}/${n} cases finished within wave_timeout; exit 1 so the parent retry re-runs this generation"
+              exit 1
+            fi
+            sleep 10
+            budget=$((budget - 10))
+          done
+          echo "::notice::all ${n} cases of the wave finished"
       - name: Continue or Stop
         run: |
           status=$(cat "${{ inputs.state_dir }}/status" 2>/dev/null || echo MISSING)
@@ -175,6 +202,11 @@ jobs:
         default: 1
         min: 1
         max: 6
+      wave_timeout:
+        type: number
+        label: Seconds decide waits for all cases of a generation
+        default: 7200
+        min: 60
       state_dir:
         type: string
         label: Absolute path of the optimizer state directory

@@ -374,9 +374,13 @@ def main():
                       "results.out on two attempts; check the workers' logs"
                       % state["gen"])
                 return
-            # the case dirs are intact; hand the same generation back to the workers
+            # the case dirs are intact; hand the same generation back to the
+            # workers — minus the wave markers, which the next decide must only
+            # see from the re-run
             save_state(state_dir, state)
             iter_dir = os.path.join(state_dir, "iter_%d" % state["gen"])
+            for marker in glob.glob(os.path.join(iter_dir, "case_*", ".wave_done")):
+                os.remove(marker)
             n = len(glob.glob(os.path.join(iter_dir, "case_*")))
             emit(state_dir, "CONTINUE", n, iter_dir)
             notice("generation %d returned no results; re-proposing its %d cases"

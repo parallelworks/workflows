@@ -62,6 +62,13 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
+      # submit_and_exit: the platform kills a doubly-nested subworkflow ~25s after
+      # dispatch (this workflow runs inside general.yaml's Iterate step, and this
+      # step nests script_submitter one level deeper — verified 2026-09-29: with
+      # submit_and_exit false every wave slower than ~25s was reaped mid-run,
+      # while the same call at top level waited fine). So the submitter only
+      # launches the case (seconds, under the reap window) and completion travels
+      # as the .wave_done marker each run.sh writes, which decide waits for.
       - name: Evaluate Case
         uses: github/parallelworks/workflows@canary
         with:
@@ -75,7 +82,7 @@ jobs:
           define_cleanup_script: false
           scheduler: ${{ inputs.scheduler }}
           use_scheduler_agent: false
-          submit_and_exit: false
+          submit_and_exit: true
           slurm:
             is_enabled: ${{ inputs.slurm.is_enabled }}
             partition: ${{ inputs.slurm.partition }}
@@ -95,13 +102,11 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      # needs: is not enough here: when this workflow runs nested (general.yaml's
-      # retried Iterate step), the platform starts this job ~25s after the workers
-      # dispatch, while their script_submitter subworkflows still run (verified
-      # 2026-09-29: exiting then killed every wave slower than ~25s — all
-      # scheduled waves, and unscheduled ones at mesh_scale >= 2). So wait for the
-      # wave's own evidence: every case's run.sh touches .wave_done on any exit.
-      # A timeout falls through to exit 1 = the retry re-runs this generation.
+      # The wave's real synchronization: the workers only SUBMIT the cases
+      # (submit_and_exit — see the note there), so job completion says nothing
+      # about case completion. Every case's run.sh touches .wave_done on any
+      # exit, success or failure; this step waits for all of them. A timeout
+      # falls through to exit 1 = the retry re-runs this generation.
       - name: Wait for the Wave
         run: |
           n="${{ needs.optimize.outputs.N_CASES }}"

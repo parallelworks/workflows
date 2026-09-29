@@ -18,7 +18,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: dakota-openfoam-naca
           sparse_checkout:
             - workflows/dakota-openfoam/app
       - name: Install OpenFOAM
@@ -59,7 +59,7 @@ jobs:
           # subworkflow, mid-simulation — when it expires. One generation
           # (propose + node boot + queue + solve + decide) must fit in it.
           timeout: ${{ inputs.optimizer.iteration_timeout }}
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@dakota-openfoam-naca
         with:
           $yaml: workflows/dakota-openfoam/yamls/iteration.yaml
           resource: ${{ inputs.cluster.resource }}
@@ -219,8 +219,10 @@ jobs:
             max: 6
             tooltip: |
               The cost dial: multiplies every cell count of the C-grid around the
-              airfoil (~5k cells and ~7 s per case at 1; cost grows roughly with
-              the square). Higher values sharpen the drag prediction.
+              airfoil, and the solver's iteration budget scales with it, so cost
+              grows roughly with the cube: ~10 s per case at 1, ~1 min at 2,
+              ~10 min at 4, ~35 min at 6 (one core). The mesh is essentially
+              converged by 3-4; the README has the measured accuracy table.
           iteration_timeout:
             type: string
             label: Time budget per iteration

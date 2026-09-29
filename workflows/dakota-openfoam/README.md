@@ -16,7 +16,7 @@ read its README for the *why* of every piece. This README covers only what chang
 **NACA 4-digit airfoil shape optimization** — the textbook aerodynamic design
 problem. Each case is turbulent flow (Re = 10⁶, Spalart-Allmaras) over an airfoil
 at 5° incidence on a structured C-grid generated per design, solved with
-`potentialFoam` + `simpleFoam` in ~7 s at the default mesh (~5k cells).
+`potentialFoam` + `simpleFoam` in ~10 s at the default mesh (~5k cells).
 
 ![The design problem: NACA 4-digit airfoil, three shape variables, lift-drag tradeoff](thumbnails/naca-problem.svg)
 
@@ -24,11 +24,33 @@ at 5° incidence on a structured C-grid generated per design, solved with
 |---|---|
 | Design variables | `max_camber` ∈ [0, 0.06] · `camber_position` ∈ [0.3, 0.6] · `thickness` ∈ [0.08, 0.18] (chord fractions; the box covers the classic 4-digit family — 0012, 2412, 4412, …) |
 | Objectives (both minimized) | `drag_coefficient` · `neg_lift_coefficient`, from OpenFOAM's `forceCoeffs` function object |
-| Cost dial | `mesh_scale` multiplies every cell count (cost grows ~quadratically); the same knob takes the study from seconds-cheap to genuinely expensive |
+| Cost dial | `mesh_scale` multiplies every cell count; the iteration cap and relaxation adjust with it, so cost grows roughly with the cube — from seconds-cheap to genuinely expensive (table below) |
 
 More camber buys lift but costs drag, thickness costs drag at similar lift: the
 loop maps that tradeoff as a Pareto front of airfoil shapes (`state/pareto.csv` +
 `state/pareto.svg` in the run's job directory).
+
+### Mesh fidelity: cost and accuracy
+
+Measured on one gcpsmall core for the reference design (NACA 2412 at α = 5°):
+
+| `mesh_scale` | cells | time per case | Cd | Cl |
+|---:|---:|---:|---:|---:|
+| 1 | 5.4k | ~10 s | 0.0222 | 0.722 |
+| 2 | 21.6k | ~1 min | 0.0193 | 0.718 |
+| 3 | 48.6k | ~3.5 min | 0.0190 | 0.707 |
+| 4 | 86.4k | ~10 min | 0.0194 | 0.698 |
+| 6 | 194k | ~35 min | 0.0206 | 0.684 |
+
+Discretization is essentially converged by scale 3–4 (Cl within ~2%, Cd within
+~6% of the scale-6 values). Scale 1 is the demo setting: ~10% high on drag and
+nearly thickness-blind (friction-dominated), but fast enough to watch the loop
+work end-to-end. The remaining gap to wind-tunnel data for this airfoil
+(Cl ≈ 0.74, Cd ≈ 0.010) is model error, not mesh: fully-turbulent
+Spalart-Allmaras with wall functions resolves no laminar-turbulent transition,
+which roughly doubles the absolute drag at this Reynolds number. Treat the
+coefficients comparatively — ranking designs, which is all the optimizer needs —
+rather than as absolute predictions.
 
 ## What's in `app/`
 

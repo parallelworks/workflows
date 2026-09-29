@@ -85,6 +85,16 @@ boundaryField
 }
 EOF
 
+# finer meshes converge more slowly (information travels cell by cell) and are
+# less forgiving of aggressive relaxation: scale the iteration cap with the mesh
+# and soften the relaxation beyond the base mesh
+END_TIME=$((800 * MESH_SCALE))
+if [ "${MESH_SCALE}" -ge 2 ]; then
+    foamDictionary -entry relaxationFactors.fields.p -set 0.25 case/system/fvSolution > /dev/null
+    foamDictionary -entry relaxationFactors.equations.U -set 0.5 case/system/fvSolution > /dev/null
+    foamDictionary -entry relaxationFactors.equations.nuTilda -set 0.5 case/system/fvSolution > /dev/null
+fi
+
 # own controlDict: iteration cap (fvSolution's residualControl usually converges
 # earlier) and the forceCoeffs function object that extracts the objectives
 cat > case/system/controlDict << EOF
@@ -100,10 +110,10 @@ application     simpleFoam;
 startFrom       startTime;
 startTime       0;
 stopAt          endTime;
-endTime         800;
+endTime         ${END_TIME};
 deltaT          1;
 writeControl    timeStep;
-writeInterval   800;
+writeInterval   ${END_TIME};
 purgeWrite      1;
 writeFormat     ascii;
 writePrecision  6;

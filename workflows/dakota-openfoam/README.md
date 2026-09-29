@@ -38,7 +38,8 @@ loop maps that tradeoff as a Pareto front of airfoil shapes (`state/pareto.csv` 
 | `optimizer.py` | The tutorial's propose-or-stop contract, backed by Dakota (below) |
 | `driver.py` | Dakota's fork-interface analysis driver: replay-or-capture |
 | `naca_blockmesh.py` | Parametric structured C-grid: NACA 4-digit parameters → `blockMeshDict` (validated at every corner of the design box) |
-| `simulator.sh` | Per-case OpenFOAM driver: `params.in` → generated mesh + airFoil2D-based case → `blockMesh` + `potentialFoam` + `simpleFoam` → `results.out` (the `potentialFoam` initialization is required: an impulsive uniform start diverges) |
+| `openfoam-case/` | The versioned case template (BC files, schemes, solution settings — everything that does not depend on the design point), so the numerics are pinned by this repo, not by whatever the installed OpenFOAM ships |
+| `simulator.sh` | Per-case OpenFOAM driver: `params.in` → `openfoam-case` copy + generated `blockMeshDict`/`0/U`/`controlDict` → `blockMesh` + `potentialFoam` + `simpleFoam` → `results.out` (the `potentialFoam` initialization is required: an impulsive uniform start diverges) |
 
 ## How Dakota fits the iteration contract
 

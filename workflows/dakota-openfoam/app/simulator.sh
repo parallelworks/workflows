@@ -21,8 +21,6 @@ MESH_SCALE="${MESH_SCALE:-1}"
 source "${CONDA_PREFIX_DIR}/etc/profile.d/conda.sh" || exit 1
 conda activate openfoam || exit 1
 command -v simpleFoam > /dev/null || { echo "simpleFoam not on PATH after activating the openfoam env"; exit 1; }
-# the conda package does not export FOAM_TUTORIALS
-FOAM_TUTORIALS="${FOAM_TUTORIALS:-${CONDA_PREFIX}/tutorials}"
 
 max_camber=$(awk '$2=="max_camber"{print $1}' params.in)
 camber_position=$(awk '$2=="camber_position"{print $1}' params.in)
@@ -40,10 +38,10 @@ a = math.radians(${ALPHA_DEG})
 print('%.8f %.8f %.8f %.8f' % (${UINF} * math.cos(a), ${UINF} * math.sin(a),
                                -math.sin(a), math.cos(a)))")"
 
+# the static case files are versioned with the workflow; only what depends on
+# the design point is generated: blockMeshDict, 0/U and controlDict
 rm -rf case
-cp -r "${FOAM_TUTORIALS}/incompressible/simpleFoam/airFoil2D" case
-rm -rf case/constant/polyMesh.orig case/Allrun case/Allclean
-mv case/0.orig case/0
+cp -r "${APP_DIR}/openfoam-case" case
 
 python3 "${APP_DIR}/naca_blockmesh.py" \
     --camber "${max_camber}" --camber-pos "${camber_position}" \
@@ -136,12 +134,8 @@ functions
 }
 EOF
 
-# a potentialFoam initial field is required: starting SIMPLE impulsively from a
-# uniform freestream diverges on this C-mesh (verified: every uniform start blew
-# up around iteration ~200; the potential start converges everywhere in the box)
-foamDictionary -entry solvers.Phi -set '{solver GAMG; tolerance 1e-06; relTol 0.01; smoother GaussSeidel;}' case/system/fvSolution > /dev/null
-foamDictionary -entry potentialFlow -set '{nNonOrthogonalCorrectors 10;}' case/system/fvSolution > /dev/null
-
+# the potentialFoam initial field is required: starting SIMPLE impulsively from
+# a uniform freestream diverges on this C-mesh (see fvSolution's Phi block)
 if ! (cd case && blockMesh > log.blockMesh 2>&1 && potentialFoam > log.potentialFoam 2>&1 && simpleFoam > log.simpleFoam 2>&1); then
     echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness}; log tails:"
     tail -8 case/log.blockMesh case/log.potentialFoam case/log.simpleFoam 2>/dev/null

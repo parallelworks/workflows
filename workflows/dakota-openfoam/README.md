@@ -13,17 +13,20 @@ read its README for the *why* of every piece. This README covers only what chang
 
 ## The example problem
 
-Turbulent flow over a backward-facing step (the pitzDaily case shipped with
-OpenFOAM), `simpleFoam` + k-epsilon, ~10 s per case on one core.
+**NACA 4-digit airfoil shape optimization** — the textbook aerodynamic design
+problem. Each case is turbulent flow (Re = 10⁶, Spalart-Allmaras) over an airfoil
+at 5° incidence on a structured C-grid generated per design, solved with
+`potentialFoam` + `simpleFoam` in ~7 s at the default mesh (~5k cells).
 
 | | |
 |---|---|
-| Design variables | `inlet_velocity` ∈ [5, 15] m/s · `viscosity` ∈ [5e-6, 5e-5] m²/s |
-| Objectives (both minimized) | `pressure_drop` — kinematic total pressure drop inlet→outlet · `neg_outlet_speed` — negative average outlet speed |
+| Design variables | `max_camber` ∈ [0, 0.06] · `camber_position` ∈ [0.3, 0.6] · `thickness` ∈ [0.08, 0.18] (chord fractions; the box covers the classic 4-digit family — 0012, 2412, 4412, …) |
+| Objectives (both minimized) | `drag_coefficient` · `neg_lift_coefficient`, from OpenFOAM's `forceCoeffs` function object |
+| Cost dial | `mesh_scale` multiplies every cell count (cost grows ~quadratically); the same knob takes the study from seconds-cheap to genuinely expensive |
 
-Faster flow costs more total pressure: the two objectives conflict and the loop
-maps the tradeoff as a Pareto front (`state/pareto.csv` + `state/pareto.svg` in
-the run's job directory).
+More camber buys lift but costs drag, thickness costs drag at similar lift: the
+loop maps that tradeoff as a Pareto front of airfoil shapes (`state/pareto.csv` +
+`state/pareto.svg` in the run's job directory).
 
 ## What's in `app/`
 
@@ -34,7 +37,8 @@ the run's job directory).
 | `install-common.sh` | Shared Miniforge bootstrap, sourced by both |
 | `optimizer.py` | The tutorial's propose-or-stop contract, backed by Dakota (below) |
 | `driver.py` | Dakota's fork-interface analysis driver: replay-or-capture |
-| `simulator.sh` | Per-case OpenFOAM driver: `params.in` → templated pitzDaily case → `blockMesh` + `simpleFoam` → `results.out` |
+| `naca_blockmesh.py` | Parametric structured C-grid: NACA 4-digit parameters → `blockMeshDict` (validated at every corner of the design box) |
+| `simulator.sh` | Per-case OpenFOAM driver: `params.in` → generated mesh + airFoil2D-based case → `blockMesh` + `potentialFoam` + `simpleFoam` → `results.out` (the `potentialFoam` initialization is required: an impulsive uniform start diverges) |
 
 ## How Dakota fits the iteration contract
 
@@ -71,9 +75,10 @@ SVG) is under `state/` in the run's job directory on the cluster.
 
 ## Swapping in your own case
 
-`simulator.sh` is the only OpenFOAM-specific file: it reads `params.in`, builds
-the case, runs the solver, extracts objectives into `results.out` (atomic write,
-or exit non-zero leaving none — the failure signal). Change the case template and
-extraction there, and the variable/objective declarations at the top of
-`optimizer.py` (`VARIABLES`, `OBJECTIVES` and the MOGA block in
-`write_dakota_input`). Neither YAML needs to change.
+`simulator.sh` (+ its mesh generator) is the only OpenFOAM-specific code: it
+reads `params.in`, builds the case, runs the solver, extracts objectives into
+`results.out` (atomic write, or exit non-zero leaving none — the failure
+signal). Change the case construction and extraction there, and the
+variable/objective declarations at the top of `optimizer.py` (`VARIABLES`,
+`OBJECTIVES` and the MOGA block in `write_dakota_input`). Neither YAML needs to
+change.

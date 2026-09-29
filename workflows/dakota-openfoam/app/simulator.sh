@@ -1,15 +1,22 @@
 #!/bin/bash
 # OpenFOAM per-case driver, run inside one case directory: reads ./params.in (one
-# "<value> <name>" line per design variable), builds a pitzDaily case with the
-# proposed inlet velocity and viscosity, runs blockMesh + simpleFoam, and writes
+# "<value> <name>" line per design variable — the NACA 4-digit parameters), builds
+# a C-grid airfoil case from the airFoil2D tutorial (Spalart-Allmaras, freestream
+# at ALPHA_DEG incidence, Re = 1e6), runs blockMesh + simpleFoam, and writes
 # ./results.out (one "<value> <label>" line per objective, both minimized:
-# f1 = kinematic pressure drop inlet->outlet, f2 = -average outlet speed).
-# The write is atomic; on any error the process exits non-zero and leaves no
-# results.out, which is the failure signal the optimizer understands.
+# f1 = drag coefficient, f2 = -lift coefficient, from the forceCoeffs function
+# object). The write is atomic; on any error the process exits non-zero and leaves
+# no results.out, which is the failure signal. MESH_SCALE (default 1) multiplies
+# every cell count — the cost dial.
 set -o pipefail
 
 SOFTWARE_DIR="${service_parent_install_dir:-${HOME}/pw/software}"
 CONDA_PREFIX_DIR="${SOFTWARE_DIR}/dakota-openfoam/miniforge"
+APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+ALPHA_DEG="${ALPHA_DEG:-5}"
+UINF="${UINF:-10}"
+MESH_SCALE="${MESH_SCALE:-1}"
 
 source "${CONDA_PREFIX_DIR}/etc/profile.d/conda.sh" || exit 1
 conda activate openfoam || exit 1
@@ -17,34 +24,72 @@ command -v simpleFoam > /dev/null || { echo "simpleFoam not on PATH after activa
 # the conda package does not export FOAM_TUTORIALS
 FOAM_TUTORIALS="${FOAM_TUTORIALS:-${CONDA_PREFIX}/tutorials}"
 
-inlet_velocity=$(awk '$2=="inlet_velocity"{print $1}' params.in)
-viscosity=$(awk '$2=="viscosity"{print $1}' params.in)
-if [ -z "${inlet_velocity}" ] || [ -z "${viscosity}" ]; then
-    echo "params.in is missing inlet_velocity or viscosity"
+max_camber=$(awk '$2=="max_camber"{print $1}' params.in)
+camber_position=$(awk '$2=="camber_position"{print $1}' params.in)
+thickness=$(awk '$2=="thickness"{print $1}' params.in)
+if [ -z "${max_camber}" ] || [ -z "${camber_position}" ] || [ -z "${thickness}" ]; then
+    echo "params.in is missing max_camber, camber_position or thickness"
     exit 1
 fi
 
-# turbulence inlet values must scale with the inlet speed (5% intensity,
-# mixing length 0.1 * the 25.4mm inlet height) or the solver destabilizes
-# at the edges of the design space
-read -r k epsilon <<< "$(python3 -c "
-u = float('${inlet_velocity}')
-k = 1.5 * (0.05 * u) ** 2
-print('%.6g %.6g' % (k, 0.09 ** 0.75 * k ** 1.5 / 0.00254))")"
+# freestream vector and force directions from the angle of attack: the airfoil
+# stays axis-aligned and the incidence lives in the far-field velocity
+read -r ux uy lx ly <<< "$(python3 -c "
+import math
+a = math.radians(${ALPHA_DEG})
+print('%.8f %.8f %.8f %.8f' % (${UINF} * math.cos(a), ${UINF} * math.sin(a),
+                               -math.sin(a), math.cos(a)))")"
 
 rm -rf case
-cp -r "${FOAM_TUTORIALS}/incompressible/simpleFoam/pitzDaily" case
+cp -r "${FOAM_TUTORIALS}/incompressible/simpleFoam/airFoil2D" case
+rm -rf case/constant/polyMesh.orig case/Allrun case/Allclean
+mv case/0.orig case/0
 
-foamDictionary -entry boundaryField.inlet.value -set "uniform (${inlet_velocity} 0 0)" case/0/U > /dev/null
-foamDictionary -entry nu -set "${viscosity}" case/constant/transportProperties > /dev/null
-for entry in internalField boundaryField.inlet.value; do
-    foamDictionary -entry "${entry}" -set "uniform ${k}" case/0/k > /dev/null
-    foamDictionary -entry "${entry}" -set "uniform ${epsilon}" case/0/epsilon > /dev/null
-done
+python3 "${APP_DIR}/naca_blockmesh.py" \
+    --camber "${max_camber}" --camber-pos "${camber_position}" \
+    --thickness "${thickness}" --scale "${MESH_SCALE}" > case/system/blockMeshDict || exit 1
 
-# own controlDict: cap the iteration count (fvSolution's residualControl usually
-# converges earlier) and extract the objectives as surfaceFieldValue functions
-cat > case/system/controlDict << 'EOF'
+# write 0/U wholesale: a foamDictionary edit of internalField alone leaves the
+# freestreamValue macros expanded to the tutorial's original velocity
+cat > case/0/U << EOF
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volVectorField;
+    object      U;
+}
+
+dimensions      [0 1 -1 0 0 0 0];
+
+internalField   uniform (${ux} ${uy} 0);
+
+boundaryField
+{
+    inlet
+    {
+        type            freestreamVelocity;
+        freestreamValue \$internalField;
+    }
+    outlet
+    {
+        type            freestreamVelocity;
+        freestreamValue \$internalField;
+    }
+    walls
+    {
+        type            noSlip;
+    }
+    frontAndBack
+    {
+        type            empty;
+    }
+}
+EOF
+
+# own controlDict: iteration cap (fvSolution's residualControl usually converges
+# earlier) and the forceCoeffs function object that extracts the objectives
+cat > case/system/controlDict << EOF
 FoamFile
 {
     version     2.0;
@@ -57,10 +102,10 @@ application     simpleFoam;
 startFrom       startTime;
 startTime       0;
 stopAt          endTime;
-endTime         600;
+endTime         800;
 deltaT          1;
 writeControl    timeStep;
-writeInterval   600;
+writeInterval   800;
 purgeWrite      1;
 writeFormat     ascii;
 writePrecision  6;
@@ -70,54 +115,20 @@ runTimeModifiable true;
 
 functions
 {
-    inletAvgP
+    forceCoeffs1
     {
-        type            surfaceFieldValue;
-        libs            (fieldFunctionObjects);
-        regionType      patch;
-        name            inlet;
-        operation       areaAverage;
-        fields          (p);
-        writeFields     no;
-        writeControl    timeStep;
-        writeInterval   1;
-        log             no;
-    }
-    outletAvgP
-    {
-        type            surfaceFieldValue;
-        libs            (fieldFunctionObjects);
-        regionType      patch;
-        name            outlet;
-        operation       areaAverage;
-        fields          (p);
-        writeFields     no;
-        writeControl    timeStep;
-        writeInterval   1;
-        log             no;
-    }
-    outletAvgU
-    {
-        type            surfaceFieldValue;
-        libs            (fieldFunctionObjects);
-        regionType      patch;
-        name            outlet;
-        operation       areaAverage;
-        fields          (U);
-        writeFields     no;
-        writeControl    timeStep;
-        writeInterval   1;
-        log             no;
-    }
-    inletAvgU
-    {
-        type            surfaceFieldValue;
-        libs            (fieldFunctionObjects);
-        regionType      patch;
-        name            inlet;
-        operation       areaAverage;
-        fields          (U);
-        writeFields     no;
+        type            forceCoeffs;
+        libs            (forces);
+        patches         (walls);
+        rho             rhoInf;
+        rhoInf          1;
+        liftDir         (${lx} ${ly} 0);
+        dragDir         ($(python3 -c "import math; a=math.radians(${ALPHA_DEG}); print('%.8f %.8f' % (math.cos(a), math.sin(a)))") 0);
+        CofR            (0.25 0 0);
+        pitchAxis       (0 0 1);
+        magUInf         ${UINF};
+        lRef            1;
+        Aref            0.1;
         writeControl    timeStep;
         writeInterval   1;
         log             no;
@@ -125,45 +136,45 @@ functions
 }
 EOF
 
-if ! (cd case && blockMesh > log.blockMesh 2>&1 && simpleFoam > log.simpleFoam 2>&1); then
-    echo "OpenFOAM failed for inlet_velocity=${inlet_velocity} viscosity=${viscosity}; log tails:"
-    tail -8 case/log.blockMesh case/log.simpleFoam 2>/dev/null
+# a potentialFoam initial field is required: starting SIMPLE impulsively from a
+# uniform freestream diverges on this C-mesh (verified: every uniform start blew
+# up around iteration ~200; the potential start converges everywhere in the box)
+foamDictionary -entry solvers.Phi -set '{solver GAMG; tolerance 1e-06; relTol 0.01; smoother GaussSeidel;}' case/system/fvSolution > /dev/null
+foamDictionary -entry potentialFlow -set '{nNonOrthogonalCorrectors 10;}' case/system/fvSolution > /dev/null
+
+if ! (cd case && blockMesh > log.blockMesh 2>&1 && potentialFoam > log.potentialFoam 2>&1 && simpleFoam > log.simpleFoam 2>&1); then
+    echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness}; log tails:"
+    tail -8 case/log.blockMesh case/log.potentialFoam case/log.simpleFoam 2>/dev/null
     exit 1
 fi
 
 python3 - << 'EOF'
 import glob
 import os
-import re
 import sys
 
+paths = sorted(glob.glob("case/postProcessing/forceCoeffs1/*/coefficient*.dat"))
+if not paths:
+    sys.exit("missing forceCoeffs output")
+header, rows = None, []
+with open(paths[-1]) as fh:
+    for line in fh:
+        if line.startswith("#"):
+            header = line
+        elif line.split():
+            rows.append(line.split())
+if not header or not rows:
+    sys.exit("empty forceCoeffs output")
+cols = header.lstrip("#").split()
+icd, icl = cols.index("Cd"), cols.index("Cl")
 
-def last_row(pattern):
-    paths = sorted(glob.glob(pattern))
-    if not paths:
-        sys.exit("missing postProcessing output: %s" % pattern)
-    with open(paths[-1]) as fh:
-        rows = [line for line in fh if not line.startswith("#")]
-    if not rows:
-        sys.exit("empty postProcessing output: %s" % pattern)
-    return rows[-1]
+# average the last 20% of iterations to smooth residual oscillation
+tail = rows[-max(1, len(rows) // 5):]
+cd = sum(float(r[icd]) for r in tail) / len(tail)
+cl = sum(float(r[icl]) for r in tail) / len(tail)
 
-
-def mag(row):
-    vx, vy, vz = (float(v) for v in re.search(r"\(([^)]*)\)", row).group(1).split())
-    return (vx * vx + vy * vy + vz * vz) ** 0.5
-
-
-p_in = float(last_row("case/postProcessing/inletAvgP/*/surfaceFieldValue*.dat").split()[-1])
-p_out = float(last_row("case/postProcessing/outletAvgP/*/surfaceFieldValue*.dat").split()[-1])
-u_in = mag(last_row("case/postProcessing/inletAvgU/*/surfaceFieldValue*.dat"))
-u_out = mag(last_row("case/postProcessing/outletAvgU/*/surfaceFieldValue*.dat"))
-
-# f1: kinematic TOTAL pressure drop (static p falls as the flow expands past the
-# step, so static dp alone would be negative); f2: -outlet speed (maximize speed)
-dp_total = (p_in + 0.5 * u_in ** 2) - (p_out + 0.5 * u_out ** 2)
 with open("results.out.tmp", "w") as fh:
-    fh.write("%.10f pressure_drop\n%.10f neg_outlet_speed\n" % (dp_total, -u_out))
+    fh.write("%.10f drag_coefficient\n%.10f neg_lift_coefficient\n" % (cd, -cl))
 os.rename("results.out.tmp", "results.out")
-print("pressure_drop=%.6f neg_outlet_speed=%.6f" % (dp_total, -u_out))
+print("Cd=%.6f Cl=%.6f (averaged over last %d iterations)" % (cd, cl, len(tail)))
 EOF

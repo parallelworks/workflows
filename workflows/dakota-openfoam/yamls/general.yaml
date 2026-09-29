@@ -1,6 +1,8 @@
-# Dakota-driven OpenFOAM optimization: Dakota's MOGA proposes batches of pitzDaily
-# cases, the platform evaluates them in parallel on the cluster, and the loop
-# repeats until Dakota converges or the budget runs out. Built on the pattern from
+# Dakota-driven OpenFOAM airfoil shape optimization: Dakota's MOGA proposes
+# batches of NACA 4-digit designs (camber, camber position, thickness), the
+# platform evaluates each as a parallel OpenFOAM case (C-grid, simpleFoam,
+# min drag / max lift from forceCoeffs), and the loop repeats until Dakota
+# converges or the budget runs out. Built on the pattern from
 # tutorials/optimization (retry-as-loop + guarded static matrix); the swap the
 # tutorial's README describes, made real. Preprocessing installs OpenFOAM and
 # Dakota from conda-forge with the app's two idempotent install scripts.
@@ -16,7 +18,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: dakota-openfoam-naca
           sparse_checkout:
             - workflows/dakota-openfoam/app
       - name: Install OpenFOAM
@@ -52,7 +54,7 @@ jobs:
         retry:
           max-retries: ${{ inputs.optimizer.max_iterations }}
           interval: 10s
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@dakota-openfoam-naca
         with:
           $yaml: workflows/dakota-openfoam/yamls/iteration.yaml
           resource: ${{ inputs.cluster.resource }}
@@ -68,6 +70,7 @@ jobs:
           batch_size: ${{ inputs.optimizer.batch_size }}
           max_iterations: ${{ inputs.optimizer.max_iterations }}
           stall_generations: ${{ inputs.optimizer.stall_generations }}
+          mesh_scale: ${{ inputs.optimizer.mesh_scale }}
           state_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
           app_dir: ${{ needs.preprocessing.outputs.APP_DIR }}
       # if: always — the run's verdict comes from the state files, not from how the
@@ -203,3 +206,13 @@ jobs:
               Declare convergence when the Pareto front's normalized hypervolume
               improves by less than 0.001 over this many consecutive generations.
               Dakota's own MOGA convergence criteria also end the loop.
+          mesh_scale:
+            type: number
+            label: Mesh resolution multiplier
+            default: 1
+            min: 1
+            max: 6
+            tooltip: |
+              The cost dial: multiplies every cell count of the C-grid around the
+              airfoil (~5k cells and ~7 s per case at 1; cost grows roughly with
+              the square). Higher values sharpen the drag prediction.

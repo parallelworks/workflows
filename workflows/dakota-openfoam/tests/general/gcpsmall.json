@@ -15,6 +15,7 @@
   "optimizer": {
     "max_iterations": 4,
     "batch_size": 4,
-    "stall_generations": 3
+    "stall_generations": 3,
+    "mesh_scale": 1
   }
 }

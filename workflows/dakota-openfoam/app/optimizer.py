@@ -40,11 +40,14 @@ import sys
 import time
 
 VARIABLES = [
-    # (dakota descriptor, lower bound, upper bound)
-    ("inlet_velocity", 5.0, 15.0),
-    ("viscosity", 5.0e-6, 5.0e-5),
+    # (dakota descriptor, lower bound, upper bound) — NACA 4-digit parameters;
+    # the box is the realistic 4-digit family: the mesh generator was validated
+    # at every corner, and higher forward camber breaks the C-grid quality
+    ("max_camber", 0.0, 0.06),
+    ("camber_position", 0.3, 0.6),
+    ("thickness", 0.08, 0.18),
 ]
-OBJECTIVES = ["pressure_drop", "neg_outlet_speed"]  # both minimized
+OBJECTIVES = ["drag_coefficient", "neg_lift_coefficient"]  # both minimized
 DAKOTA_SEED = 4242          # fixed: restart replay requires a deterministic method
 CAPTURE_STABLE_S = 15       # no new capture for this long = the wave is complete
 CAPTURE_TIMEOUT_S = 300
@@ -274,7 +277,7 @@ def count_captures(iter_dir):
                 if os.path.exists(os.path.join(d, "run.sh"))])
 
 
-def run_dakota_capture(state_dir, app_dir, batch, iter_dir, software_dir):
+def run_dakota_capture(state_dir, app_dir, batch, iter_dir, software_dir, mesh_scale):
     """Resume Dakota and capture the next batch of case dirs it proposes.
     Returns (n_captured, dakota_exited_cleanly)."""
     dak_dir = os.path.join(state_dir, "dakota")
@@ -293,7 +296,8 @@ def run_dakota_capture(state_dir, app_dir, batch, iter_dir, software_dir):
                PATH=os.path.dirname(dakota_bin) + os.pathsep + os.environ.get("PATH", ""),
                DAK_CAPTURE_DIR=iter_dir,
                DAK_RESULTS_DB=os.path.join(state_dir, "results_db"),
-               DAK_APP_DIR=app_dir)
+               DAK_APP_DIR=app_dir,
+               DAK_MESH_SCALE=str(mesh_scale))
 
     killed = False
     with open(os.path.join(dak_dir, "dakota.log"), "w") as log:
@@ -347,6 +351,7 @@ def main():
     ap.add_argument("--batch-size", type=int, required=True)
     ap.add_argument("--max-iterations", type=int, required=True)
     ap.add_argument("--stall-generations", type=int, default=3)
+    ap.add_argument("--mesh-scale", type=int, default=1)
     ap.add_argument("--software-dir",
                     default=os.environ.get("service_parent_install_dir",
                                            os.path.expanduser("~/pw/software")))
@@ -424,7 +429,7 @@ def main():
     os.makedirs(iter_dir)
 
     n, dakota_done = run_dakota_capture(state_dir, app_dir, args.batch_size,
-                                        iter_dir, args.software_dir)
+                                        iter_dir, args.software_dir, args.mesh_scale)
     if n > 0:
         state["gen"] = next_gen
         save_state(state_dir, state)

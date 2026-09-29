@@ -24,7 +24,8 @@ jobs:
             --app-dir "${{ inputs.app_dir }}" \
             --batch-size "${{ inputs.batch_size }}" \
             --max-iterations "${{ inputs.max_iterations }}" \
-            --stall-generations "${{ inputs.stall_generations }}"
+            --stall-generations "${{ inputs.stall_generations }}" \
+            --mesh-scale "${{ inputs.mesh_scale }}"
           tee -a $OUTPUTS < "${{ inputs.state_dir }}/proposal.env"
       # A proposal wider than the matrix below would silently evaluate only the
       # first 8 cases — fail loud instead. A persistent violation ends as FAILED:
@@ -168,6 +169,12 @@ jobs:
         label: Stagnation window
         default: 3
         min: 1
+      mesh_scale:
+        type: number
+        label: Mesh resolution multiplier
+        default: 1
+        min: 1
+        max: 6
       state_dir:
         type: string
         label: Absolute path of the optimizer state directory

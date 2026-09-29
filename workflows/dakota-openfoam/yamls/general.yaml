@@ -224,9 +224,10 @@ jobs:
           iteration_timeout:
             type: string
             label: Time budget per iteration
-            default: 12h
+            default: 2d
             tooltip: |
               Maximum wall time for one generation: propose + evaluate every case
               (including scheduler queue and node boot) + decide. Units like 30s,
-              10m, 12h. An iteration that exceeds it is canceled and retried,
-              consuming budget — raise this before raising the case walltime.
+              10m, 12h, 2d. The generous default means it only trips on a genuinely
+              stuck iteration, which is then canceled and retried (consuming
+              budget); tighten it if you want faster failure detection.

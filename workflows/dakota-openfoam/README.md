@@ -67,11 +67,12 @@ the surplus worker slots are skipped for free.
 ## One generation must fit `iteration_timeout`
 
 The retried `Iterate` step sets `retry.timeout` (form input `iteration_timeout`,
-default 12h) because the platform's default is **30 s per attempt** — without it,
+default 2d) because the platform's default is **30 s per attempt** — without it,
 any generation slower than ~25 s (every scheduled wave, or `mesh_scale` ≥ 2 on
 the login node) is canceled mid-simulation and the loop burns its budget
-re-proposing. If your cases can queue or run longer than 12 h in total, raise
-`iteration_timeout` along with the walltime.
+re-proposing. The generous default only trips on a genuinely stuck iteration;
+tighten it for faster failure detection, or raise it beyond two days along with
+the case walltime.
 
 ## Running it
 

@@ -47,6 +47,11 @@ jobs:
         retry:
           max-retries: ${{ inputs.optimizer.max_iterations }}
           interval: 10s
+          # retry.timeout defaults to 30s PER ATTEMPT and cancels the whole
+          # iteration subworkflow — mid-simulation — when it expires. The
+          # placeholder simulator finishes in seconds, but a real solver or a
+          # scheduled case (queue + node boot) must fit in this budget.
+          timeout: ${{ inputs.optimizer.iteration_timeout }}
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: tutorials/optimization/iteration.yaml
@@ -194,3 +199,14 @@ jobs:
             tooltip: |
               Declare convergence when the Pareto front's hypervolume improves by less
               than 0.001 over this many consecutive generations.
+          iteration_timeout:
+            type: string
+            label: Time budget per iteration
+            default: 2d
+            tooltip: |
+              Maximum wall time for one generation: propose + evaluate every case
+              (including scheduler queue and node boot) + decide. Units like 30s,
+              10m, 12h, 2d. Without this, the platform's 30s-per-attempt default
+              would cancel any generation slower than ~25s mid-simulation. The
+              generous default only trips on a genuinely stuck iteration, which is
+              then canceled and retried (consuming budget).

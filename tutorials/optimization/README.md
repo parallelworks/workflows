@@ -304,7 +304,9 @@ job or process tree), skipped workers never start, and the loop keeps no daemons
   so a deeper search is just a bigger `max_iterations`.
 - **Real workloads** — with **Schedule Cases?** on, each case is its own scheduler
   job; multi-node solvers fit without touching the YAMLs (see the
-  [swap notes](#swapping-in-dakota-and-openfoam)).
+  [swap notes](#swapping-in-dakota-and-openfoam)). One full generation — queue,
+  node boot, every case — must fit the **Time budget per iteration** input: an
+  attempt that exceeds it is canceled and retried.
 
 ### Debugging
 

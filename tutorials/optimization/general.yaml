@@ -3,8 +3,6 @@
 # proposes. The loop is a retried step: each retry attempt invokes iteration.yaml
 # (one cycle) fresh, and the iteration exits non-zero to request another cycle.
 # The lesson behind each piece: README.md next to this file.
-#
-# NOTE: dev refs point at @optimization; flip to @canary in the PR.
 permissions:
   - '*'
 
@@ -17,7 +15,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: optimization
+          branch: canary
           sparse_checkout:
             - tutorials/optimization/app
       - name: Validate Inputs and Initialize State
@@ -49,7 +47,7 @@ jobs:
         retry:
           max-retries: ${{ inputs.optimizer.max_iterations }}
           interval: 10s
-        uses: github/parallelworks/workflows@optimization
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: tutorials/optimization/iteration.yaml
           resource: ${{ inputs.cluster.resource }}

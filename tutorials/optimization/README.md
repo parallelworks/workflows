@@ -205,7 +205,7 @@ The `optimization_loop` job invokes `iteration.yaml` with a `retry` block:
   retry:
     max-retries: ${{ inputs.optimizer.max_iterations }}
     interval: 10s
-  uses: github/parallelworks/workflows@optimization
+  uses: github/parallelworks/workflows@canary
   with:
     $yaml: tutorials/optimization/iteration.yaml
     ...

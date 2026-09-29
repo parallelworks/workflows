@@ -2,8 +2,6 @@
 # Iterate step. Its exit status IS the loop control: completing tells the parent the
 # loop is over (converged or failed — the parent reads state/status to know which);
 # failing tells the parent's retry to fire the next iteration.
-#
-# NOTE: dev refs point at @optimization; flip to @canary in the PR.
 permissions:
   - '*'
 
@@ -62,7 +60,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Evaluate Case
-        uses: github/parallelworks/workflows@optimization
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
           resource: ${{ inputs.resource }}

@@ -18,6 +18,8 @@ problem. Each case is turbulent flow (Re = 10⁶, Spalart-Allmaras) over an airf
 at 5° incidence on a structured C-grid generated per design, solved with
 `potentialFoam` + `simpleFoam` in ~7 s at the default mesh (~5k cells).
 
+![The design problem: NACA 4-digit airfoil, three shape variables, lift-drag tradeoff](thumbnails/naca-problem.svg)
+
 | | |
 |---|---|
 | Design variables | `max_camber` ∈ [0, 0.06] · `camber_position` ∈ [0.3, 0.6] · `thickness` ∈ [0.08, 0.18] (chord fractions; the box covers the classic 4-digit family — 0012, 2412, 4412, …) |

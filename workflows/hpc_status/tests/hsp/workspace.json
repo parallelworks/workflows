@@ -9,5 +9,15 @@
   },
   "cluster": {
     "resource": "workspace"
+  },
+  "service": {
+    "platform": "hpcmp",
+    "cluster_monitor_interval": 120,
+    "enable_cluster_monitor": true,
+    "enable_cluster_pages": true,
+    "name": "",
+    "subdomain": "",
+    "sweep_concurrency": 6,
+    "theme": "light"
   }
 }

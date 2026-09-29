@@ -35,9 +35,10 @@ By the end of this tutorial you will understand how to:
 
 ## Stage 0 — the loop by hand
 
-Everything the workflow will orchestrate runs in a scratch directory on your
-laptop, because the optimizer and the simulator only talk through **files in case
-directories**. Try it (any Python ≥ 3.6, standard library only):
+Before writing any YAML, notice that the whole workflow simplifies to a short bash
+script. The optimizer and the simulator exchange nothing but files inside case
+directories, so the complete loop runs in a scratch directory on your laptop (any
+Python ≥ 3.6, standard library only):
 
 ```bash
 mkdir -p /tmp/opt/state && cd /tmp/opt
@@ -74,10 +75,13 @@ far, the current Pareto front, and — because ZDT1's true front is known analyt
 hugs the dashed curve, the better the loop worked; `state/pareto.csv` has the same
 front as data (`f1, f2, g, x1..x30` per row, with `g → 1` at the true front).
 
-How close it gets is purely a budget question. The platform-sized defaults
-(batches of ≤ 8) exercise every moving part but stop far from the curve; the local
-loop above with `--batch-size 40 --max-iterations 200` runs ~8000 evaluations in a
-couple of minutes and lands on it. That is expected behavior, not a bug.
+How close the front gets depends only on how many evaluations you give it. ZDT1
+with 30 variables needs a few thousand: with batches of 8, 25 iterations
+(200 evaluations) reach `g ≈ 4` and 120 iterations still only `g ≈ 2.3`, while the
+local loop above with `--batch-size 40 --max-iterations 200` (8000 evaluations,
+about two minutes) reaches `g ≈ 1.04` — visually on the curve. So a short platform
+run whose front sits well above the dashed line is converging normally; it simply
+was not given the budget to arrive.
 
 ---
 
@@ -198,9 +202,12 @@ Two things to keep straight when reading a run:
 - **Attempt ≠ iteration.** The true iteration number is the generation counter in
   `state/state.json`. A crashed attempt re-runs the *same* iteration (below) while
   still consuming one attempt.
-- **Only the last attempt's logs surface** on the `Iterate` step. Per-iteration
-  history lives in the files under `state/` and in the `::notice` lines each
-  attempt prints.
+- **A retried step keeps only its last attempt's log.** Everything an attempt
+  prints — `::notice` lines included — is replaced when the next attempt runs, so
+  once the loop ends you can only read the final iteration's output. That is why
+  anything worth keeping goes to files: the generation counter and hypervolume
+  history are in `state/state.json`, the per-case outputs under `state/iter_*/`,
+  and `pareto.svg` is redrawn every generation.
 
 ### The `Report` step — the verdict
 
@@ -269,7 +276,8 @@ job or process tree), skipped workers never start, and the loop keeps no daemons
 
 - **Wider batches** — extend the `job_id` list in `iteration.yaml` and the
   `batch_size` caps in both forms. Skipped slots are free, so a generous ceiling
-  costs nothing; to cap cluster pressure, add `max-parallel: <n>` under `strategy`.
+  costs nothing. To limit how many cases run at the same time, add
+  `max-parallel: <n>` under `strategy`.
 - **More iterations** — every platform iteration adds scheduling overhead (roughly
   a minute at small scale), so budget accordingly; the loop is restartable state,
   so a deeper search is just a bigger `max_iterations`.
@@ -279,9 +287,9 @@ job or process tree), skipped workers never start, and the loop keeps no daemons
 
 ### Debugging
 
-- The `Iterate` step shows only the **last** attempt; the history is in
-  `state/state.json` (`hv_history` is the convergence curve), the `::notice` lines
-  each attempt printed, and the per-case files under `state/iter_*/`.
+- The `Iterate` step's log covers only the **last** attempt (see Stage 2); the
+  run's history is in `state/state.json` (`hv_history` is the convergence curve)
+  and in the per-case files under `state/iter_*/`.
 - `pareto.svg` is redrawn every generation — opening it mid-run shows how far the
   search has come.
 - A form value that seems ignored: read the rendered step,
@@ -313,8 +321,9 @@ directories (+ `CONTINUE`, `proposal.env`) or stop (+ `pareto.csv`,
 resumes `dakota -read_restart`, lets the strategy generate its next evaluation
 batch (pre/post-run staged execution writes exactly these `params.in` files), and
 stops when Dakota's own convergence criteria hold. Its state — the restart file —
-lives under `state/` like everything else. The `pareto.svg` reference curve is
-ZDT1-specific reporting sugar; drop that with the placeholder.
+lives under `state/` like everything else. The dashed reference curve in
+`pareto.svg` exists only because ZDT1's true front is known; remove it from
+`write_plot` when the placeholder goes.
 
-Neither swap touches `general.yaml` or `iteration.yaml`: the YAMLs know only
+Neither swap needs to touch `general.yaml` or `iteration.yaml`: the YAMLs know only
 paths, `N_CASES`, and three status words.

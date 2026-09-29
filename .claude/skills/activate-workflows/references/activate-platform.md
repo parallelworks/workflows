@@ -224,6 +224,27 @@ graph gives you sequencing, data flow, conditionals, and parallelism:
   them. (Verified: 3 workers logged the same finish second.) For N identical workers,
   use a **matrix strategy** (`strategy.matrix`) rather than hand-copying jobs — see
   `tutorials/endpoint-workflows/05-matrix.yaml`.
+- **Matrix expansion is STATIC (verified 2026-09-28):** the platform expands
+  `strategy.matrix` at submission, so it only iterates values concrete then — form
+  inputs or literals. A runtime-computed list fails **both dry-run and the real run**
+  with `Could not expand matrix jobs`, whether it reaches the matrix as a
+  `needs.*.outputs` value or as a subworkflow `list` input fed from `with:`. To fan
+  out over a computed set, use a **guarded static matrix**
+  (`parallelworks/dcs-workflow@v4` honda-japan.yaml `workers` job): a literal matrix
+  list of the max width (`job_id: [1..N]`) plus a job-level
+  `if: ${{ matrix.job_id <= <width> }}` guard, optionally `max-parallel`. The guard's
+  width can be a form input (honda) **or a runtime output** —
+  `if: ${{ matrix.job_id <= needs.gen.outputs.N_CASES }}` compares numerically and
+  skips the excess workers (verified live 2026-09-28: 2 of 4 ran; a downstream
+  `if: ${{ always }}` job joined the partially-skipped matrix cleanly, and a per-case
+  `rundir: ${{ needs.gen.outputs.ITER_DIR }}/case_${{ matrix.job_id }}` composed
+  fine into script_submitter's `with:`). Worked, tested example:
+  `tutorials/optimization/iteration.yaml` (`workers` job — computed case set from an
+  optimizer, all of the above in one place). Fallback when the matrix must live in a
+  separate workflow: a step can submit it as a **fresh run** with the in-run client —
+  `pw workflows run <abs yaml> -i '<json>'` (or `-i <file>`) under
+  `permissions: ['*']` — and poll `pw workflows runs view <slug>`; the inner run's
+  matrix expands normally, `PW_MATRIX_INDEX` set per worker (verified live).
 - **`PW_MATRIX_INDEX` carries the matrix worker's index** (verified): `0`, `1`, … in a
   matrix job's steps AND inside the jobs of a subworkflow invoked from a matrix job;
   unset outside a matrix, so read it as `${PW_MATRIX_INDEX:-}`. Use it whenever
@@ -279,6 +300,17 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   retried attempts reuse the same directory.) Per-attempt SSH failover on a plain `ssh:`/`run:` step is
   shown in `tutorials/endpoint-workflows/07-failover.yaml`; for a matrix-style
   per-item resource, `matrix.worker.resource` passes as a native object.
+- **Retry-as-loop with depth-3 subworkflow nesting works (verified 2026-09-28):** a
+  retried `uses:` step → subworkflow → subworkflow → script_submitter ran 3 full
+  iterations. The inner workflow's deliberate `exit 1` fails the parent step → retry
+  = next loop iteration; `exit 0` ends the loop. State kept in files under the top
+  job's own working dir (paths passed down as inputs, published via `$OUTPUTS`)
+  persists across attempts. Remember attempt ≠ iteration: keep the true iteration
+  counter in a state file, and let a trailing `if: ${{ always }}` step map a status
+  file (CONVERGED/CONTINUE/FAILED) to the run's final exit. The full pattern —
+  retry-as-loop + guarded static matrix + results-file protocol, tested end-to-end
+  (run dear-crow, 2026-09-28) — is `tutorials/optimization/` (staged README);
+  `retry.max-retries: ${{ inputs.<group>.<n> }}` from a form input also verified there.
 - **`max-retries` can be computed:** `max-retries: ${{ needs.<job>.outputs.N - 1 }}` —
   arithmetic is evaluated in the expression layer. An upstream step writing `N` to
   `$OUTPUTS` lets a later step in the **same job** size its own retries

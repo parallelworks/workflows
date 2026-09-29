@@ -1,0 +1,196 @@
+# Iterative simulation-based optimization: run a batch of simulations, feed the
+# results to an optimizer, decide stop/continue, repeat with the cases the optimizer
+# proposes. The loop is a retried step: each retry attempt invokes iteration.yaml
+# (one cycle) fresh, and the iteration exits non-zero to request another cycle.
+# The lesson behind each piece: README.md next to this file.
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Checkout Optimization Apps
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - tutorials/optimization/app
+      - name: Validate Inputs and Initialize State
+        run: |
+          set -e
+          batch="${{ inputs.optimizer.batch_size }}"
+          # 8 = the width of the static matrix in iteration.yaml; a matrix cannot
+          # expand over runtime values, so the cap is hardcoded there
+          if [ "${batch}" -lt 1 ] || [ "${batch}" -gt 8 ]; then
+            echo "::error::batch_size ${batch} is out of range 1-8. To raise the cap, extend the job_id list in iteration.yaml."
+            exit 1
+          fi
+          mkdir -p state
+          echo "STATE_DIR=${PWD}/state" | tee -a $OUTPUTS
+          echo "APP_DIR=${PWD}/tutorials/optimization/app" | tee -a $OUTPUTS
+
+  optimization_loop:
+    needs: [preprocessing]
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      # retry-as-loop: iteration.yaml exits 1 while the optimizer wants another
+      # generation, and each retry attempt re-invokes it fresh. max-retries is the
+      # loop budget: max_iterations proposal cycles + the final converging call.
+      # Attempt != iteration — a crashed attempt re-runs the same iteration off the
+      # state files and consumes budget. Only the LAST attempt's logs surface here;
+      # per-iteration history lives under state/ and in ::notice lines.
+      - name: Iterate
+        retry:
+          max-retries: ${{ inputs.optimizer.max_iterations }}
+          interval: 10s
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: tutorials/optimization/iteration.yaml
+          resource: ${{ inputs.cluster.resource }}
+          scheduler: ${{ inputs.cluster.scheduler }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+          batch_size: ${{ inputs.optimizer.batch_size }}
+          max_iterations: ${{ inputs.optimizer.max_iterations }}
+          stall_generations: ${{ inputs.optimizer.stall_generations }}
+          state_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
+          app_dir: ${{ needs.preprocessing.outputs.APP_DIR }}
+      # if: always — the run's verdict comes from the state files, not from how the
+      # Iterate step ended: CONVERGED is the only success, whether the loop stopped
+      # by decision (Iterate succeeded) or by exhausting its retries (Iterate failed).
+      - name: Report
+        if: ${{ always }}
+        run: |
+          state="${{ needs.preprocessing.outputs.STATE_DIR }}"
+          status=$(cat "${state}/status" 2>/dev/null || echo MISSING)
+          case "${status}" in
+            CONVERGED)
+              n=$(($(wc -l < "${state}/pareto.csv") - 1))
+              echo "::notice::optimization converged: ${n} non-dominated points in ${state}/pareto.csv, plotted in ${state}/pareto.svg"
+              cut -d, -f1-3 "${state}/pareto.csv" | head -15
+              ;;
+            FAILED)
+              echo "::error::the optimizer declared FAILED: an entire generation produced no results twice in a row. Check the last attempt's worker logs and ${state}/iter_*/case_*/"
+              exit 1
+              ;;
+            CONTINUE)
+              echo "::error::loop budget exhausted before convergence: all retries of the Iterate step were used while the optimizer still wanted to continue. Raise max_iterations (crashed attempts also consume budget) or loosen the convergence knobs."
+              exit 1
+              ;;
+            *)
+              echo "::error::no ${state}/status file: the first iteration never reached its optimize step. Read the Iterate attempt logs."
+              exit 1
+              ;;
+          esac
+
+'on':
+  execute:
+    inputs:
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          resource:
+            type: compute-clusters
+            label: Compute resource
+            include-workspace: false
+            tooltip: Resource where the optimizer and all simulation cases run
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Cases?
+            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes → Each case is submitted to the scheduler using sbatch, qsub, etc
+              No  → Cases run on the controller or login node instead
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.cluster.resource }}
+                tooltip: Select a partition from the drop down menu.
+              time:
+                label: Walltime per case
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for each case'
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+      optimizer:
+        type: group
+        label: Optimizer Settings
+        items:
+          max_iterations:
+            type: number
+            label: Maximum iterations
+            default: 10
+            min: 1
+            max: 50
+            tooltip: |
+              Generation budget: the optimizer stops with the front found so far after
+              this many evaluated generations. Also the loop's retry budget, so a
+              crashed-and-retried iteration consumes one.
+          batch_size:
+            type: number
+            label: Cases per iteration
+            default: 8
+            min: 1
+            max: 8
+            tooltip: |
+              Simulations submitted in parallel each iteration (the EA population).
+              Capped by the matrix width hardcoded in iteration.yaml.
+          stall_generations:
+            type: number
+            label: Stagnation window
+            default: 3
+            min: 1
+            max: 20
+            tooltip: |
+              Declare convergence when the Pareto front's hypervolume improves by less
+              than 0.001 over this many consecutive generations.

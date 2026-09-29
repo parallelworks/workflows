@@ -126,7 +126,11 @@ class Test:
             raise SystemExit(f"{path}: expected workflows/<name>/tests/<variant>/<test>.json")
         self.workflow, self.variant, self.name = parts[i - 1], parts[i + 1], self.path.stem
         self.id = f"{self.workflow}/{self.variant}/{self.name}"
-        self.yaml = REPO / "workflows" / self.workflow / "yamls" / f"{self.variant}.yaml"
+        # workflows/<name>/ keeps YAMLs under yamls/; tutorials/<name>/ at the root
+        self.root = self.path.parents[2]
+        self.yaml = self.root / "yamls" / f"{self.variant}.yaml"
+        if not self.yaml.exists():
+            self.yaml = self.root / f"{self.variant}.yaml"
         self.csv = self.path.with_suffix(".csv")
         self.logs = self.path.parent / "logs"
         if not self.yaml.exists():
@@ -292,7 +296,7 @@ def stamp(test):
     if sh("git", "-C", str(REPO), "diff", "--quiet", ref, "--", str(test.yaml)).returncode != 0:
         commit += "-dirty"
     return {
-        "workflow_tree": git("rev-parse", "--short", f"{ref}:workflows/{test.workflow}"),
+        "workflow_tree": git("rev-parse", "--short", f"{ref}:{test.root.relative_to(REPO).as_posix()}"),
         "submitter_tree": git("rev-parse", "--short", f"{ref}:workflows/script_submitter/v3.6"),
         "tools_tree": git("rev-parse", "--short", f"{ref}:tools"),
         "commit": commit,

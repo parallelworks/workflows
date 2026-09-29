@@ -64,6 +64,20 @@ Dakota may propose fewer than `batch_size` new points in a generation (MOGA
 offspring that duplicate known points are served from Dakota's evaluation cache);
 the surplus worker slots are skipped for free.
 
+## Waves are fire-and-forget
+
+The workers call `script_submitter` with `submit_and_exit: true` and the `decide`
+job waits for a `.wave_done` marker that each case's `run.sh` writes on any exit
+(up to `wave_timeout`, default 7200 s — raise it if one generation can legitimately
+take longer; a timeout re-runs the generation). This is a deliberate workaround,
+not a style choice: the platform reaps a doubly-nested subworkflow (the submitter,
+inside iteration.yaml, inside general.yaml's Iterate step) about 25 s after
+dispatch, killing any case still running — verified 2026-09-29 on every scheduled
+wave and on unscheduled waves at `mesh_scale` ≥ 2; the same call waits correctly
+when iteration.yaml runs top-level. One consequence: cancelling a run mid-wave
+leaves the in-flight cases running to their natural end (bounded by the case
+duration, or the SLURM walltime when scheduled) instead of tearing them down.
+
 ## Running it
 
 Pick the compute resource, set the optimizer knobs (`max_iterations`,

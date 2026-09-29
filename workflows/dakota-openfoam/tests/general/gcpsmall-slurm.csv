@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-09-29T15:22:31Z,warm,pass,ok,272d429,74bcc3d,8c3cb5a,bfd0d3f,bfd0d3f,dakota-openfoam-naca,alvaro,electric-reindeer,291,

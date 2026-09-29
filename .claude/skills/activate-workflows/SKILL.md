@@ -481,6 +481,16 @@ non-repetitive; point at an existing tutorial instead.
   absent on another — stage it on the resource that runs it. If a required path is missing,
   **fail loud (exit non-zero), don't silently skip**: a silent skip upstream plus a
   downstream job waiting on its output (e.g. a port file) becomes an indefinite hang.
+- **conda-forge scientific stacks install sudo-free but activate incompletely:** the
+  `openfoam` package (v2412) does not export `FOAM_TUTORIALS` — derive it as
+  `${CONDA_PREFIX}/tutorials` after `conda activate` (`workflows/dakota-openfoam`,
+  verified 2026-09-29). Miniforge from GitHub releases avoids repo.anaconda.com TOS.
+- **Dakota moves its fork drivers into their own process group**, so `killpg` on
+  Dakota's group leaves captured drivers alive forever: a blocking driver must watch
+  `os.getppid()` and exit when its parent (Dakota) is gone. And **Dakota killed before
+  any evaluation completed writes an EMPTY `-write_restart` file** that makes the next
+  `-read_restart` abort with a Boost archive error — only read/replace restart files
+  with size > 0 (`workflows/dakota-openfoam/app/optimizer.py`, verified 2026-09-29).
 
 ## Lessons from LLM-backed & multi-service builds (hermes-agent)
 

@@ -166,9 +166,30 @@ loop.
 
 ## Stage 2 — the loop (`general.yaml`)
 
-`general.yaml` is what you run. Its `preprocessing` job checks out `app/` from
-this repo, validates `batch_size` against the matrix width, creates `state/` in
-its own job directory and publishes the two absolute paths:
+`general.yaml` is what you run. On the run page the two files appear as one graph
+— the whole Stage 1 cycle sits inside a single step of the parent job:
+
+```
+preprocessing
+     │
+     ▼
+optimization_loop
+ ├─ Iterate           a retried step; each attempt runs iteration.yaml once:
+ │   │
+ │   │   optimize ──▶ workers-1 ─┐
+ │   │                workers-2  ├──▶ decide ─┬─ exit 1 → retry: next cycle
+ │   │                    ⋮      │            └─ exit 0 → loop over
+ │   │                workers-8 ─┘
+ │   │
+ └─ Report            if: always — reads state/status, sets the run's verdict
+```
+
+(The run page numbers the matrix workers from 0, so `job_id: 1` shows up as
+`workers-0`.)
+
+The `preprocessing` job checks out `app/` from this repo, validates `batch_size`
+against the matrix width, creates `state/` in its own job directory and publishes
+the two absolute paths:
 
 ```yaml
 echo "STATE_DIR=${PWD}/state" | tee -a $OUTPUTS

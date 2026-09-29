@@ -491,24 +491,20 @@ non-repetitive; point at an existing tutorial instead.
   any evaluation completed writes an EMPTY `-write_restart` file** that makes the next
   `-read_restart` abort with a Boost archive error — only read/replace restart files
   with size > 0 (`workflows/dakota-openfoam/app/optimizer.py`, verified 2026-09-29).
-- **A doubly-nested subworkflow is reaped ~25 s after dispatch** (platform bug,
-  verified 2026-09-29 on gcpsmall): when workflow A's step `uses:` workflow B, and a
-  job in B `uses:` workflow C (e.g. `script_submitter`), C is killed ~25 s in —
-  its running steps get SIGTERM (exit 143) and a submitted SLURM job is scancel'd by
-  the submitter's cleanup — even while a downstream B job is still waiting on it.
-  The same B run at top level (`pw workflows run B.yaml`) waits correctly, and
-  single-level nesting is fine, so only depth ≥ 2 is affected. Every job of C dies
-  with 143 and no error of its own — easy to misread as a resource problem. It also
-  RACES: a C that finishes under ~25 s works, so fast tests pass and slow production
-  cases fail (this is latent in `tutorials/optimization`: its recorded test's ~15 s
-  waves win the race; scheduled or slow cases lose it). Workaround
-  (`workflows/dakota-openfoam`): call the submitter with `submit_and_exit: true` so
-  C ends within the window (both submitter lanes then deliberately leave the
-  work running), and synchronize on files instead — each case's script writes a
-  completion marker on any exit (bash `trap 'touch .wave_done' EXIT`), and the
-  downstream job polls for all markers with a timeout that re-fires the generation.
-  Cost: cancelling the run no longer tears down in-flight cases; they run to their
-  natural end (walltime-bounded). Report sightings to the platform team.
+- **`retry.timeout` defaults to 30 s PER ATTEMPT** (documented in
+  building-workflows/yaml-fields; bitten and verified 2026-09-29): a `retry:` block
+  without `timeout:` cancels each attempt of that step ~25-30 s in — for a `uses:`
+  step that means the WHOLE subworkflow attempt, every job, mid-simulation, however
+  deep the nesting. The symptoms mislead badly: the killed jobs exit 143 with no
+  error of their own, a submitted SLURM job shows `CANCELLED by <you>` (the
+  submitter's cleanup scancel), and it RACES — attempts that finish under ~25 s
+  succeed, so fast tests pass while scheduled or slow production cases die
+  (a minimal repro: a retried `uses:` step whose subworkflow sleeps 120 s fails;
+  add `timeout: 10m` and it completes). Always set `retry.timeout` on a retried
+  subworkflow step, sized for the whole attempt (queue + node boot + work):
+  `workflows/dakota-openfoam/yamls/general.yaml` exposes it as a form input.
+  `tutorials/optimization/general.yaml`'s Iterate step has this latent bug
+  (its ~15 s test waves win the race; any real solver loses it).
 
 ## Lessons from LLM-backed & multi-service builds (hermes-agent)
 

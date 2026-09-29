@@ -64,19 +64,14 @@ Dakota may propose fewer than `batch_size` new points in a generation (MOGA
 offspring that duplicate known points are served from Dakota's evaluation cache);
 the surplus worker slots are skipped for free.
 
-## Waves are fire-and-forget
+## One generation must fit `iteration_timeout`
 
-The workers call `script_submitter` with `submit_and_exit: true` and the `decide`
-job waits for a `.wave_done` marker that each case's `run.sh` writes on any exit
-(up to `wave_timeout`, default 7200 s — raise it if one generation can legitimately
-take longer; a timeout re-runs the generation). This is a deliberate workaround,
-not a style choice: the platform reaps a doubly-nested subworkflow (the submitter,
-inside iteration.yaml, inside general.yaml's Iterate step) about 25 s after
-dispatch, killing any case still running — verified 2026-09-29 on every scheduled
-wave and on unscheduled waves at `mesh_scale` ≥ 2; the same call waits correctly
-when iteration.yaml runs top-level. One consequence: cancelling a run mid-wave
-leaves the in-flight cases running to their natural end (bounded by the case
-duration, or the SLURM walltime when scheduled) instead of tearing them down.
+The retried `Iterate` step sets `retry.timeout` (form input `iteration_timeout`,
+default 12h) because the platform's default is **30 s per attempt** — without it,
+any generation slower than ~25 s (every scheduled wave, or `mesh_scale` ≥ 2 on
+the login node) is canceled mid-simulation and the loop burns its budget
+re-proposing. If your cases can queue or run longer than 12 h in total, raise
+`iteration_timeout` along with the walltime.
 
 ## Running it
 

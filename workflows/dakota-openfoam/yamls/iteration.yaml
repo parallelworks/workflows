@@ -62,13 +62,6 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      # submit_and_exit: the platform kills a doubly-nested subworkflow ~25s after
-      # dispatch (this workflow runs inside general.yaml's Iterate step, and this
-      # step nests script_submitter one level deeper — verified 2026-09-29: with
-      # submit_and_exit false every wave slower than ~25s was reaped mid-run,
-      # while the same call at top level waited fine). So the submitter only
-      # launches the case (seconds, under the reap window) and completion travels
-      # as the .wave_done marker each run.sh writes, which decide waits for.
       - name: Evaluate Case
         uses: github/parallelworks/workflows@canary
         with:
@@ -82,7 +75,7 @@ jobs:
           define_cleanup_script: false
           scheduler: ${{ inputs.scheduler }}
           use_scheduler_agent: false
-          submit_and_exit: true
+          submit_and_exit: false
           slurm:
             is_enabled: ${{ inputs.slurm.is_enabled }}
             partition: ${{ inputs.slurm.partition }}
@@ -102,31 +95,6 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      # The wave's real synchronization: the workers only SUBMIT the cases
-      # (submit_and_exit — see the note there), so job completion says nothing
-      # about case completion. Every case's run.sh touches .wave_done on any
-      # exit, success or failure; this step waits for all of them. A timeout
-      # falls through to exit 1 = the retry re-runs this generation.
-      - name: Wait for the Wave
-        run: |
-          n="${{ needs.optimize.outputs.N_CASES }}"
-          iter_dir="${{ needs.optimize.outputs.ITER_DIR }}"
-          if ! [ "${n}" -ge 1 ] 2>/dev/null || [ "${n}" -gt 8 ]; then
-            echo "::notice::no wave to wait for (N_CASES='${n}')"
-            exit 0
-          fi
-          budget="${{ inputs.wave_timeout }}"
-          while true; do
-            done_markers=$(ls "${iter_dir}"/case_*/.wave_done 2>/dev/null | wc -l)
-            [ "${done_markers}" -ge "${n}" ] && break
-            if [ "${budget}" -le 0 ]; then
-              echo "::warning::only ${done_markers}/${n} cases finished within wave_timeout; exit 1 so the parent retry re-runs this generation"
-              exit 1
-            fi
-            sleep 10
-            budget=$((budget - 10))
-          done
-          echo "::notice::all ${n} cases of the wave finished"
       - name: Continue or Stop
         run: |
           status=$(cat "${{ inputs.state_dir }}/status" 2>/dev/null || echo MISSING)
@@ -207,11 +175,6 @@ jobs:
         default: 1
         min: 1
         max: 6
-      wave_timeout:
-        type: number
-        label: Seconds decide waits for all cases of a generation
-        default: 7200
-        min: 60
       state_dir:
         type: string
         label: Absolute path of the optimizer state directory

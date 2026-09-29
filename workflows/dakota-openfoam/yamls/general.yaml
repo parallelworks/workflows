@@ -18,7 +18,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: dakota-openfoam-naca
           sparse_checkout:
             - workflows/dakota-openfoam/app
       - name: Install OpenFOAM
@@ -54,7 +54,12 @@ jobs:
         retry:
           max-retries: ${{ inputs.optimizer.max_iterations }}
           interval: 10s
-        uses: github/parallelworks/workflows@canary
+          # retry.timeout defaults to 30s (docs: building-workflows/yaml-fields)
+          # and cancels the whole attempt — every job of the iteration
+          # subworkflow, mid-simulation — when it expires. One generation
+          # (propose + node boot + queue + solve + decide) must fit in it.
+          timeout: ${{ inputs.optimizer.iteration_timeout }}
+        uses: github/parallelworks/workflows@dakota-openfoam-naca
         with:
           $yaml: workflows/dakota-openfoam/yamls/iteration.yaml
           resource: ${{ inputs.cluster.resource }}
@@ -216,3 +221,12 @@ jobs:
               The cost dial: multiplies every cell count of the C-grid around the
               airfoil (~5k cells and ~7 s per case at 1; cost grows roughly with
               the square). Higher values sharpen the drag prediction.
+          iteration_timeout:
+            type: string
+            label: Time budget per iteration
+            default: 12h
+            tooltip: |
+              Maximum wall time for one generation: propose + evaluate every case
+              (including scheduler queue and node boot) + decide. Units like 30s,
+              10m, 12h. An iteration that exceeds it is canceled and retried,
+              consuming budget — raise this before raising the case walltime.

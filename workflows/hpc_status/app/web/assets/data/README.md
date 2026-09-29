@@ -23,12 +23,13 @@ internet access is a basemap that fails exactly when it matters.
 ### Regenerating
 
 ```bash
+# from workflows/hpc_status/
 base=https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson
 curl -LO $base/ne_110m_admin_1_states_provinces.geojson
 curl -LO $base/ne_110m_admin_0_countries.geojson
-python3 scripts/build_basemap.py \
+python3 dev/scripts/build_basemap.py \
   ne_110m_admin_1_states_provinces.geojson \
-  web/assets/data/us-states.json \
+  app/web/assets/data/us-states.json \
   ne_110m_admin_0_countries.geojson
 ```
 

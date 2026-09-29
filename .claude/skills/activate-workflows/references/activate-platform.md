@@ -496,6 +496,15 @@ Endpoint names are `<service.name>-<run-slug>`. `delete` kills the `pw endpoints
 wrapper and its children — but a daemonizing app that re-parented to PID 1 (e.g.
 RStudio's `rsession`) can survive; check `ps -x` after teardown.
 
+### Which identity a `pw` call uses (verified 2026-09-29, v7.105)
+- `PW_API_KEY` in the environment wins: `PW_CONTEXT` and `--context` are then ignored
+  (`PW_CONTEXT=noaa pw auth whoami` answered on activate with a key set).
+- Without a key, the saved credentials answer as `PW_CONTEXT`/`--context` or the current
+  context, and an unknown one fails every call (`context "noaa" not found`).
+- `PW_PLATFORM_HOST` in the environment overrides the context's server (a bogus value sent
+  `whoami` to that host), so the `inputs.sh` capture (`env | grep '^PW_'`) pins every later
+  `pw` call to the run's platform, saved credentials included.
+
 ### Other useful
 ```bash
 pw kube ls [-o json]               # kubernetes clusters: id, name, cpus, memory (no status field)

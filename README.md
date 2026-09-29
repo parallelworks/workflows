@@ -21,6 +21,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [agent-orchestrator](workflows/agent-orchestrator/) | Multi-agent orchestrator service | general |
 | [burst-render-demo](workflows/burst-render-demo/) | Multi-site burst demo: Mandelbrot tiles rendered on N sites in parallel, assembled live in a dashboard | general, hsp, noaa |
 | [hermes-agent](workflows/hermes-agent/) | Hermes agent with auth/TCP proxies | general |
+| [hpc_status](workflows/hpc_status/) | HPC Status Monitor: fleet status, topology, queues, quota and storage dashboard over every cluster `pw` reaches, at a stable `status-<user>` address | general, hsp, noaa |
 | [jupyter](workflows/jupyter/) | Jupyter Notebook (classic) | general, emed, noaa |
 | [jupyterlab](workflows/jupyterlab/) | JupyterLab | general, emed, hsp, noaa, general_k8s, k8s |
 | [kasmvnc](workflows/kasmvnc/) | KasmVNC desktop (Singularity) | general, general_rstudio, emed, emed_{rstudio, matlab, firefox, fsl, schrodinger, vmd}, hsp, noaa, noaa_rstudio, general_k8s, k8s |

@@ -9,7 +9,7 @@ Monitor. Three lengths to pick from per cluster:
    panel or workflow listing page.
 
 Each entry mirrors the `noaa_systems:` block in
-[configs/config.noaa.yaml](../configs/config.noaa.yaml).
+[app/configs/config.noaa.yaml](../app/configs/config.noaa.yaml).
 
 ## Quick-reference one-liners
 

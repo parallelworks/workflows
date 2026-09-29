@@ -352,6 +352,115 @@ the fallback branch of the install-directory step (`/home/alvaro/pw/software`); 
 per-cluster shared-directory branches and the `existing`-only account/QoS fields are
 static-only until the variant runs on a NOAA system.
 
+## hpc_status (from parallelworks/hpc_status)
+
+Migrated 2026-09-29 from `parallelworks/hpc_status@main` (30ce200), the HPC Status
+Monitor: a Python dashboard that sweeps every cluster `pw` reaches (plus the HPCMP status
+pages or the NOAA docs) and serves fleet, topology, queue, quota, storage and insight
+pages. The source already served through `pw endpoints run`, but from one workflow step
+that cloned the repository into `~/pw/src/hpc_status` and exec'd `scripts/serve-endpoint.sh`,
+which detached the endpoint under `setsid nohup` with a fixed name (`hpc-status`), a
+pidfile and its own readiness polling. Here it follows the repository's endpoint pattern
+end to end: the run completes once `wait_for_endpoint` saw the dashboard answer, and the
+dashboard outlives it behind `hpc-status-<run-slug>`.
+
+| Old | New |
+|---|---|
+| `src/`, `web/`, `configs/` | `app/src/`, `app/web/`, `app/configs/`, verbatim but for one log line in `src/server/main.py` that pointed at `scripts/run.sh` |
+| `scripts/run.sh` (uv by `curl \| sh` into `~/.local/bin`, venv `~/.venvs/hpc-status` with an editable install, port selection, server command) | `app/controller.sh`: shared `uv` (`${service_parent_install_dir}/.uv/uv`), venv `${service_parent_install_dir}/hpc_status/venv` from `app/requirements.txt`, Python 3.12 through uv when the system one predates 3.10, idempotent, verified by importing the server; the server command is the `launch-dashboard.sh` the start template writes |
+| `scripts/serve-endpoint.sh` | `app/start-template.sh`: configuration, durable credential, subdomain, restart, subdomain fallback — the same behaviours, in the start-template contract |
+| `scripts/stop-endpoint.sh`, `scripts/test.sh` | dropped: `pw endpoints delete` is the teardown, as everywhere here (the pidfile it also used existed only in detached mode); tests run with `cd dev && python -m pytest` |
+| `workflow.yaml`, `yamls/hsp.yaml`, `yamls/rdhpcs.yaml` | `yamls/general.yaml`, `yamls/hsp.yaml`, `yamls/noaa.yaml` |
+| `tests/` | `dev/tests/` (`dev/pytest.ini` puts `../app` on the path) |
+| `schemas/`, `scripts/build_openapi.py`, `scripts/build_basemap.py` | `dev/schemas/`, `dev/scripts/` |
+| `docs/{api,configuration,glossary,rdhpcs-cluster-marketplace}.md`, `examples/` | `docs/`, `docs/examples/`; configuration.md's environment-variable tables described `run.sh` and now map the form to server arguments |
+| `docs/images/thumbnail-{general,hpcmp,noaa}.png` | `thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png` |
+| `README.md`, `docs/deployment.md` | `README.md`, rewritten for the workflow |
+| `REFACTOR.md`, `pyproject.toml`, `LICENSE`, `.gitignore` | left behind: a planning log; packaging for an editable install nothing does any more (dependencies in `app/requirements.txt`, pytest options in `dev/pytest.ini`); this repository's MIT licence (same holder) covers the code; repo-local |
+
+**Behaviour, source → here.** Each change follows from the pattern; nothing the dashboard
+does changed.
+
+- **Lifecycle.** The source defaulted to `detach: true` (the run completes in seconds and
+  the dashboard keeps serving) with `detach: false` keeping the run open for the dashboard's
+  life. Here the run always completes once the dashboard answers and the dashboard always
+  outlives it, so the input is gone.
+- **Endpoint name.** `hpc-status` (fixed) → `hpc-status-<run-slug>` (`rdhpcs-status-…` on
+  NOAA). "Starting again restarts" survives: the start script finds the previous dashboard
+  by its address instead of its name, deletes any endpoint at `https://<subdomain>.` named
+  `hpc-status` or `hpc-status-*` — a dashboard still running from the old workflow
+  included — wherever it runs, and refuses to touch anything else there.
+- **Host.** `settings.host`, an optional `compute-resources` picker (blank = workspace), →
+  `cluster.resource`, `compute-clusters` with `include-workspace: true` and
+  `default: workspace` (as agent-orchestrator). `compute-resources` does not hydrate from
+  the CLI and lists Kubernetes clusters, where this cannot run. The submitter never
+  schedules: the dashboard needs `pw`, its credentials and internet access for as long as
+  it serves, and an allocation would end at its walltime.
+- **Health.** The source grepped its log for `Endpoint live at`, then waited for a TCP
+  connect to the port. Here `wait_for_endpoint` probes `/` through the platform with the
+  run's key, with a 900 s budget: a first start has no cached fleet and answers only after
+  one full sweep (`pw ssh` to every cluster, or the HPCMP pages).
+- **Inputs dropped:** `repo_url`/`repo_branch` (the checkout), `port` (`pw endpoints run`
+  assigns it), `detach`. `name` is the hidden endpoint prefix; the two `number` inputs are
+  `integer`, which the server parses with `int()`.
+- **Credentials:** the same order and effect as `serve-endpoint.sh` — the workspace key
+  from `/etc/profile.d/parallelworks-env.sh` when it works, then saved credentials when they
+  authenticate on their own — plus a warning in the run log when neither exists (the source
+  said nothing and the fleet went coreless after the run). `PW_PLATFORM_HOST` from
+  `inputs.sh` keeps saved credentials for another platform from qualifying.
+- **noaa:** `PW_CONTEXT: noaa` in the step's `env:` → the hidden `service.pw_context`,
+  exported by the start script; plus the **Set Up Install Parent Directory** step the other
+  noaa variants carry. With a key in the environment `pw` ignores both `PW_CONTEXT` and
+  `--context` (verified), so the pin only decides which saved identity qualifies.
+
+**Code changes beyond the paths:** the `run.sh` hint in `_create_server`'s busy-port
+message. The pytest suite lost `test_workflows.py` (67 tests pinning the three source
+YAMLs and the serve/stop scripts), `TestRunScriptPortHandling` and
+`TestLauncherPrefersDurableAuth` (10, `run.sh` and `serve-endpoint.sh`), and gained
+`test_start_template.py` (24), which runs the new start script against a fake `pw` for the
+same behaviours: 570 pass (the source's 623 − 77 + 24).
+
+**Judgment calls:**
+
+1. The directory is `hpc_status` as requested (underscored like `script_submitter`), the
+   branch too.
+2. The development kit (pytest suite, OpenAPI and basemap builders, schemas, reference
+   docs) came along, outside `app/`, because development of the dashboard continues here.
+3. A launch deletes the user's own previous dashboard at its address, where openvscode
+   fails when its subdomain is taken: that is the source's documented behaviour, and a
+   dashboard has no unsaved state to lose.
+4. The server binds `127.0.0.1`, not `0.0.0.0`: only the tunnel on the same host reaches it,
+   and it has no login of its own to protect the allocation data on a shared login node.
+5. No `cancel.sh` (`define_cleanup_script: false`, as burst-render-demo): everything the
+   dashboard starts stays in the start script's process group.
+6. The test runner accepts `workspace` as a resource (`tools/tests/README.md`), so the
+   form's default is a recorded test; it was skipped as inactive before.
+
+**Test results (2026-09-29, `activate.parallel.works`, branch `hpc_status`):** pass = the
+run completed (its `wait_for_endpoint` got `HTTP 200` from `/` through the platform) and
+`<prefix>-<run-slug>` was listed at `https://status-alvaro.activate.pw/`; teardown =
+`pw endpoints delete`, after which no dashboard or `pw endpoints run` process was left.
+Rows are in `workflows/hpc_status/tests/*/*.csv`.
+
+| Test | Result |
+|---|---|
+| `general/workspace` (the form's defaults) | PASS `crisp-shepherd` (cold, 22 s: uv installed Python 3.12 because the step's `python3` is 3.9, venv built, first sweep of 2 clusters in 4 s, healthy on the first probe; the workspace key adopted) |
+| `general/workspace`, kept | PASS `safe-lab`: the dashboard collected both clusters again at 16:38 and 16:40, 2 and 4 minutes after its run completed, with queue and node data — the run key would have been revoked by then |
+| `general/gcp-login` (gcpsmall login node, dark theme, 300 s interval, 3 at once), kept | PASS `natural-midge` (cold on gcpsmall, 37 s: uv itself installed from GitHub): the saved `pw` credentials on the login node adopted, the flags reached the server, and `safe-lab`'s dashboard on the *workspace* was deleted first — its tree shut itself down (`Endpoint ... was deleted; shutting down`), no process left there. Deleted by hand afterwards, nothing left |
+| `hsp/workspace`, `hsp/gcp-login` | PASS `refined-mantis`, `just-arachnid` through `script_submitter/v3.6/hsp.yaml`, `config.hpcmp.yaml` loaded |
+| `noaa/workspace`, `noaa/gcp-login` | PASS `better-gannet`, `wondrous-escargot` through `script_submitter/v3.6/noaa.yaml`, `config.noaa.yaml` loaded, install directory `${HOME}/pw/software` (the fallback branch). On gcpsmall the saved credentials belong to the activate identity, not `noaa`, so they did not qualify and the run warned that collection would stop after it — the pin working as intended off-platform |
+
+Manual: **cancel during start-up** (`immense-lynx`, gcpsmall, cancelled while the
+dashboard ran its first sweep): run `canceled`, no process, no endpoint, no skip file.
+**Address held by something else** (`pleasant-shad`, a throwaway endpoint serving an empty
+directory at `status-alvaro-probe`): the run ended in `error` with the start script's
+explanation, the other endpoint untouched, nothing left on the workspace.
+
+Not exercised: the `activate.hpc.mil` and `noaa.parallel.works` platforms themselves (the
+HPCMP scrape, the NOAA identity with saved credentials, the shared install trees and their
+`existing`-only paths), a platform that refuses the subdomain (covered by
+`test_start_template.py`), and a fleet large enough to test the 900 s budget.
+
 ## Dead branches (pre-existing breakage, now fixed)
 
 Three selected YAMLs checked out branches that **no longer exist upstream** — those
@@ -475,6 +584,13 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   `general` elsewhere; thumbnail `workflows/burst-render-demo/thumbnails/burst-render-demo.png`).
   The YAMLs and the remote-site clone reference branch `burst-render-demo` until the
   branch lands on canary (`branch:` in the checkout and `REPO_BRANCH` in the `render` job).
+
+- The HPC Status entries (the source's deployment guide names `hpcmp_status`) pin
+  `parallelworks/hpc_status`'s `workflow.yaml`, `yamls/hsp.yaml` or `yamls/rdhpcs.yaml` →
+  `workflows/hpc_status/yamls/{general,hsp,noaa}.yaml` here (`hsp` on `activate.hpc.mil`,
+  `noaa` on `noaa.parallel.works`, `general` elsewhere; thumbnails
+  `workflows/hpc_status/thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png`). The
+  checkout references branch `hpc_status` until it lands on canary.
 
 ## Test results (2026-08-31, repo public, canary pushed)
 

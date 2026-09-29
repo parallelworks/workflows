@@ -1,46 +1,33 @@
 # Configuration Reference
 
-The HPC Status Monitor supports configuration through environment variables and YAML files.
+The HPC Status Monitor is configured by a YAML file (one per deployment, under
+`app/configs/`) and the server's command-line arguments. The workflow form sets
+both.
+
+## Workflow Inputs
+
+`app/start-template.sh` turns the form into server arguments:
+
+| Input | Server argument |
+|-------|-----------------|
+| Platform (`auto`, `generic`, `hpcmp`, `noaa`) | `--config configs/config.yaml`, `config.hpcmp.yaml` or `config.noaa.yaml`; `auto` picks one from the platform host |
+| UI Theme | `--default-theme dark\|light` |
+| Enable Cluster Pages | `--enable-cluster-pages` / `--disable-cluster-pages` |
+| Enable Cluster Monitor | `--enable-cluster-monitor` / `--disable-cluster-monitor` |
+| Refresh Interval | `--cluster-monitor-interval <seconds>` |
+| Clusters Swept At Once | `--max-concurrent-ssh <n>` |
+
+The port and base path come from `pw endpoints run` (`--port ${PORT}`,
+`--url-prefix ${PW_ENDPOINT_PATH}`), and the server binds `127.0.0.1`.
 
 ## Environment Variables
 
-### Server Settings
+The server itself reads two:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `8080` | HTTP server port |
-| `HOST` | `0.0.0.0` | Bind address |
-| `URL_PREFIX` | `` | URL prefix for reverse proxy |
-
-### UI Settings
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DEFAULT_THEME` | `dark` | Initial theme (`dark` or `light`) |
-
-### Feature Flags
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENABLE_CLUSTER_PAGES` | `1` | Enable queue and quota pages |
-| `ENABLE_CLUSTER_MONITOR` | `1` | Enable background cluster monitoring |
-| `CLUSTER_MONITOR_INTERVAL` | `120` | Refresh interval in seconds |
-
-### Paths
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CONFIG_FILE` | `` | Path to YAML config file |
-| `HPC_STATUS_DATA_DIR` | `~/.hpc_status` | Data storage directory |
-| `HPC_STATUS_VENV` | `~/.venvs/hpc-status` | Virtual environment path |
-
-### Runtime Options
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `USE_UV` | `1` | Use uv package manager |
-| `PYTHON_BIN` | `python3` | Python interpreter path |
-| `LOG_LEVEL` | `INFO` | Logging level |
+| `HPC_STATUS_CONFIG` | `` | Path to YAML config file, when `--config` is not given |
+| `HPC_STATUS_DATA_DIR` | `~/.hpc_status` | Data storage directory (cache, history database, briefings) |
 
 ## YAML Configuration
 
@@ -351,14 +338,12 @@ Configuration values are applied in this order (later overrides earlier):
 
 1. Built-in defaults
 2. YAML config file
-3. Environment variables
-4. Command-line arguments
+3. Command-line arguments
 
-Example:
+Example, from `app/`:
 ```bash
-# YAML sets port to 8080
-# Environment overrides to 9000
-PORT=9000 CONFIG_FILE=configs/config.yaml ./scripts/run.sh
+# YAML sets port to 8080; the argument overrides it
+python -m src.server.main --config configs/config.yaml --port 9000
 ```
 
 ## Command-Line Arguments
@@ -383,7 +368,7 @@ options:
 
 ## Validating Configuration
 
-Test your configuration:
+Test your configuration, from `app/`:
 
 ```bash
 # Check config syntax

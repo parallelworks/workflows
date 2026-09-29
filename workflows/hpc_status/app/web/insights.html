@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Insights | HPC Status Dashboard</title>
+  <script>
+    (function () {
+      function deriveBasePath(pathname) {
+        var path = pathname;
+        return path;
+      }
+      var path = deriveBasePath(window.location.pathname || "/");
+      var base = document.createElement("base");
+      base.href = window.location.origin + path;
+      document.documentElement.setAttribute("data-base-path", path);
+      document.head.appendChild(base);
+    })();
+  </script>
+  <script src="app-config.js"></script>
+  <script>
+    (function () {
+      try {
+        const saved = window.localStorage.getItem("hpc-status-theme");
+        const fallback = (window.APP_CONFIG && window.APP_CONFIG.defaultTheme) || "dark";
+        const initial = saved || fallback || "dark";
+        document.documentElement.dataset.theme = initial;
+      } catch (err) {
+        document.documentElement.dataset.theme = (window.APP_CONFIG && window.APP_CONFIG.defaultTheme) || "dark";
+      }
+      document.documentElement.dataset.platform = (window.APP_CONFIG && window.APP_CONFIG.platform) || "generic";
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="icon" type="image/png" href="assets/img/favicon-generic.png" />
+  <link rel="apple-touch-icon" href="assets/img/favicon-generic.png" />
+  <link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+
+<body>
+  <div class="page">
+    <header class="hero">
+      <div>
+        <p class="eyebrow" id="header-eyebrow">HPC STATUS</p>
+        <h1>Insights</h1>
+        <p class="lede">
+          Recommendations and alerts based on fleet status, allocations, and queue health.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <a class="ghost-btn" href="index.html">← Fleet dashboard</a>
+        <button id="refresh-btn" class="ghost-btn">
+          <span class="btn-icon" aria-hidden="true">↻</span>
+          <span>Refresh</span>
+        </button>
+        <button id="theme-toggle" class="theme-btn" aria-label="Toggle color theme">
+          <span class="theme-icon" aria-hidden="true">🌙</span>
+          <span class="theme-label">Dark</span>
+        </button>
+      </div>
+    </header>
+
+    <nav class="subnav" data-cluster-nav>
+      <a href="index.html">Fleet status</a>
+      <a href="topology.html">Topology</a>
+      <a href="queues.html">Queue health</a>
+      <a href="quota.html">Quota usage</a>
+      <a href="storage.html">Storage</a>
+      <a href="insights.html" aria-current="page">Insights</a>
+      <a href="api.html">API</a>
+    </nav>
+
+    <p id="data-status" class="status-banner" role="status" hidden></p>
+
+    <section class="cards">
+      <article class="card alert" id="critical-card">
+        <p>Action required</p>
+        <h2 id="critical-count">--</h2>
+        <span class="card-tooltip" title="Critical issues blocking work: exhausted allocations, full storage, systems down. Address these first.">ⓘ</span>
+      </article>
+      <article class="card" id="warning-card">
+        <p>Needs attention</p>
+        <h2 id="warning-count">--</h2>
+        <span class="card-tooltip" title="Warnings — low allocations, storage filling up, queues with heavy backlog, systems in maintenance. Plan to address soon.">ⓘ</span>
+      </article>
+      <article class="card">
+        <p>Tips &amp; updates</p>
+        <h2 id="info-count">--</h2>
+        <span class="card-tooltip" title="Informational notes and suggestions for better scheduling. No action required.">ⓘ</span>
+      </article>
+      <article class="card">
+        <p>Updated</p>
+        <h2 id="last-updated">--</h2>
+        <span class="card-tooltip" title="When insights were last generated from fleet data">ⓘ</span>
+      </article>
+    </section>
+
+    <section class="panel" id="planner-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Job placement</p>
+          <h3>Where should I run this? <span class="panel-help" title="Ranks every queue that can actually run your job, using idle cores, measured backlog, time-to-start, and how much allocation you have left">ⓘ</span></h3>
+          <p class="muted-text">Describe the job; the fleet is ranked for it.</p>
+        </div>
+      </div>
+      <form class="planner-form" id="planner-form">
+        <label>
+          <span>Cores</span>
+          <input type="number" id="planner-cores" min="1" step="1" value="128" inputmode="numeric" />
+        </label>
+        <label>
+          <span>Walltime (hours)</span>
+          <input type="number" id="planner-hours" min="0.1" step="0.5" value="6" inputmode="decimal" />
+        </label>
+        <label>
+          <span>GPUs</span>
+          <input type="number" id="planner-gpus" min="0" step="1" value="0" inputmode="numeric" />
+        </label>
+        <button type="submit" class="ghost-btn">Rank queues</button>
+      </form>
+      <div id="planner-results" class="planner-results">
+        <p class="muted-text">Enter a job shape to see where it fits.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Fleet analysis</p>
+          <h3>Recommendations and alerts <span class="panel-help" title="Insights are sorted by severity: CRITICAL (blocks work), WARNING (needs attention), INFO (status updates), SUGGESTION (optimizations)">ⓘ</span></h3>
+          <p id="insights-note" class="muted-text">Loading insights...</p>
+        </div>
+      </div>
+      <div id="insights-container">
+        <ul id="insights-list" class="insights-list-full" aria-live="polite">
+          <li class="placeholder">Loading insights...</li>
+        </ul>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <small>Insights generated from fleet and cluster data</small>
+      <small>HPC Status Monitor v2.1</small>
+    </footer>
+  </div>
+
+  <script type="module" src="assets/js/insights.js"></script>
+</body>
+
+</html>

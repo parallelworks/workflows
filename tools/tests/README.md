@@ -41,6 +41,11 @@ The runner picks the lane from the inputs:
 | cluster | `cluster.resource` (or `resource`) is a resource name or `pw://` URI | the run reaches `completed` and an endpoint named `*-<run-slug>` is listed (`completed` alone when `_test.endpoint` is `false`) | `pw endpoints delete`; leftovers are checked over `pw ssh` |
 | k8s | `resource` is an object with `"type": "kubernetes"` (hybrid `*_k8s.yaml`) or the inputs carry `k8s.cluster` (standalone `k8s.yaml`) | the run is still `running` when its `wait_for_endpoint_k8s` job completes and an endpoint named `*-<run-slug>` is listed | `pw workflows runs cancel`; leftovers are Kubernetes objects |
 
+`cluster.resource` may also be `workspace` (or `user-workspace`) for a workflow that
+serves from the user workspace: it is not listed by `pw cluster ls`, so the runner takes
+it as active and runs the warm-marker, setup and leftover checks there with
+`pw ssh workspace`.
+
 A hybrid `*_k8s.yaml` runs either lane, so it takes one test per lane: a k8s-lane test
 with the `resource` object and a cluster-lane test with a `pw://` string. On the
 cluster lane the runner expands that string into the full resource object from

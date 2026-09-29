@@ -1,0 +1,16 @@
+{
+  "_test": {
+    "timeout_s": 1500,
+    "warm_marker": "${HOME}/pw/software/hpc_status/venv/bin/python",
+    "leftover_patterns": [
+      "pw endpoints run",
+      "src.server.main"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall"
+  },
+  "service": {
+    "parent_install_dir": ""
+  }
+}

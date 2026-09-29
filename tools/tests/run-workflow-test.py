@@ -12,9 +12,10 @@ One row per launch is appended to the CSV next to it:
 
 The lane is picked from the inputs:
 
-    cluster lane   cluster.resource (or resource) names a compute resource. Pass = the run
-                   completes and an endpoint named *-<run-slug> is listed. Teardown =
-                   `pw endpoints delete`; leftovers are checked over `pw ssh`.
+    cluster lane   cluster.resource (or resource) names a compute resource, or the user
+                   workspace ("workspace"). Pass = the run completes and an endpoint named
+                   *-<run-slug> is listed. Teardown = `pw endpoints delete`; leftovers are
+                   checked over `pw ssh`.
     k8s lane       resource is an object with type "kubernetes" (hybrid *_k8s.yaml; the
                    runner fills in its id and uri from `pw kube ls`) or the inputs carry
                    k8s.cluster (standalone k8s.yaml). Pass = the run is still running when
@@ -85,6 +86,7 @@ FINAL_STATUSES = {"completed", "error", "canceled", "failed", "faulted"}
 COLUMNS = ["date", "phase", "result", "cleanup", "workflow_tree", "submitter_tree",
            "tools_tree", "commit", "fetched", "branch", "user", "run_slug", "duration_s", "error"]
 COMPUTE_RESOURCES_RE = re.compile(r"^\s*type:\s*compute-resources\s*$", re.M)
+WORKSPACE = {"workspace", "user-workspace"}
 DEFAULTS = {"timeout_s": 1800, "endpoint": True, "warm_marker": "", "setup": "", "resource": "",
             "scheduler": None, "expect": "completed",
             "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
@@ -183,6 +185,10 @@ def context():
 
 
 def resource_active(resource, default_user):
+    # The user workspace is not listed by `pw cluster ls`, and `pw ssh workspace`
+    # reaches it for the warm marker, setup and leftover checks
+    if resource in WORKSPACE:
+        return True, "user workspace", None
     m = re.match(r"^(?:pw://)?(?:([^/]+)/)?([^/]+)$", resource)
     if not m:
         return False, f"unparseable resource {resource!r}", None
@@ -221,7 +227,7 @@ def complete_resource(test, cluster):
 
 
 def hydrate_compute_resource(test, cluster, default_user):
-    if not test.hydrate:
+    if not test.hydrate or cluster is None:
         return
     owner = cluster.get("user") or default_user
     name = cluster.get("name", "")

@@ -21,7 +21,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: dakota-openfoam-failed-generation
           sparse_checkout:
             - workflows/dakota-openfoam/app
       - name: Validate Inputs and Initialize State
@@ -83,7 +83,7 @@ jobs:
           # subworkflow, mid-simulation — when it expires. One generation
           # (propose + node boot + queue + solve + decide) must fit in it.
           timeout: ${{ inputs.optimizer.iteration_timeout }}
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@dakota-openfoam-failed-generation
         with:
           $yaml: workflows/dakota-openfoam/yamls/iteration.yaml
           resource: ${{ inputs.cluster.resource }}
@@ -120,7 +120,7 @@ jobs:
               head -15 "${state}/pareto.csv"
               ;;
             FAILED)
-              echo "::error::the optimizer declared FAILED: either an entire generation produced no results twice in a row, or Dakota exited without proposing or converging. Check the last attempt's worker logs, ${state}/iter_*/case_*/ and ${state}/dakota/dakota.log"
+              echo "::error::the optimizer declared FAILED: no case of a generation ran twice in a row, every case failed before any design succeeded or for three generations running, or Dakota exited without proposing or converging. Check the last attempt's worker logs, ${state}/iter_*/case_*/{run.*.out,case/log.*} and ${state}/dakota/dakota.log"
               exit 1
               ;;
             CONTINUE)

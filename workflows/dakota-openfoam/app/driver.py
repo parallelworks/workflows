@@ -8,7 +8,7 @@ it wants. Two paths:
            $DAK_RESULTS_DB/<hash> -> write them to the Dakota results file and exit
            (a "FAIL" entry is passed through for Dakota's failure_capture recovery)
   capture: the point is new -> claim the next case slot under $DAK_CAPTURE_DIR,
-           write params.in / param.hash / run.sh there, then BLOCK forever; the
+           write params.in / param.hash / case.sh there, then BLOCK forever; the
            optimizer wrapper counts the blocked captures and kills Dakota's process
            group once the batch is stable, so the platform can evaluate the cases
 
@@ -78,11 +78,16 @@ def main():
     write_atomic(os.path.join(case_dir, "params.in"),
                  "".join("%.12e %s\n" % (val, name) for name, val in pairs))
     write_atomic(os.path.join(case_dir, "param.hash"), key + "\n")
-    # run.sh is what script_submitter executes with the case dir as rundir; the
-    # submitter inlines the script body, so bake the absolute case path in
-    write_atomic(os.path.join(case_dir, "run.sh"),
+    # case.sh is what script_submitter executes with the case dir as rundir; the
+    # submitter inlines the script body, so bake the absolute case path in. Not
+    # run.sh: that is the name the submitter gives its assembled job script in the
+    # same dir, and a retried generation would wrap the previous wrapper. The
+    # exit_code file is the optimizer's evidence that the case ran (and how it
+    # ended) when no results.out came back.
+    write_atomic(os.path.join(case_dir, "case.sh"),
                  '#!/bin/bash\ncd "%s"\n'
                  'MESH_SCALE=%s CORES_PER_CASE=%s OPENFOAM_ENV="%s" bash "%s"\n'
+                 'rc=$?\necho "${rc}" > exit_code\nexit "${rc}"\n'
                  % (case_dir, os.environ.get("DAK_MESH_SCALE", "1"),
                     os.environ.get("DAK_CORES_PER_CASE", "1"),
                     os.environ.get("DAK_OPENFOAM_ENV", ""),

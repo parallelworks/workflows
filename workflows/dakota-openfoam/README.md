@@ -141,7 +141,7 @@ semantics as the pause button:
    `state/results_db/` (keyed by a hash of the parameter values); a case that
    crashed is marked `FAIL` there and absorbed by Dakota's `failure_capture recover`.
 3. The first batch of *new* points Dakota requests is captured: each fork driver
-   writes its `case_<j>/{params.in,run.sh}` and blocks. Once the pending set is
+   writes its `case_<j>/{params.in,case.sh}` and blocks. Once the pending set is
    stable, `optimizer.py` kills Dakota's process group, keeps the restart file,
    and hands the cases to the platform (`status=CONTINUE`).
 4. Dakota exiting on its own instead means its convergence criteria are satisfied
@@ -151,6 +151,23 @@ semantics as the pause button:
 Dakota may propose fewer than `batch_size` new points in a generation (MOGA
 offspring that duplicate known points are served from Dakota's evaluation cache);
 the surplus worker slots are skipped for free.
+
+### When cases fail
+
+`case.sh` records the simulator's exit status in `exit_code` next to `results.out`,
+and the optimizer reads the two together:
+
+| generation came back with | meaning | what happens |
+|---|---|---|
+| some results, some cases without `results.out` | a marginal design diverged (the solver dies with a floating-point exception), or a worker was lost | the missing points go to Dakota as `FAIL`; `failure_capture recover` substitutes penalty objectives and the search moves on |
+| no results, but every case left an `exit_code` | every design of the generation failed in the solver | same: all `FAIL`, a `::warning::`, the loop continues — unless no design has *ever* succeeded (the setup is broken, not a design) or this is the third such generation in a row, which end the run as `FAILED` |
+| no results and no `exit_code` anywhere | the workers never ran (platform hiccup, canceled attempt) | the same generation is handed back once; twice in a row is `FAILED` |
+
+The distinction matters because Dakota's replay is deterministic: re-proposing a
+diverging design can only diverge again, so treating "all cases failed" as an
+outage (the original behavior) ended a healthy run at its first fully-failed
+generation. Divergence is not rare at the high-camber end of the box: the same
+design can converge on one node type and blow up on another.
 
 ## One generation must fit `iteration_timeout`
 
@@ -179,7 +196,7 @@ SVG) is under `state/` in the run's job directory on the cluster.
 `simulator.sh` (+ its mesh generator) is the only OpenFOAM-specific code: it
 reads `params.in`, builds the case, runs the solver, extracts objectives into
 `results.out` (atomic write, or exit non-zero leaving none — the failure
-signal). Its environment contract, set by the `run.sh` that `driver.py` writes:
+signal). Its environment contract, set by the `case.sh` that `driver.py` writes:
 `MESH_SCALE`, `CORES_PER_CASE`, `OPENFOAM_ENV` (the file to source; unset →
 the conda env), and `MPIRUN` (launcher prefix, from the sourced environment).
 Change the case construction and extraction there, and the variable/objective

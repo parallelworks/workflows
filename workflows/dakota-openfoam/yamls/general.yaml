@@ -12,6 +12,28 @@
 permissions:
   - '*'
 
+# Saved inputs, offered under "Load saved inputs" on the Execute page. The form's
+# defaults are the fast demo (login node, 1 core, mesh_scale 1, ~3 min); this
+# configuration is the converged-mesh study: every generation's 8 cases as SLURM
+# jobs of 4 ranks, ~1.5 min each on 4-core nodes, ~25 min in all on gcpsmall.
+# It pins no resource: pick the cluster in the form.
+configurations:
+  mesh3_slurm_4ranks:
+    inputs:
+      cluster:
+        scheduler: true
+        cores_per_case: 4
+        slurm:
+          is_enabled: true
+          partition: compute
+          time: '01:00:00'
+      optimizer:
+        max_iterations: 10
+        batch_size: 8
+        stall_generations: 3
+        mesh_scale: 3
+        iteration_timeout: 2d
+
 jobs:
   preprocessing:
     ssh:

@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-09-29T16:43:00Z,warm,pass,ok,7b4aa51,74bcc3d,e87c03d,df04c81,df04c81,hpc_status,alvaro,refined-mantis,22,
 2026-09-29T16:56:15Z,warm,pass,ok,313ff8a,74bcc3d,e87c03d,79c09ec,79c09ec,hpc_status,alvaro,suitable-bug,22,
+2026-09-30T07:45:40Z,cold,fail,ok,0a86ec7,74bcc3d,e87c03d,d753f2e,d753f2e,hpc_status,avidalto,fluent-doe,1088,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"

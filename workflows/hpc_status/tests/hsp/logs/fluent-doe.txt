@@ -1,0 +1,72 @@
+Run fluent-doe: error (17m53s)
+Reason: executorExitedEarly
+
+Error annotations:
+
+  Error: The dashboard exited before its endpoint came online
+    in session_runner → Exit Workflow with Error
+  Error: Endpoint hpc-status-fluent-doe is unhealthy (HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 903s)
+    in wait_for_endpoint > wait_for_endpoint → Check endpoint health
+
+Failed jobs/steps:
+
+  session_runner > Exit Workflow with Error (error, 0s)
+    Error: The dashboard exited before its endpoint came online
+    [pw] ssh.remoteHost is empty; running this step on localhost
+    ✗ Error: The dashboard exited before its endpoint came online
+
+  wait_for_endpoint > Check endpoint health (error, 0s)
+    notice: Checking that https://status-avidalto.pw.hsp.mil/ answers
+    Error: Endpoint hpc-status-fluent-doe is unhealthy (HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 903s)
+    Wed Sep 30 07:54:43 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 367s; retrying in 5 seconds
+    Wed Sep 30 07:54:54 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 378s; retrying in 5 seconds
+    Wed Sep 30 07:55:06 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 390s; retrying in 5 seconds
+    Wed Sep 30 07:55:17 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 401s; retrying in 5 seconds
+    Wed Sep 30 07:55:28 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 412s; retrying in 5 seconds
+    Wed Sep 30 07:55:39 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 423s; retrying in 5 seconds
+    Wed Sep 30 07:55:50 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 434s; retrying in 5 seconds
+    Wed Sep 30 07:56:05 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 449s; retrying in 5 seconds
+    Wed Sep 30 07:56:16 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 460s; retrying in 5 seconds
+    Wed Sep 30 07:56:27 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 471s; retrying in 5 seconds
+    Wed Sep 30 07:56:38 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 482s; retrying in 5 seconds
+    Wed Sep 30 07:56:49 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 493s; retrying in 5 seconds
+    Wed Sep 30 07:57:00 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 504s; retrying in 5 seconds
+    Wed Sep 30 07:57:11 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 515s; retrying in 5 seconds
+    Wed Sep 30 07:57:22 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 526s; retrying in 5 seconds
+    Wed Sep 30 07:57:33 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 537s; retrying in 5 seconds
+    Wed Sep 30 07:57:44 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 548s; retrying in 5 seconds
+    Wed Sep 30 07:57:55 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 559s; retrying in 5 seconds
+    Wed Sep 30 07:58:06 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 570s; retrying in 5 seconds
+    Wed Sep 30 07:58:17 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 581s; retrying in 5 seconds
+    Wed Sep 30 07:58:28 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 592s; retrying in 5 seconds
+    Wed Sep 30 07:58:39 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 603s; retrying in 5 seconds
+    Wed Sep 30 07:58:46 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 610s; retrying in 5 seconds
+    Wed Sep 30 07:58:57 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 621s; retrying in 5 seconds
+    Wed Sep 30 07:59:08 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 632s; retrying in 5 seconds
+    Wed Sep 30 07:59:15 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 639s; retrying in 5 seconds
+    Wed Sep 30 07:59:26 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 650s; retrying in 5 seconds
+    Wed Sep 30 07:59:37 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 661s; retrying in 5 seconds
+    Wed Sep 30 07:59:48 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 672s; retrying in 5 seconds
+    Wed Sep 30 07:59:59 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 683s; retrying in 5 seconds
+    Wed Sep 30 08:00:10 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 694s; retrying in 5 seconds
+    Wed Sep 30 08:00:21 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 705s; retrying in 5 seconds
+    Wed Sep 30 08:00:36 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 720s; retrying in 5 seconds
+    Wed Sep 30 08:00:47 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 731s; retrying in 5 seconds
+    Wed Sep 30 08:00:58 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 742s; retrying in 5 seconds
+    Wed Sep 30 08:01:09 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 753s; retrying in 5 seconds
+    Wed Sep 30 08:01:20 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 764s; retrying in 5 seconds
+    Wed Sep 30 08:01:31 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 775s; retrying in 5 seconds
+    Wed Sep 30 08:01:42 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 786s; retrying in 5 seconds
+    Wed Sep 30 08:01:53 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 797s; retrying in 5 seconds
+    Wed Sep 30 08:02:04 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 808s; retrying in 5 seconds
+    Wed Sep 30 08:02:11 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 815s; retrying in 5 seconds
+    Wed Sep 30 08:02:22 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 826s; retrying in 5 seconds
+    Wed Sep 30 08:02:33 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 837s; retrying in 5 seconds
+    Wed Sep 30 08:02:44 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 848s; retrying in 5 seconds
+    Wed Sep 30 08:02:55 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 859s; retrying in 5 seconds
+    Wed Sep 30 08:03:06 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 870s; retrying in 5 seconds
+    Wed Sep 30 08:03:17 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 881s; retrying in 5 seconds
+    Wed Sep 30 08:03:28 UTC 2026 HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 892s; retrying in 5 seconds
+    ✗ Error: Endpoint hpc-status-fluent-doe is unhealthy (HTTP 000 from https://status-avidalto.pw.hsp.mil/ after 903s)
+
+Summary: 2 job(s) failed, 2 step(s) failed

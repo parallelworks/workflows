@@ -53,8 +53,11 @@ the workspace) and `skip_cleanups_file`; there is no submitter to cancel.
 | `max_time` | `20` | per-request timeout in seconds |
 
 Path-based endpoints (`--no-subdomain`) are listed as a path; it is prefixed with
-`https://${PW_PLATFORM_HOST}`. Query strings are kept out of the log (some slugs carry a
-password); redirects are logged with their target. The step log
+`https://${PW_PLATFORM_HOST}`. An endpoint host the probing machine cannot resolve is
+reached through `PW_PLATFORM_HOST` (`curl --connect-to`): the HSP user workspace has no
+DNS for `*.pw.hsp.mil`, which the platform's own front end serves. Query strings are
+kept out of the log (some slugs carry a password); redirects are logged with their
+target. The step log
 (`pw workflows runs logs <slug> --job wait_for_endpoint`) shows every status seen and
 the time to the first healthy answer, which is how to verify a workflow's `healthy` and
 `budget` choice.

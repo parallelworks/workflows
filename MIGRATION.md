@@ -590,7 +590,8 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   `workflows/hpc_status/yamls/{general,hsp,noaa}.yaml` here (`hsp` on `activate.hpc.mil`,
   `noaa` on `noaa.parallel.works`, `general` elsewhere; thumbnails
   `workflows/hpc_status/thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png`). The
-  checkout references branch `hpc_status` until it lands on canary.
+  checkout and the `wait_for_endpoint` call reference branch `hpc_status` until it lands on
+  canary.
 
 ## Test results (2026-08-31, repo public, canary pushed)
 

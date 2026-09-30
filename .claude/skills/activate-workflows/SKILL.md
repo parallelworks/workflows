@@ -472,6 +472,11 @@ non-repetitive; point at an existing tutorial instead.
   4 min after completion still worked), elsewhere the host's saved credentials
   (`env -u PW_API_KEY pw auth whoami`). Take only `PW_API_KEY` from that file, in a
   subshell, and never under `set -x` (`workflows/hpc_status/app/start-template.sh`).
+- **The HSP user workspace cannot resolve its own endpoint URLs** (verified 2026-09-30):
+  `*.pw.hsp.mil` has no DNS there (`curl: (6)`, the probe logs `HTTP 000`) while
+  `activate.hpc.mil` resolves, and the same front end serves both, so
+  `curl --connect-to <endpoint-host>:443:activate.hpc.mil:443` answers `307`/`200`. The
+  `wait_for_endpoint` probe does this on its own when the endpoint host does not resolve.
 - **The step's `python3` is not your login shell's** (verified 2026-09-29): on the
   workspace an interactive `pw ssh workspace` found Python 3.12 while the workflow step
   ran 3.9. Check versions in the controller, not by hand.

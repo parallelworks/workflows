@@ -4,7 +4,14 @@
 Same contract and call signature as tutorials/optimization/app/optimizer.py:
 
     optimizer.py --state-dir S --app-dir A --batch-size B \
-                 --max-iterations G --stall-generations K
+                 --max-iterations G --stall-generations K \
+                 [--mesh-scale M] [--cores-per-case C] \
+                 [--openfoam-env FILE] [--dakota-env FILE]
+
+--dakota-env is a file sourced to put `dakota` on PATH (a form snippet or the conda
+activation prepare-env.sh wrote); without it the conda-forge install under
+--software-dir is used. --openfoam-env is handed to every case the same way
+(simulator.sh sources it), together with --cores-per-case (MPI ranks per case).
 
 Each call ingests the results of the generation it proposed last time, then either
 proposes the next generation or stops:
@@ -277,7 +284,8 @@ def count_captures(iter_dir):
                 if os.path.exists(os.path.join(d, "run.sh"))])
 
 
-def run_dakota_capture(state_dir, app_dir, batch, iter_dir, software_dir, mesh_scale):
+def run_dakota_capture(state_dir, app_dir, batch, iter_dir, software_dir, mesh_scale,
+                       cores_per_case, openfoam_env, dakota_env):
     """Resume Dakota and capture the next batch of case dirs it proposes.
     Returns (n_captured, dakota_exited_cleanly)."""
     dak_dir = os.path.join(state_dir, "dakota")
@@ -286,18 +294,25 @@ def run_dakota_capture(state_dir, app_dir, batch, iter_dir, software_dir, mesh_s
     rst = os.path.join(dak_dir, "dakota.rst")
     rst_new = os.path.join(dak_dir, "dakota_new.rst")
 
-    dakota_bin = os.path.join(software_dir, "dakota-openfoam", "miniforge",
-                              "envs", "dakota", "bin", "dakota")
-    cmd = [dakota_bin, "-input", "dakota.in", "-write_restart", "dakota_new.rst"]
+    dakota_args = ["-input", "dakota.in", "-write_restart", "dakota_new.rst"]
     if os.path.exists(rst) and os.path.getsize(rst) > 0:
-        cmd += ["-read_restart", "dakota.rst"]
-
+        dakota_args += ["-read_restart", "dakota.rst"]
     env = dict(os.environ,
-               PATH=os.path.dirname(dakota_bin) + os.pathsep + os.environ.get("PATH", ""),
                DAK_CAPTURE_DIR=iter_dir,
                DAK_RESULTS_DB=os.path.join(state_dir, "results_db"),
                DAK_APP_DIR=app_dir,
-               DAK_MESH_SCALE=str(mesh_scale))
+               DAK_MESH_SCALE=str(mesh_scale),
+               DAK_CORES_PER_CASE=str(cores_per_case),
+               DAK_OPENFOAM_ENV=openfoam_env or "")
+    if dakota_env:
+        # exec keeps Dakota as the session leader the capture loop kills
+        cmd = ["bash", "-c", 'source "$1" && shift && exec dakota "$@"', "dakota-env",
+               dakota_env] + dakota_args
+    else:
+        dakota_bin = os.path.join(software_dir, "dakota-openfoam", "miniforge",
+                                  "envs", "dakota", "bin", "dakota")
+        cmd = [dakota_bin] + dakota_args
+        env["PATH"] = os.path.dirname(dakota_bin) + os.pathsep + env.get("PATH", "")
 
     killed = False
     with open(os.path.join(dak_dir, "dakota.log"), "w") as log:
@@ -352,6 +367,9 @@ def main():
     ap.add_argument("--max-iterations", type=int, required=True)
     ap.add_argument("--stall-generations", type=int, default=3)
     ap.add_argument("--mesh-scale", type=int, default=1)
+    ap.add_argument("--cores-per-case", type=int, default=1)
+    ap.add_argument("--openfoam-env", default="")
+    ap.add_argument("--dakota-env", default="")
     ap.add_argument("--software-dir",
                     default=os.environ.get("service_parent_install_dir",
                                            os.path.expanduser("~/pw/software")))
@@ -429,7 +447,10 @@ def main():
     os.makedirs(iter_dir)
 
     n, dakota_done = run_dakota_capture(state_dir, app_dir, args.batch_size,
-                                        iter_dir, args.software_dir, args.mesh_scale)
+                                        iter_dir, args.software_dir, args.mesh_scale,
+                                        args.cores_per_case,
+                                        os.path.abspath(args.openfoam_env) if args.openfoam_env else "",
+                                        os.path.abspath(args.dakota_env) if args.dakota_env else "")
     if n > 0:
         state["gen"] = next_gen
         save_state(state_dir, state)

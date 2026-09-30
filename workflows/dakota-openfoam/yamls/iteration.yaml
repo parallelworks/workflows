@@ -25,7 +25,10 @@ jobs:
             --batch-size "${{ inputs.batch_size }}" \
             --max-iterations "${{ inputs.max_iterations }}" \
             --stall-generations "${{ inputs.stall_generations }}" \
-            --mesh-scale "${{ inputs.mesh_scale }}"
+            --mesh-scale "${{ inputs.mesh_scale }}" \
+            --cores-per-case "${{ inputs.cores_per_case }}" \
+            --openfoam-env "${{ inputs.openfoam_env }}" \
+            --dakota-env "${{ inputs.dakota_env }}"
           tee -a $OUTPUTS < "${{ inputs.state_dir }}/proposal.env"
       # A proposal wider than the matrix below would silently evaluate only the
       # first 8 cases — fail loud instead. A persistent violation ends as FAILED:
@@ -80,10 +83,18 @@ jobs:
             is_enabled: ${{ inputs.slurm.is_enabled }}
             partition: ${{ inputs.slurm.partition }}
             time: ${{ inputs.slurm.time }}
-            scheduler_directives: ${{ inputs.slurm.scheduler_directives }}
+            # the case's core request goes first so a directive typed in the form
+            # can still override it: sbatch and qsub keep the last value of a
+            # repeated option. One node per case: mpirun launches its ranks locally.
+            scheduler_directives: |
+              #SBATCH --nodes=1
+              #SBATCH --ntasks=${{ inputs.cores_per_case }}
+              ${{ inputs.slurm.scheduler_directives }}
           pbs:
             is_enabled: ${{ inputs.pbs.is_enabled }}
-            scheduler_directives: ${{ inputs.pbs.scheduler_directives }}
+            scheduler_directives: |
+              #PBS -l select=1:ncpus=${{ inputs.cores_per_case }}:mpiprocs=${{ inputs.cores_per_case }}
+              ${{ inputs.pbs.scheduler_directives }}
 
   # if: always — this job must reach its verdict even when optimize crashed or a
   # worker failed: any non-CONVERGED/FAILED state exits 1, which fails this run and
@@ -175,6 +186,19 @@ jobs:
         default: 1
         min: 1
         max: 6
+      cores_per_case:
+        type: number
+        label: MPI ranks per OpenFOAM case
+        default: 1
+        min: 1
+      openfoam_env:
+        type: string
+        label: File sourced by every case to put OpenFOAM on PATH
+        optional: true
+      dakota_env:
+        type: string
+        label: File sourced to put dakota on PATH
+        optional: true
       state_dir:
         type: string
         label: Absolute path of the optimizer state directory

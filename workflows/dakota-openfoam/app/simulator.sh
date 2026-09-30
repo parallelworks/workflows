@@ -6,8 +6,13 @@
 # ./results.out (one "<value> <label>" line per objective, both minimized:
 # f1 = drag coefficient, f2 = -lift coefficient, from the forceCoeffs function
 # object). The write is atomic; on any error the process exits non-zero and leaves
-# no results.out, which is the failure signal. MESH_SCALE (default 1) multiplies
-# every cell count — the cost dial.
+# no results.out, which is the failure signal.
+#
+# Environment: MESH_SCALE (default 1) multiplies every cell count — the cost dial.
+# CORES_PER_CASE (default 1) > 1 decomposes the mesh and runs the solvers under
+# ${MPIRUN} (default `mpirun --bind-to none -np ${CORES_PER_CASE}`). OPENFOAM_ENV
+# names a file sourced to put OpenFOAM (and mpirun) on PATH; unset, the conda env
+# that install-openfoam.sh creates is activated.
 set -o pipefail
 
 SOFTWARE_DIR="${service_parent_install_dir:-${HOME}/pw/software}"
@@ -17,10 +22,27 @@ APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 ALPHA_DEG="${ALPHA_DEG:-5}"
 UINF="${UINF:-10}"
 MESH_SCALE="${MESH_SCALE:-1}"
+CORES_PER_CASE="${CORES_PER_CASE:-1}"
 
-source "${CONDA_PREFIX_DIR}/etc/profile.d/conda.sh" || exit 1
-conda activate openfoam || exit 1
-command -v simpleFoam > /dev/null || { echo "simpleFoam not on PATH after activating the openfoam env"; exit 1; }
+if [ -n "${OPENFOAM_ENV:-}" ]; then
+    source "${OPENFOAM_ENV}" || { echo "sourcing ${OPENFOAM_ENV} failed"; exit 1; }
+else
+    source "${CONDA_PREFIX_DIR}/etc/profile.d/conda.sh" || exit 1
+    conda activate openfoam || exit 1
+fi
+command -v simpleFoam > /dev/null || { echo "simpleFoam not on PATH after loading the OpenFOAM environment (${OPENFOAM_ENV:-conda env openfoam})"; exit 1; }
+
+# --bind-to none: concurrent launchers on one node (the login-node mode runs
+# batch_size cases at once) would otherwise all pin their ranks to the same first
+# cores; the sourced environment may export MPIRUN to replace the launcher
+LAUNCH=()
+PARALLEL=()
+if [ "${CORES_PER_CASE}" -gt 1 ]; then
+    MPIRUN="${MPIRUN:-mpirun --bind-to none -np ${CORES_PER_CASE}}"
+    read -r -a LAUNCH <<< "${MPIRUN}"
+    PARALLEL=(-parallel)
+    command -v "${LAUNCH[0]}" > /dev/null || { echo "${LAUNCH[0]} not on PATH: the OpenFOAM environment must provide the MPI launcher when CORES_PER_CASE > 1"; exit 1; }
+fi
 
 max_camber=$(awk '$2=="max_camber"{print $1}' params.in)
 camber_position=$(awk '$2=="camber_position"{print $1}' params.in)
@@ -95,6 +117,21 @@ if [ "${MESH_SCALE}" -ge 2 ]; then
     foamDictionary -entry relaxationFactors.equations.nuTilda -set 0.5 case/system/fvSolution > /dev/null
 fi
 
+if [ "${CORES_PER_CASE}" -gt 1 ]; then
+    cat > case/system/decomposeParDict << EOF
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      decomposeParDict;
+}
+
+numberOfSubdomains ${CORES_PER_CASE};
+method          scotch;
+EOF
+fi
+
 # own controlDict: iteration cap (fvSolution's residualControl usually converges
 # earlier) and the forceCoeffs function object that extracts the objectives
 cat > case/system/controlDict << EOF
@@ -144,11 +181,22 @@ functions
 }
 EOF
 
+foam_step() {
+    local name="$1"
+    shift
+    (cd case && "$@" > "log.${name}" 2>&1)
+}
+
 # the potentialFoam initial field is required: starting SIMPLE impulsively from
-# a uniform freestream diverges on this C-mesh (see fvSolution's Phi block)
-if ! (cd case && blockMesh > log.blockMesh 2>&1 && potentialFoam > log.potentialFoam 2>&1 && simpleFoam > log.simpleFoam 2>&1); then
-    echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness}; log tails:"
-    tail -8 case/log.blockMesh case/log.potentialFoam case/log.simpleFoam 2>/dev/null
+# a uniform freestream diverges on this C-mesh (see fvSolution's Phi block).
+# In parallel the forceCoeffs output still lands in case/postProcessing, so the
+# objectives need no reconstructPar.
+if ! { foam_step blockMesh blockMesh \
+        && { [ "${CORES_PER_CASE}" -eq 1 ] || foam_step decomposePar decomposePar; } \
+        && foam_step potentialFoam "${LAUNCH[@]}" potentialFoam "${PARALLEL[@]}" \
+        && foam_step simpleFoam "${LAUNCH[@]}" simpleFoam "${PARALLEL[@]}"; }; then
+    echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness} (${CORES_PER_CASE} core(s)); log tails:"
+    tail -8 case/log.blockMesh case/log.decomposePar case/log.potentialFoam case/log.simpleFoam 2>/dev/null
     exit 1
 fi
 
@@ -180,5 +228,6 @@ cl = sum(float(r[icl]) for r in tail) / len(tail)
 with open("results.out.tmp", "w") as fh:
     fh.write("%.10f drag_coefficient\n%.10f neg_lift_coefficient\n" % (cd, -cl))
 os.rename("results.out.tmp", "results.out")
-print("Cd=%.6f Cl=%.6f (averaged over last %d iterations)" % (cd, cl, len(tail)))
+print("Cd=%.6f Cl=%.6f (averaged over last %d iterations, %s core(s))"
+      % (cd, cl, len(tail), os.environ.get("CORES_PER_CASE", "1")))
 EOF

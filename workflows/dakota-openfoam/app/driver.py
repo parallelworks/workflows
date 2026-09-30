@@ -81,8 +81,11 @@ def main():
     # run.sh is what script_submitter executes with the case dir as rundir; the
     # submitter inlines the script body, so bake the absolute case path in
     write_atomic(os.path.join(case_dir, "run.sh"),
-                 '#!/bin/bash\ncd "%s"\nMESH_SCALE=%s bash "%s"\n'
+                 '#!/bin/bash\ncd "%s"\n'
+                 'MESH_SCALE=%s CORES_PER_CASE=%s OPENFOAM_ENV="%s" bash "%s"\n'
                  % (case_dir, os.environ.get("DAK_MESH_SCALE", "1"),
+                    os.environ.get("DAK_CORES_PER_CASE", "1"),
+                    os.environ.get("DAK_OPENFOAM_ENV", ""),
                     os.path.join(app_dir, "simulator.sh")))
 
     # Dakota moves fork drivers into their own process group, so the optimizer's

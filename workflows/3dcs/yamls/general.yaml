@@ -1,0 +1,517 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  workspace_preprocessing:
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: 3dcs
+          sparse_checkout:
+            - workflows/3dcs/app
+      - name: Check 3DCS Allocation Balance
+        run: |
+          # Needs the user's own platform API key, which the workspace profile exports; the
+          # run-scoped PW_API_KEY the executor sets is not authorized for the organizations API
+          source /etc/profile.d/parallelworks.sh
+          source /etc/profile.d/parallelworks-env.sh
+          group="${{ inputs.service.run_hours_3dcs_group }}"
+          balance=$(python3 workflows/3dcs/app/get_group_allocation_balance.py "${group}" "${{ inputs.service.org_name }}") || exit 1
+          echo "::notice::3DCS allocation balance of ${group}: ${balance} hours"
+      - name: Check Metering Service
+        run: |
+          # Only the workspace can reach the metering server. Without its daemon the usage the
+          # workers report would pile up unprocessed, so refuse to run 3DCS.
+          server="${{ inputs.service.metering_user }}@${{ inputs.service.metering_ip }}"
+          if ! ssh -o BatchMode=yes -o ConnectTimeout=30 "${server}" 'pgrep -u "$(id -u)" -f "update-3dcs-usage[.]py" > /dev/null'; then
+              echo "::error title=Error::The 3DCS usage metering service (update-3dcs-usage.py) is not running as ${server}, or the server is unreachable. Start it with update-3dcs-usage.sh (see workflows/3dcs/README.md) and run again."
+              exit 1
+          fi
+          echo "::notice::3DCS usage metering service is running as ${server}"
+      - name: Raise SSH Session Limit
+        run: |
+          # Remote steps run as channels multiplexed over the executor's SSH connections to the
+          # resource. Past sshd's default MaxSessions (10) channels per connection, sshd refuses
+          # them ("no more sessions") and the run fails. A reload only applies to new connections,
+          # so raise the limit here, before any remote job connects.
+          ssh ${{ inputs.cluster.resource.ip }} 'bash -s' <<'EOF'
+          set -e
+          MAX_SESSIONS=500
+          MAX_STARTUPS="50:30:200"
+          SSHD_CONFIG=/etc/ssh/sshd_config
+
+          max_sessions=$(sudo -n sshd -T | awk '$1 == "maxsessions" {print $2}')
+          if [ "${max_sessions}" -ge "${MAX_SESSIONS}" ]; then
+              echo "$(date) INFO: sshd MaxSessions is already ${max_sessions}"
+              exit 0
+          fi
+
+          backup="${SSHD_CONFIG}.bak.$(date +%Y%m%d%H%M%S)"
+          sudo -n cp "${SSHD_CONFIG}" "${backup}"
+          # sshd keeps the first value it reads for each keyword, so these win over any later lines
+          sudo -n sed -i -e "1i MaxSessions ${MAX_SESSIONS}" -e "1i MaxStartups ${MAX_STARTUPS}" "${SSHD_CONFIG}"
+          if ! sudo -n sshd -t; then
+              echo "$(date) ERROR: Invalid sshd config. Restoring ${backup}" >&2
+              sudo -n cp "${backup}" "${SSHD_CONFIG}"
+              exit 1
+          fi
+          sudo -n systemctl reload sshd
+          echo "$(date) INFO: Raised sshd limits:"
+          sudo -n sshd -T | grep -E "^(maxsessions|maxstartups) "
+          EOF
+
+  preprocessing:
+    needs:
+      - workspace_preprocessing
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: 3dcs
+          sparse_checkout:
+            - workflows/3dcs/app
+      - name: Create Inputs
+        run: |
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          dcs_dry_run="${{ inputs.service.dry_run }}"
+          dcs_version="${{ inputs.service.version }}"
+          dcs_analysis_type="${{ inputs.service.analysis_type }}"
+          dcs_bucket_uri="${{ inputs.service.bucket.uri }}"
+          dcs_model_directory="${{ inputs.service.model_directory }}"
+          dcs_output_directory="${{ inputs.service.output_directory }}"
+          dcs_num_seeds="${{ inputs.service.num_seeds }}"
+          dcs_concurrency="${{ inputs.service.concurrency }}"
+          dcs_thread="${{ inputs.service.thread }}"
+          monitoring_conda_dir="${{ inputs.service.monitoring_conda_dir }}"
+          monitoring_conda_env="${{ inputs.service.monitoring_conda_env }}"
+          EOF
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh
+          # Add export to all lines
+          sed -i 's/^/export /' inputs.sh
+          source inputs.sh
+
+          # Outputs go to <bucket>/<output dir>/<user>/<workflow>/<run number>/
+          echo "export dcs_output_uri=\"${dcs_bucket_uri}/${dcs_output_directory}/${USER}/${PW_WORKFLOW_NAME}/${PW_JOB_NUMBER}\"" >> inputs.sh
+          cat inputs.sh
+
+          app=workflows/3dcs/app
+          if [[ "${dcs_output_directory}" == "${dcs_model_directory}" || "${dcs_output_directory}" == "${dcs_model_directory}/"* ]]; then
+              echo "::error title=Error::The output path ${dcs_output_directory} is inside the model path ${dcs_model_directory}"
+              exit 1
+          fi
+          if [ ! -f "${app}/dcs_environment/${dcs_version}.sh" ]; then
+              echo "::error title=Error::3DCS version ${dcs_version} has no environment file ${app}/dcs_environment/${dcs_version}.sh"
+              exit 1
+          fi
+          if [ ! -f "${app}/macros/${dcs_analysis_type}.sh" ]; then
+              echo "::error title=Error::Unknown analysis type ${dcs_analysis_type}"
+              exit 1
+          fi
+          # The workers matrix below is 40 wide
+          if [ "${dcs_concurrency}" -lt 1 ] || [ "${dcs_concurrency}" -gt 40 ]; then
+              echo "::error title=Error::The number of workers must be between 1 and 40, not ${dcs_concurrency}"
+              exit 1
+          fi
+          if [[ "${dcs_analysis_type}" == "montecarlo" && -z "${dcs_num_seeds}" ]]; then
+              echo "::error title=Error::A Monte Carlo simulation needs the number of simulations"
+              exit 1
+          fi
+          mkdir -p usage usage_active usage_completed merge
+          echo "JOB_DIR=${PW_PARENT_JOB_DIR%/}" | tee -a $OUTPUTS
+      - name: Controller Preprocessing
+        run: |
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/3dcs/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Transfer Model Files
+        run: |
+          set -x
+          source inputs.sh
+          rm -rf tmp-data-transfer
+          mkdir tmp-data-transfer
+          cd tmp-data-transfer
+          pw buckets cp -r "${dcs_bucket_uri}/${dcs_model_directory}" .
+
+          wtx_files=$(find . -type f -name '*.wtx')
+          if [ "$(echo "${wtx_files}" | grep -c .)" -ne 1 ]; then
+              echo "::error title=Error::Expected exactly one .wtx file under ${dcs_bucket_uri}/${dcs_model_directory}, found: ${wtx_files:-none}"
+              exit 1
+          fi
+          # Point the model at the downloaded files (their paths are relative to the worker directories)
+          python3 "${PW_PARENT_JOB_DIR}/workflows/3dcs/app/adapt_wtx_paths.py" "${wtx_files}"
+
+          find . -mindepth 1 > downloaded_files.txt
+          cd ..
+          mv tmp-data-transfer/* .
+          rmdir tmp-data-transfer
+          echo "export dcs_model_file=\"${PW_PARENT_JOB_DIR%/}/${wtx_files#./}\"" >> inputs.sh
+      - name: Create Worker Scripts
+        run: |
+          source inputs.sh
+          app=workflows/3dcs/app
+          for n in $(seq 1 "${dcs_concurrency}"); do
+              job_dir=job_dir_${n}
+              mkdir -p "${job_dir}"
+              # A cancel before the worker starts must find its cancel script
+              echo '#!/bin/bash' > "${job_dir}/cancel.sh"
+              chmod +x "${job_dir}/cancel.sh"
+              {
+                  cat inputs.sh
+                  echo "export case_index=${n}"
+                  cat "${app}/dcs_environment/${dcs_version}.sh"
+                  cat "${app}/macros/${dcs_analysis_type}.sh"
+                  cat "${app}/worker-template.sh"
+              } > "${job_dir}/run_case.sh"
+          done
+          echo "::notice::Prepared ${dcs_concurrency} worker(s)"
+
+  usage_metering:
+    needs:
+      - preprocessing
+    steps:
+      - name: Usage Metering
+        early-cancel: any-job-failed
+        run: |
+          # Runs in the user workspace, the only host with the key of the metering server. The
+          # workers append heartbeats to usage/<node>-<run> while 3DCS runs and retire the file
+          # to usage_completed/ when done, so a file is never sent again once the server has it.
+          job_dir="${{ needs.preprocessing.outputs.JOB_DIR }}"
+          mkdir -p usage
+          while true; do
+              sleep 60
+              rsync -az --delete "${{ inputs.cluster.resource.ip }}:${job_dir}/usage/" usage/
+              rsync -az usage/ "${{ inputs.service.metering_user }}@${{ inputs.service.metering_ip }}:~/.3dcs/usage-pending"
+              echo "$(date) INFO: Synced usage files: $(ls usage | tr '\n' ' ')"
+          done
+
+  estimate_end_time:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Estimate End Time
+        early-cancel: any-job-failed
+        run: |
+          cd "${{ needs.preprocessing.outputs.JOB_DIR }}"
+          source inputs.sh
+          log_name="TempData/dcsSimuMacro_SA_log_x64_$(echo "${dcs_version}" | tr '.' '_').txt"
+          while true; do
+              finished=$(ls job_dir_*/run_case.exit 2>/dev/null | wc -l)
+              if [ "${finished}" -ge "${dcs_concurrency}" ]; then
+                  echo "$(date) INFO: All ${dcs_concurrency} workers finished"
+                  exit 0
+              fi
+              logs=$(ls job_dir_*/${log_name} 2>/dev/null | paste -sd,)
+              if [ -z "${logs}" ]; then
+                  echo "$(date) INFO: Waiting for the workers to start"
+              else
+                  echo; echo "$(date) INFO: Completion time estimate"
+                  python3 workflows/3dcs/app/estimate_end_time.py "${logs}"
+              fi
+              sleep 120
+          done
+
+  workers:
+    needs:
+      - preprocessing
+    strategy:
+      fail-fast: true
+      max-parallel: ${{ inputs.service.concurrency }}
+      matrix:
+        job_id:
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
+          - 10
+          - 11
+          - 12
+          - 13
+          - 14
+          - 15
+          - 16
+          - 17
+          - 18
+          - 19
+          - 20
+          - 21
+          - 22
+          - 23
+          - 24
+          - 25
+          - 26
+          - 27
+          - 28
+          - 29
+          - 30
+          - 31
+          - 32
+          - 33
+          - 34
+          - 35
+          - 36
+          - 37
+          - 38
+          - 39
+          - 40
+    # The matrix is static; the guard skips the workers beyond the requested concurrency
+    if: ${{ matrix.job_id <= inputs.service.concurrency }}
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/job_dir_${{ matrix.job_id }}
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Run 3DCS Worker
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.cluster.resource }}
+          shebang: '#!/bin/bash'
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}/job_dir_${{ matrix.job_id }}
+          use_existing_script: true
+          script_path: ./run_case.sh
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: true
+          use_scheduler_agent: false
+          submit_and_exit: false
+          slurm:
+            is_enabled: true
+            partition: ${{ inputs.cluster.slurm.partition }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: false
+      - name: Check Exit Status
+        run: |
+          # The submitter never inspects the script's exit status; run_case.sh records it
+          if [ ! -f run_case.exit ]; then
+              echo "::error title=Error::Worker ${{ matrix.job_id }} did not run to its end (no run_case.exit in ${PWD}); see its run.*.out"
+              exit 1
+          fi
+          status=$(cat run_case.exit)
+          if [ "${status}" != "0" ]; then
+              echo "::error title=Error::Worker ${{ matrix.job_id }} failed with status ${status}; see ${PWD}/run.*.out"
+              exit 1
+          fi
+          echo "::notice::Worker ${{ matrix.job_id }} completed"
+
+  merge:
+    needs:
+      - workers
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/merge
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Create Merge Script
+        run: |
+          source "${PW_PARENT_JOB_DIR}/inputs.sh"
+          if [ "${dcs_concurrency}" -eq 1 ]; then
+              echo "::notice::One worker: nothing to merge"
+              echo "run_merge=false" | tee -a $OUTPUTS
+              exit 0
+          fi
+          app="${PW_PARENT_JOB_DIR}/workflows/3dcs/app"
+          echo '#!/bin/bash' > cancel.sh
+          chmod +x cancel.sh
+          {
+              cat "${PW_PARENT_JOB_DIR}/inputs.sh"
+              cat "${app}/dcs_environment/${dcs_version}.sh"
+              cat "${app}/macros/merge_${dcs_analysis_type}.sh"
+              cat "${app}/merge-template.sh"
+          } > merge.sh
+          echo "run_merge=true" | tee -a $OUTPUTS
+      - name: Run 3DCS Merge
+        if: ${{ needs.merge.outputs.run_merge == "true" }}
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.cluster.resource }}
+          shebang: '#!/bin/bash'
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}/merge
+          use_existing_script: true
+          script_path: ./merge.sh
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: true
+          use_scheduler_agent: false
+          submit_and_exit: false
+          slurm:
+            is_enabled: true
+            partition: ${{ inputs.cluster.slurm.partition }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: false
+      - name: Check Exit Status
+        if: ${{ needs.merge.outputs.run_merge == "true" }}
+        run: |
+          if [ ! -f merge.exit ]; then
+              echo "::error title=Error::The merge did not run to its end (no merge.exit in ${PWD}); see its run.*.out"
+              exit 1
+          fi
+          status=$(cat merge.exit)
+          if [ "${status}" != "0" ]; then
+              echo "::error title=Error::The merge failed with status ${status}; see ${PWD}/run.*.out"
+              exit 1
+          fi
+          echo "::notice::Merge completed"
+      - name: Cancel Usage Metering
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - usage_metering
+
+'on':
+  execute:
+    inputs:
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          resource:
+            type: compute-clusters
+            label: Compute resource
+            include-workspace: false
+            tooltip: SLURM cluster with 3DCS installed. Every worker and the merge run as SLURM jobs.
+          slurm:
+            type: group
+            label: SLURM Directives
+            items:
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.cluster.resource }}
+                tooltip: Select a partition from the drop down menu.
+              time:
+                label: Walltime
+                type: string
+                default: '999:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit of every worker and the merge'
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. With --exclusive every
+                  worker gets a whole node; remove it to pack several workers on one node.
+                default: |
+                  #SBATCH --exclusive
+      service:
+        type: group
+        label: 3DCS Options
+        items:
+          dry_run:
+            label: Dry run?
+            type: boolean
+            default: false
+            tooltip: Dry run generates the macroScript.txt files and executes every step of the workflow except running 3DCS
+          version:
+            label: 3DCS Version
+            type: dropdown
+            default: 8.2.0.0
+            tooltip: Select the 3DCS version
+            options:
+              - value: 8.2.0.0
+                label: 8.2.0.0
+              - value: 8.0.0.2
+                label: 8.0.0.2
+              - value: 7.10.0.2
+                label: 7.10.0.2
+          analysis_type:
+            label: Analysis Type
+            type: dropdown
+            tooltip: Select Monte Carlo simulation or contributor analysis (sensitivity)
+            default: montecarlo
+            options:
+              - value: montecarlo
+                label: Monte Carlo Simulation
+              - value: sensitivity
+                label: Contributor Analysis
+          bucket:
+            label: Bucket
+            type: bucket
+            tooltip: Select the storage bucket used to download input files and upload output files.
+          model_directory:
+            label: Model Path
+            type: string
+            tooltip: Directory within the bucket with the model (one .wtx file) and all the files it references
+          output_directory:
+            label: Output Path
+            type: string
+            tooltip: Output directory within the bucket to store outputs and logs. It cannot be inside the Model Path!
+          num_seeds:
+            label: Number of Monte Carlo Simulations
+            type: number
+            min: 1
+            max: 100000
+            default: 2000
+            hidden: ${{ 'montecarlo' != inputs.service.analysis_type }}
+            ignore: ${{ .hidden }}
+            optional: ${{ .hidden }}
+          concurrency:
+            label: Number of Workers
+            type: number
+            min: 1
+            max: 40
+            default: 1
+            tooltip: Number of workers used to run the simulations. A SLURM job is submitted for each worker.
+          thread:
+            label: Number of Threads per Worker
+            type: number
+            min: 1
+            max: 64
+            default: 1
+            tooltip: Number of threads used to run the simulation. Be aware that N threads require more than N times the memory needed for a single thread.
+          metering_user:
+            label: Metering User
+            type: string
+            default: honda
+            hidden: true
+          metering_ip:
+            label: Metering IP
+            type: string
+            default: 34.132.102.65
+            hidden: true
+          org_name:
+            label: Organization Name
+            type: string
+            default: honda
+            hidden: true
+          run_hours_3dcs_group:
+            label: Name of the group to meter 3DCS run hours
+            type: string
+            default: japan-3dcs-run-hours
+            hidden: true
+          monitoring_conda_dir:
+            label: Conda Directory of the CPU and Memory Monitor
+            type: string
+            default: /dcs/pw/miniconda
+            hidden: true
+          monitoring_conda_env:
+            label: Conda Environment of the CPU and Memory Monitor
+            type: string
+            default: psutil
+            hidden: true

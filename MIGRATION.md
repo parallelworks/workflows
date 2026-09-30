@@ -670,3 +670,15 @@ ollama-gguf-container implementation paths not separately exercised.
    the plain-desktop `vncserver/emed_v4.yaml` is replaced by a clean emed-only
    rewrite at `workflows/vncserver/yamls/emed.yaml` (host kasmvncserver + GNOME
    behind `pw endpoints https`, no noVNC/nginx/sudo; verified live 2026-09-03).
+
+## 3dcs (2026-09-30)
+
+`workflows/3dcs/` is the port of `parallelworks/dcs-workflow` (`honda-japan.yaml` at
+`v4-dev`, registered on the platform as `3dcsv4`): the same job graph (workspace
+balance check, login-node preprocessing, a 40-wide guarded worker matrix through
+`script_submitter`, merge, end-time estimate, usage metering), with the runtime files
+under `app/`, the `inputs.sh`/`controller.sh` contract, and `cluster`/`service` input
+groups. The behavior changes made in the port are listed in
+[workflows/3dcs/README.md](workflows/3dcs/README.md) ("Provenance"). Left behind in
+`dcs-workflow`: `honda-us.yaml` (the pre-v4 `main.sh` design for the `honda-us` metering
+user) and `plot-usage/` (the usage-plotting workflow that runs on the metering server).

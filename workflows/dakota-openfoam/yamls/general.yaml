@@ -120,7 +120,7 @@ jobs:
               head -15 "${state}/pareto.csv"
               ;;
             FAILED)
-              echo "::error::the optimizer declared FAILED: either an entire generation produced no results twice in a row, or Dakota exited without proposing or converging. Check the last attempt's worker logs, ${state}/iter_*/case_*/ and ${state}/dakota/dakota.log"
+              echo "::error::the optimizer declared FAILED: no case of a generation ran twice in a row, every case failed before any design succeeded or for three generations running, or Dakota exited without proposing or converging. Check the last attempt's worker logs, ${state}/iter_*/case_*/{run.*.out,case/log.*} and ${state}/dakota/dakota.log"
               exit 1
               ;;
             CONTINUE)

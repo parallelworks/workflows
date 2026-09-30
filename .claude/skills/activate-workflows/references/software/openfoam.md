@@ -57,6 +57,13 @@
 
 ## Numerics that bit
 
+- **The same design can converge on one node type and diverge on another** (SIGFPE in
+  `simpleFoam` around iteration 170 on gcpsmall's compute nodes; 800 clean iterations
+  on its login node, serial and 4-rank alike, 2026-09-30): high-camber airfoils at the
+  default mesh sit close to the stability edge, and floating-point differences between
+  CPU types tip them. Treat divergence as a per-design result the optimizer absorbs
+  (`FAIL`), not as an infrastructure failure to retry.
+
 - On the C-grid an impulsive uniform start of SIMPLE diverges at every design point:
   initialize with `potentialFoam` first (`fvSolution` needs a `Phi` solver block).
 - Finer meshes need a larger iteration cap and softer relaxation (`p` 0.25, `U`/`nuTilda`

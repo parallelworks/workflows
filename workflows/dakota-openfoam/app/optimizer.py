@@ -16,7 +16,7 @@ activation prepare-env.sh wrote); without it the conda-forge install under
 Each call ingests the results of the generation it proposed last time, then either
 proposes the next generation or stops:
 
-  propose:  S/iter_<N>/case_<j>/{params.in,run.sh}  (j = 1..B)
+  propose:  S/iter_<N>/case_<j>/{params.in,case.sh}  (j = 1..B)
             S/status = CONTINUE, S/proposal.env with N_CASES and ITER_DIR
   stop:     S/pareto.csv + S/pareto.svg (the non-dominated front found)
             S/status = CONVERGED (budget, stagnation or Dakota's own criteria)
@@ -33,8 +33,13 @@ group. The next call replays to the same spot, deterministically, and continues.
 Dakota exiting on its own instead means its convergence criteria are satisfied.
 
 Every call is idempotent: mutable state lives in S/state.json, written atomically
-after the case dirs, so a crashed attempt re-runs safely (a generation that comes
-back with zero results is re-proposed as-is; twice in a row -> FAILED).
+after the case dirs, so a crashed attempt re-runs safely. Failure semantics: a case
+that ran (its case.sh left an exit_code) without a results.out failed in the solver
+and is fed back to Dakota as FAIL — a whole generation of them too (a marginal
+design diverging is a result, not an outage). Only a generation none of whose cases
+ran is re-proposed as-is, and twice in a row -> FAILED; so does a generation that
+ran and failed entirely before any design ever succeeded (the setup, not a design,
+is broken) or three of them in a row.
 """
 
 import argparse
@@ -78,7 +83,7 @@ def load_state(state_dir):
         with open(path) as fh:
             return json.load(fh)
     return {"gen": 0, "front": [], "hv_history": [], "zero_results": 0,
-            "evals": 0, "history": [], "norm": None}
+            "failed_generations": 0, "evals": 0, "history": [], "norm": None}
 
 
 def save_state(state_dir, state):
@@ -102,9 +107,11 @@ def read_floats(path):
 
 
 def ingest(state_dir, gen):
-    """Collect {x, f} for every case of generation `gen` that produced a result,
-    and return the (case_dir, hash) of the ones that did not."""
-    done, missing = [], []
+    """Sort the cases of generation `gen` into results ({x, f, key}), failed
+    ((case_dir, key): case.sh ran to its end and left an exit_code but no usable
+    results.out, so the solver itself failed) and unrun ((case_dir, key): neither
+    file, the worker never ran or was killed mid-way)."""
+    done, failed, unrun = [], [], []
     for case_dir in sorted(glob.glob(os.path.join(state_dir, "iter_%d" % gen, "case_*"))):
         try:
             with open(os.path.join(case_dir, "param.hash")) as fh:
@@ -115,13 +122,14 @@ def ingest(state_dir, gen):
             f = read_floats(os.path.join(case_dir, "results.out"))
             x = read_floats(os.path.join(case_dir, "params.in"))
         except (OSError, ValueError):
-            missing.append((case_dir, key))
-            continue
-        if len(f) >= len(OBJECTIVES) and len(x) == len(VARIABLES):
+            f, x = None, None
+        if f is not None and len(f) >= len(OBJECTIVES) and len(x) == len(VARIABLES):
             done.append({"x": x, "f": f[:len(OBJECTIVES)], "key": key})
+        elif os.path.exists(os.path.join(case_dir, "exit_code")):
+            failed.append((case_dir, key))
         else:
-            missing.append((case_dir, key))
-    return done, missing
+            unrun.append((case_dir, key))
+    return done, failed, unrun
 
 
 def dominates(a, b):
@@ -281,7 +289,7 @@ responses
 
 def count_captures(iter_dir):
     return len([d for d in glob.glob(os.path.join(iter_dir, "case_*"))
-                if os.path.exists(os.path.join(d, "run.sh"))])
+                if os.path.exists(os.path.join(d, "case.sh"))])
 
 
 def run_dakota_capture(state_dir, app_dir, batch, iter_dir, software_dir, mesh_scale,
@@ -382,52 +390,84 @@ def main():
     state = load_state(state_dir)
 
     if state["gen"] >= 1:
-        results, missing = ingest(state_dir, state["gen"])
-        if not results:
+        gen = state["gen"]
+        results, failed, unrun = ingest(state_dir, gen)
+        if not results and not failed:
+            # nothing ran (a platform hiccup, a canceled attempt): the solver was
+            # never given a chance, so hand the same generation back once
             state["zero_results"] += 1
             if state["zero_results"] >= 2:
                 stop(state_dir, state, "FAILED",
-                     "generation %d returned no results twice in a row" % state["gen"])
-                print("::error::optimizer: no case of generation %d produced a "
-                      "results.out on two attempts; check the workers' logs"
-                      % state["gen"])
+                     "no case of generation %d ran on two attempts" % gen)
+                print("::error::optimizer: no case of generation %d ran on two attempts "
+                      "(no exit_code and no results.out in its case dirs); check the "
+                      "workers' logs" % gen)
                 return
-            # the case dirs are intact; hand the same generation back to the workers
             save_state(state_dir, state)
-            iter_dir = os.path.join(state_dir, "iter_%d" % state["gen"])
+            iter_dir = os.path.join(state_dir, "iter_%d" % gen)
             n = len(glob.glob(os.path.join(iter_dir, "case_*")))
             emit(state_dir, "CONTINUE", n, iter_dir)
-            notice("generation %d returned no results; re-proposing its %d cases"
-                   % (state["gen"], n))
+            notice("no case of generation %d ran; re-proposing its %d cases" % (gen, n))
             return
         state["zero_results"] = 0
         state["evals"] += len(results)
         for r in results:
             write_atomic(os.path.join(db_dir, r["key"]),
                          "\n".join("%.10e" % v for v in r["f"]) + "\n")
-        # a case that crashed while its siblings succeeded is a genuine failure:
-        # record FAIL so Dakota's failure_capture substitutes its recovery values
-        # instead of the point being re-proposed forever
-        for case_dir, key in missing:
+        # a case that ran and left no results.out failed in the solver (a marginal
+        # design diverging, most often) — a result Dakota must see: record FAIL so
+        # its failure_capture substitutes the recovery values instead of the point
+        # being re-proposed forever. A case that never ran while its siblings did
+        # gets the same treatment: the generation is over.
+        for case_dir, key in failed:
             write_atomic(os.path.join(db_dir, key), "FAIL")
-            notice("case %s left no results.out: marked FAIL for Dakota"
+            notice("case %s ran but left no results.out: marked FAIL for Dakota"
                    % os.path.basename(case_dir))
-        state["history"] += [[r["f"][0], r["f"][1], state["gen"]] for r in results]
+        for case_dir, key in unrun:
+            write_atomic(os.path.join(db_dir, key), "FAIL")
+            notice("case %s never ran while its siblings did: marked FAIL for Dakota"
+                   % os.path.basename(case_dir))
+        if results:
+            state["failed_generations"] = 0
+        else:
+            state["failed_generations"] = state.get("failed_generations", 0) + 1
+            where = os.path.join(state_dir, "iter_%d" % gen, "case_*")
+            if state["evals"] == 0:
+                stop(state_dir, state, "FAILED",
+                     "every case of generation %d ran and failed before any design "
+                     "succeeded" % gen)
+                print("::error::optimizer: every case of generation %d ran and failed "
+                      "and no design has succeeded yet, so the solver setup rather than "
+                      "a design point is the likely cause; read %s/run.*.out and "
+                      "%s/case/log.*" % (gen, where, where))
+                return
+            if state["failed_generations"] >= 3:
+                stop(state_dir, state, "FAILED",
+                     "every case of %d consecutive generations ran and failed"
+                     % state["failed_generations"])
+                print("::error::optimizer: every case of %d consecutive generations ran "
+                      "and failed; read %s/run.*.out and %s/case/log.*"
+                      % (state["failed_generations"], where, where))
+                return
+            print("::warning::optimizer: every case of generation %d ran and failed "
+                  "(%d cases, fed back to Dakota as FAIL); the loop continues, see "
+                  "%s/run.*.out" % (gen, len(failed) + len(unrun), where))
+        state["history"] += [[r["f"][0], r["f"][1], gen] for r in results]
         state["front"] = select_front(state["front"] + results)
-        if state["norm"] is None:
+        if state["norm"] is None and results:
             lo = [min(r["f"][m] for r in results) for m in (0, 1)]
             hi = [max(r["f"][m] for r in results) for m in (0, 1)]
             span = [max(hi[m] - lo[m], 1e-9) for m in (0, 1)]
             state["norm"] = {"lo": [lo[m] - 0.5 * span[m] for m in (0, 1)],
                              "span": [2.0 * span[m] for m in (0, 1)]}
-        hv = hypervolume(state)
+        hv = hypervolume(state) if state["norm"] else 0.0
         gain = hv - state["hv_history"][-1] if state["hv_history"] else hv
         state["hv_history"].append(hv)
         write_plot(state_dir, state)
-        notice("gen %d: %d/%d results, %d evaluations total, front %d, "
-               "hypervolume %.4f (%+.4f)"
-               % (state["gen"], len(results), args.batch_size, state["evals"],
-                  len(state["front"]), hv, gain))
+        notice("gen %d: %d/%d results (%d failed, %d never ran), %d evaluations "
+               "total, front %d, hypervolume %.4f (%+.4f)"
+               % (gen, len(results), args.batch_size, len(failed), len(unrun),
+                  state["evals"], len(state["front"]), hv, gain))
 
     hist = state["hv_history"]
     if state["gen"] >= args.max_iterations:

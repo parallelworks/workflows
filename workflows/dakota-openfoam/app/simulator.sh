@@ -196,7 +196,8 @@ if ! { foam_step blockMesh blockMesh \
         && foam_step potentialFoam "${LAUNCH[@]}" potentialFoam "${PARALLEL[@]}" \
         && foam_step simpleFoam "${LAUNCH[@]}" simpleFoam "${PARALLEL[@]}"; }; then
     echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness} (${CORES_PER_CASE} core(s)); log tails:"
-    tail -8 case/log.blockMesh case/log.decomposePar case/log.potentialFoam case/log.simpleFoam 2>/dev/null
+    # -n: coreutils rejects the short `tail -8 f1 f2` form with several files
+    tail -n 20 case/log.blockMesh case/log.decomposePar case/log.potentialFoam case/log.simpleFoam 2>/dev/null
     exit 1
 fi
 

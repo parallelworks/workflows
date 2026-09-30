@@ -25,6 +25,7 @@ at 5° incidence on a structured C-grid generated per design, solved with
 | Design variables | `max_camber` ∈ [0, 0.06] · `camber_position` ∈ [0.3, 0.6] · `thickness` ∈ [0.08, 0.18] (chord fractions; the box covers the classic 4-digit family — 0012, 2412, 4412, …) |
 | Objectives (both minimized) | `drag_coefficient` · `neg_lift_coefficient`, from OpenFOAM's `forceCoeffs` function object |
 | Cost dial | `mesh_scale` multiplies every cell count; the iteration cap and relaxation adjust with it, so cost grows roughly with the cube — from seconds-cheap to genuinely expensive (table below) |
+| Cores dial | `cores_per_case` — MPI ranks per case: 1 runs the solvers serially, more decomposes the mesh and runs them under `mpirun` (below) |
 
 More camber buys lift but costs drag, thickness costs drag at similar lift: the
 loop maps that tradeoff as a Pareto front of airfoil shapes (`state/pareto.csv` +
@@ -52,18 +53,81 @@ which roughly doubles the absolute drag at this Reynolds number. Treat the
 coefficients comparatively — ranking designs, which is all the optimizer needs —
 rather than as absolute predictions.
 
+### Cores per case: when MPI pays off
+
+`cores_per_case` = N > 1 makes `simulator.sh` write a scotch `decomposeParDict`,
+`decomposePar` the mesh and run `potentialFoam` and `simpleFoam` as
+`mpirun --bind-to none -np N <solver> -parallel` (the `forceCoeffs` output still
+lands in `case/postProcessing`, so no `reconstructPar` is needed for the
+objectives). Measured on gcpsmall's login node, same reference design:
+
+| `mesh_scale` | cells | 1 core | 2 ranks | 4 ranks |
+|---:|---:|---:|---:|---:|
+| 1 | 5.4k | 6.5 s | 8.6 s | — |
+| 2 | 21.6k | ~1 min | — | 29 s |
+
+At the default mesh a decomposed case is *slower* — 2.7k cells per rank is all
+halo exchange — so the default stays 1. Two to four ranks start paying from
+`mesh_scale` 3–4 (~15k+ cells per rank) and the ranks' answers agree with the
+serial ones to within 0.5% on Cd and 0.05% on Cl. `--bind-to none` matters on the
+login node, where `batch_size` launchers start at once: bound to cores, they would
+all pin their ranks to the same first cores.
+
+Where the ranks run:
+
+- **Login node** (`Schedule Cases?` off): `batch_size × N` ranks share the node —
+  keep the product at or below its core count.
+- **Scheduled**: each case job asks for `--nodes=1 --ntasks=N` (PBS:
+  `-l select=1:ncpus=N:mpiprocs=N`), placed *ahead* of the form's directives so a
+  repeated option typed there wins (sbatch and qsub keep the last value). One node
+  per case because `mpirun` launches its ranks locally; N must fit a node.
+
+The launcher is `mpirun` from whatever OpenFOAM environment is active; an
+environment snippet (next section) may `export MPIRUN="srun --mpi=pmix"` (or any
+prefix) to replace it, in which case the rank count comes from the allocation.
+
+### Using a preinstalled OpenFOAM or Dakota
+
+By default preprocessing installs both from conda-forge (no sudo, ~5–10 min once)
+under `${service_parent_install_dir:-$HOME/pw/software}/dakota-openfoam`. On a
+cluster that already provides them, fill in **Software Environment**:
+
+| Form input | Example |
+|---|---|
+| `OpenFOAM environment commands` | `module load openfoam/2412` — or `source /opt/openfoam2412/etc/bashrc` |
+| `Dakota environment commands` | `module load dakota` |
+
+`prepare-env.sh` turns each snippet into one sourceable file under `state/`
+(`openfoam-env.sh`, `dakota-env.sh`), prefixed with an initialization of `module`
+for non-login shells, sources it in a fresh shell and checks the tools resolve
+(`blockMesh`, `potentialFoam`, `simpleFoam`, plus `decomposePar` and the MPI
+launcher when `cores_per_case` > 1; `dakota`), so a snippet that does not deliver
+fails preprocessing with the shell's own error rather than the first case. Left
+empty, the same file activates the conda env instead — every later step and every
+case sources that file either way, on the login node and on compute nodes alike
+(shared home). Mixing is fine: a site OpenFOAM with the conda Dakota, or the
+reverse.
+
+The conda-forge `openfoam=2412` build needs one repair for `-parallel` runs: it
+ships its MPI Pstream under `lib/mpich-3.3` while the binaries' rpath (and
+`FOAM_MPI`) name `lib/sys-mpich`, so without help every parallel solver loads the
+dummy Pstream and aborts. `install-openfoam.sh` links the expected name to the
+real directory on every run (rpath beats `LD_LIBRARY_PATH`, so a link is the only
+non-invasive fix).
+
 ## What's in `app/`
 
 | File | Role |
 |---|---|
-| `install-openfoam.sh` | Idempotent OpenFOAM install (conda-forge `openfoam=2412`, no sudo) into `${service_parent_install_dir:-$HOME/pw/software}/dakota-openfoam/miniforge` |
+| `prepare-env.sh` | Writes the per-tool environment file a run sources everywhere (the form's load snippet, or the conda activation after running the installer) and verifies the required commands resolve |
+| `install-openfoam.sh` | Idempotent OpenFOAM install (conda-forge `openfoam=2412`, no sudo) into `${service_parent_install_dir:-$HOME/pw/software}/dakota-openfoam/miniforge`, plus the `lib/sys-mpich` link that makes `-parallel` runs load the MPI Pstream |
 | `install-dakota.sh` | Idempotent Dakota install (conda-forge `dakota=6.16.0`) into the same prefix |
 | `install-common.sh` | Shared Miniforge bootstrap, sourced by both |
 | `optimizer.py` | The tutorial's propose-or-stop contract, backed by Dakota (below) |
 | `driver.py` | Dakota's fork-interface analysis driver: replay-or-capture |
 | `naca_blockmesh.py` | Parametric structured C-grid: NACA 4-digit parameters → `blockMeshDict` (validated at every corner of the design box) |
 | `openfoam-case/` | The versioned case template (BC files, schemes, solution settings — everything that does not depend on the design point), so the numerics are pinned by this repo, not by whatever the installed OpenFOAM ships |
-| `simulator.sh` | Per-case OpenFOAM driver: `params.in` → `openfoam-case` copy + generated `blockMeshDict`/`0/U`/`controlDict` → `blockMesh` + `potentialFoam` + `simpleFoam` → `results.out` (the `potentialFoam` initialization is required: an impulsive uniform start diverges) |
+| `simulator.sh` | Per-case OpenFOAM driver: `params.in` → `openfoam-case` copy + generated `blockMeshDict`/`0/U`/`controlDict` (+ `decomposeParDict`) → `blockMesh` (+ `decomposePar`) + `potentialFoam` + `simpleFoam`, serial or under `mpirun` → `results.out` (the `potentialFoam` initialization is required: an impulsive uniform start diverges) |
 
 ## How Dakota fits the iteration contract
 
@@ -102,8 +166,10 @@ the case walltime.
 
 Pick the compute resource, set the optimizer knobs (`max_iterations`,
 `batch_size`, `stall_generations`), and leave **Schedule Cases?** off to run the
-cases on the login node — or on to give each OpenFOAM case its own SLURM/PBS job.
-The first run installs OpenFOAM and Dakota (~5-10 min); later runs find them.
+cases on the login node — or on to give each OpenFOAM case its own SLURM/PBS job,
+each sized by **Cores per case**. The first run installs OpenFOAM and Dakota
+(~5-10 min) unless **Software Environment** points at a site install; later runs
+find them.
 
 The run succeeds only after the optimizer wrote `CONVERGED`; the front (CSV and
 SVG) is under `state/` in the run's job directory on the cluster.
@@ -113,7 +179,9 @@ SVG) is under `state/` in the run's job directory on the cluster.
 `simulator.sh` (+ its mesh generator) is the only OpenFOAM-specific code: it
 reads `params.in`, builds the case, runs the solver, extracts objectives into
 `results.out` (atomic write, or exit non-zero leaving none — the failure
-signal). Change the case construction and extraction there, and the
-variable/objective declarations at the top of `optimizer.py` (`VARIABLES`,
-`OBJECTIVES` and the MOGA block in `write_dakota_input`). Neither YAML needs to
-change.
+signal). Its environment contract, set by the `run.sh` that `driver.py` writes:
+`MESH_SCALE`, `CORES_PER_CASE`, `OPENFOAM_ENV` (the file to source; unset →
+the conda env), and `MPIRUN` (launcher prefix, from the sourced environment).
+Change the case construction and extraction there, and the variable/objective
+declarations at the top of `optimizer.py` (`VARIABLES`, `OBJECTIVES` and the MOGA
+block in `write_dakota_input`). Neither YAML needs to change.

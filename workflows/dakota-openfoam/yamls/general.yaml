@@ -21,7 +21,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: dakota-openfoam-naca-parallel
+          branch: canary
           sparse_checkout:
             - workflows/dakota-openfoam/app
       - name: Validate Inputs and Initialize State
@@ -83,7 +83,7 @@ jobs:
           # subworkflow, mid-simulation — when it expires. One generation
           # (propose + node boot + queue + solve + decide) must fit in it.
           timeout: ${{ inputs.optimizer.iteration_timeout }}
-        uses: github/parallelworks/workflows@dakota-openfoam-naca-parallel
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/dakota-openfoam/yamls/iteration.yaml
           resource: ${{ inputs.cluster.resource }}

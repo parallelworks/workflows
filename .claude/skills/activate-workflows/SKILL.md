@@ -485,6 +485,25 @@ non-repetitive; point at an existing tutorial instead.
   `openfoam` package (v2412) does not export `FOAM_TUTORIALS` — derive it as
   `${CONDA_PREFIX}/tutorials` after `conda activate` (`workflows/dakota-openfoam`,
   verified 2026-09-29). Miniforge from GitHub releases avoids repo.anaconda.com TOS.
+- **conda-forge `openfoam=2412` aborts every `-parallel` run with "The dummy Pstream
+  library cannot be used in parallel mode"** (verified 2026-09-30): its MPI Pstream is
+  under `lib/mpich-3.3` while the binaries' RPATH (and `FOAM_MPI`) name `lib/sys-mpich`,
+  so the loader falls back to `lib/dummy`. RPATH beats `LD_LIBRARY_PATH`, so link the
+  expected name to the real directory (`workflows/dakota-openfoam/app/install-openfoam.sh`,
+  `f_link_mpi_pstream`). The env's `mpirun` is MPICH hydra; `--bind-to none` is accepted
+  by hydra and OpenMPI alike and stops concurrent launchers on one node from pinning all
+  their ranks to the same first cores.
+- **`pw ssh <resource>` suddenly answers "Cluster not found or you do not have sufficient
+  permissions"** and `pw cluster ls` lists another platform's clusters: the CLI's current
+  context changed under you (the user switched it in another shell; `pw context list`
+  shows the `*`). Pin every call with `PW_CONTEXT=<context-name>` (or `--context`) instead of
+  switching the global context back, which would break their shell (verified 2026-09-30).
+- **A directive a workflow injects ahead of the form's `scheduler_directives` stays
+  overridable:** sbatch keeps the LAST value of a repeated option (`--ntasks=2` then
+  `--ntasks=3` → `NumTasks=3`, verified 2026-09-30 with `sbatch --hold` +
+  `scontrol show job`), so compose `<workflow lines>\n${{ inputs.slurm.scheduler_directives }}`
+  in the `with:` block (a `|` block scalar with expressions renders fine) and the user's
+  line wins when they repeat it (`workflows/dakota-openfoam/yamls/iteration.yaml`).
 - **Dakota moves its fork drivers into their own process group**, so `killpg` on
   Dakota's group leaves captured drivers alive forever: a blocking driver must watch
   `os.getppid()` and exit when its parent (Dakota) is gone. And **Dakota killed before

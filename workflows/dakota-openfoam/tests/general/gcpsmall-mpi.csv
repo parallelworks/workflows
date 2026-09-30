@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-09-30T07:48:22Z,warm,pass,ok,ec81750,74bcc3d,8c3cb5a,d5c7ea1,d5c7ea1,dakota-openfoam-naca-parallel,alvaro,charmed-squid,115,

@@ -73,7 +73,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: 3dcs
+          branch: canary
           sparse_checkout:
             - workflows/3dcs/app
       - name: Create Inputs

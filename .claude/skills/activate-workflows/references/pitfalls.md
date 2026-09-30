@@ -148,6 +148,23 @@
   context changed under you (the user switched it in another shell; `pw context list`
   shows the `*`). Pin every call with `PW_CONTEXT=<context-name>` (or `--context`) instead of
   switching the global context back, which would break their shell (verified 2026-09-30).
+- **`script_submitter` with `use_existing_script` and `script_path: ./run.sh` wraps its own
+  output on a retry** (verified 2026-09-30): the submitter writes its assembled job script
+  as `run.sh` in `rundir`, so a step that re-submits the same dir copies the assembled
+  script as the template and prepends the headers again (doubled `#SBATCH` lines, the
+  `hostname > HOSTNAME` line twice). Name the script you hand it anything else
+  (`workflows/dakota-openfoam`: `case.sh`; `tutorials/optimization` still has the collision).
+- **`tail -8 f1 f2` prints nothing:** coreutils accepts the old `-N` form only with a single
+  file; with several it fails with "option used in invalid context" — to stderr, which a
+  `2>/dev/null` hides, so a "log tails:" banner comes out empty (verified 2026-09-30, it had
+  been silent since the workflow's first version). Always `tail -n N`.
+- **A deterministic optimizer replays a failed generation identically**, so "no results
+  → re-propose the same points" can never recover from a solver failure: two designs of
+  one generation diverged (SIGFPE) on the compute nodes while converging on the login node,
+  and the loop ended FAILED after re-proposing them once. Record evidence that a case *ran*
+  (`exit_code` written by the case script) and feed ran-and-failed points back as FAIL;
+  reserve the re-propose path for generations with no evidence of running at all
+  (`workflows/dakota-openfoam/app/optimizer.py`, verified 2026-09-30).
 - **A directive a workflow injects ahead of the form's `scheduler_directives` stays
   overridable:** sbatch keeps the LAST value of a repeated option (`--ntasks=2` then
   `--ntasks=3` → `NumTasks=3`, verified 2026-09-30 with `sbatch --hold` +

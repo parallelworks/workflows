@@ -37,9 +37,15 @@ button (`workflows/dakota-openfoam/app/optimizer.py`, `driver.py`):
   cache** without any proposal, so a small population can yield fewer new points than
   `population_size` per generation; raise the mutation rate (`replace_uniform`, 0.2)
   and let surplus worker slots be skipped.
-- A case that crashed while its siblings succeeded must reach Dakota as `FAIL` in its
-  results file with `failure_capture recover <values>` declared, or the point is
-  re-proposed forever.
+- A case that crashed must reach Dakota as `FAIL` in its results file with
+  `failure_capture recover <values>` declared, or the point is re-proposed forever —
+  **also when every case of a generation crashed**: with a fixed seed the replay
+  re-requests the same points, so treating an all-failed generation as "the workers
+  never ran" and re-proposing it can only fail again (run `01-controller-00025`,
+  2026-09-30: two high-camber designs diverged with SIGFPE on the compute nodes and
+  converged on the login node). Tell the two apart by evidence the case script ran
+  (`exit_code`), and stop only when nothing has ever succeeded or several
+  generations fail in a row.
 - `asynchronous evaluation_concurrency = <batch>` exists only so the fork drivers of
   one generation block in parallel during the capture.
 

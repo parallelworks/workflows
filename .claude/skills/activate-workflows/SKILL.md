@@ -466,20 +466,7 @@ non-repetitive; point at an existing tutorial instead.
 - **A run's `PW_API_KEY` expires when the run ends** (verified 2026-09-24): a service it
   started can no longer call `pw` (`Authentication has expired`). Open `pw endpoints run` and
   `pw ssh` connections keep working, so plan a teardown that needs no `pw` call
-  (`workflows/ray-cluster`). A service that must keep *calling* `pw` after its run needs a
-  durable credential handed over before `pw endpoints run`: on the user workspace the key
-  in `/etc/profile.d/parallelworks-env.sh` outlives the run (verified 2026-09-29: sweeps
-  4 min after completion still worked), elsewhere the host's saved credentials
-  (`env -u PW_API_KEY pw auth whoami`). Take only `PW_API_KEY` from that file, in a
-  subshell, and never under `set -x` (`workflows/hpc_status/app/start-template.sh`).
-- **The HSP user workspace cannot resolve its own endpoint URLs** (verified 2026-09-30):
-  `*.pw.hsp.mil` has no DNS there (`curl: (6)`, the probe logs `HTTP 000`) while
-  `activate.hpc.mil` resolves, and the same front end serves both, so
-  `curl --connect-to <endpoint-host>:443:activate.hpc.mil:443` answers `307`/`200`. The
-  `wait_for_endpoint` probe does this on its own when the endpoint host does not resolve.
-- **The step's `python3` is not your login shell's** (verified 2026-09-29): on the
-  workspace an interactive `pw ssh workspace` found Python 3.12 while the workflow step
-  ran 3.9. Check versions in the controller, not by hand.
+  (`workflows/ray-cluster`).
 - **`ssh host 'bash -s'` has no tty, so the remote script gets no signal when the client
   dies**; if it is not writing output it runs on, orphaned. Have it watch its `sshd` parent
   and exit through its cleanup trap when that is gone (`workflows/ray-cluster/app/dispatch_workers.sh`).

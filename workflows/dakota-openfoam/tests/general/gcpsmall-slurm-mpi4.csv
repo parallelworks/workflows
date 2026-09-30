@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-09-30T14:27:05Z,warm,pass,ok,372ad0a,74bcc3d,e87c03d,e62be8e,ba88705,dakota-openfoam-failed-generation,alvaro,capable-bulldog,568,

@@ -55,23 +55,46 @@ rather than as absolute predictions.
 
 ### Cores per case: when MPI pays off
 
-`cores_per_case` = N > 1 makes `simulator.sh` write a scotch `decomposeParDict`,
-`decomposePar` the mesh and run `potentialFoam` and `simpleFoam` as
+`cores_per_case` = N > 1 makes `simulator.sh` write a `decomposeParDict` that
+cuts the mesh into N strips along the chord (`hierarchical`, `n (N 1 1)`),
+`decomposePar` it and run `potentialFoam` and `simpleFoam` as
 `mpirun --bind-to none -np N <solver> -parallel` (the `forceCoeffs` output still
 lands in `case/postProcessing`, so no `reconstructPar` is needed for the
 objectives). Measured on gcpsmall's login node, same reference design:
 
 | `mesh_scale` | cells | 1 core | 2 ranks | 4 ranks |
 |---:|---:|---:|---:|---:|
-| 1 | 5.4k | 6.5 s | 8.6 s | — |
-| 2 | 21.6k | ~1 min | — | 29 s |
+| 1 | 5.4k | 6.5 s | 5.9 s | 13 s |
+| 2 | 21.6k | ~1 min | — | 24 s |
 
-At the default mesh a decomposed case is *slower* — 2.7k cells per rank is all
+At the default mesh decomposition buys nothing — 1.3k–2.7k cells per rank is all
 halo exchange — so the default stays 1. Two to four ranks start paying from
-`mesh_scale` 3–4 (~15k+ cells per rank) and the ranks' answers agree with the
-serial ones to within 0.5% on Cd and 0.05% on Cl. `--bind-to none` matters on the
-login node, where `batch_size` launchers start at once: bound to cores, they would
-all pin their ranks to the same first cores.
+`mesh_scale` 3–4 (~15k+ cells per rank; at scale 3, 4 ranks take ~1.5 min per
+case against ~3.5 min serial) and the ranks' answers agree with the serial ones
+to within 0.5% on Cd and 0.05% on Cl. `--bind-to none` matters on the login node,
+where `batch_size` launchers start at once: bound to cores, they would all pin
+their ranks to the same first cores.
+
+Why strips and not scotch: the conda-forge scotch partitions this mesh
+differently on every `decomposePar` call, and the SIMPLE loop on the C-grid is
+marginal enough at the default mesh that a design then converges or diverges by
+the draw (1 divergence in 30 runs on the login node; the compute nodes, a
+different CPU, lost 4 of ~33 cases in one run). Strips are deterministic — every
+repeat reproduces the coefficients to all printed digits — and converged for
+every design tried, including the two that diverged under scotch and the
+high-camber corner of the box. `export DECOMP_METHOD=scotch` in the OpenFOAM
+environment commands restores the graph partitioner.
+
+### Watching a case run
+
+Each worker's log (the streamed `run.*.out`) shows every OpenFOAM step: the
+short ones (`blockMesh`, `decomposePar`, `potentialFoam`) in full, and for
+`simpleFoam` one progress line every 50 iterations — iteration, pressure
+residual, current Cd and Cl from the `forceCoeffs` function object — plus the
+solver header, its convergence or crash messages, and the final averaged
+coefficients. The complete solver log stays in `case/log.simpleFoam` next to the
+other `log.*` files; `export STREAM_EVERY=0` in the OpenFOAM environment commands
+streams it whole, another value changes the cadence.
 
 Where the ranks run:
 

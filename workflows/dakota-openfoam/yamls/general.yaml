@@ -21,7 +21,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: dakota-openfoam-live-progress
           sparse_checkout:
             - workflows/dakota-openfoam/app
       - name: Validate Inputs and Initialize State
@@ -83,7 +83,7 @@ jobs:
           # subworkflow, mid-simulation — when it expires. One generation
           # (propose + node boot + queue + solve + decide) must fit in it.
           timeout: ${{ inputs.optimizer.iteration_timeout }}
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@dakota-openfoam-live-progress
         with:
           $yaml: workflows/dakota-openfoam/yamls/iteration.yaml
           resource: ${{ inputs.cluster.resource }}
@@ -162,8 +162,8 @@ jobs:
             max: 64
             tooltip: |
               MPI ranks per OpenFOAM case. 1 runs the solvers serially; more
-              decomposes the mesh (scotch) and runs potentialFoam and simpleFoam
-              under mpirun. Only pays off from mesh_scale 3-4 (2-4 ranks): at the
+              decomposes the mesh into N strips and runs potentialFoam and
+              simpleFoam under mpirun. Only pays off from mesh_scale 3-4 (2-4 ranks): at the
               default mesh a decomposed case is slower than a serial one. Scheduled
               cases request --nodes=1 --ntasks=N (PBS: select=1:ncpus=N:mpiprocs=N),
               so N must fit one node; on the login node, batch_size x N ranks run

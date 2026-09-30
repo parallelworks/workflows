@@ -12,7 +12,11 @@
 # CORES_PER_CASE (default 1) > 1 decomposes the mesh and runs the solvers under
 # ${MPIRUN} (default `mpirun --bind-to none -np ${CORES_PER_CASE}`). OPENFOAM_ENV
 # names a file sourced to put OpenFOAM (and mpirun) on PATH; unset, the conda env
-# that install-openfoam.sh creates is activated.
+# that install-openfoam.sh creates is activated. Every OpenFOAM step's full output
+# goes to case/log.<step>; the short steps are also streamed to stdout, and the
+# solver streams one progress line (iteration, pressure residual, Cd, Cl) every
+# STREAM_EVERY iterations (default 50; 0 streams its whole log). DECOMP_METHOD
+# (default hierarchical: x-strips) selects the decomposePar method.
 set -o pipefail
 
 SOFTWARE_DIR="${service_parent_install_dir:-${HOME}/pw/software}"
@@ -31,6 +35,12 @@ else
     conda activate openfoam || exit 1
 fi
 command -v simpleFoam > /dev/null || { echo "simpleFoam not on PATH after loading the OpenFOAM environment (${OPENFOAM_ENV:-conda env openfoam})"; exit 1; }
+STREAM_EVERY="${STREAM_EVERY:-50}"
+# hierarchical x-strips, not scotch: the conda-forge scotch partitions differently
+# on every run, and on this C-grid a marginal design then converges or diverges
+# by the draw (1 divergence in 30 runs on the login node, more on the compute
+# nodes); strips are deterministic and converged for every design tried
+DECOMP_METHOD="${DECOMP_METHOD:-hierarchical}"
 
 # --bind-to none: concurrent launchers on one node (the login-node mode runs
 # batch_size cases at once) would otherwise all pin their ranks to the same first
@@ -118,6 +128,11 @@ if [ "${MESH_SCALE}" -ge 2 ]; then
 fi
 
 if [ "${CORES_PER_CASE}" -gt 1 ]; then
+    coeffs=""
+    case "${DECOMP_METHOD}" in
+        hierarchical|simple)
+            coeffs=$(printf 'coeffs\n{\n    n           (%d 1 1);\n    order       xyz;\n}\n' "${CORES_PER_CASE}") ;;
+    esac
     cat > case/system/decomposeParDict << EOF
 FoamFile
 {
@@ -128,7 +143,8 @@ FoamFile
 }
 
 numberOfSubdomains ${CORES_PER_CASE};
-method          scotch;
+method          ${DECOMP_METHOD};
+${coeffs}
 EOF
 fi
 
@@ -176,7 +192,7 @@ functions
         Aref            0.1;
         writeControl    timeStep;
         writeInterval   1;
-        log             no;
+        log             yes;
     }
 }
 EOF
@@ -184,7 +200,31 @@ EOF
 foam_step() {
     local name="$1"
     shift
-    (cd case && "$@" > "log.${name}" 2>&1)
+    echo "--- ${name}: $*"
+    (cd case && "$@" 2>&1 | tee "log.${name}")
+}
+
+# the solver's log runs to thousands of iterations: keep it whole in
+# case/log.simpleFoam and stream a progress line every STREAM_EVERY iterations
+# (the forceCoeffs function object logs Cd/Cl each iteration), plus anything
+# that looks like an ending or a crash
+foam_solve() {
+    local name="$1"
+    shift
+    echo "--- ${name}: $* (progress every ${STREAM_EVERY} iterations; full log in case/log.${name})"
+    if [ "${STREAM_EVERY}" -eq 0 ]; then
+        foam_step "${name}" "$@"
+        return
+    fi
+    (cd case && "$@" 2>&1 | tee "log.${name}" | awk -v every="${STREAM_EVERY}" '
+        /^(Exec|Host|nProcs) +:/ { print; fflush(); next }
+        /^Time = / { t = $3; p = ""; next }
+        /Solving for p,/ && p == "" { p = $8; sub(/,$/, "", p); next }
+        /^[ \t]*Cd:/ { cd = $2; next }
+        /^[ \t]*Cl:/ { cl = $2; next }
+        /^ExecutionTime/ { if (t % every == 0) { printf("iter %6d  p residual %-12s Cd %-10s Cl %s\n", t, p, cd, cl); fflush() } next }
+        /converged in|FOAM FATAL|FOAM Warning|sigFpe|Floating point|BAD TERMINATION|^End$/ { print; fflush() }
+    ')
 }
 
 # the potentialFoam initial field is required: starting SIMPLE impulsively from
@@ -194,7 +234,7 @@ foam_step() {
 if ! { foam_step blockMesh blockMesh \
         && { [ "${CORES_PER_CASE}" -eq 1 ] || foam_step decomposePar decomposePar; } \
         && foam_step potentialFoam "${LAUNCH[@]}" potentialFoam "${PARALLEL[@]}" \
-        && foam_step simpleFoam "${LAUNCH[@]}" simpleFoam "${PARALLEL[@]}"; }; then
+        && foam_solve simpleFoam "${LAUNCH[@]}" simpleFoam "${PARALLEL[@]}"; }; then
     echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness} (${CORES_PER_CASE} core(s)); log tails:"
     # -n: coreutils rejects the short `tail -8 f1 f2` form with several files
     tail -n 20 case/log.blockMesh case/log.decomposePar case/log.potentialFoam case/log.simpleFoam 2>/dev/null

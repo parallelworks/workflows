@@ -29,7 +29,21 @@
   (`install-openfoam.sh`, `f_link_mpi_pstream`). Confirm with
   `ldd $(command -v simpleFoam) | grep Pstream`.
 - The env's MPI is **MPICH 4.3 with the hydra `mpirun`**; `decomposePar` has scotch,
-  metis and kahip available (`ls $FOAM_LIBBIN | grep Decomp`), so `method scotch` works.
+  metis and kahip available (`ls $FOAM_LIBBIN | grep Decomp`).
+- **Do not default to `method scotch`: this build's scotch partitions differently on every
+  call** (the `cellProcAddressing` checksum changed on each of 30 runs, 2026-09-30), so a
+  design near the stability edge converges or diverges by the draw — 1 divergence in 30
+  login-node runs, 4 lost cases in ~33 on the compute nodes' CPUs, and the same design
+  passing one attempt and failing the next. A geometric method (`hierarchical`,
+  `n (N 1 1)`) is deterministic (identical coefficients on every repeat), needs no
+  library on a site install, and converged for every design tried; on the small C-grid
+  it was also faster at 2 ranks (5.9 s vs 7.5 s). PCG/DIC instead of GAMG for `p` did not
+  help — the partition, not the linear solver, is the variable.
+- **Watching it run:** solver output redirected to a file shows nothing in the platform's
+  streamed job log; tee the short steps and filter the solver into one line per N
+  iterations (`Time`, first `Solving for p` residual, and Cd/Cl from a `forceCoeffs`
+  function object with `log yes` — v2412 prints them as a tab-separated table, `Cd:` then
+  the total). `workflows/dakota-openfoam/app/simulator.sh`, `foam_solve`.
 - **Launcher:** `mpirun --bind-to none -np N`. Hydra and OpenMPI both accept the flag;
   without it, concurrent launchers on one node (a login node running `batch_size` cases
   at once) all pin their ranks to the same first cores. Let the sourced environment

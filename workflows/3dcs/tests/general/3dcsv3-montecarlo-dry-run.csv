@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-09-30T14:42:50Z,,fail,leftover:squeue,,74bcc3d,e87c03d,7c456c4,7c456c4?,3dcs,Weisheng.Gan,firm-bass,1866,"run canceled, expected completed: Run firm-bass: canceled (31m3s)"
 2026-09-30T15:17:34Z,,pass,ok,,74bcc3d,e87c03d,7c456c4,7c456c4?,3dcs,Weisheng.Gan,well-bunny,415,
+2026-09-30T15:44:58Z,,pass,ok,aed738a,74bcc3d,e87c03d,85d8bb7,85d8bb7,3dcs,Weisheng.Gan,first-chicken,1591,

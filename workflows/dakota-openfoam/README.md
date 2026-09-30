@@ -211,6 +211,12 @@ each sized by **Cores per case**. The first run installs OpenFOAM and Dakota
 (~5-10 min) unless **Software Environment** points at a site install; later runs
 find them.
 
+The form's defaults are the fast demo (login node, 1 core, `mesh_scale` 1,
+4 cases × 10 generations, ~3 min). The converged-mesh study ships as a saved
+input set, `mesh3_slurm_4ranks` under **Load saved inputs** on the Execute page:
+SLURM, 4 ranks per case, `mesh_scale` 3, 8 cases × 10 generations, ~25 min on
+gcpsmall. It pins no resource; pick the cluster in the form.
+
 The run succeeds only after the optimizer wrote `CONVERGED`; the front (CSV and
 SVG) is under `state/` in the run's job directory on the cluster.
 

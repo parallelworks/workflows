@@ -1,0 +1,23 @@
+{
+  "_test": {
+    "timeout_s": 1500,
+    "warm_marker": "${HOME}/pw/software/hpc_status/venv/bin/python",
+    "leftover_patterns": [
+      "pw endpoints run",
+      "src.server.main"
+    ]
+  },
+  "cluster": {
+    "resource": "workspace"
+  },
+  "service": {
+    "platform": "noaa",
+    "cluster_monitor_interval": 180,
+    "enable_cluster_monitor": true,
+    "enable_cluster_pages": true,
+    "name": "",
+    "subdomain": "",
+    "sweep_concurrency": 6,
+    "theme": "light"
+  }
+}

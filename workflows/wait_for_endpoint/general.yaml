@@ -47,10 +47,21 @@ jobs:
             echo "::error title=Error::PW_API_KEY is not set; cannot probe ${probe_url%%\?*}"
             exit 1
           fi
+          # The HSP user workspace resolves the platform host but not the sessions
+          # domain (*.pw.hsp.mil); the same front end serves both, so connect to the
+          # platform host and keep the endpoint's name for TLS and routing
+          probe_host="${probe_url#*://}"
+          probe_host="${probe_host%%[/:?]*}"
+          connect_to=""
+          if command -v getent >/dev/null 2>&1 && ! getent hosts "${probe_host}" >/dev/null 2>&1 \
+              && [ -n "${PW_PLATFORM_HOST}" ] && getent hosts "${PW_PLATFORM_HOST}" >/dev/null 2>&1; then
+            connect_to="${probe_host}:443:${PW_PLATFORM_HOST}:443"
+            echo "::notice::${probe_host} does not resolve here; probing it through ${PW_PLATFORM_HOST}"
+          fi
           echo "::notice::Checking that ${probe_url%%\?*} answers"
           started=$(date +%s)
           while :; do
-            resp=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time ${{ inputs.max_time }} -H "Authorization: Bearer ${PW_API_KEY}" "${probe_url}")
+            resp=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time ${{ inputs.max_time }} ${connect_to:+--connect-to "${connect_to}"} -H "Authorization: Bearer ${PW_API_KEY}" "${probe_url}")
             code="${resp%% *}"
             location="${resp#* }"
             seen="HTTP ${code}${location:+ -> ${location%%\?*}}"

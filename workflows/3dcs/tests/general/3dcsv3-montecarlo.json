@@ -1,0 +1,26 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "endpoint": false,
+    "scheduler": true
+  },
+  "cluster": {
+    "resource": "pw://Weisheng.Gan/3dcsv3",
+    "slurm": {
+      "partition": "c5-2xlarge",
+      "time": "999:00:00",
+      "scheduler_directives": "#SBATCH --exclusive"
+    }
+  },
+  "service": {
+    "dry_run": false,
+    "version": "8.2.0.0",
+    "analysis_type": "montecarlo",
+    "bucket": "pw://Weisheng.Gan/s33dcshonda",
+    "model_directory": "models/Rail_CM",
+    "output_directory": "outputs/Rail_CM",
+    "num_seeds": 1000,
+    "concurrency": 2,
+    "thread": 2
+  }
+}

@@ -7,8 +7,8 @@ The home of the Parallel Works / ACTIVATE platform workflows.
 in `app/` or an implementation subdir — the only subtree checked out at run time),
 README, build tooling, and marketplace thumbnails (in `thumbnails/`) all live together. There are **no
 version suffixes** — every file is the latest version; git tags version the repo.
-Every workflow but [activate-batch](workflows/activate-batch/) serves through the
-**`pw` endpoint pattern**; that one runs a batch script to completion.
+Every workflow but [activate-batch](workflows/activate-batch/) and [3dcs](workflows/3dcs/)
+serves through the **`pw` endpoint pattern**; those two run batch jobs to completion.
 
 How this repo was assembled, and where anything older lives, is recorded in
 [MIGRATION.md](MIGRATION.md).
@@ -17,6 +17,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 
 | Workflow | What it serves | Variants |
 |---|---|---|
+| [3dcs](workflows/3dcs/) | 3DCS Monte Carlo / contributor analysis split over N SLURM workers, merged and uploaded to a bucket, with node-hour metering (no endpoint) | general |
 | [activate-batch](workflows/activate-batch/) | Batch job: a list of commands run on the login node or via SLURM/PBS (no endpoint) | general, hsp |
 | [agent-orchestrator](workflows/agent-orchestrator/) | Multi-agent orchestrator service | general |
 | [burst-render-demo](workflows/burst-render-demo/) | Multi-site burst demo: Mandelbrot tiles rendered on N sites in parallel, assembled live in a dashboard | general, hsp, noaa |
@@ -88,7 +89,7 @@ nothing is left behind (processes, scheduler jobs, containers), and delete test
 endpoints when done — see [DeveloperGuide.md](DeveloperGuide.md).
 
 Every endpoint workflow registers a **`pw` endpoint** (check `pw endpoints list`);
-`activate-batch` runs its commands to completion instead.
+`activate-batch` and `3dcs` run their batch jobs to completion instead.
 Note that workflow YAMLs pull this repo from GitHub at runtime
 (`parallelworks/checkout` + subworkflow `uses:`), so local YAML edits only take full
 effect once pushed to the referenced branch (**canary**).

@@ -17,7 +17,9 @@ and (optionally) exposes a web service as a **`pw` endpoint**. Read
 schema, subworkflow interfaces, `pw` CLI, and job-directory layout — this file is
 the **process**; that file is the **facts**; and
 [references/pitfalls.md](references/pitfalls.md) is the **memory**: every surprise a
-real run taught, searched by symptom when something misbehaves. Kubernetes targets
+real run taught, searched by symptom when something misbehaves. What one piece of
+software needs (OpenFOAM, Dakota, conda environments, Singularity/SIF images) has
+its own file under [references/software/](references/software/). Kubernetes targets
 have their own process and facts in [references/k8s-workflows.md](references/k8s-workflows.md).
 
 **The platform docs are authoritative and updated over time — this skill is a
@@ -48,7 +50,8 @@ every workflow: it is what lets the in-workflow
   a first-class use. Learn the patterns from the **repo's own workflows and
   tutorials**, not from invented demos (reference §9): endpoints →
   `workflows/{webshell,jupyterlab,openvscode}/`; **Singularity/SIF services →
-  `workflows/streamlit/` (simple) and `workflows/kasmvnc/` (multi-impl)**; job DAG / outputs
+  `workflows/streamlit/` (simple) and `workflows/kasmvnc/` (multi-impl)**, delivery and
+  gotchas in [references/software/singularity-sif-containers.md](references/software/singularity-sif-containers.md); job DAG / outputs
   → `tutorials/endpoint-workflows/` (staged README); **fan-out / sweep →
   `tutorials/endpoint-workflows/05-matrix.yaml`**; retry/failover →
   `tutorials/endpoint-workflows/07-failover.yaml`; **iterative loop over computed
@@ -267,9 +270,12 @@ service process.
 
 Every time you hit a surprise — a wrong YAML field, an unexpected CLI flag, a
 misunderstood subworkflow input, a debugging trick that worked — **append it to
-[references/pitfalls.md](references/pitfalls.md)** (a platform fact that changes
-what the process says belongs in the matching reference instead) so the next run
-avoids it. These files are living documents.
+[references/pitfalls.md](references/pitfalls.md)**, or, when it is about one piece of
+software (a solver, an optimizer, a package manager, a container image), to that
+tool's file under [references/software/](references/software/) (new tool → new file,
+short, pointing at the workflow that uses it). A platform fact that changes what the
+process says belongs in [references/activate-platform.md](references/activate-platform.md)
+instead. These files are living documents.
 Because the **platform docs change**, re-check them when behavior surprises you and
 correct this skill toward the docs. **Do not add a new tutorial to
 `tutorials/` without maintainer approval** — each must show something new and

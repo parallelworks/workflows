@@ -7,7 +7,9 @@
 > and append what you learn here (SKILL.md Step 5).
 >
 > "Step N" means SKILL.md's step N; "reference §N" means section N of
-> [activate-platform.md](activate-platform.md).
+> [activate-platform.md](activate-platform.md). Lessons about one piece of software
+> (OpenFOAM, Dakota, conda environments, Singularity/SIF images) live in
+> [software/](software/), one file per tool — grep both when a symptom is unclear.
 
 ## Common pitfalls (learned from real runs)
 
@@ -19,7 +21,7 @@
   hand-built object; login IPs change, so never hardcode `ip`. A **kubernetes**
   resource is the exception: it must be the object described in reference §2.
 - **Kubernetes-specific pitfalls** (quota, guards, sidecar lifecycle) are collected in
-  [references/k8s-workflows.md §9](references/k8s-workflows.md).
+  [references/k8s-workflows.md §9](k8s-workflows.md).
 - **`Could not parse subworkflow` on `--dry-run`:** a non-optional subworkflow input
   with no default is missing from your `with:` block; the message never names it.
   Hidden+ignored inputs don't count — compare your block against the fields the
@@ -52,26 +54,6 @@
   the resource namespace, cluster and `PW_USER`), keep `--name <service>-${PW_RUN_SLUG}` for lookup,
   and check `pw endpoints list` for an endpoint already serving `https://<label>.`
   before launching (see `workflows/openvscode/app/start-template.sh`).
-- **Login nodes that block repo.anaconda.com (hsp `jean`) need a prebuilt conda env:**
-  a download that runs under `nohup` with its output sent to a file is never checked, so
-  the failure surfaces 80 lines later as "command not found". Check every download and
-  installer, and ship the fallback as a conda-pack tarball on ghcr
-  (`workflows/jupyterlab/build-conda-artifact.sh`, pulled with `oras_pull_file`). Packing
-  a Miniconda root prefix works (`--exclude 'pkgs/*' --exclude 'envs/*'`); run the
-  generated `conda-unpack` as `<prefix>/bin/python <prefix>/bin/conda-unpack` because its
-  `#!/usr/bin/env python` shebang finds no `python` on RHEL 8 (verified in a Rocky 8
-  container). Build with `CONDA_OVERRIDE_GLIBC=<target>` and `PIP_ONLY_BINARY=:all:`, and
-  whitelist pure-Python sdists (`PIP_NO_BINARY=jupyterlab-slurm`) that publish no wheel.
-- **`oras pull` says `denied` for a public package:** a stale ghcr login in the
-  user's `~/.docker/config.json` on the cluster is being sent. `tools/oras/libs.sh`
-  pulls anonymously first for this reason — reuse it instead of calling oras directly.
-- **Container entrypoints that `pkill` by name kill sibling jobs:** singularity shares
-  the host PID namespace, so the KasmVNC image's start-up `pkill -u $(id -u) -f Xvnc`
-  killed the same user's other desktop starting on that node (verified on emed: two
-  concurrent starts killed each other). Run such containers with `--pid` (works
-  unprivileged with `--userns`; probe it, some sites disable PID namespaces) and anchor
-  every `pkill -f` pattern you write to `cancel.sh` (`"Xvnc :${N}( |$)"`, not `"Xvnc :${N}"`).
-  Test with two runs pinned to one node (`#SBATCH --nodelist=<node>`).
 - **`pw agent open-port` is a TOCTOU trap for slow-starting services:** the port
   sits unbound while the service boots (a SIF conversion takes ~1 min), and busy
   siblings on the node (MATLAB's dynamic services) steal it from the ephemeral
@@ -161,18 +143,6 @@
   absent on another — stage it on the resource that runs it. If a required path is missing,
   **fail loud (exit non-zero), don't silently skip**: a silent skip upstream plus a
   downstream job waiting on its output (e.g. a port file) becomes an indefinite hang.
-- **conda-forge scientific stacks install sudo-free but activate incompletely:** the
-  `openfoam` package (v2412) does not export `FOAM_TUTORIALS` — derive it as
-  `${CONDA_PREFIX}/tutorials` after `conda activate` (`workflows/dakota-openfoam`,
-  verified 2026-09-29). Miniforge from GitHub releases avoids repo.anaconda.com TOS.
-- **conda-forge `openfoam=2412` aborts every `-parallel` run with "The dummy Pstream
-  library cannot be used in parallel mode"** (verified 2026-09-30): its MPI Pstream is
-  under `lib/mpich-3.3` while the binaries' RPATH (and `FOAM_MPI`) name `lib/sys-mpich`,
-  so the loader falls back to `lib/dummy`. RPATH beats `LD_LIBRARY_PATH`, so link the
-  expected name to the real directory (`workflows/dakota-openfoam/app/install-openfoam.sh`,
-  `f_link_mpi_pstream`). The env's `mpirun` is MPICH hydra; `--bind-to none` is accepted
-  by hydra and OpenMPI alike and stops concurrent launchers on one node from pinning all
-  their ranks to the same first cores.
 - **`pw ssh <resource>` suddenly answers "Cluster not found or you do not have sufficient
   permissions"** and `pw cluster ls` lists another platform's clusters: the CLI's current
   context changed under you (the user switched it in another shell; `pw context list`
@@ -184,12 +154,6 @@
   `scontrol show job`), so compose `<workflow lines>\n${{ inputs.slurm.scheduler_directives }}`
   in the `with:` block (a `|` block scalar with expressions renders fine) and the user's
   line wins when they repeat it (`workflows/dakota-openfoam/yamls/iteration.yaml`).
-- **Dakota moves its fork drivers into their own process group**, so `killpg` on
-  Dakota's group leaves captured drivers alive forever: a blocking driver must watch
-  `os.getppid()` and exit when its parent (Dakota) is gone. And **Dakota killed before
-  any evaluation completed writes an EMPTY `-write_restart` file** that makes the next
-  `-read_restart` abort with a Boost archive error — only read/replace restart files
-  with size > 0 (`workflows/dakota-openfoam/app/optimizer.py`, verified 2026-09-29).
 - **`retry.timeout` defaults to 30 s PER ATTEMPT** (documented in
   building-workflows/yaml-fields; bitten and verified 2026-09-29): a `retry:` block
   without `timeout:` cancels each attempt of that step ~25-30 s in — for a `uses:`

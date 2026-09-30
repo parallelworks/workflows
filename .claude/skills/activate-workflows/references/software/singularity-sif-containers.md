@@ -186,3 +186,16 @@ A10G GPU):
 - `chmod a+r` the pulled SIF (the controller may run as a different user than a
   scheduled job in some setups; matches the old `chmod -R a+rX` on sandboxes —
   and is much cheaper: one file instead of a whole tree).
+
+## Gotchas from live runs (added 2026-09)
+
+- **`oras pull` says `denied` for a public package:** a stale ghcr login in the
+  user's `~/.docker/config.json` on the cluster is being sent. `tools/oras/libs.sh`
+  pulls anonymously first for this reason — reuse it instead of calling oras directly.
+- **Container entrypoints that `pkill` by name kill sibling jobs:** singularity shares
+  the host PID namespace, so the KasmVNC image's start-up `pkill -u $(id -u) -f Xvnc`
+  killed the same user's other desktop starting on that node (verified on emed: two
+  concurrent starts killed each other). Run such containers with `--pid` (works
+  unprivileged with `--userns`; probe it, some sites disable PID namespaces) and anchor
+  every `pkill -f` pattern you write to `cancel.sh` (`"Xvnc :${N}( |$)"`, not `"Xvnc :${N}"`).
+  Test with two runs pinned to one node (`#SBATCH --nodelist=<node>`).

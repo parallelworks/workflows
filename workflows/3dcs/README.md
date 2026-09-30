@@ -48,7 +48,11 @@ workspace_preprocessing ─► preprocessing ─┬─► workers-1..N ─► me
    `worker-template.sh`.
 3. **workers** is a guarded static matrix (1–40, `max-parallel` = concurrency): each
    worker submits its script through `script_submitter` as a SLURM job. The script
-   writes `macroScript.txt`, starts the CPU/memory monitor and the metering heartbeat,
+   writes `macroScript.txt`, checks that Wine can run on the node (`node-setup.sh`:
+   `wine` is a 32-bit binary that needs `glibc.i686`, which the cluster's user
+   bootstrap installs at node start; if that failed, the script installs it with
+   the unreachable repositories skipped), starts the CPU/memory monitor and the
+   metering heartbeat,
    runs `dcsSimuMacro.exe` under Wine, checks that the result file
    (`Results/<model>_<n>.hst` or `.hlm`) exists, uploads its directory to the bucket
    and records its exit status in `run_case.exit`, which the job checks (3DCS itself
@@ -58,7 +62,8 @@ workspace_preprocessing ─► preprocessing ─┬─► workers-1..N ─► me
    finished.
 5. **merge** collects the workers' result files from the shared job directory, merges
    them with the corresponding `macros/merge_<analysis_type>.sh` macro
-   (`merge-template.sh`, also a SLURM job), removes the per-worker copies, uploads
+   (`merge-template.sh`, also a SLURM job, with the same Wine check), removes the
+   per-worker copies, uploads
    `Results/`, `TempData/` and `merge.sh`, and finally cancels `usage_metering`. With
    one worker there is nothing to merge and the job only cancels the metering.
 
@@ -78,6 +83,19 @@ merge.sh
 The job directory on the login node (`~/pw/jobs/<workflow>/<run number>/`) keeps the
 downloaded model and the same files; `logs/<job>/step_N/step.out` has every step's
 trace.
+
+## Cluster requirements
+
+- 3DCS installed under `/dcs/wine/apps/3dcs/<version>/` and the Wine module under
+  `/pw/apps` (both NFS-exported to the compute nodes); one
+  `app/dcs_environment/<version>.sh` per version.
+- `glibc.i686` on the compute nodes: `wine` 8.0.2 is a 32-bit binary. The cluster's
+  user bootstrap should install it at node start with
+  `sudo dnf install -y --setopt='*.skip_if_unavailable=true' glibc.i686` (a single
+  unreachable repository otherwise aborts the whole install). The workers check
+  and repair this before running 3DCS.
+- Passwordless `sudo` on the nodes (that install, the Wine prefix ownership, the
+  sshd session limit, and `chmod` of the results 3DCS writes as root).
 
 ## Node utilization
 

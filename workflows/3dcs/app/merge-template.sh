@@ -1,5 +1,5 @@
 # Body of merge.sh, which merges the workers' results. yamls/general.yaml assembles it as:
-#   inputs.sh + dcs_environment/<version>.sh + macros/merge_<analysis_type>.sh + this file
+#   inputs.sh + dcs_environment/<version>.sh + node-setup.sh + macros/merge_<analysis_type>.sh + this file
 # and submits it through script_submitter as a SLURM job.
 set -o pipefail
 
@@ -38,6 +38,8 @@ if [[ "${dcs_dry_run}" == "true" ]]; then
     echo "$(date) INFO: Dry run: 3DCS is not executed"
     touch "${merged_file}"
 else
+    ensure_wine_runs || exit 1
+
     node_usage="$(hostname)-${PW_RUN_SLUG}-merge"
     usage_file="${PW_PARENT_JOB_DIR}/usage/${node_usage}"
     (

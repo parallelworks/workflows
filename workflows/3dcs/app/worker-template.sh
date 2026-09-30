@@ -1,5 +1,5 @@
 # Body of a worker's run_case.sh. yamls/general.yaml assembles it as:
-#   inputs.sh + "export case_index=<n>" + dcs_environment/<version>.sh + macros/<analysis_type>.sh + this file
+#   inputs.sh + "export case_index=<n>" + dcs_environment/<version>.sh + node-setup.sh + macros/<analysis_type>.sh + this file
 # and submits it through script_submitter as one SLURM job per worker.
 set -o pipefail
 
@@ -33,6 +33,8 @@ if [[ "${dcs_dry_run}" == "true" ]]; then
     mkdir -p Results
     touch "${result_file}"
 else
+    ensure_wine_runs || exit 1
+
     # CPU and memory of the node, plotted after the run; cancels the job when memory exceeds 98%
     source "${monitoring_conda_dir}/etc/profile.d/conda.sh"
     conda activate "${monitoring_conda_env}"
@@ -69,7 +71,9 @@ else
     fi
 
     kill ${monitoring_pid} 2>/dev/null
-    python "${app}/cpu_and_memory_usage.py" --plot-usage --txt "${monitoring_txt}"
+    if [ -s "${monitoring_txt}" ]; then
+        python "${app}/cpu_and_memory_usage.py" --plot-usage --txt "${monitoring_txt}"
+    fi
     conda deactivate
 
     # 3DCS writes some result files as root

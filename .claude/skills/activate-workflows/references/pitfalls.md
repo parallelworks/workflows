@@ -247,3 +247,22 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   not allowed here`); the platform reports only `Invalid YAML`, so parse the file locally
   (`python3 -c "import yaml; yaml.safe_load(open(f))"`, the system python has PyYAML on
   gcpsmall) before blaming the schema. Use a `|` block for any prose tooltip.
+- **A canceled job publishes no outputs, even for steps that completed** (verified
+  2026-10-01): a handler job with `if: ${{ !completed }}` that read
+  `needs.preprocessing.outputs.SERVER_PID_FILE` after a run cancel failed at parse time
+  with `output SERVER_PID_FILE from job preprocessing not found`, although the step that
+  wrote the output had finished. Handlers that must work after a cancel read fixed
+  paths (`${PW_PARENT_JOB_DIR}/<file>`) and inputs, never upstream outputs
+  (`workflows/dakota-openfoam/yamls/general-naca.yaml`, `stop_server_if_unhealthy`).
+- **`if: ${{ !completed }}` jobs do run after `pw workflows runs cancel`** (verified
+  2026-10-01): the canceled run showed `preprocessing: canceled`, `wait_for_endpoint:
+  skipped-failed` and the handler job executed. That is the hook for "kill what a
+  plain step started detached when the run did not get to its health check"; a
+  step-level `cleanup:` is not, because cleanups always run at the end of their own
+  job (docs: yaml-fields), which would kill a detached server right after launch.
+- **A login-node-only service can skip `script_submitter`**: start it with
+  `setsid pw endpoints run ... > out 2>&1 < /dev/null &` from a plain step
+  (`tutorials/endpoint-workflows/03-exit-workflow.yaml`), keep `wait_for_endpoint` as
+  the health check (no `skip_cleanups_file`), and add the `!completed` handler above
+  because an endpoint that never registered cannot be removed with `pw endpoints
+  delete`. `workflows/dakota-openfoam` serves its Pareto page this way.

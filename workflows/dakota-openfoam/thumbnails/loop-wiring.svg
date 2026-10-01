@@ -14,12 +14,12 @@
 
   <rect x="30" y="76" width="226" height="40" rx="6" fill="#ffffff" stroke="#898781"/>
   <text x="40" y="93" font-size="13" fill="#0b0b0b">preprocessing</text>
-  <text x="40" y="108" font-size="11" fill="#52514e">creates state/</text>
+  <text x="40" y="108" font-size="11" fill="#52514e">creates state/, then starts the server:</text>
 
   <rect x="30" y="128" width="226" height="54" rx="6" fill="#fff3ec" stroke="#eb6834"/>
-  <text x="40" y="145" font-size="13" fill="#0b0b0b">session_runner + wait_for_endpoint</text>
-  <text x="40" y="160" font-size="11" fill="#52514e">pw endpoints run pareto-&lt;slug&gt;</text>
-  <text x="40" y="174" font-size="11" fill="#52514e">-- pareto-server.py --state-dir state/</text>
+  <text x="40" y="145" font-size="13" fill="#0b0b0b">preprocessing (last step)</text>
+  <text x="40" y="160" font-size="11" fill="#52514e">setsid pw endpoints run pareto-&lt;slug&gt; --</text>
+  <text x="40" y="174" font-size="11" fill="#52514e">pareto-server.py --state-dir state/  &amp;</text>
 
   <rect x="30" y="196" width="226" height="330" rx="6" fill="#ffffff" stroke="#898781"/>
   <text x="40" y="214" font-size="13" fill="#0b0b0b">optimization_loop</text>
@@ -97,8 +97,8 @@
   <text x="304" y="84" font-size="15" font-weight="bold" fill="#0b0b0b">pw endpoint  pareto-&lt;run slug&gt;</text>
   <text x="304" y="104" font-size="12" fill="#52514e">pareto-server.py reads state/ on every request; the page polls every 10 s until the status is final</text>
   <text x="304" y="121" font-size="12" fill="#52514e">every evaluated design, the Pareto front, variables and objectives on hover</text>
-  <text x="304" y="141" font-size="12" fill="#52514e">up before the first generation, outlives the run; pw endpoints delete pareto-&lt;slug&gt; kills it</text>
-  <text x="304" y="162" font-size="12" fill="#52514e">endpoint jobs: session_runner (script_submitter) + wait_for_endpoint (/healthz) &#8594; SKIP_CLEANUP</text>
+  <text x="304" y="141" font-size="12" fill="#52514e">started detached on the login node (no script_submitter); wait_for_endpoint checks /healthz first</text>
+  <text x="304" y="162" font-size="12" fill="#52514e">outlives the run and a cancel; pw endpoints delete pareto-&lt;slug&gt; is the off switch</text>
   <line x1="700" y1="194" x2="700" y2="180" stroke="#eb6834" stroke-width="2" marker-end="url(#aO)"/>
   <line x1="256" y1="150" x2="290" y2="130" stroke="#eb6834" stroke-width="2" marker-end="url(#aO)"/>
 </svg>

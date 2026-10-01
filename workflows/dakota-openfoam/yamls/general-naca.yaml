@@ -10,7 +10,9 @@
 # small server from the Dakota app serves the live Pareto front as a pw endpoint
 # (pareto-<run slug>): every evaluated design, the current front, and each
 # design's variables and objectives on hover; it keeps serving the final front
-# after the run completes until `pw endpoints delete` removes it.
+# after the run completes until `pw endpoints delete` removes it. The server
+# only ever runs on the login node, so it is started detached from a plain step
+# (tutorials/endpoint-workflows Stage 3) rather than through script_submitter.
 permissions:
   - '*'
 
@@ -68,114 +70,67 @@ jobs:
           fi
           mkdir -p state
           echo "STATE_DIR=${PWD}/state" | tee -a $OUTPUTS
-      # the start script of the endpoint pattern: the cleanup trap every service
-      # script here carries, then the server under pw endpoints run; the paths
-      # are baked in now because the submitter inlines the script body
-      - name: Create the Pareto Front Server Script
+      # the server is a login-node process for the life of the study and beyond:
+      # start it in its own session so the end of this step, of this job and of
+      # the run never reaches it (tutorials/endpoint-workflows Stage 3). The only
+      # off switch is `pw endpoints delete`, which kills pw endpoints run and the
+      # server under it; the stop_server_if_unhealthy job covers a server that
+      # never registered.
+      - name: Start the Pareto Front Server
         run: |
-          cat <<'EOF' > start-pareto-${PW_JOB_ID}.sh
-          cleanup() {
-              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
-              echo "::notice::Cleaning up..."
-              if [ -f cancel.sh ]; then
-                  mv cancel.sh cancel.sh.submitted
-                  echo "echo Cleanup script was already executed" > cancel.sh
-                  bash cancel.sh.submitted
-              fi
-              kill -- -$$
-          }
-
-          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
-
-          echo "::notice::Starting the Pareto front server"
-          EOF
-          cat <<EOF >> start-pareto-${PW_JOB_ID}.sh
-          endpoint_name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
-          server="${PWD}/workflows/dakota/app/pareto-server.py"
-          state_dir="${PWD}/state"
-          title="NACA airfoil Pareto front - ${PW_RUN_SLUG}"
-          EOF
-          cat <<'EOF' >> start-pareto-${PW_JOB_ID}.sh
-          echo '#!/bin/bash' > cancel.sh
-          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          cat <<EOF > start-pareto.sh
+          #!/bin/bash
+          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
           # {port} is replaced by pw endpoints run with the local port it forwards to
-          echo "::notice::pw endpoints run --name ${endpoint_name} -- python3 ${server} --state-dir ${state_dir} --port {port} --refresh 10"
-          pw endpoints run --name "${endpoint_name}" -- python3 "${server}" \
-              --state-dir "${state_dir}" --port {port} --refresh 10 --title "${title}" &
-          pid=$!
-          echo "kill ${pid} 2>/dev/null; pkill -f \"pareto-server.py --state-dir ${state_dir}\" 2>/dev/null; true" >> cancel.sh
-          wait ${pid}
-          rc=$?
-          if [ ${rc} -ne 0 ]; then
-              # pw endpoints run blocks for the life of the service, so it also
-              # returns non-zero when the workflow cancels this job after a
-              # successful launch, which is how wait_for_endpoint releases the
-              # run. Only a launch that never registered its endpoint is a failure.
-              if pw endpoints list 2>/dev/null | awk '{print $1}' | grep -qxF "${endpoint_name}"; then
-                  echo "::notice::Endpoint ${endpoint_name} served until this job was cancelled; exiting cleanly"
-                  exit 0
-              fi
-              echo "::error title=Error::pw endpoints run failed (exit ${rc})"
-              exit 1
-          fi
+          exec pw endpoints run --name "${{ inputs.service.name }}-${PW_RUN_SLUG}" -- \
+              python3 "${PWD}/workflows/dakota/app/pareto-server.py" \
+              --state-dir "${PWD}/state" --port {port} --refresh 10 \
+              --title "NACA airfoil Pareto front - ${PW_RUN_SLUG}"
           EOF
-          echo "SCRIPT_PATH=${PWD}/start-pareto-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
-          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+          chmod +x start-pareto.sh
+          if command -v setsid >/dev/null 2>&1; then
+            setsid ./start-pareto.sh > pareto.out 2>&1 < /dev/null &
+          else
+            nohup ./start-pareto.sh > pareto.out 2>&1 < /dev/null &
+          fi
+          echo $! > pareto.pid
+          echo "::notice::Pareto front server started (pid $(cat pareto.pid)); its output is ${PWD}/pareto.out"
+          echo "SERVER_PID_FILE=${PWD}/pareto.pid" | tee -a $OUTPUTS
 
-  # the submitter job of the endpoint pattern, named as in every endpoint
-  # workflow here. The server always runs on the login node: it only reads the
-  # state directory and needs the pw client, and it must outlive every
-  # scheduled case, so it never goes through the scheduler.
-  session_runner:
-    needs: [preprocessing]
-    ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
-    steps:
-      - name: Serve the Pareto Front
-        uses: github/parallelworks/workflows@canary
-        early-cancel: any-job-failed
-        with:
-          $yaml: workflows/script_submitter/v3.6/general.yaml
-          resource: ${{ inputs.cluster.resource }}
-          shebang: '#!/bin/bash'
-          use_existing_script: true
-          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
-          define_cleanup_script: true
-          cleanup_script_path: ./cancel.sh
-          scheduler: false
-          use_scheduler_agent: false
-          submit_and_exit: false
-          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
-      - name: Cancel Wait for Endpoint
-        uses: parallelworks/cancel-jobs
-        with:
-          jobs:
-            - wait_for_endpoint
-      - name: Exit Workflow with Error
-        run: |
-          echo "::error title=Error::The Pareto front server exited before its endpoint came online"
-          exit 1
-
+  # the health check of the endpoint pattern: the run only goes on once the
+  # endpoint is listed and /healthz answers through the platform
   wait_for_endpoint:
     needs: [preprocessing]
     ssh:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:
       - name: Wait for endpoint
-        early-cancel: any-job-failed
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
           host: ${{ inputs.cluster.resource.ip }}
-          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
           path: /healthz
           budget: 120
-      - name: Cancel Script Submitter
-        uses: parallelworks/cancel-jobs
-        with:
-          jobs:
-            - session_runner
+
+  # a server that never became healthy cannot be removed with pw endpoints
+  # delete (it is not listed), so it is killed here; a healthy one is never
+  # touched by the workflow again. !completed: the health check failed, or the
+  # run was canceled before it passed.
+  stop_server_if_unhealthy:
+    needs: [preprocessing, wait_for_endpoint]
+    if: ${{ !completed }}
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Kill the Pareto Front Server
+        run: |
+          pid=$(cat "${{ needs.preprocessing.outputs.SERVER_PID_FILE }}" 2>/dev/null || true)
+          if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+            echo "::warning::the Pareto front endpoint never became healthy; killing the server (pid ${pid})"
+            kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
+          fi
+          pkill -f "pareto-server.py --state-dir ${{ needs.preprocessing.outputs.STATE_DIR }}" 2>/dev/null || true
 
   # the loop starts once the front is being served, so a server that cannot
   # start fails the run before any case is spent, and the page is live from the

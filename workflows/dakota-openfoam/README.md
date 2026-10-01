@@ -17,9 +17,9 @@ covers only the loop, the live front and the tests. The loop mechanics come from
 
 ```
 general-naca.yaml
- ├─ preprocessing       state/ (the study) and the Pareto front server script
- ├─ session_runner      script_submitter: pw endpoints run pareto-<slug> -- pareto-server.py
- ├─ wait_for_endpoint   endpoint listed and /healthz answering → SKIP_CLEANUP → cancel the submitter
+ ├─ preprocessing       state/ (the study); starts pareto-server.py detached under pw endpoints run
+ ├─ wait_for_endpoint   the endpoint is listed and /healthz answers through the platform
+ ├─ stop_server_if_unhealthy   if: !completed — kills a server whose endpoint never came up
  └─ optimization_loop   needs the endpoint, then:
      ├─ Iterate         retried step; each attempt runs iteration-naca.yaml once:
      │                    optimize ──▶ workers-1..8 ──▶ decide
@@ -67,15 +67,20 @@ objectives on hover. It reads the files on every request and the page polls
 every 10 s until the status is final, so a tab left open on a long run costs
 one small request per refresh and nothing afterwards.
 
-The server starts before the loop (`optimization_loop` needs
-`wait_for_endpoint`), so the page is live from the first generation and a
-server that cannot start fails the run before any case is spent. **The endpoint
-outlives the run**: after the optimization finishes, or after a cancel, it keeps
-showing the final front until you delete it. **Deleting the session cleans up
-its processes**: `pw endpoints delete pareto-<run slug>` kills the server
-(verified: no process left). A cancel *before* the endpoint is healthy tears
-the server down through the submitter's cleanup; a cancel mid-generation kills
-the running cases and SLURM jobs and leaves only the endpoint.
+The server only ever runs on the login node, so preprocessing starts it
+detached (`setsid pw endpoints run ...`, as in
+[`tutorials/endpoint-workflows` Stage 3](../../tutorials/endpoint-workflows/README.md))
+instead of through `script_submitter`; `wait_for_endpoint` then checks that the
+endpoint is listed and `/healthz` answers, and the loop only starts after that,
+so the page is live from the first generation and a server that cannot start
+fails the run before any case is spent. **The endpoint outlives the run**: after
+the optimization finishes, or after a cancel, it keeps showing the final front
+until you delete it. **Deleting the session cleans up its processes**:
+`pw endpoints delete pareto-<run slug>` kills `pw endpoints run` and the server
+under it. The one case the workflow handles itself is a server whose endpoint
+never became healthy (it is not listed, so it cannot be deleted):
+`stop_server_if_unhealthy` kills it by pid. A cancel mid-generation kills the
+running cases and SLURM jobs and leaves only the endpoint.
 
 ## Running it
 

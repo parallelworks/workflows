@@ -65,7 +65,10 @@ completion and fails when it fails), `3dcs` (fans a 3DCS simulation out over SLU
 workers), `openfoam-naca` (one OpenFOAM case) and `dakota` (one optimizer step) —
 serves through a **`pw` endpoint** (`pw endpoints list`) named
 `<service>-${PW_RUN_SLUG}`. `dakota-openfoam` is both: a batch optimization loop that
-joins those last two as subworkflows and serves its live Pareto front as an endpoint. On a compute cluster,
+joins those last two as subworkflows and serves its live Pareto front as an endpoint;
+its server only ever runs on the login node, so it is the one workflow that starts
+`pw endpoints run` detached from a plain step (`tutorials/endpoint-workflows` Stage 3)
+instead of through the submitter below. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through

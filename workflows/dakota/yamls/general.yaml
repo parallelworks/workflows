@@ -162,7 +162,10 @@ jobs:
             label: Dakota seed
             default: 4242
             min: 1
-            tooltip: Fixed per study: the restart replay that resumes Dakota between steps requires a deterministic method. Change it only together with a fresh state directory.
+            tooltip: |
+              Fixed per study: the restart replay that resumes Dakota between
+              steps requires a deterministic method. Change it only together with
+              a fresh state directory.
       software:
         type: group
         label: Software Environment

@@ -17,8 +17,8 @@ covers only the loop, the live front and the tests. The loop mechanics come from
 
 ```
 general-naca.yaml
- ├─ preprocessing       state/ (the study); starts pareto-server.py detached under pw endpoints run
- ├─ wait_for_endpoint   the endpoint is listed and /healthz answers through the platform
+ ├─ preprocessing       state/ (the study); starts pareto-server.py detached under pw endpoints run,
+ │                      then waits until the endpoint is listed and /healthz answers through the platform
  ├─ stop_server_if_unhealthy   if: !completed — kills a server whose endpoint never came up
  └─ optimization_loop   needs the endpoint, then:
      ├─ Iterate         retried step; each attempt runs iteration-naca.yaml once:
@@ -70,10 +70,11 @@ one small request per refresh and nothing afterwards.
 The server only ever runs on the login node, so preprocessing starts it
 detached (`setsid pw endpoints run ...`, as in
 [`tutorials/endpoint-workflows` Stage 3](../../tutorials/endpoint-workflows/README.md))
-instead of through `script_submitter`; `wait_for_endpoint` then checks that the
-endpoint is listed and `/healthz` answers, and the loop only starts after that,
-so the page is live from the first generation and a server that cannot start
-fails the run before any case is spent. **The endpoint outlives the run**: after
+instead of through `script_submitter`, and its last step calls the
+`wait_for_endpoint` subworkflow to check that the endpoint is listed and
+`/healthz` answers; the loop needs preprocessing, so the page is live from the
+first generation and a server that cannot start fails the run before any case
+is spent. **The endpoint outlives the run**: after
 the optimization finishes, or after a cancel, it keeps showing the final front
 until you delete it. **Deleting the session cleans up its processes**:
 `pw endpoints delete pareto-<run slug>` kills `pw endpoints run` and the server

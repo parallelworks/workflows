@@ -95,30 +95,24 @@ jobs:
           fi
           echo $! > pareto.pid
           echo "::notice::Pareto front server started (pid $(cat pareto.pid)); its output is ${PWD}/pareto.out"
-          echo "SERVER_PID_FILE=${PWD}/pareto.pid" | tee -a $OUTPUTS
-
-  # the health check of the endpoint pattern: the run only goes on once the
-  # endpoint is listed and /healthz answers through the platform
-  wait_for_endpoint:
-    needs: [preprocessing]
-    ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
-    steps:
+      # the health check of the endpoint pattern: this job, and so the loop that
+      # needs it, only completes once the endpoint is listed and /healthz answers
+      # through the platform
       - name: Wait for endpoint
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
-          endpoint_name: pareto-${PW_RUN_SLUG}
+          endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
           host: ${{ inputs.cluster.resource.ip }}
           path: /healthz
           budget: 120
 
   # a server whose endpoint never became healthy is killed here (!completed:
-  # the health check failed, or the run was canceled before it passed); a
-  # healthy one is never touched by the workflow again. Fixed paths, not job
-  # outputs: a canceled preprocessing publishes none.
+  # preprocessing failed, at the health check or before, or the run was canceled
+  # before it passed); a healthy one is never touched by the workflow again.
+  # Fixed paths, not job outputs: a canceled preprocessing publishes none.
   stop_server_if_unhealthy:
-    needs: [preprocessing, wait_for_endpoint]
+    needs: [preprocessing]
     if: ${{ !completed }}
     ssh:
       remoteHost: ${{ inputs.cluster.resource.ip }}
@@ -138,11 +132,11 @@ jobs:
           fi
           pkill -f "pareto-server.py --state-dir ${PW_PARENT_JOB_DIR}/state" 2>/dev/null || true
 
-  # the loop starts once the front is being served, so a server that cannot
-  # start fails the run before any case is spent, and the page is live from the
-  # first generation on
+  # preprocessing only completes once the front is being served, so a server
+  # that cannot start fails the run before any case is spent, and the page is
+  # live from the first generation on
   optimization_loop:
-    needs: [preprocessing, wait_for_endpoint]
+    needs: [preprocessing]
     ssh:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:

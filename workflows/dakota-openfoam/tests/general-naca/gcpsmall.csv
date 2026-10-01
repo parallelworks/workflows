@@ -3,3 +3,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-01T10:48:00Z,warm,pass,ok,945eefb,74bcc3d,7c7ffa7,cd09985,cd09985,dakota-demo,alvaro,pleasant-fish,292,
 2026-10-01T11:17:29Z,warm,pass,ok,535922a,74bcc3d,7c7ffa7,8cc2c4f,8cc2c4f,dakota-demo,alvaro,eager-clam,276,
 2026-10-01T12:45:36Z,warm,fail,leftover:proc:pw endpoints+proc:pareto-server.py,86b7bb6,74bcc3d,7c7ffa7,4b30b69,4b30b69,dakota-demo,alvaro,optimum-rhino,671,"run canceled, expected completed: Run optimum-rhino: canceled (10m59s)"
+2026-10-01T13:01:44Z,warm,pass,ok,9f8f62b,74bcc3d,7c7ffa7,796774b,796774b,dakota-demo,alvaro,pretty-goat,276,

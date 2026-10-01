@@ -6,14 +6,21 @@
       "${HOME}/pw/software/openfoam-naca/miniforge/envs/openfoam",
       "${HOME}/pw/software/dakota/miniforge/envs/dakota"
     ],
-    "leftover_patterns": ["pw endpoints", "pareto-server.py", "bin/dakota", "app/driver.py", "simpleFoam", "blockMesh"]
+    "leftover_patterns": ["pw endpoints", "pareto-server.py", "bin/dakota", "app/driver.py", "simpleFoam", "blockMesh", "mpirun", "hydra_pmi_proxy"]
   },
   "cluster": {
     "resource": "pw://alvaro/gcpsmall",
-    "scheduler": false
+    "scheduler": true,
+    "cores_per_case": 2,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "00:30:00",
+      "scheduler_directives": ""
+    }
   },
   "optimizer": {
-    "max_iterations": 4,
+    "max_iterations": 3,
     "batch_size": 4,
     "stall_generations": 3,
     "mesh_scale": 1

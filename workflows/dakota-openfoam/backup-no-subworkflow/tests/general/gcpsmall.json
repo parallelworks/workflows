@@ -1,12 +1,12 @@
 {
   "_test": {
     "timeout_s": 3600,
-    "endpoint": true,
+    "endpoint": false,
     "warm_marker": [
-      "${HOME}/pw/software/openfoam-naca/miniforge/envs/openfoam",
-      "${HOME}/pw/software/dakota/miniforge/envs/dakota"
+      "${HOME}/pw/software/dakota-openfoam/miniforge/envs/openfoam",
+      "${HOME}/pw/software/dakota-openfoam/miniforge/envs/dakota"
     ],
-    "leftover_patterns": ["pw endpoints", "pareto-server.py", "bin/dakota", "app/driver.py", "simpleFoam", "blockMesh"]
+    "leftover_patterns": ["bin/dakota", "app/driver.py", "simpleFoam", "blockMesh"]
   },
   "cluster": {
     "resource": "pw://alvaro/gcpsmall",

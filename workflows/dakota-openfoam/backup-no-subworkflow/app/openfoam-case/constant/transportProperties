@@ -1,0 +1,12 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      transportProperties;
+}
+
+transportModel  Newtonian;
+
+// chord 1 m and 10 m/s freestream give Re = 1e6
+nu              1e-05;

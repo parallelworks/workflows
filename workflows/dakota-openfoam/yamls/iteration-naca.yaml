@@ -1,0 +1,231 @@
+# One Dakota-OpenFOAM optimization iteration, invoked as a subworkflow by
+# general-naca.yaml's retried Iterate step. Its exit status IS the loop control:
+# completing tells the parent the loop is over (converged or failed — the parent
+# reads state/status to know which); failing tells the parent's retry to fire the
+# next iteration. The pattern and file contract come from tutorials/optimization.
+#
+# The two compute pieces are the standalone workflows, called as subworkflows:
+#   optimize  ->  workflows/dakota/yamls/general.yaml        (one optimizer step)
+#   workers   ->  workflows/openfoam-naca/yamls/general.yaml (one case per design)
+# They meet in the files of the state directory: the Dakota step leaves one
+# iter_<N>/case_<j>/params.in per proposed design, each OpenFOAM call takes that
+# file as its design and that directory as its case directory, and leaves
+# results.out (or exit_code) there for the next Dakota step to ingest.
+permissions:
+  - '*'
+
+jobs:
+  # Run the optimizer step: ingest the previous generation's results.out files,
+  # then either propose the next generation (status CONTINUE, N_CASES > 0) or
+  # stop (CONVERGED/FAILED, N_CASES = 0). The scalars the rest of this iteration
+  # needs are read back from the proposal.env the step writes under state_dir.
+  optimize:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Propose or Stop (Dakota)
+        uses: github/parallelworks/workflows@dakota-demo
+        with:
+          $yaml: workflows/dakota/yamls/general.yaml
+          cluster:
+            resource: ${{ inputs.resource }}
+          problem:
+            variables: ${{ inputs.variables }}
+            objectives: ${{ inputs.objectives }}
+          optimizer:
+            state_dir: ${{ inputs.state_dir }}
+            batch_size: ${{ inputs.batch_size }}
+            max_generations: ${{ inputs.max_iterations }}
+            stall_generations: ${{ inputs.stall_generations }}
+            seed: ${{ inputs.seed }}
+          software:
+            dakota_load: ${{ inputs.dakota_load }}
+      - name: Publish the Proposal
+        run: |
+          tee -a $OUTPUTS < "${{ inputs.state_dir }}/proposal.env"
+      # A proposal wider than the matrix below would silently evaluate only the
+      # first 8 cases — fail loud instead. A persistent violation ends as FAILED:
+      # the retried attempts find the generation without results and escalate.
+      - name: Check the Proposal Fits the Matrix
+        run: |
+          n="${{ needs.optimize.outputs.N_CASES }}"
+          if [ "${n}" -gt 8 ]; then
+            echo "::error::the optimizer proposed ${n} cases but the workers matrix has 8 slots; extend its job_id list (and the batch_size caps) or fix the optimizer"
+            exit 1
+          fi
+
+  # The guarded static matrix: a matrix can only expand over values that are
+  # concrete at submission, so the list below is the hardcoded maximum batch width
+  # and the job-level if: compares each slot against the runtime output N_CASES —
+  # surplus workers are skipped (Dakota often proposes fewer than batch_size new
+  # points per generation), and when the optimizer stops (N_CASES=0) every worker
+  # is skipped, so convergence costs nothing. Each live slot is one call of the
+  # standalone OpenFOAM workflow, exactly as it runs from the platform by itself.
+  workers:
+    needs: [optimize]
+    strategy:
+      fail-fast: false
+      matrix:
+        job_id:
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+    if: ${{ matrix.job_id <= needs.optimize.outputs.N_CASES }}
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Evaluate the Design (OpenFOAM)
+        uses: github/parallelworks/workflows@dakota-demo
+        with:
+          $yaml: workflows/openfoam-naca/yamls/general.yaml
+          cluster:
+            resource: ${{ inputs.resource }}
+            scheduler: ${{ inputs.scheduler }}
+            cores_per_case: ${{ inputs.cores_per_case }}
+            slurm:
+              is_enabled: ${{ inputs.slurm.is_enabled }}
+              partition: ${{ inputs.slurm.partition }}
+              time: ${{ inputs.slurm.time }}
+              scheduler_directives: ${{ inputs.slurm.scheduler_directives }}
+            pbs:
+              is_enabled: ${{ inputs.pbs.is_enabled }}
+              scheduler_directives: ${{ inputs.pbs.scheduler_directives }}
+          case:
+            params_file: ${{ needs.optimize.outputs.ITER_DIR }}/case_${{ matrix.job_id }}/params.in
+            case_dir: ${{ needs.optimize.outputs.ITER_DIR }}/case_${{ matrix.job_id }}
+            angle_of_attack: ${{ inputs.angle_of_attack }}
+            mesh_scale: ${{ inputs.mesh_scale }}
+          software:
+            openfoam_load: ${{ inputs.openfoam_load }}
+
+  # if: always — this job must reach its verdict even when optimize crashed or a
+  # worker failed: any non-CONVERGED/FAILED state exits 1, which fails this run and
+  # makes the parent's retry re-enter the loop (a crashed attempt re-runs the same
+  # iteration off the state files — self-healing).
+  decide:
+    needs: [optimize, workers]
+    if: ${{ always }}
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Continue or Stop
+        run: |
+          status=$(cat "${{ inputs.state_dir }}/status" 2>/dev/null || echo MISSING)
+          case "${status}" in
+            CONVERGED|FAILED)
+              echo "::notice::loop ends with status ${status}"
+              ;;
+            *)
+              echo "::notice::status ${status}: exit 1 so the parent retry fires the next iteration"
+              exit 1
+              ;;
+          esac
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Resource
+        optional: false
+      scheduler:
+        type: boolean
+        label: Schedule cases?
+        default: false
+      slurm:
+        type: group
+        label: SLURM directives
+        items:
+          is_enabled:
+            type: boolean
+            hidden: true
+            default: true
+            label: Is SLURM enabled?
+          partition:
+            type: string
+            label: SLURM partition
+            optional: true
+          time:
+            type: string
+            label: Walltime
+            default: '01:00:00'
+          scheduler_directives:
+            type: editor
+            label: Scheduler directives
+            optional: true
+      pbs:
+        type: group
+        label: PBS directives
+        items:
+          is_enabled:
+            type: boolean
+            hidden: true
+            default: true
+            label: Is PBS enabled?
+          scheduler_directives:
+            type: editor
+            label: Scheduler directives
+            optional: true
+      cores_per_case:
+        type: number
+        label: MPI ranks per OpenFOAM case
+        default: 1
+        min: 1
+      batch_size:
+        type: number
+        label: Cases per iteration
+        default: 4
+        min: 1
+        max: 8
+      max_iterations:
+        type: number
+        label: Generation budget
+        default: 10
+        min: 1
+      stall_generations:
+        type: number
+        label: Stagnation window
+        default: 3
+        min: 1
+      seed:
+        type: number
+        label: Dakota seed
+        default: 4242
+        min: 1
+      mesh_scale:
+        type: number
+        label: Mesh resolution multiplier
+        default: 1
+        min: 1
+        max: 6
+      angle_of_attack:
+        type: number
+        label: Angle of attack (degrees)
+        default: 5
+      variables:
+        type: editor
+        label: Design variables and bounds (one "<name> <lower> <upper>" per line)
+        default: |
+          max_camber       0.0   0.06
+          camber_position  0.3   0.6
+          thickness        0.08  0.18
+      objectives:
+        type: string
+        label: Objectives (both minimized)
+        default: drag_coefficient neg_lift_coefficient
+      openfoam_load:
+        type: editor
+        label: OpenFOAM environment commands (empty = conda-forge install)
+        optional: true
+      dakota_load:
+        type: editor
+        label: Dakota environment commands (empty = conda-forge install)
+        optional: true
+      state_dir:
+        type: string
+        label: Absolute path of the optimizer state directory

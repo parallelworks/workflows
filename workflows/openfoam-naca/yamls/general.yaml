@@ -139,7 +139,7 @@ jobs:
   # the submitter never forwards the script's exit status, so the verdict comes
   # from the files the case left behind: results.out (the objectives) or none
   results:
-    needs: [run_case]
+    needs: [preprocessing, run_case]
     ssh:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:

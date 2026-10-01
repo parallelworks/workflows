@@ -17,7 +17,7 @@
   <text x="40" y="108" font-size="11" fill="#52514e">creates state/, then starts the server:</text>
 
   <rect x="30" y="128" width="226" height="54" rx="6" fill="#fff3ec" stroke="#eb6834"/>
-  <text x="40" y="145" font-size="13" fill="#0b0b0b">preprocessing (last step)</text>
+  <text x="40" y="145" font-size="13" fill="#0b0b0b">start the Pareto front server</text>
   <text x="40" y="160" font-size="11" fill="#52514e">setsid pw endpoints run pareto-&lt;slug&gt; --</text>
   <text x="40" y="174" font-size="11" fill="#52514e">pareto-server.py --state-dir state/  &amp;</text>
 

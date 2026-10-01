@@ -113,10 +113,10 @@ jobs:
           path: /healthz
           budget: 120
 
-  # a server that never became healthy cannot be removed with pw endpoints
-  # delete (it is not listed), so it is killed here; a healthy one is never
-  # touched by the workflow again. !completed: the health check failed, or the
-  # run was canceled before it passed.
+  # a server whose endpoint never became healthy is killed here (!completed:
+  # the health check failed, or the run was canceled before it passed); a
+  # healthy one is never touched by the workflow again. Fixed paths, not job
+  # outputs: a canceled preprocessing publishes none.
   stop_server_if_unhealthy:
     needs: [preprocessing, wait_for_endpoint]
     if: ${{ !completed }}
@@ -125,12 +125,18 @@ jobs:
     steps:
       - name: Kill the Pareto Front Server
         run: |
-          pid=$(cat "${{ needs.preprocessing.outputs.SERVER_PID_FILE }}" 2>/dev/null || true)
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          if pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${name}"; then
+            echo "::warning::the endpoint ${name} registered but the run ended before its health check passed; deleting it"
+            pw endpoints delete "${name}" 2>/dev/null || true
+          fi
+          pid=$(cat "${PW_PARENT_JOB_DIR}/pareto.pid" 2>/dev/null || true)
           if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
-            echo "::warning::the Pareto front endpoint never became healthy; killing the server (pid ${pid})"
+            echo "::warning::killing the Pareto front server (pid ${pid})"
             kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
           fi
-          pkill -f "pareto-server.py --state-dir ${{ needs.preprocessing.outputs.STATE_DIR }}" 2>/dev/null || true
+          pkill -f "pareto-server.py --state-dir ${PW_PARENT_JOB_DIR}/state" 2>/dev/null || true
 
   # the loop starts once the front is being served, so a server that cannot
   # start fails the run before any case is spent, and the page is live from the

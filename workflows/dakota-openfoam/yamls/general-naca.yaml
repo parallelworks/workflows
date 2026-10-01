@@ -82,7 +82,7 @@ jobs:
           #!/bin/bash
           command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
           # {port} is replaced by pw endpoints run with the local port it forwards to
-          exec pw endpoints run --name "${{ inputs.service.name }}-${PW_RUN_SLUG}" -- \
+          exec pw endpoints run --name "pareto-${PW_RUN_SLUG}" -- \
               python3 "${PWD}/workflows/dakota/app/pareto-server.py" \
               --state-dir "${PWD}/state" --port {port} --refresh 10 \
               --title "NACA airfoil Pareto front - ${PW_RUN_SLUG}"
@@ -108,7 +108,7 @@ jobs:
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
-          endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
+          endpoint_name: pareto-${PW_RUN_SLUG}
           host: ${{ inputs.cluster.resource.ip }}
           path: /healthz
           budget: 120
@@ -126,7 +126,7 @@ jobs:
       - name: Kill the Pareto Front Server
         run: |
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          name="pareto-${PW_RUN_SLUG}"
           if pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${name}"; then
             echo "::warning::the endpoint ${name} registered but the run ended before its health check passed; deleting it"
             pw endpoints delete "${name}" 2>/dev/null || true
@@ -194,11 +194,11 @@ jobs:
         run: |
           state="${{ needs.preprocessing.outputs.STATE_DIR }}"
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="${{ inputs.service.name }}-${PW_RUN_SLUG}" '$1 == name {print $3}')
+          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="pareto-${PW_RUN_SLUG}" '$1 == name {print $3}')
           if [ -n "${url}" ]; then
-            echo "::notice::the Pareto front page keeps serving at ${url} (every evaluation, hover for the design); remove it with: pw endpoints delete ${{ inputs.service.name }}-${PW_RUN_SLUG}"
+            echo "::notice::the Pareto front page keeps serving at ${url} (every evaluation, hover for the design); remove it with: pw endpoints delete pareto-${PW_RUN_SLUG}"
           else
-            echo "::warning::the Pareto front endpoint ${{ inputs.service.name }}-${PW_RUN_SLUG} is no longer listed; the front is still in ${state}/pareto.csv and ${state}/pareto.svg"
+            echo "::warning::the Pareto front endpoint pareto-${PW_RUN_SLUG} is no longer listed; the front is still in ${state}/pareto.csv and ${state}/pareto.svg"
           fi
           status=$(cat "${state}/status" 2>/dev/null || echo MISSING)
           case "${status}" in
@@ -426,12 +426,3 @@ jobs:
               Shell commands that put `dakota` on PATH, e.g. `module load dakota`.
               Leave empty to install Dakota 6.16 from conda-forge under
               ${service_parent_install_dir:-$HOME/pw/software}/dakota.
-      service:
-        type: group
-        hidden: true
-        label: Pareto Front Endpoint
-        items:
-          name:
-            type: string
-            hidden: true
-            default: pareto

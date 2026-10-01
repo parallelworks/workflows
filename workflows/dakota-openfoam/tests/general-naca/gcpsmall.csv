@@ -1,2 +1,3 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-01T07:59:59Z,warm,pass,ok,9f6b31b,74bcc3d,7c7ffa7,9969fe7,9969fe7,dakota-demo,alvaro,expert-owl,276,
+2026-10-01T10:48:00Z,warm,pass,ok,945eefb,74bcc3d,7c7ffa7,cd09985,cd09985,dakota-demo,alvaro,pleasant-fish,292,

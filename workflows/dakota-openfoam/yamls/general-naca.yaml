@@ -56,10 +56,11 @@ jobs:
         run: |
           set -e
           batch="${{ inputs.optimizer.batch_size }}"
-          # 8 = the width of the static matrix in iteration-naca.yaml; a matrix
-          # cannot expand over runtime values, so the cap is hardcoded there
+          # 8 = the literal list the workers matrix in iteration-naca.yaml is
+          # sliced from; a matrix cannot expand over runtime values, so the
+          # ceiling is a literal there
           if [ "${batch}" -lt 1 ] || [ "${batch}" -gt 8 ]; then
-            echo "::error::batch_size ${batch} is out of range 1-8. To raise the cap, extend the job_id list in iteration-naca.yaml."
+            echo "::error::batch_size ${batch} is out of range 1-8. To raise the cap, extend the literal job_id list in iteration-naca.yaml and the batch_size max."
             exit 1
           fi
           cores="${{ inputs.cluster.cores_per_case }}"
@@ -323,9 +324,10 @@ jobs:
             max: 8
             tooltip: |
               OpenFOAM cases evaluated in parallel each iteration (Dakota MOGA's
-              population size). Capped by the matrix width hardcoded in
-              iteration-naca.yaml. Dakota may propose fewer new points in a
-              generation; surplus worker slots are skipped for free.
+              population size). Sizes the workers matrix of iteration-naca.yaml,
+              sliced from a literal list of 8 at submission. Dakota may propose
+              fewer new points in a generation; surplus worker slots are skipped
+              for free.
           stall_generations:
             type: number
             label: Stagnation window

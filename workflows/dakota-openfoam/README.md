@@ -22,7 +22,7 @@ general-naca.yaml
  ├─ stop_server_if_unhealthy   if: !completed — kills a server whose endpoint never came up
  └─ optimization_loop   needs the endpoint, then:
      ├─ Iterate         retried step; each attempt runs iteration-naca.yaml once:
-     │                    optimize ──▶ workers-1..8 ──▶ decide
+     │                    optimize ──▶ workers-1..batch_size ──▶ decide
      │                    dakota step   openfoam-naca   exit 1 = next cycle, exit 0 = done
      └─ Report          if: always — verdict from state/status, the page URL
 ```
@@ -33,7 +33,8 @@ The two subworkflows only share files under `state/`:
    `state_dir`; the step ingests `iter_<N-1>/case_*/{results.out,exit_code}`
    and writes `iter_<N>/case_<j>/params.in` plus `proposal.env`, which the next
    step publishes as outputs.
-2. `workers` slot *j* runs when `j <= N_CASES` and calls the OpenFOAM workflow
+2. `workers` is a matrix of `batch_size` slots (a literal list of 8 sliced at
+   submission); slot *j* runs when `j <= N_CASES` and calls the OpenFOAM workflow
    with `case.params_file = ITER_DIR/case_j/params.in` and
    `case.case_dir = ITER_DIR/case_j`; the cluster, mesh, angle and environment
    settings pass straight through. The call leaves `results.out` or `exit_code`

@@ -266,3 +266,11 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   the health check (no `skip_cleanups_file`), and add the `!completed` handler above
   because an endpoint that never registered cannot be removed with `pw endpoints
   delete`. `workflows/dakota-openfoam` serves its Pareto page this way.
+- **A matrix can follow a form input** (verified 2026-10-01): `matrix: { job_id: ${{ [1,
+  2, 3, 4, 5, 6, 7, 8] get 0:(inputs.batch_size) }} }` slices a literal list at submission,
+  in a top-level workflow and in a subworkflow whose `batch_size` arrives through `with:`
+  from the parent's form. What a matrix still cannot take is a runtime value
+  (`needs.*.outputs`), so the per-slot `if: ${{ matrix.job_id <= needs.<job>.outputs.N }}`
+  guard stays for the count the run actually produces. Extend the literal to raise the
+  ceiling; the guard step that compares N against it should compare against the input,
+  not the literal (`tutorials/optimization/iteration.yaml`).

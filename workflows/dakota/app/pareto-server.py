@@ -23,7 +23,8 @@ import json
 import os
 import sys
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 
 STATE_DIR = ""
 REFRESH_S = 10
@@ -425,8 +426,13 @@ def main():
     STATE_DIR = os.path.abspath(args.state_dir)
     REFRESH_S = max(2, args.refresh)
     TITLE = args.title
-    server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
-    server.daemon_threads = True
+    # not http.server.ThreadingHTTPServer: that arrived in Python 3.7 and HSP
+    # login nodes run 3.6
+    class Server(ThreadingMixIn, HTTPServer):
+        daemon_threads = True
+        allow_reuse_address = True
+
+    server = Server(("0.0.0.0", args.port), Handler)
     print("pareto-server: serving %s on port %d (refresh %ds)" % (STATE_DIR, args.port, REFRESH_S),
           flush=True)
     try:

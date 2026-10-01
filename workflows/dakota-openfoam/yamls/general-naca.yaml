@@ -95,6 +95,18 @@ jobs:
           fi
           echo $! > pareto.pid
           echo "::notice::Pareto front server started (pid $(cat pareto.pid)); its output is ${PWD}/pareto.out"
+      # the wait below has no budget while the endpoint is not listed, so a server
+      # that dies on start (a missing pw client, an old python) must fail the run
+      # here, with its output, rather than leave it polling for ever
+      - name: Check the Server Is Alive
+        run: |
+          sleep 10
+          if ! kill -0 "$(cat pareto.pid)" 2>/dev/null; then
+            echo "::error::the Pareto front server exited within 10 s of starting; its output follows"
+            cat pareto.out
+            exit 1
+          fi
+          echo "::notice::server alive after 10 s; $(tail -n 1 pareto.out)"
       # the health check of the endpoint pattern: this job, and so the loop that
       # needs it, only completes once the endpoint is listed and /healthz answers
       # through the platform
@@ -158,6 +170,9 @@ jobs:
         uses: github/parallelworks/workflows@dakota-demo
         with:
           $yaml: workflows/dakota-openfoam/yamls/iteration-naca.yaml
+          # the retry counter (0 on the first attempt), so the iteration can say
+          # which attempt it is; the true iteration is the generation in state/
+          attempt: ${{ env.PW_WORKFLOW_STEP_CURRENT_RETRY }}
           resource: ${{ inputs.cluster.resource }}
           scheduler: ${{ inputs.cluster.scheduler }}
           slurm:

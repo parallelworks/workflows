@@ -56,6 +56,9 @@ jobs:
         uses: github/parallelworks/workflows@dakota-demo
         with:
           $yaml: tutorials/optimization/iteration.yaml
+          # the retry counter (0 on the first attempt): attempt != iteration, the
+          # true iteration is the generation counter in state/
+          attempt: ${{ env.PW_WORKFLOW_STEP_CURRENT_RETRY }}
           resource: ${{ inputs.cluster.resource }}
           scheduler: ${{ inputs.cluster.scheduler }}
           slurm:

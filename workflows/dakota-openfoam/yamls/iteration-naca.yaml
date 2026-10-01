@@ -43,6 +43,8 @@ jobs:
       - name: Publish the Proposal
         run: |
           tee -a $OUTPUTS < "${{ inputs.state_dir }}/proposal.env"
+          source "${{ inputs.state_dir }}/proposal.env"
+          echo "::notice::Iterate attempt $(( ${{ inputs.attempt }} + 1 )) of $(( ${{ inputs.max_iterations }} + 1 )): generation ${GENERATION}, status ${STATUS}, ${N_CASES} cases to evaluate"
       # A proposal wider than the matrix below would silently evaluate only the
       # first batch_size cases — fail loud instead. A persistent violation ends as
       # FAILED: the retried attempts find the generation without results and escalate.
@@ -122,6 +124,11 @@ jobs:
 'on':
   execute:
     inputs:
+      attempt:
+        type: number
+        label: Attempt of the parent's retried Iterate step (0-based)
+        default: 0
+        min: 0
       resource:
         type: compute-clusters
         label: Resource

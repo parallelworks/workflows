@@ -256,6 +256,8 @@ jobs:
             default: 0.02
             min: 0
             max: 0.06
+            hidden: ${{ inputs.case.params_file != '' }}
+            ignore: ${{ .hidden }}
             tooltip: |
               The first NACA digit / 100: 0 is a symmetric airfoil (00xx), 0.02 a
               2412-like one. The box 0-0.06 is where the C-grid generator was
@@ -266,6 +268,8 @@ jobs:
             default: 0.4
             min: 0.3
             max: 0.6
+            hidden: ${{ inputs.case.params_file != '' }}
+            ignore: ${{ .hidden }}
             tooltip: The second NACA digit / 10. Ignored by the geometry when the camber is 0.
           thickness:
             type: number
@@ -273,6 +277,8 @@ jobs:
             default: 0.12
             min: 0.08
             max: 0.18
+            hidden: ${{ inputs.case.params_file != '' }}
+            ignore: ${{ .hidden }}
             tooltip: The last two NACA digits / 100.
           angle_of_attack:
             type: number
@@ -283,6 +289,9 @@ jobs:
             tooltip: |
               Incidence of the freestream. The airfoil stays axis-aligned; the
               angle goes into the far-field velocity and the lift/drag directions.
+              A case setting, not a design variable: an optimization loop passes
+              it next to the params file, and only an angle_of_attack line in
+              that file overrides it.
           mesh_scale:
             type: number
             label: Mesh resolution multiplier
@@ -308,12 +317,14 @@ jobs:
             type: string
             label: Design from a params file
             optional: true
+            default: ''
             tooltip: |
               Absolute path of a Dakota-style parameters file, one "<value> <name>"
-              line per variable (max_camber, camber_position, thickness). When
-              set, the design fields above are ignored and the file is copied
-              into the case directory as params.in. This is how an optimization
-              loop hands a proposed design to this workflow.
+              line per variable (max_camber, camber_position, thickness; an
+              optional angle_of_attack line overrides the field above). When
+              set, the three shape fields are hidden and ignored and the file is
+              copied into the case directory as params.in. This is how an
+              optimization loop hands a proposed design to this workflow.
       software:
         type: group
         label: Software Environment

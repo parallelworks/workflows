@@ -201,7 +201,11 @@ of them with one call of this YAML:
 
 `params_file` must carry `max_camber`, `camber_position` and `thickness` lines
 (the names of the problem's design variables); the workflow copies it into the
-case directory as `params.in` when it is not already there. What the call leaves
+case directory as `params.in` when it is not already there, and the three shape
+fields of the form are hidden and ignored. The angle of attack is a case
+setting, not a design variable, so it still comes from `case.angle_of_attack`;
+an `angle_of_attack` line in the params file overrides it, for a study that
+treats the incidence as a fourth variable. What the call leaves
 in `case_dir` is the evaluator's side of the loop's file contract: `results.out`
 with the two objectives (`drag_coefficient`, `neg_lift_coefficient`, both to be
 minimized), or no `results.out` and an `exit_code` file when the solver failed —

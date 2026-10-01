@@ -65,6 +65,13 @@ if [ -z "${max_camber}" ] || [ -z "${camber_position}" ] || [ -z "${thickness}" 
     echo "params.in is missing max_camber, camber_position or thickness"
     exit 1
 fi
+# the angle is a case setting (ALPHA_DEG) unless the design file carries it,
+# which an optimizer treating the incidence as a fourth variable would do
+alpha_in_file=$(awk '$2=="angle_of_attack"{print $1}' params.in)
+if [ -n "${alpha_in_file}" ]; then
+    ALPHA_DEG="${alpha_in_file}"
+fi
+echo "design: camber=${max_camber} pos=${camber_position} thickness=${thickness} alpha=${ALPHA_DEG} deg (mesh_scale ${MESH_SCALE}, ${CORES_PER_CASE} core(s))"
 
 # freestream vector and force directions from the angle of attack: the airfoil
 # stays axis-aligned and the incidence lives in the far-field velocity

@@ -23,7 +23,7 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      - name: Propose or Stop (Dakota)
+      - name: Dakota (Propose or Stop)
         uses: github/parallelworks/workflows@dakota-demo
         with:
           $yaml: workflows/dakota/yamls/general.yaml
@@ -79,7 +79,7 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      - name: Evaluate the Design (OpenFOAM)
+      - name: OpenFOAM (Evaluate the Design)
         uses: github/parallelworks/workflows@dakota-demo
         with:
           $yaml: workflows/openfoam-naca/yamls/general.yaml

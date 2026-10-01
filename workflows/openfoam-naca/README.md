@@ -10,6 +10,8 @@ It runs on its own from the platform, and it is the evaluator of
 [`workflows/dakota-openfoam`](../dakota-openfoam/), which calls this same YAML
 once per design the optimizer proposes.
 
+![From the form or from a loop's params file to params.in and case.sh, then blockMesh, potentialFoam and simpleFoam under the submitter, leaving results.out, exit_code and case.foam in the case directory](thumbnails/case-pipeline.svg)
+
 ## Inputs
 
 | Group | Input | Meaning |

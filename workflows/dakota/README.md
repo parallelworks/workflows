@@ -7,6 +7,8 @@ proposes the next batch of designs (`CONTINUE`) or ends the study (`CONVERGED`,
 [`workflows/dakota-openfoam`](../dakota-openfoam/), another workflow, or a
 script run by hand. Nothing in this workflow knows about OpenFOAM.
 
+![One run of the step ingests the last generation's results, resumes Dakota from its restart file, captures the next designs and stops; your evaluator reads params.in and leaves results.out in each case directory; the state directory holds the whole study](thumbnails/step-cycle.svg)
+
 ## How the optimization works
 
 Dakota's MOGA (multi-objective genetic algorithm) keeps a population of designs

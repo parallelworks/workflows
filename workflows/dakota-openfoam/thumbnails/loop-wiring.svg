@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="560" viewBox="0 0 860 560" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2a78d6"/></marker>
+    <marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1a9850"/></marker>
+    <marker id="aK" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52514e"/></marker>
+    <marker id="aO" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#eb6834"/></marker>
+  </defs>
+  <rect width="860" height="560" rx="10" fill="#fcfcfb" stroke="#d8d5cf"/>
+
+  <!-- general-naca.yaml -->
+  <rect x="18" y="18" width="250" height="524" rx="8" fill="#f4f3ef" stroke="#c3c2b7"/>
+  <text x="30" y="42" font-size="15" font-weight="bold" fill="#0b0b0b">general-naca.yaml</text>
+  <text x="30" y="60" font-size="12" fill="#52514e">the run</text>
+
+  <rect x="30" y="76" width="226" height="40" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="40" y="93" font-size="13" fill="#0b0b0b">preprocessing</text>
+  <text x="40" y="108" font-size="11" fill="#52514e">creates state/</text>
+
+  <rect x="30" y="128" width="226" height="54" rx="6" fill="#fff3ec" stroke="#eb6834"/>
+  <text x="40" y="145" font-size="13" fill="#0b0b0b">session_runner + wait_for_endpoint</text>
+  <text x="40" y="160" font-size="11" fill="#52514e">pw endpoints run pareto-&lt;slug&gt;</text>
+  <text x="40" y="174" font-size="11" fill="#52514e">-- pareto-server.py --state-dir state/</text>
+
+  <rect x="30" y="196" width="226" height="330" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="40" y="214" font-size="13" fill="#0b0b0b">optimization_loop</text>
+  <rect x="40" y="226" width="206" height="250" rx="6" fill="#eef4fc" stroke="#2a78d6" stroke-dasharray="5,3"/>
+  <text x="50" y="245" font-size="13" fill="#0b0b0b">Iterate</text>
+  <text x="50" y="261" font-size="11" fill="#52514e">retry: max-retries = max_iterations</text>
+  <text x="50" y="275" font-size="11" fill="#52514e">timeout = iteration_timeout</text>
+  <text x="50" y="297" font-size="11" fill="#2a78d6">uses: iteration-naca.yaml</text>
+  <text x="50" y="335" font-size="11" fill="#52514e">attempt exits 1</text>
+  <text x="50" y="349" font-size="11" fill="#52514e">&#8594; next iteration</text>
+  <text x="50" y="371" font-size="11" fill="#52514e">attempt exits 0</text>
+  <text x="50" y="385" font-size="11" fill="#52514e">&#8594; loop over</text>
+  <rect x="40" y="488" width="206" height="30" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="50" y="507" font-size="13" fill="#0b0b0b">Report  <tspan font-size="11" fill="#52514e">if: always, reads state/status</tspan></text>
+
+  <!-- iteration-naca.yaml -->
+  <rect x="292" y="196" width="276" height="330" rx="8" fill="#f4f3ef" stroke="#c3c2b7"/>
+  <text x="304" y="220" font-size="15" font-weight="bold" fill="#0b0b0b">iteration-naca.yaml</text>
+  <text x="304" y="238" font-size="12" fill="#52514e">one attempt = one generation</text>
+
+  <rect x="304" y="252" width="252" height="62" rx="6" fill="#eef4fc" stroke="#2a78d6" stroke-width="1.5"/>
+  <text x="314" y="270" font-size="13" fill="#0b0b0b">optimize</text>
+  <text x="314" y="287" font-size="12" fill="#2a78d6">uses: workflows/dakota  (general.yaml)</text>
+  <text x="314" y="303" font-size="11" fill="#52514e">one Dakota step: ingest, then propose or stop</text>
+
+  <rect x="304" y="332" width="252" height="86" rx="6" fill="#edf7f0" stroke="#1a9850" stroke-width="1.5"/>
+  <text x="314" y="350" font-size="13" fill="#0b0b0b">workers  <tspan font-size="11" fill="#52514e">matrix job_id 1..8</tspan></text>
+  <text x="314" y="366" font-size="11" fill="#52514e">if: job_id &#8804; N_CASES</text>
+  <text x="314" y="384" font-size="12" fill="#1a9850">uses: workflows/openfoam-naca  (general.yaml)</text>
+  <text x="314" y="400" font-size="11" fill="#52514e">params_file + case_dir = iter_N/case_j</text>
+  <text x="314" y="413" font-size="11" fill="#52514e">one OpenFOAM case per proposed design</text>
+
+  <rect x="304" y="436" width="252" height="76" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="314" y="454" font-size="13" fill="#0b0b0b">decide  <tspan font-size="11" fill="#52514e">if: always</tspan></text>
+  <text x="314" y="472" font-size="11" fill="#52514e">state/status = CONTINUE &#8594; exit 1</text>
+  <text x="314" y="487" font-size="11" fill="#52514e">CONVERGED or FAILED &#8594; exit 0</text>
+  <text x="314" y="503" font-size="11" fill="#52514e">(the exit code is the loop control)</text>
+
+  <line x1="430" y1="314" x2="430" y2="330" stroke="#52514e" stroke-width="1.5" marker-end="url(#aK)"/>
+  <line x1="430" y1="418" x2="430" y2="434" stroke="#52514e" stroke-width="1.5" marker-end="url(#aK)"/>
+  <line x1="246" y1="300" x2="290" y2="300" stroke="#2a78d6" stroke-width="2" marker-end="url(#aB)"/>
+
+  <!-- state directory -->
+  <rect x="596" y="196" width="246" height="330" rx="8" fill="#fbf6e9" stroke="#c9a227"/>
+  <text x="608" y="220" font-size="15" font-weight="bold" fill="#0b0b0b">state/</text>
+  <text x="608" y="238" font-size="12" fill="#52514e">the only thing the pieces share</text>
+
+  <text x="608" y="266" font-size="12" fill="#2a78d6">dakota/dakota.rst, results_db/</text>
+  <text x="608" y="281" font-size="11" fill="#52514e">the study's memory (Dakota step only)</text>
+
+  <text x="608" y="309" font-size="12" font-weight="bold" fill="#0b0b0b">iter_N/case_j/params.in</text>
+  <text x="608" y="324" font-size="11" fill="#52514e">written by optimize, read by worker j</text>
+
+  <text x="608" y="352" font-size="12" font-weight="bold" fill="#0b0b0b">iter_N/case_j/results.out | exit_code</text>
+  <text x="608" y="367" font-size="11" fill="#52514e">written by worker j, read by the next optimize</text>
+
+  <text x="608" y="395" font-size="12" fill="#0b0b0b">status, proposal.env</text>
+  <text x="608" y="410" font-size="11" fill="#52514e">STATUS, GENERATION, N_CASES, ITER_DIR</text>
+
+  <text x="608" y="438" font-size="12" fill="#eb6834">evaluations.csv, pareto.csv</text>
+  <text x="608" y="453" font-size="11" fill="#52514e">every design and the front, rewritten each</text>
+  <text x="608" y="467" font-size="11" fill="#52514e">generation; what the Pareto page shows</text>
+
+  <text x="608" y="495" font-size="12" fill="#0b0b0b">iter_N/case_j/case/case.foam</text>
+  <text x="608" y="510" font-size="11" fill="#52514e">every solved case, opens in ParaView</text>
+
+  <!-- file flows -->
+  <line x1="556" y1="283" x2="604" y2="306" stroke="#2a78d6" stroke-width="2" marker-end="url(#aB)"/>
+  <line x1="604" y1="318" x2="556" y2="360" stroke="#1a9850" stroke-width="2" marker-end="url(#aG)"/>
+  <line x1="556" y1="392" x2="604" y2="358" stroke="#1a9850" stroke-width="2" marker-end="url(#aG)"/>
+  <line x1="604" y1="350" x2="556" y2="270" stroke="#2a78d6" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#aB)"/>
+
+  <!-- pareto endpoint -->
+  <rect x="292" y="60" width="550" height="118" rx="8" fill="#fff3ec" stroke="#eb6834"/>
+  <text x="304" y="84" font-size="15" font-weight="bold" fill="#0b0b0b">pw endpoint  pareto-&lt;run slug&gt;</text>
+  <text x="304" y="104" font-size="12" fill="#52514e">pareto-server.py reads state/ on every request; the page polls every 10 s until the status is final</text>
+  <text x="304" y="121" font-size="12" fill="#52514e">every evaluated design, the Pareto front, variables and objectives on hover</text>
+  <text x="304" y="141" font-size="12" fill="#52514e">up before the first generation, outlives the run; pw endpoints delete pareto-&lt;slug&gt; kills it</text>
+  <text x="304" y="162" font-size="12" fill="#52514e">endpoint jobs: session_runner (script_submitter) + wait_for_endpoint (/healthz) &#8594; SKIP_CLEANUP</text>
+  <line x1="700" y1="194" x2="700" y2="180" stroke="#eb6834" stroke-width="2" marker-end="url(#aO)"/>
+  <line x1="256" y1="150" x2="290" y2="130" stroke="#eb6834" stroke-width="2" marker-end="url(#aO)"/>
+</svg>

@@ -8,12 +8,12 @@ NACA airfoil shape optimization as a loop of two standalone workflows:
 | solve one design | [`workflows/openfoam-naca`](../openfoam-naca/README.md) | the `workers` matrix of `iteration-naca.yaml`, once per design |
 
 Their READMEs describe the optimizer, the evaluator and their inputs; this one
-covers only the loop, the live front and the tests. The single-app original is
-kept as a reference in [`backup-no-subworkflow/`](backup-no-subworkflow/) (not
-runnable); the loop mechanics come from
+covers only the loop, the live front and the tests. The loop mechanics come from
 [`tutorials/optimization`](../../tutorials/optimization/README.md).
 
 ## How the pieces connect
+
+![The loop: general-naca.yaml runs iteration-naca.yaml until it exits 0; its optimize job calls the dakota workflow and its workers call openfoam-naca once per design; they share only the files under state/, which the Pareto endpoint serves](thumbnails/loop-wiring.svg)
 
 ```
 general-naca.yaml

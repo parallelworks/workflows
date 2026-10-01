@@ -29,7 +29,6 @@ configurations:
         cores_per_case: 4
         slurm:
           is_enabled: true
-          partition: compute
           time: '01:00:00'
       optimizer:
         max_iterations: 10
@@ -102,7 +101,7 @@ jobs:
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
-          endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
+          endpoint_name: pareto-${PW_RUN_SLUG}
           host: ${{ inputs.cluster.resource.ip }}
           path: /healthz
           budget: 120

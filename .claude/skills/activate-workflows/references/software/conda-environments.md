@@ -1,7 +1,7 @@
 # Conda environments on login nodes (sudo-free software)
 
 > How the workflows here install scientific software without root, and where that
-> broke. Examples: `workflows/dakota-openfoam/app/install-common.sh` (Miniforge
+> broke. Examples: `tools/utils/miniforge.sh` (Miniforge
 > bootstrap shared by two installers), `workflows/jupyterlab/build-conda-artifact.sh`
 > (prebuilt env as an artifact).
 
@@ -25,7 +25,7 @@
 
 - `source <prefix>/etc/profile.d/conda.sh && conda activate <env>` — put these two
   lines in one file that preprocessing writes and every later step and case sources
-  (`workflows/dakota-openfoam/app/prepare-env.sh`); absolute paths work on compute
+  (`tools/utils/prepare-env.sh`); absolute paths work on compute
   nodes because the home filesystem is shared. Validate it in preprocessing by
   sourcing it in a fresh `bash -c` and checking `command -v <tool>`.
 - `conda run -n <env> <cmd>` is fine for one-off checks; do not wrap a long-running

@@ -93,7 +93,7 @@ jobs:
           endpoint_name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
           server="${PWD}/workflows/dakota/app/pareto-server.py"
           state_dir="${PWD}/state"
-          title="NACA airfoil Pareto front · ${PW_RUN_SLUG}"
+          title="NACA airfoil Pareto front - ${PW_RUN_SLUG}"
           EOF
           cat <<'EOF' >> start-pareto-${PW_JOB_ID}.sh
           echo '#!/bin/bash' > cancel.sh

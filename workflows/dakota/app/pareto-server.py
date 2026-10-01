@@ -388,9 +388,14 @@ class Handler(BaseHTTPRequestHandler):
         self.do_GET()
 
     def do_GET(self):
+        # a path-based endpoint (--no-subdomain) forwards the full
+        # /me/session/<user>/<name>/ prefix, which pw endpoints run exports
         path = self.path.split("?")[0]
+        prefix = os.environ.get("PW_ENDPOINT_PATH", "/").rstrip("/")
+        if prefix and path.startswith(prefix):
+            path = path[len(prefix):] or "/"
         try:
-            if path in ("/", "/index.html"):
+            if path in ("/", "/index.html", ""):
                 self.send(200, PAGE.replace("__TITLE__", TITLE.replace("<", "&lt;")),
                           "text/html; charset=utf-8")
             elif path == "/data.json":

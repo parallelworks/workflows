@@ -1,7 +1,8 @@
 # OpenFOAM from conda-forge (openfoam.com v2412)
 
 > What running OpenFOAM inside a workflow taught while building
-> `workflows/dakota-openfoam` (2026-09). That README holds the physics, the
+> `workflows/dakota-openfoam` (2026-09; the OpenFOAM side is `workflows/openfoam-naca`
+> since 2026-10). That README holds the physics, the
 > mesh-fidelity table and the run instructions; this file holds the install and
 > parallel-run facts and the traps, with the symptom text you would grep for.
 
@@ -9,14 +10,14 @@
 
 - `conda create -n openfoam openfoam=2412` into a Miniforge prefix (~5 min once);
   idempotence check `conda run -n openfoam simpleFoam -help`. Pattern:
-  `workflows/dakota-openfoam/app/install-openfoam.sh` + `install-common.sh`
+  `workflows/openfoam-naca/app/install-openfoam.sh` + `tools/utils/miniforge.sh`
   (Miniforge itself: [conda-environments.md](conda-environments.md)).
 - **Activation is incomplete:** the package does not export `FOAM_TUTORIALS` — derive
   it as `${CONDA_PREFIX}/tutorials` after `conda activate` (verified 2026-09-29).
   Check every `FOAM_*`/`WM_*` variable you rely on the same way.
 - A site install works through the same code path: `module load openfoam/2412` or
   `source /opt/openfoam2412/etc/bashrc` typed into the form becomes one sourceable
-  file that every case sources (`workflows/dakota-openfoam/app/prepare-env.sh`).
+  file that every case sources (`tools/utils/prepare-env.sh`).
 
 ## Parallel runs (`-parallel`)
 
@@ -43,7 +44,7 @@
   streamed job log; tee the short steps and filter the solver into one line per N
   iterations (`Time`, first `Solving for p` residual, and Cd/Cl from a `forceCoeffs`
   function object with `log yes` — v2412 prints them as a tab-separated table, `Cd:` then
-  the total). `workflows/dakota-openfoam/app/simulator.sh`, `foam_solve`.
+  the total). `workflows/openfoam-naca/app/simulator.sh`, `foam_solve`.
 - **Launcher:** `mpirun --bind-to none -np N`. Hydra and OpenMPI both accept the flag;
   without it, concurrent launchers on one node (a login node running `batch_size` cases
   at once) all pin their ranks to the same first cores. Let the sourced environment

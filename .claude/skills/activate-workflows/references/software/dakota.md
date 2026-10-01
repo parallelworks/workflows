@@ -1,6 +1,8 @@
 # Dakota as the optimizer of an iterative workflow
 
-> Learned building `workflows/dakota-openfoam` (2026-09): Dakota 6.16 (MOGA) proposing
+> Learned building `workflows/dakota-openfoam` (2026-09; since 2026-10 split into the
+> `workflows/dakota` optimizer step, `workflows/openfoam-naca` evaluator and the loop
+> that joins them as subworkflows): Dakota 6.16 (MOGA) proposing
 > generations that the platform evaluates as a guarded static matrix, the
 > `tutorials/optimization` loop. The README section "How Dakota fits the iteration
 > contract" is the design; this file lists the facts that make it work and the traps.
@@ -9,7 +11,7 @@
 
 - conda-forge `dakota=6.16.0` (a `py310` build; brings its own Python) installs
   without sudo next to other envs in one Miniforge prefix; check
-  `conda run -n dakota dakota --version` (`workflows/dakota-openfoam/app/install-dakota.sh`).
+  `conda run -n dakota dakota --version` (`workflows/dakota/app/install-dakota.sh`).
   A site `module load dakota` goes through the same sourceable env file
   (`prepare-env.sh`). Launch it as `bash -c 'source "$1" && shift && exec dakota "$@"'`
   so the `exec` keeps Dakota as the session leader the wrapper later kills.
@@ -18,7 +20,7 @@
 
 Dakota drives evaluations itself and has no "emit a batch and exit" mode for
 optimization methods, so the wrapper uses its crash-recovery semantics as the pause
-button (`workflows/dakota-openfoam/app/optimizer.py`, `driver.py`):
+button (`workflows/dakota/app/optimizer.py`, `driver.py`):
 
 - Every call resumes with `-read_restart` and a **fixed `seed`**, so the method
   deterministically replays to where it stopped; the fork driver serves already

@@ -1,0 +1,181 @@
+# One Dakota optimizer step: ingest the results of the designs proposed last
+# time, then either propose the next batch of designs (status CONTINUE) or stop
+# (CONVERGED or FAILED). Dakota's MOGA is the search strategy; the study lives in
+# a state directory (Dakota's restart file, every evaluated design, the current
+# Pareto front), so running this workflow again against the same directory
+# continues the study. It knows nothing about the evaluator: each proposed design
+# is a case directory holding a Dakota-style params.in, and whoever evaluates it
+# leaves results.out there (or an exit_code file for an evaluation that ran and
+# failed) before the next step. workflows/dakota-openfoam drives it in a loop
+# with OpenFOAM as the evaluator; by hand, any script will do.
+#
+# The step is seconds of work on the login node, so there is no scheduler
+# section: the resource is only where the state directory lives.
+permissions:
+  - '*'
+
+jobs:
+  optimize:
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Checkout Dakota App
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/dakota/app
+            - tools/utils
+      # the environment is one file sourced before Dakota runs; the heredoc carries
+      # the form's load commands verbatim (empty -> conda-forge install)
+      - name: Prepare the Dakota Environment
+        run: |
+          set -e
+          bash tools/utils/prepare-env.sh dakota "${PWD}/dakota-env.sh" \
+            workflows/dakota/app/install-dakota.sh dakota << 'PW_LOAD_EOF'
+          ${{ inputs.software.dakota_load }}
+          PW_LOAD_EOF
+      - name: Propose or Stop
+        run: |
+          set -e
+          state_dir="${{ inputs.optimizer.state_dir }}"
+          case "${state_dir}" in
+            ''|undefined) state_dir="${PW_PARENT_JOB_DIR}/state" ;;
+          esac
+          mkdir -p "${state_dir}"
+          cat > "${state_dir}/variables.txt" << 'PW_VARS_EOF'
+          ${{ inputs.problem.variables }}
+          PW_VARS_EOF
+          python3 workflows/dakota/app/optimizer.py \
+            --state-dir "${state_dir}" \
+            --app-dir "${PWD}/workflows/dakota/app" \
+            --variables-file "${state_dir}/variables.txt" \
+            --objectives "${{ inputs.problem.objectives }}" \
+            --batch-size "${{ inputs.optimizer.batch_size }}" \
+            --max-generations "${{ inputs.optimizer.max_generations }}" \
+            --stall-generations "${{ inputs.optimizer.stall_generations }}" \
+            --seed "${{ inputs.optimizer.seed }}" \
+            --dakota-env "${PWD}/dakota-env.sh"
+          echo "STATE_DIR=${state_dir}" | tee -a $OUTPUTS
+          tee -a $OUTPUTS < "${state_dir}/proposal.env"
+      # the verdict of the run: a proposal or a converged study succeed, FAILED
+      # (nothing ever evaluates, Dakota crashed) is an error with the pointers
+      - name: Report
+        run: |
+          state_dir="${{ needs.optimize.outputs.STATE_DIR }}"
+          status="${{ needs.optimize.outputs.STATUS }}"
+          case "${status}" in
+            CONTINUE)
+              echo "::notice::generation ${{ needs.optimize.outputs.GENERATION }}: ${{ needs.optimize.outputs.N_CASES }} designs to evaluate under ${{ needs.optimize.outputs.ITER_DIR }} (case_<j>/params.in; leave results.out next to each), then run this workflow again with the same state directory"
+              cat "${{ needs.optimize.outputs.ITER_DIR }}/proposals.csv"
+              ;;
+            CONVERGED)
+              n=$(($(wc -l < "${state_dir}/pareto.csv") - 1))
+              echo "::notice::the study converged: ${n} non-dominated designs in ${state_dir}/pareto.csv, plotted in ${state_dir}/pareto.svg; every evaluation is in ${state_dir}/evaluations.csv"
+              head -15 "${state_dir}/pareto.csv"
+              ;;
+            *)
+              echo "::error::the optimizer declared ${status}: read the step log above and ${state_dir}/dakota/dakota.log"
+              exit 1
+              ;;
+          esac
+
+'on':
+  execute:
+    inputs:
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          resource:
+            type: compute-clusters
+            label: Compute resource
+            include-workspace: false
+            tooltip: Resource whose filesystem holds the study (the state directory and the case directories the evaluator reads and writes). Dakota itself runs on its login node.
+      problem:
+        type: group
+        label: Problem Definition
+        items:
+          variables:
+            type: editor
+            label: Design variables
+            default: |
+              max_camber       0.0   0.06
+              camber_position  0.3   0.6
+              thickness        0.08  0.18
+            tooltip: |
+              One continuous design variable per line: <name> <lower> <upper>.
+              The names are the labels of the params.in files the evaluator
+              reads. The default is the NACA 4-digit airfoil box of
+              workflows/openfoam-naca; any problem fits.
+          objectives:
+            type: string
+            label: Objectives
+            default: drag_coefficient neg_lift_coefficient
+            tooltip: |
+              The two objectives, both minimized, in the order the evaluator
+              writes them to results.out (negate a quantity to maximize it).
+      optimizer:
+        type: group
+        label: Optimizer Settings
+        items:
+          state_dir:
+            type: string
+            label: State directory
+            optional: true
+            tooltip: |
+              Absolute path of the study on the resource: Dakota's restart file,
+              the results database, the iter_<N>/case_<j> directories and the
+              front. Point successive runs at the same directory to continue the
+              study; leave empty to start a fresh one under this run's job
+              directory (shown in the log).
+          batch_size:
+            type: number
+            label: Designs per generation
+            default: 4
+            min: 1
+            max: 64
+            tooltip: |
+              Dakota MOGA's population size: at most this many new designs are
+              proposed per step. Fewer can come back when offspring duplicate
+              designs Dakota already evaluated.
+          max_generations:
+            type: number
+            label: Maximum generations
+            default: 10
+            min: 1
+            max: 500
+            tooltip: The study stops with the front found so far once this many generations were evaluated, even if Dakota wants to continue.
+          stall_generations:
+            type: number
+            label: Stagnation window
+            default: 3
+            min: 1
+            max: 20
+            tooltip: |
+              Declare convergence when the Pareto front's normalized hypervolume
+              improves by less than 0.001 over this many consecutive generations.
+              Dakota's own MOGA convergence criteria also end the study.
+          seed:
+            type: number
+            label: Dakota seed
+            default: 4242
+            min: 1
+            tooltip: |
+              Fixed per study: the restart replay that resumes Dakota between
+              steps requires a deterministic method. Change it only together with
+              a fresh state directory.
+      software:
+        type: group
+        label: Software Environment
+        collapsed: true
+        items:
+          dakota_load:
+            type: editor
+            label: Dakota environment commands
+            optional: true
+            tooltip: |
+              Shell commands that put `dakota` on PATH, e.g. `module load dakota`.
+              Leave empty to install Dakota 6.16 from conda-forge (no sudo, ~3 min
+              once) under ${service_parent_install_dir:-$HOME/pw/software}/dakota.

@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="330" viewBox="0 0 860 330" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2a78d6"/></marker>
+    <marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1a9850"/></marker>
+    <marker id="aK" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52514e"/></marker>
+  </defs>
+  <rect width="860" height="330" rx="10" fill="#fcfcfb" stroke="#d8d5cf"/>
+
+  <!-- two ways in -->
+  <rect x="20" y="20" width="200" height="74" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="30" y="40" font-size="13" font-weight="bold" fill="#0b0b0b">from the platform form</text>
+  <text x="30" y="58" font-size="11" fill="#52514e">max_camber, camber_position,</text>
+  <text x="30" y="72" font-size="11" fill="#52514e">thickness, angle_of_attack,</text>
+  <text x="30" y="86" font-size="11" fill="#52514e">mesh_scale, cores_per_case</text>
+
+  <rect x="20" y="110" width="200" height="74" rx="6" fill="#eef4fc" stroke="#2a78d6"/>
+  <text x="30" y="130" font-size="13" font-weight="bold" fill="#0b0b0b">from an optimization loop</text>
+  <text x="30" y="148" font-size="11" fill="#2a78d6">params_file = .../case_j/params.in</text>
+  <text x="30" y="162" font-size="11" fill="#2a78d6">case_dir = .../case_j</text>
+  <text x="30" y="176" font-size="11" fill="#52514e">file values override the form's</text>
+
+  <!-- preprocessing -->
+  <rect x="252" y="20" width="200" height="164" rx="6" fill="#f4f3ef" stroke="#c3c2b7"/>
+  <text x="262" y="40" font-size="13" font-weight="bold" fill="#0b0b0b">preprocessing</text>
+  <text x="262" y="58" font-size="11" fill="#52514e">checkout app + tools/utils</text>
+  <text x="262" y="72" font-size="11" fill="#52514e">openfoam-env.sh: form snippet or</text>
+  <text x="262" y="86" font-size="11" fill="#52514e">conda-forge install (locked, once)</text>
+  <rect x="262" y="98" width="180" height="76" rx="5" fill="#ffffff" stroke="#898781"/>
+  <text x="270" y="116" font-size="12" font-weight="bold" fill="#0b0b0b">case_dir/params.in</text>
+  <text x="270" y="131" font-size="11" fill="#52514e">file lines first, then the form</text>
+  <text x="270" y="145" font-size="11" fill="#52514e">for names the file lacks</text>
+  <text x="270" y="166" font-size="12" font-weight="bold" fill="#0b0b0b">case_dir/case.sh</text>
+
+  <line x1="222" y1="57" x2="250" y2="57" stroke="#52514e" stroke-width="2" marker-end="url(#aK)"/>
+  <line x1="222" y1="147" x2="250" y2="147" stroke="#2a78d6" stroke-width="2" marker-end="url(#aB)"/>
+
+  <!-- run_case -->
+  <rect x="484" y="20" width="356" height="164" rx="6" fill="#edf7f0" stroke="#1a9850" stroke-width="1.5"/>
+  <text x="494" y="40" font-size="13" font-weight="bold" fill="#0b0b0b">run_case  <tspan font-size="11" font-weight="normal" fill="#52514e">script_submitter: login node or one SLURM/PBS job</tspan></text>
+  <text x="494" y="60" font-size="11" fill="#52514e">simulator.sh in case_dir:</text>
+  <g font-size="11" fill="#0b0b0b">
+    <rect x="494" y="70" width="98" height="30" rx="5" fill="#ffffff" stroke="#898781"/>
+    <text x="543" y="89" text-anchor="middle">blockMesh</text>
+    <rect x="606" y="70" width="104" height="30" rx="5" fill="#ffffff" stroke="#898781" stroke-dasharray="4,3"/>
+    <text x="658" y="89" text-anchor="middle">decomposePar</text>
+    <rect x="724" y="70" width="104" height="30" rx="5" fill="#ffffff" stroke="#898781"/>
+    <text x="776" y="89" text-anchor="middle">potentialFoam</text>
+    <rect x="494" y="112" width="98" height="30" rx="5" fill="#ffffff" stroke="#898781"/>
+    <text x="543" y="131" text-anchor="middle">simpleFoam</text>
+    <rect x="606" y="112" width="104" height="30" rx="5" fill="#ffffff" stroke="#898781" stroke-dasharray="4,3"/>
+    <text x="658" y="131" text-anchor="middle">reconstructPar</text>
+    <rect x="724" y="112" width="104" height="30" rx="5" fill="#ffffff" stroke="#898781"/>
+    <text x="776" y="131" text-anchor="middle">touch case.foam</text>
+  </g>
+  <line x1="594" y1="85" x2="604" y2="85" stroke="#52514e" stroke-width="1.5" marker-end="url(#aK)"/>
+  <line x1="712" y1="85" x2="722" y2="85" stroke="#52514e" stroke-width="1.5" marker-end="url(#aK)"/>
+  <line x1="594" y1="127" x2="604" y2="127" stroke="#52514e" stroke-width="1.5" marker-end="url(#aK)"/>
+  <line x1="712" y1="127" x2="722" y2="127" stroke="#52514e" stroke-width="1.5" marker-end="url(#aK)"/>
+  <text x="494" y="162" font-size="11" fill="#52514e">C-grid sized by mesh_scale; dashed steps when cores_per_case &gt; 1</text>
+  <text x="494" y="176" font-size="11" fill="#52514e">progress every 50 iterations in run.&lt;job&gt;.out; full logs in case/log.*</text>
+
+  <line x1="454" y1="102" x2="482" y2="102" stroke="#52514e" stroke-width="2" marker-end="url(#aK)"/>
+
+  <!-- outputs -->
+  <rect x="252" y="208" width="588" height="102" rx="6" fill="#f4f3ef" stroke="#c3c2b7"/>
+  <text x="262" y="228" font-size="13" font-weight="bold" fill="#0b0b0b">results  <tspan font-size="11" font-weight="normal" fill="#52514e">what the case leaves in case_dir</tspan></text>
+  <text x="262" y="250" font-size="12" fill="#1a9850">results.out</text>
+  <text x="372" y="250" font-size="11" fill="#52514e">"&lt;Cd&gt; drag_coefficient", "&lt;-Cl&gt; neg_lift_coefficient" &#8594; the run's outputs</text>
+  <text x="262" y="270" font-size="12" fill="#eb6834">exit_code</text>
+  <text x="372" y="270" font-size="11" fill="#52514e">always written; no results.out next to it = the solver failed (the run fails, an optimizer sees FAIL)</text>
+  <text x="262" y="290" font-size="12" fill="#2a78d6">case/case.foam</text>
+  <text x="372" y="290" font-size="11" fill="#52514e">the solved case, last time step and postProcessing/ included: File &#8594; Open in ParaView</text>
+  <line x1="662" y1="186" x2="662" y2="206" stroke="#52514e" stroke-width="2" marker-end="url(#aK)"/>
+
+  <text x="30" y="226" font-size="12" fill="#52514e">loop: the next Dakota</text>
+  <text x="30" y="242" font-size="12" fill="#52514e">step reads results.out</text>
+  <text x="30" y="258" font-size="12" fill="#52514e">or exit_code from</text>
+  <text x="30" y="274" font-size="12" fill="#52514e">the same case_dir</text>
+  <line x1="250" y1="256" x2="222" y2="256" stroke="#1a9850" stroke-width="2" marker-end="url(#aG)"/>
+</svg>

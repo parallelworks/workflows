@@ -1,0 +1,335 @@
+# One OpenFOAM case of the NACA 4-digit airfoil problem: a structured C-grid is
+# generated for the design typed in the form (camber, camber position,
+# thickness), the turbulent flow at the given incidence is solved with
+# potentialFoam + simpleFoam, serially or decomposed under mpirun, and the lift
+# and drag coefficients come back as outputs. The solved case stays in the case
+# directory with a case.foam file, so it opens directly in ParaView. Preprocessing
+# prepares one sourceable OpenFOAM environment file: the load commands typed in
+# the form (module load, source .../bashrc) or, when none are given, the
+# conda-forge install made by the app's idempotent installer.
+#
+# The same YAML is the per-design evaluator of workflows/dakota-openfoam: the
+# optimization loop calls it once per proposed design with case.params_file
+# pointing at the Dakota-style params file of the case (its values override the
+# form's) and case.case_dir at the case directory, so the results land where the
+# optimizer reads them.
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Checkout OpenFOAM NACA App
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/openfoam-naca/app
+            - tools/utils
+      # the environment is one file every later step and the case source; the heredoc
+      # carries the form's load commands verbatim (empty -> conda-forge install)
+      - name: Prepare the OpenFOAM Environment
+        run: |
+          set -e
+          cores="${{ inputs.cluster.cores_per_case }}"
+          if ! [[ "${cores}" =~ ^[0-9]+$ ]] || [ "${cores}" -lt 1 ]; then
+            echo "::error::cores_per_case must be a positive integer, got '${cores}'"
+            exit 1
+          fi
+          required="blockMesh potentialFoam simpleFoam"
+          if [ "${cores}" -gt 1 ]; then
+            required="${required} decomposePar reconstructPar mpirun"
+          fi
+          bash tools/utils/prepare-env.sh openfoam "${PWD}/openfoam-env.sh" \
+            workflows/openfoam-naca/app/install-openfoam.sh ${required} << 'PW_LOAD_EOF'
+          ${{ inputs.software.openfoam_load }}
+          PW_LOAD_EOF
+      # the case directory gets the design (params.in) and the script the submitter
+      # runs there; a stale verdict from an earlier run of the same directory is
+      # removed so a missing results.out always means this run's solver failed
+      - name: Create the Case
+        run: |
+          set -e
+          case_dir="${{ inputs.case.case_dir }}"
+          case "${case_dir}" in
+            ''|undefined) case_dir="${PWD}/case" ;;
+          esac
+          mkdir -p "${case_dir}"
+          params_file="${{ inputs.case.params_file }}"
+          case "${params_file}" in
+            ''|undefined) params_file="" ;;
+            *)
+              if [ ! -f "${params_file}" ]; then
+                echo "::error::params_file ${params_file} does not exist"
+                exit 1
+              fi
+              ;;
+          esac
+          # the file's lines win over the form's values of the same name, and the
+          # form fills in whatever the file does not list (first occurrence wins)
+          {
+            if [ -n "${params_file}" ]; then
+              cat "${params_file}"
+              echo
+            fi
+            printf '%s max_camber\n%s camber_position\n%s thickness\n%s angle_of_attack\n' \
+              "${{ inputs.case.max_camber }}" "${{ inputs.case.camber_position }}" \
+              "${{ inputs.case.thickness }}" "${{ inputs.case.angle_of_attack }}"
+          } | awk 'NF >= 2 && !seen[$2]++' > "${case_dir}/params.in.tmp"
+          mv "${case_dir}/params.in.tmp" "${case_dir}/params.in"
+          rm -f "${case_dir}/results.out" "${case_dir}/exit_code"
+          # the submitter inlines the script body, so the absolute paths are baked in;
+          # it is not named run.sh because the submitter writes its assembled job
+          # script under that name in the same directory. The exit_code file is the
+          # evidence that the case ran (and how it ended) when no results.out came back.
+          cat > "${case_dir}/case.sh" << PW_CASE_EOF
+          #!/bin/bash
+          cd "${case_dir}"
+          MESH_SCALE="${{ inputs.case.mesh_scale }}" CORES_PER_CASE="${{ inputs.cluster.cores_per_case }}" \\
+            OPENFOAM_ENV="${PWD}/openfoam-env.sh" \\
+            bash "${PWD}/workflows/openfoam-naca/app/simulator.sh"
+          rc=\$?
+          echo "\${rc}" > exit_code
+          exit "\${rc}"
+          PW_CASE_EOF
+          echo "--- ${case_dir}/params.in"
+          cat "${case_dir}/params.in"
+          echo "CASE_DIR=${case_dir}" | tee -a $OUTPUTS
+
+  run_case:
+    needs: [preprocessing]
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Run OpenFOAM
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.cluster.resource }}
+          shebang: '#!/bin/bash'
+          # the submitter cds into the case dir, so case.sh's relative paths resolve there
+          rundir: ${{ needs.preprocessing.outputs.CASE_DIR }}
+          use_existing_script: true
+          script_path: ./case.sh
+          define_cleanup_script: false
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            time: ${{ inputs.cluster.slurm.time }}
+            # the case's core request goes first so a directive typed in the form
+            # can still override it: sbatch and qsub keep the last value of a
+            # repeated option. One node per case: mpirun launches its ranks locally.
+            scheduler_directives: |
+              #SBATCH --nodes=1
+              #SBATCH --ntasks=${{ inputs.cluster.cores_per_case }}
+              ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: |
+              #PBS -l select=1:ncpus=${{ inputs.cluster.cores_per_case }}:mpiprocs=${{ inputs.cluster.cores_per_case }}
+              ${{ inputs.cluster.pbs.scheduler_directives }}
+
+  # the submitter never forwards the script's exit status, so the verdict comes
+  # from the files the case left behind: results.out (the objectives) or none
+  results:
+    needs: [preprocessing, run_case]
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Read the Coefficients
+        run: |
+          case_dir="${{ needs.preprocessing.outputs.CASE_DIR }}"
+          if [ ! -f "${case_dir}/results.out" ]; then
+            rc=$(cat "${case_dir}/exit_code" 2>/dev/null || echo "none: the case never ran")
+            echo "::error::no results.out in ${case_dir} (simulator exit code: ${rc}); log tails follow"
+            tail -n 20 "${case_dir}"/case/log.* 2>/dev/null
+            tail -n 30 "${case_dir}"/run.*.out 2>/dev/null
+            exit 1
+          fi
+          cd_=$(awk '$2 == "drag_coefficient" {print $1}' "${case_dir}/results.out")
+          cl=$(awk '$2 == "neg_lift_coefficient" {printf "%.10f", -$1}' "${case_dir}/results.out")
+          echo "DRAG_COEFFICIENT=${cd_}" | tee -a $OUTPUTS
+          echo "LIFT_COEFFICIENT=${cl}" | tee -a $OUTPUTS
+          echo "RESULTS_FILE=${case_dir}/results.out" | tee -a $OUTPUTS
+          echo "PARAVIEW_FILE=${case_dir}/case/case.foam" | tee -a $OUTPUTS
+          echo "::notice::Cd = ${cd_}, Cl = ${cl} for the design in ${case_dir}/params.in (mesh_scale ${{ inputs.case.mesh_scale }}); open ${case_dir}/case/case.foam in ParaView to see the fields"
+
+'on':
+  execute:
+    inputs:
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          resource:
+            type: compute-clusters
+            label: Compute resource
+            include-workspace: false
+            tooltip: Resource where the OpenFOAM case runs
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule the Case?
+            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes → The case is submitted to the scheduler using sbatch, qsub, etc
+              No  → The case runs on the controller or login node instead
+          cores_per_case:
+            type: number
+            label: Cores per case
+            default: 1
+            min: 1
+            max: 64
+            tooltip: |
+              MPI ranks for the case. 1 runs the solvers serially; more decomposes
+              the mesh into N strips and runs potentialFoam and simpleFoam under
+              mpirun, then reconstructs the result. Only pays off from mesh_scale
+              3-4 (2-4 ranks): at the default mesh a decomposed case is slower
+              than a serial one. A scheduled case requests --nodes=1 --ntasks=N
+              (PBS: select=1:ncpus=N:mpiprocs=N), so N must fit one node.
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.cluster.resource }}
+                tooltip: Select a partition from the drop down menu.
+              time:
+                label: Walltime
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the case'
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+                  The workflow already sets --nodes=1 and --ntasks from Cores per case;
+                  a directive here repeating one of them takes precedence.
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+                  The workflow already sets -l select=1:ncpus=N:mpiprocs=N from Cores per case.
+      case:
+        type: group
+        label: Airfoil Case
+        items:
+          max_camber:
+            type: number
+            label: Maximum camber (chord fraction)
+            default: 0.02
+            min: 0
+            max: 0.06
+            tooltip: |
+              The first NACA digit / 100: 0 is a symmetric airfoil (00xx), 0.02 a
+              2412-like one. The box 0-0.06 is where the C-grid generator was
+              validated; higher forward camber breaks the mesh quality.
+          camber_position:
+            type: number
+            label: Camber position (chord fraction)
+            default: 0.4
+            min: 0.3
+            max: 0.6
+            tooltip: The second NACA digit / 10. Ignored by the geometry when the camber is 0.
+          thickness:
+            type: number
+            label: Thickness (chord fraction)
+            default: 0.12
+            min: 0.08
+            max: 0.18
+            tooltip: The last two NACA digits / 100.
+          angle_of_attack:
+            type: number
+            label: Angle of attack (degrees)
+            default: 5
+            min: -5
+            max: 12
+            tooltip: |
+              Incidence of the freestream. The airfoil stays axis-aligned; the
+              angle goes into the far-field velocity and the lift/drag directions.
+          mesh_scale:
+            type: number
+            label: Mesh resolution multiplier
+            default: 1
+            min: 1
+            max: 6
+            tooltip: |
+              The cost dial: multiplies every cell count of the C-grid around the
+              airfoil, and the solver's iteration budget scales with it, so cost
+              grows roughly with the cube: ~10 s per case at 1, ~1 min at 2,
+              ~10 min at 4, ~35 min at 6 (one core). The mesh is essentially
+              converged by 3-4; the README has the measured accuracy table.
+          case_dir:
+            type: string
+            label: Case directory
+            optional: true
+            tooltip: |
+              Absolute path where the case is built and solved. Leave empty for
+              case/ under this run's job directory. An optimization loop passes
+              the case directory it proposed, so the results land where the
+              optimizer reads them.
+          params_file:
+            type: string
+            label: Design from a params file
+            optional: true
+            default: ''
+            tooltip: |
+              Absolute path of a Dakota-style parameters file, one "<value> <name>"
+              line per entry. Its values override the form fields of the same
+              name (max_camber, camber_position, thickness, angle_of_attack); a
+              field the file does not list keeps the form's value, so the file
+              need not carry them all. An optimization loop passes the file of
+              the design it proposed here.
+      software:
+        type: group
+        label: Software Environment
+        collapsed: true
+        items:
+          openfoam_load:
+            type: editor
+            label: OpenFOAM environment commands
+            optional: true
+            tooltip: |
+              Shell commands that put blockMesh, potentialFoam and simpleFoam (and
+              decomposePar, reconstructPar plus mpirun when Cores per case > 1) on
+              PATH, one per line, e.g. `module load openfoam/2412` or `source
+              /opt/openfoam2412/etc/bashrc`. Leave empty to install OpenFOAM v2412
+              from conda-forge (no sudo, ~5 min once) under
+              ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca.
+              The case sources these commands; `export MPIRUN="srun --mpi=pmix"`
+              here replaces the default launcher `mpirun --bind-to none -np N`.

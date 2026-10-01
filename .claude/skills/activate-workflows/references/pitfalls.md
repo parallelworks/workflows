@@ -153,7 +153,7 @@
   as `run.sh` in `rundir`, so a step that re-submits the same dir copies the assembled
   script as the template and prepends the headers again (doubled `#SBATCH` lines, the
   `hostname > HOSTNAME` line twice). Name the script you hand it anything else
-  (`workflows/dakota-openfoam`: `case.sh`; `tutorials/optimization` still has the collision).
+  (`workflows/openfoam-naca`: `case.sh`; `tutorials/optimization` still has the collision).
 - **`tail -8 f1 f2` prints nothing:** coreutils accepts the old `-N` form only with a single
   file; with several it fails with "option used in invalid context" — to stderr, which a
   `2>/dev/null` hides, so a "log tails:" banner comes out empty (verified 2026-09-30, it had
@@ -164,13 +164,13 @@
   and the loop ended FAILED after re-proposing them once. Record evidence that a case *ran*
   (`exit_code` written by the case script) and feed ran-and-failed points back as FAIL;
   reserve the re-propose path for generations with no evidence of running at all
-  (`workflows/dakota-openfoam/app/optimizer.py`, verified 2026-09-30).
+  (`workflows/dakota/app/optimizer.py`, verified 2026-09-30).
 - **A directive a workflow injects ahead of the form's `scheduler_directives` stays
   overridable:** sbatch keeps the LAST value of a repeated option (`--ntasks=2` then
   `--ntasks=3` → `NumTasks=3`, verified 2026-09-30 with `sbatch --hold` +
   `scontrol show job`), so compose `<workflow lines>\n${{ inputs.slurm.scheduler_directives }}`
   in the `with:` block (a `|` block scalar with expressions renders fine) and the user's
-  line wins when they repeat it (`workflows/dakota-openfoam/yamls/iteration.yaml`).
+  line wins when they repeat it (`workflows/openfoam-naca/yamls/general.yaml`).
 - **`retry.timeout` defaults to 30 s PER ATTEMPT** (documented in
   building-workflows/yaml-fields; bitten and verified 2026-09-29): a `retry:` block
   without `timeout:` cancels each attempt of that step ~25-30 s in — for a `uses:`
@@ -182,7 +182,7 @@
   (a minimal repro: a retried `uses:` step whose subworkflow sleeps 120 s fails;
   add `timeout: 10m` and it completes). Always set `retry.timeout` on a retried
   subworkflow step, sized for the whole attempt (queue + node boot + work):
-  `workflows/dakota-openfoam/yamls/general.yaml` exposes it as a form input.
+  `workflows/dakota-openfoam/yamls/general-naca.yaml` exposes it as a form input.
   `tutorials/optimization/general.yaml`'s Iterate step has this latent bug
   (its ~15 s test waves win the race; any real solver loses it).
 
@@ -217,3 +217,60 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   runtime env. (Reference §12.)
 - **`pw workflows run` uses the STORED def — `pw workflows update` after every YAML
   edit**, or the run silently uses the old form.
+- **A matrix instance cannot read its own earlier step's outputs** (verified 2026-10-01):
+  `${{ needs.workers.outputs.V }}` in step 2 of matrix job `workers`, where step 1 wrote
+  `V`, fails the step with `Expression Parser Error: output V from job workers not found`
+  (same for `needs.workers.steps.<id>.outputs.V`); the instances are `workers-0`,
+  `workers-1`, … and the bare job name resolves to none of them. Nor can a per-slot
+  value be looked up in an upstream job's outputs by computed key:
+  `${{ needs.gen.outputs get matrix.job_id }}` returns a character of the stringified
+  map, not the entry. So a matrix slot that must feed per-slot data into a `uses:` step
+  passes **paths built from `matrix.job_id`** and lets the subworkflow read the file
+  (`workflows/dakota-openfoam/yamls/iteration-naca.yaml`: `case.params_file`).
+- **`needs.<job>.outputs.X` only resolves for jobs listed in `needs:`**, however far
+  upstream: a `results` job that `needs: [run_case]` cannot read
+  `needs.preprocessing.outputs.CASE_DIR` (`Expression Parser Error: job preprocessing not
+  in needs`, the step fails at parse time, 0 s, no `logs/<job>/` dir at all). List every
+  job whose outputs a job reads (verified 2026-10-01).
+- **Nested input groups pass through `with:` as nested maps**, `compute-clusters` item
+  included (`cluster: {resource: ${{ inputs.resource }}, scheduler: …, slurm: {…}}` into
+  `workflows/openfoam-naca/yamls/general.yaml`'s `cluster` group; dry-run and live run,
+  2026-10-01). Dotted keys (`cluster.resource:`) are rejected with `Could not parse
+  subworkflow`. A standalone workflow's full form can therefore be its own subworkflow
+  interface — the design of `workflows/dakota-openfoam`.
+- **The test runner's variant is the YAML's basename:** `tests/<variant>/<test>.json`
+  launches `yamls/<variant>.yaml`, so a workflow whose YAML is `general-naca.yaml` keeps
+  its tests under `tests/general-naca/`. With a wrong directory `--emit` prints nothing on
+  stdout (the error goes to stderr) and a dry-run fed from it fails with `Missing required
+  fields: Compute resource` (verified 2026-10-01).
+- **A plain-scalar `tooltip:` with a `: ` inside it is invalid YAML** (`mapping values are
+  not allowed here`); the platform reports only `Invalid YAML`, so parse the file locally
+  (`python3 -c "import yaml; yaml.safe_load(open(f))"`, the system python has PyYAML on
+  gcpsmall) before blaming the schema. Use a `|` block for any prose tooltip.
+- **A canceled job publishes no outputs, even for steps that completed** (verified
+  2026-10-01): a handler job with `if: ${{ !completed }}` that read
+  `needs.preprocessing.outputs.SERVER_PID_FILE` after a run cancel failed at parse time
+  with `output SERVER_PID_FILE from job preprocessing not found`, although the step that
+  wrote the output had finished. Handlers that must work after a cancel read fixed
+  paths (`${PW_PARENT_JOB_DIR}/<file>`) and inputs, never upstream outputs
+  (`workflows/dakota-openfoam/yamls/general-naca.yaml`, `stop_server_if_unhealthy`).
+- **`if: ${{ !completed }}` jobs do run after `pw workflows runs cancel`** (verified
+  2026-10-01): the canceled run showed `preprocessing: canceled`, `wait_for_endpoint:
+  skipped-failed` and the handler job executed. That is the hook for "kill what a
+  plain step started detached when the run did not get to its health check"; a
+  step-level `cleanup:` is not, because cleanups always run at the end of their own
+  job (docs: yaml-fields), which would kill a detached server right after launch.
+- **A login-node-only service can skip `script_submitter`**: start it with
+  `setsid pw endpoints run ... > out 2>&1 < /dev/null &` from a plain step
+  (`tutorials/endpoint-workflows/03-exit-workflow.yaml`), keep `wait_for_endpoint` as
+  the health check (no `skip_cleanups_file`), and add the `!completed` handler above
+  because an endpoint that never registered cannot be removed with `pw endpoints
+  delete`. `workflows/dakota-openfoam` serves its Pareto page this way.
+- **A matrix can follow a form input** (verified 2026-10-01): `matrix: { job_id: ${{ [1,
+  2, 3, 4, 5, 6, 7, 8] get 0:(inputs.batch_size) }} }` slices a literal list at submission,
+  in a top-level workflow and in a subworkflow whose `batch_size` arrives through `with:`
+  from the parent's form. What a matrix still cannot take is a runtime value
+  (`needs.*.outputs`), so the per-slot `if: ${{ matrix.job_id <= needs.<job>.outputs.N }}`
+  guard stays for the count the run actually produces. Extend the literal to raise the
+  ceiling; the guard step that compares N against it should compare against the input,
+  not the literal (`tutorials/optimization/iteration.yaml`).

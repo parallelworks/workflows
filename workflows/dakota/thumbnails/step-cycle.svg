@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="440" viewBox="0 0 860 440" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2a78d6"/></marker>
+    <marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1a9850"/></marker>
+    <marker id="aK" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52514e"/></marker>
+    <marker id="aO" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#eb6834"/></marker>
+  </defs>
+  <rect width="860" height="440" rx="10" fill="#fcfcfb" stroke="#d8d5cf"/>
+
+  <!-- the step -->
+  <rect x="20" y="20" width="420" height="250" rx="8" fill="#eef4fc" stroke="#2a78d6" stroke-width="1.5"/>
+  <text x="32" y="44" font-size="15" font-weight="bold" fill="#0b0b0b">the Dakota step  <tspan font-size="12" font-weight="normal" fill="#52514e">one run of this workflow</tspan></text>
+
+  <rect x="32" y="58" width="396" height="40" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="42" y="75" font-size="13" fill="#0b0b0b">1  ingest the last generation</text>
+  <text x="42" y="90" font-size="11" fill="#52514e">iter_N/case_j/results.out &#8594; results_db/ (a missing one with exit_code &#8594; FAIL)</text>
+
+  <rect x="32" y="106" width="396" height="54" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="42" y="123" font-size="13" fill="#0b0b0b">2  resume Dakota from dakota/dakota.rst, fixed seed</text>
+  <text x="42" y="138" font-size="11" fill="#52514e">it replays its past; driver.py answers every known design from results_db/</text>
+  <text x="42" y="152" font-size="11" fill="#52514e">and writes every new one as iter_N+1/case_j/params.in, then blocks</text>
+
+  <rect x="32" y="168" width="396" height="40" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="42" y="185" font-size="13" fill="#0b0b0b">3  batch complete: stop Dakota, keep the restart file</text>
+  <text x="42" y="200" font-size="11" fill="#52514e">STATUS=CONTINUE, N_CASES, ITER_DIR &#8594; outputs and proposal.env</text>
+
+  <rect x="32" y="216" width="396" height="40" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="42" y="233" font-size="13" fill="#0b0b0b">or stop: budget, stagnant front, Dakota converged</text>
+  <text x="42" y="248" font-size="11" fill="#52514e">STATUS=CONVERGED (or FAILED), pareto.csv + pareto.svg final</text>
+
+  <!-- the evaluator -->
+  <rect x="520" y="20" width="320" height="250" rx="8" fill="#edf7f0" stroke="#1a9850" stroke-width="1.5"/>
+  <text x="532" y="44" font-size="15" font-weight="bold" fill="#0b0b0b">your evaluator  <tspan font-size="12" font-weight="normal" fill="#52514e">anything</tspan></text>
+  <text x="532" y="68" font-size="12" fill="#52514e">a loop workflow (dakota-openfoam),</text>
+  <text x="532" y="84" font-size="12" fill="#52514e">another workflow, a script by hand ...</text>
+  <rect x="532" y="100" width="296" height="104" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="542" y="118" font-size="13" fill="#0b0b0b">for each iter_N/case_j/</text>
+  <text x="542" y="136" font-size="12" fill="#2a78d6">read   params.in</text>
+  <text x="542" y="151" font-size="11" fill="#52514e">one "&lt;value&gt; &lt;name&gt;" line per variable</text>
+  <text x="542" y="171" font-size="12" fill="#1a9850">leave  results.out</text>
+  <text x="542" y="186" font-size="11" fill="#52514e">one "&lt;value&gt; &lt;label&gt;" line per objective, or</text>
+  <text x="542" y="200" font-size="11" fill="#52514e">exit_code and no results.out: ran and failed</text>
+  <text x="532" y="230" font-size="12" fill="#52514e">then run the step again with the</text>
+  <text x="532" y="246" font-size="12" fill="#52514e">same state directory</text>
+
+  <!-- arrows between -->
+  <line x1="440" y1="110" x2="516" y2="110" stroke="#2a78d6" stroke-width="2.5" marker-end="url(#aB)"/>
+  <text x="478" y="101" font-size="11" fill="#2a78d6" text-anchor="middle">designs</text>
+  <line x1="516" y1="190" x2="440" y2="190" stroke="#1a9850" stroke-width="2.5" marker-end="url(#aG)"/>
+  <text x="478" y="208" font-size="11" fill="#1a9850" text-anchor="middle">results</text>
+
+  <!-- state dir -->
+  <rect x="20" y="292" width="820" height="128" rx="8" fill="#fbf6e9" stroke="#c9a227"/>
+  <text x="32" y="316" font-size="15" font-weight="bold" fill="#0b0b0b">state_dir/  <tspan font-size="12" font-weight="normal" fill="#52514e">the study as plain files; every run against the same directory continues it</tspan></text>
+  <g font-size="11">
+    <rect x="32" y="330" width="150" height="76" rx="5" fill="#ffffff" stroke="#898781"/>
+    <text x="40" y="347" font-size="12" fill="#0b0b0b">problem.json</text>
+    <text x="40" y="362" fill="#52514e">variables, bounds,</text>
+    <text x="40" y="376" fill="#52514e">objectives; frozen on</text>
+    <text x="40" y="390" fill="#52514e">the first run</text>
+    <rect x="192" y="330" width="150" height="76" rx="5" fill="#ffffff" stroke="#2a78d6"/>
+    <text x="200" y="347" font-size="12" fill="#2a78d6">dakota/dakota.rst</text>
+    <text x="200" y="362" fill="#52514e">Dakota's memory: the</text>
+    <text x="200" y="376" fill="#52514e">restart file every step</text>
+    <text x="200" y="390" fill="#52514e">resumes and extends</text>
+    <rect x="352" y="330" width="150" height="76" rx="5" fill="#ffffff" stroke="#2a78d6"/>
+    <text x="360" y="347" font-size="12" fill="#2a78d6">results_db/</text>
+    <text x="360" y="362" fill="#52514e">one file per evaluated</text>
+    <text x="360" y="376" fill="#52514e">design, keyed by its</text>
+    <text x="360" y="390" fill="#52514e">values: objectives or FAIL</text>
+    <rect x="512" y="330" width="150" height="76" rx="5" fill="#ffffff" stroke="#1a9850"/>
+    <text x="520" y="347" font-size="12" fill="#1a9850">iter_N/case_j/</text>
+    <text x="520" y="362" fill="#52514e">params.in, param.hash,</text>
+    <text x="520" y="376" fill="#52514e">results.out, exit_code;</text>
+    <text x="520" y="390" fill="#52514e">proposals.csv per iter</text>
+    <rect x="672" y="330" width="158" height="76" rx="5" fill="#ffffff" stroke="#eb6834"/>
+    <text x="680" y="347" font-size="12" fill="#eb6834">evaluations.csv, pareto.*</text>
+    <text x="680" y="362" fill="#52514e">every design, the front;</text>
+    <text x="680" y="376" fill="#52514e">status, proposal.env,</text>
+    <text x="680" y="390" fill="#52514e">state.json: the verdict</text>
+  </g>
+</svg>

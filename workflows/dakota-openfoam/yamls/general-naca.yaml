@@ -1,0 +1,438 @@
+# Dakota-driven OpenFOAM airfoil shape optimization, assembled from two
+# standalone workflows: workflows/dakota (the optimizer step: Dakota's MOGA
+# proposes batches of NACA 4-digit designs and decides when to stop) and
+# workflows/openfoam-naca (the evaluator: one OpenFOAM case per design). Each
+# iteration of the loop below runs iteration-naca.yaml, which calls the first as
+# its `optimize` job and the second once per proposed design as its `workers`
+# matrix; the loop mechanics (retry-as-loop, guarded static matrix, state files,
+# failure semantics) come from tutorials/optimization and are unchanged from the
+# single-app version kept in backup-no-subworkflow/. While the loop runs, a
+# small server from the Dakota app serves the live Pareto front as a pw endpoint
+# (pareto-<run slug>): every evaluated design, the current front, and each
+# design's variables and objectives on hover; it keeps serving the final front
+# after the run completes until `pw endpoints delete` removes it. The server
+# only ever runs on the login node, so it is started detached from a plain step
+# (tutorials/endpoint-workflows Stage 3) rather than through script_submitter.
+permissions:
+  - '*'
+
+# Saved inputs, offered under "Load saved inputs" on the Execute page. The form's
+# defaults are the fast demo (login node, 1 core, mesh_scale 1, ~4 min); this
+# configuration is the converged-mesh study: every generation's 8 cases as SLURM
+# jobs of 4 ranks, ~1.5 min each on 4-core nodes, ~25 min in all on gcpsmall.
+# It pins no resource: pick the cluster in the form.
+configurations:
+  mesh3_slurm_4ranks:
+    inputs:
+      cluster:
+        scheduler: true
+        cores_per_case: 4
+        slurm:
+          is_enabled: true
+          time: '01:00:00'
+      optimizer:
+        max_iterations: 10
+        batch_size: 8
+        stall_generations: 3
+        mesh_scale: 3
+        iteration_timeout: 2d
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      # this workflow has no app of its own: the optimizer and the evaluator check
+      # out theirs inside their subworkflows, and the Pareto front page is the
+      # Dakota app's viewer of the study directory
+      - name: Checkout the Pareto Front Server
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/dakota/app
+      - name: Validate Inputs and Initialize State
+        run: |
+          set -e
+          batch="${{ inputs.optimizer.batch_size }}"
+          # 8 = the literal list the workers matrix in iteration-naca.yaml is
+          # sliced from; a matrix cannot expand over runtime values, so the
+          # ceiling is a literal there
+          if [ "${batch}" -lt 1 ] || [ "${batch}" -gt 8 ]; then
+            echo "::error::batch_size ${batch} is out of range 1-8. To raise the cap, extend the literal job_id list in iteration-naca.yaml and the batch_size max."
+            exit 1
+          fi
+          cores="${{ inputs.cluster.cores_per_case }}"
+          if ! [[ "${cores}" =~ ^[0-9]+$ ]] || [ "${cores}" -lt 1 ]; then
+            echo "::error::cores_per_case must be a positive integer, got '${cores}'"
+            exit 1
+          fi
+          mkdir -p state
+          echo "STATE_DIR=${PWD}/state" | tee -a $OUTPUTS
+      # the server is a login-node process for the life of the study and beyond:
+      # start it in its own session so the end of this step, of this job and of
+      # the run never reaches it (tutorials/endpoint-workflows Stage 3). The only
+      # off switch is `pw endpoints delete`, which kills pw endpoints run and the
+      # server under it; the stop_server_if_unhealthy job covers a server that
+      # never registered.
+      - name: Start the Pareto Front Server
+        run: |
+          cat <<EOF > start-pareto.sh
+          #!/bin/bash
+          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
+          # {port} is replaced by pw endpoints run with the local port it forwards to
+          exec pw endpoints run --name "pareto-${PW_RUN_SLUG}" -- \
+              python3 "${PWD}/workflows/dakota/app/pareto-server.py" \
+              --state-dir "${PWD}/state" --port {port} --refresh 10 \
+              --title "NACA airfoil Pareto front - ${PW_RUN_SLUG}"
+          EOF
+          chmod +x start-pareto.sh
+          if command -v setsid >/dev/null 2>&1; then
+            setsid ./start-pareto.sh > pareto.out 2>&1 < /dev/null &
+          else
+            nohup ./start-pareto.sh > pareto.out 2>&1 < /dev/null &
+          fi
+          echo $! > pareto.pid
+          echo "::notice::Pareto front server started (pid $(cat pareto.pid)); its output is ${PWD}/pareto.out"
+      # the wait below has no budget while the endpoint is not listed, so a server
+      # that dies on start (a missing pw client, an old python) must fail the run
+      # here, with its output, rather than leave it polling for ever
+      - name: Check the Server Is Alive
+        run: |
+          sleep 10
+          if ! kill -0 "$(cat pareto.pid)" 2>/dev/null; then
+            echo "::error::the Pareto front server exited within 10 s of starting; its output follows"
+            cat pareto.out
+            exit 1
+          fi
+          echo "::notice::server alive after 10 s; $(tail -n 1 pareto.out)"
+      # the health check of the endpoint pattern: this job, and so the loop that
+      # needs it, only completes once the endpoint is listed and /healthz answers
+      # through the platform
+      - name: Wait for endpoint
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: pareto-${PW_RUN_SLUG}
+          host: ${{ inputs.cluster.resource.ip }}
+          path: /healthz
+          budget: 120
+
+  # a server whose endpoint never became healthy is killed here (!completed:
+  # preprocessing failed, at the health check or before, or the run was canceled
+  # before it passed); a healthy one is never touched by the workflow again.
+  # Fixed paths, not job outputs: a canceled preprocessing publishes none.
+  stop_server_if_unhealthy:
+    needs: [preprocessing]
+    if: ${{ !completed }}
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Kill the Pareto Front Server
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          name="pareto-${PW_RUN_SLUG}"
+          if pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${name}"; then
+            echo "::warning::the endpoint ${name} registered but the run ended before its health check passed; deleting it"
+            pw endpoints delete "${name}" 2>/dev/null || true
+          fi
+          pid=$(cat "${PW_PARENT_JOB_DIR}/pareto.pid" 2>/dev/null || true)
+          if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+            echo "::warning::killing the Pareto front server (pid ${pid})"
+            kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
+          fi
+          pkill -f "pareto-server.py --state-dir ${PW_PARENT_JOB_DIR}/state" 2>/dev/null || true
+
+  # preprocessing only completes once the front is being served, so a server
+  # that cannot start fails the run before any case is spent, and the page is
+  # live from the first generation on
+  optimization_loop:
+    needs: [preprocessing]
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      # retry-as-loop: iteration-naca.yaml exits 1 while Dakota wants another
+      # generation, and each retry attempt re-invokes it fresh. max-retries is the
+      # loop budget: max_iterations proposal cycles + the final converging call.
+      # Attempt != iteration — a crashed attempt re-runs the same iteration off the
+      # state files and consumes budget. Only the LAST attempt's logs surface here;
+      # per-iteration history lives under state/ and on the Pareto front page.
+      - name: Iterate
+        retry:
+          max-retries: ${{ inputs.optimizer.max_iterations }}
+          interval: 10s
+          # retry.timeout defaults to 30s (docs: building-workflows/yaml-fields)
+          # and cancels the whole attempt — every job of the iteration
+          # subworkflow, mid-simulation — when it expires. One generation
+          # (propose + node boot + queue + solve + decide) must fit in it.
+          timeout: ${{ inputs.optimizer.iteration_timeout }}
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/dakota-openfoam/yamls/iteration-naca.yaml
+          # the retry counter (0 on the first attempt), so the iteration can say
+          # which attempt it is; the true iteration is the generation in state/
+          attempt: ${{ env.PW_WORKFLOW_STEP_CURRENT_RETRY }}
+          resource: ${{ inputs.cluster.resource }}
+          scheduler: ${{ inputs.cluster.scheduler }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+          cores_per_case: ${{ inputs.cluster.cores_per_case }}
+          batch_size: ${{ inputs.optimizer.batch_size }}
+          max_iterations: ${{ inputs.optimizer.max_iterations }}
+          stall_generations: ${{ inputs.optimizer.stall_generations }}
+          mesh_scale: ${{ inputs.optimizer.mesh_scale }}
+          angle_of_attack: ${{ inputs.problem.angle_of_attack }}
+          variables: ${{ inputs.problem.variables }}
+          objectives: ${{ inputs.problem.objectives }}
+          seed: ${{ inputs.problem.seed }}
+          openfoam_load: ${{ inputs.software.openfoam_load }}
+          dakota_load: ${{ inputs.software.dakota_load }}
+          state_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
+      # if: always — the run's verdict comes from the state files, not from how the
+      # Iterate step ended: CONVERGED is the only success, whether the loop stopped
+      # by decision (Iterate succeeded) or by exhausting its retries (Iterate failed).
+      - name: Report
+        if: ${{ always }}
+        run: |
+          state="${{ needs.preprocessing.outputs.STATE_DIR }}"
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="pareto-${PW_RUN_SLUG}" '$1 == name {print $3}')
+          if [ -n "${url}" ]; then
+            echo "::notice::the Pareto front page keeps serving at ${url} (every evaluation, hover for the design); remove it with: pw endpoints delete pareto-${PW_RUN_SLUG}"
+          else
+            echo "::warning::the Pareto front endpoint pareto-${PW_RUN_SLUG} is no longer listed; the front is still in ${state}/pareto.csv and ${state}/pareto.svg"
+          fi
+          status=$(cat "${state}/status" 2>/dev/null || echo MISSING)
+          case "${status}" in
+            CONVERGED)
+              n=$(($(wc -l < "${state}/pareto.csv") - 1))
+              echo "::notice::optimization converged: ${n} non-dominated designs in ${state}/pareto.csv, plotted in ${state}/pareto.svg; every evaluation in ${state}/evaluations.csv"
+              head -15 "${state}/pareto.csv"
+              ;;
+            FAILED)
+              echo "::error::the optimizer declared FAILED: no case of a generation ran twice in a row, every case failed before any design succeeded or for three generations running, or Dakota exited without proposing or converging. Check the last attempt's worker logs, ${state}/iter_*/case_*/{run.*.out,case/log.*} and ${state}/dakota/dakota.log"
+              exit 1
+              ;;
+            CONTINUE)
+              echo "::error::loop budget exhausted before convergence: all retries of the Iterate step were used while the optimizer still wanted to continue. Raise max_iterations (crashed attempts also consume budget) or loosen the convergence knobs."
+              exit 1
+              ;;
+            *)
+              echo "::error::no ${state}/status file: the first iteration never reached its optimize step. Read the Iterate attempt logs."
+              exit 1
+              ;;
+          esac
+
+'on':
+  execute:
+    inputs:
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          resource:
+            type: compute-clusters
+            label: Compute resource
+            include-workspace: false
+            tooltip: Resource where Dakota, the Pareto front server and all OpenFOAM cases run
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Cases?
+            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes → Each OpenFOAM case is submitted to the scheduler using sbatch, qsub, etc
+              No  → Cases run on the controller or login node instead
+          cores_per_case:
+            type: number
+            label: Cores per case
+            default: 1
+            min: 1
+            max: 64
+            tooltip: |
+              MPI ranks per OpenFOAM case. 1 runs the solvers serially; more
+              decomposes the mesh into N strips and runs potentialFoam and
+              simpleFoam under mpirun. Only pays off from mesh_scale 3-4 (2-4 ranks): at the
+              default mesh a decomposed case is slower than a serial one. Scheduled
+              cases request --nodes=1 --ntasks=N (PBS: select=1:ncpus=N:mpiprocs=N),
+              so N must fit one node; on the login node, batch_size x N ranks run
+              at once.
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.cluster.resource }}
+                tooltip: Select a partition from the drop down menu.
+              time:
+                label: Walltime per case
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for each case'
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+                  The workflow already sets --nodes=1 and --ntasks from Cores per case;
+                  a directive here repeating one of them takes precedence.
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+                  The workflow already sets -l select=1:ncpus=N:mpiprocs=N from Cores per case.
+      optimizer:
+        type: group
+        label: Optimizer Settings
+        items:
+          max_iterations:
+            type: number
+            label: Maximum iterations
+            default: 10
+            min: 1
+            max: 50
+            tooltip: |
+              Generation budget: the loop stops with the front found so far after
+              this many evaluated generations, even if Dakota wants to continue.
+              Also the loop's retry budget, so a crashed-and-retried iteration
+              consumes one.
+          batch_size:
+            type: number
+            label: Cases per iteration
+            default: 4
+            min: 1
+            max: 8
+            tooltip: |
+              OpenFOAM cases evaluated in parallel each iteration (Dakota MOGA's
+              population size). Sizes the workers matrix of iteration-naca.yaml,
+              sliced from a literal list of 8 at submission. Dakota may propose
+              fewer new points in a generation; surplus worker slots are skipped
+              for free.
+          stall_generations:
+            type: number
+            label: Stagnation window
+            default: 3
+            min: 1
+            max: 20
+            tooltip: |
+              Declare convergence when the Pareto front's normalized hypervolume
+              improves by less than 0.001 over this many consecutive generations.
+              Dakota's own MOGA convergence criteria also end the loop.
+          mesh_scale:
+            type: number
+            label: Mesh resolution multiplier
+            default: 1
+            min: 1
+            max: 6
+            tooltip: |
+              The cost dial: multiplies every cell count of the C-grid around the
+              airfoil, and the solver's iteration budget scales with it, so cost
+              grows roughly with the cube: ~10 s per case at 1, ~1 min at 2,
+              ~10 min at 4, ~35 min at 6 (one core). The mesh is essentially
+              converged by 3-4; the openfoam-naca README has the measured accuracy table.
+          iteration_timeout:
+            type: string
+            label: Time budget per iteration
+            default: 2d
+            tooltip: |
+              Maximum wall time for one generation: propose + evaluate every case
+              (including scheduler queue and node boot) + decide. Units like 30s,
+              10m, 12h, 2d. The generous default means it only trips on a genuinely
+              stuck iteration, which is then canceled and retried (consuming
+              budget); tighten it if you want faster failure detection.
+      problem:
+        type: group
+        label: Design Problem
+        collapsed: true
+        items:
+          angle_of_attack:
+            type: number
+            label: Angle of attack (degrees)
+            default: 5
+            min: -5
+            max: 12
+            tooltip: Incidence every case is solved at.
+          variables:
+            type: editor
+            label: Design variables and bounds
+            default: |
+              max_camber       0.0   0.06
+              camber_position  0.3   0.6
+              thickness        0.08  0.18
+            tooltip: |
+              One line per NACA 4-digit parameter: <name> <lower> <upper>. Keep
+              the three names (the OpenFOAM case reads them); narrow the bounds
+              to focus the search. The full box is where the mesh generator was
+              validated.
+          objectives:
+            type: string
+            label: Objectives
+            hidden: true
+            default: drag_coefficient neg_lift_coefficient
+          seed:
+            type: number
+            label: Dakota seed
+            default: 4242
+            min: 1
+            tooltip: Fixed for the run (Dakota's restart replay requires a deterministic method); change it to get a different search.
+      software:
+        type: group
+        label: Software Environment
+        collapsed: true
+        items:
+          openfoam_load:
+            type: editor
+            label: OpenFOAM environment commands
+            optional: true
+            tooltip: |
+              Shell commands that put blockMesh, potentialFoam and simpleFoam (and
+              decomposePar, reconstructPar plus mpirun when Cores per case > 1) on
+              PATH, one per line, e.g. `module load openfoam/2412` or `source
+              /opt/openfoam2412/etc/bashrc`. Leave empty to install OpenFOAM v2412
+              from conda-forge (no sudo, ~5 min once) under
+              ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca.
+              Every case sources these commands; `export MPIRUN="srun --mpi=pmix"`
+              here replaces the default launcher `mpirun --bind-to none -np N`.
+          dakota_load:
+            type: editor
+            label: Dakota environment commands
+            optional: true
+            tooltip: |
+              Shell commands that put `dakota` on PATH, e.g. `module load dakota`.
+              Leave empty to install Dakota 6.16 from conda-forge under
+              ${service_parent_install_dir:-$HOME/pw/software}/dakota.

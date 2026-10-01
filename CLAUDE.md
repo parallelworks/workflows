@@ -39,7 +39,10 @@ workflows/<name>/            # README + build tooling (defs, build-container.sh)
 workflows/<name>/thumbnails/ # marketplace thumbnails (one per registered variant look)
 workflows/script_submitter/v3.6/  # shared subworkflow: SLURM/PBS/SSH script submission
 workflows/wait_for_endpoint/      # shared subworkflow: wait for the endpoint, probe its URL, release the submitter
+workflows/dakota-openfoam/        # a loop composed of two standalone workflows (dakota, openfoam-naca)
+                                  # called as subworkflows; the single-app original in backup-no-subworkflow/
 tools/oras, tools/utils      # shared runtime tools, referenced as tools/... from run dirs
+                             # (tools/utils/{miniforge,prepare-env}.sh: conda installs + env files)
 workflows/<name>/tests/<variant>/  # end-to-end tests: <test>.json form inputs + <test>.csv results
 tools/tests/                 # the test runner (run-workflow-test.py) and its README
 tutorials/                   # staged, runnable lessons on the workflow system
@@ -57,10 +60,15 @@ docs/                        # developer + AI docs
 
 ## The endpoint pattern
 
-Every workflow here but `activate-batch` (a batch job that runs a command script to
-completion and fails when it fails) and `3dcs` (a batch job fanning a 3DCS simulation
-out over SLURM workers) serves through a **`pw` endpoint** (`pw endpoints list`) named
-`<service>-${PW_RUN_SLUG}`. On a compute cluster,
+Every workflow here but the batch ones — `activate-batch` (runs a command script to
+completion and fails when it fails), `3dcs` (fans a 3DCS simulation out over SLURM
+workers), `openfoam-naca` (one OpenFOAM case) and `dakota` (one optimizer step) —
+serves through a **`pw` endpoint** (`pw endpoints list`) named
+`<service>-${PW_RUN_SLUG}`. `dakota-openfoam` is both: a batch optimization loop that
+joins those last two as subworkflows and serves its live Pareto front as an endpoint;
+its server only ever runs on the login node, so it is the one workflow that starts
+`pw endpoints run` detached from a plain step (`tutorials/endpoint-workflows` Stage 3)
+instead of through the submitter below. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through

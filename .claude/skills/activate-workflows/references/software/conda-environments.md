@@ -1,7 +1,7 @@
 # Conda environments on login nodes (sudo-free software)
 
 > How the workflows here install scientific software without root, and where that
-> broke. Examples: `workflows/dakota-openfoam/app/install-common.sh` (Miniforge
+> broke. Examples: `tools/utils/miniforge.sh` (Miniforge
 > bootstrap shared by two installers), `workflows/jupyterlab/build-conda-artifact.sh`
 > (prebuilt env as an artifact).
 
@@ -25,7 +25,7 @@
 
 - `source <prefix>/etc/profile.d/conda.sh && conda activate <env>` — put these two
   lines in one file that preprocessing writes and every later step and case sources
-  (`workflows/dakota-openfoam/app/prepare-env.sh`); absolute paths work on compute
+  (`tools/utils/prepare-env.sh`); absolute paths work on compute
   nodes because the home filesystem is shared. Validate it in preprocessing by
   sourcing it in a fresh `bash -c` and checking `command -v <tool>`.
 - `conda run -n <env> <cmd>` is fine for one-off checks; do not wrap a long-running
@@ -45,3 +45,20 @@ whitelist pure-Python sdists (`PIP_NO_BINARY=jupyterlab-slurm`) that publish no 
 Pull it through `tools/oras/libs.sh:oras_pull_file` (retries; anonymous first — a stale
 ghcr login in `~/.docker/config.json` makes `oras pull` say `denied` for a public
 package).
+
+## Concurrent installers and long prefixes
+
+- Several workers of one run may install into the same prefix at once (an
+  optimization loop's evaluators on a cold cluster). `tools/utils/miniforge.sh`
+  `miniforge_lock <prefix>` takes an `flock` on `<prefix>.lock` before the
+  "already installed?" check and holds it until the installer exits, so exactly
+  one worker downloads and the rest find the env when their turn comes (verified
+  2026-10-01 with four concurrent `install-openfoam.sh`: one log has the download
+  and the 118-package bootstrap, three have none). Keep the check inside the lock.
+- **A prefix path longer than ~110 characters breaks `bin/conda`:** the Miniforge
+  installer then writes `#!/usr/bin/env python` instead of the absolute interpreter
+  path (the kernel caps a shebang at 127 bytes), so `conda` runs under whatever
+  `python` is on PATH and fails with `ModuleNotFoundError: No module named 'conda'`
+  (verified 2026-10-01 in a 116-character scratch prefix; the same installer under
+  `~/pw/software/<workflow>/miniforge` is fine). Keep `service_parent_install_dir`
+  short, or call `<prefix>/bin/python -m conda` if a long path is unavoidable.

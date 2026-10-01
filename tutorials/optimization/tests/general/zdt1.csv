@@ -2,3 +2,5 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-09-28T15:27:09Z,,pass,ok,c8b175a,74bcc3d,17ccc19,4a0cb88,4a0cb88,optimization,alvaro,dear-crow,148,
 2026-09-28T17:07:49Z,,pass,ok,1fe4220,74bcc3d,8c3cb5a,7337222,7337222,optimization,alvaro,living-vulture,148,
 2026-09-29T16:20:15Z,,pass,ok,e36ea7a,74bcc3d,8c3cb5a,8688194-dirty,a750478,dakota-openfoam-naca,alvaro,actual-rhino,154,
+2026-10-01T13:14:53Z,,pass,ok,a06745c,74bcc3d,e87c03d,392cd3f-dirty,a7aaba3,dakota-demo,alvaro,noted-glider,153,
+2026-10-01T14:15:44Z,,pass,ok,a06745c,74bcc3d,e87c03d,84f5f0b-dirty,a7aaba3,dakota-demo,alvaro,touched-kitten,154,

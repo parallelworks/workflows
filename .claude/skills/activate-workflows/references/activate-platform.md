@@ -240,7 +240,14 @@ graph gives you sequencing, data flow, conditionals, and parallelism:
   `rundir: ${{ needs.gen.outputs.ITER_DIR }}/case_${{ matrix.job_id }}` composed
   fine into script_submitter's `with:`). Worked, tested example:
   `tutorials/optimization/iteration.yaml` (`workers` job — computed case set from an
-  optimizer, all of the above in one place). Fallback when the matrix must live in a
+  optimizer, all of the above in one place). **A form input is concrete at submission,
+  so a matrix can be sized by one:** `job_id: ${{ [1, 2, 3, 4, 5, 6, 7, 8] get
+  0:(inputs.batch_size) }}` slices a literal list to the input's value (the `get`
+  operator with a `start:end` range), so the run shows exactly `batch_size` workers
+  instead of a fixed 8 with skipped slots; it also works on a subworkflow input fed from
+  the parent's `with:` (verified 2026-10-01, that tutorial and
+  `workflows/dakota-openfoam`). Keep the runtime guard for the count actually produced.
+  Fallback when the matrix must live in a
   separate workflow: a step can submit it as a **fresh run** with the in-run client —
   `pw workflows run <abs yaml> -i '<json>'` (or `-i <file>`) under
   `permissions: ['*']` — and poll `pw workflows runs view <slug>`; the inner run's

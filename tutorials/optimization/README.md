@@ -23,7 +23,7 @@ By the end of this tutorial you will understand how to:
 - Run an *iterate-until-converged* loop with a retried subworkflow step whose exit
   code means "go again" or "done"
 - Fan a runtime-computed set of cases out over parallel jobs — and why that needs a
-  static matrix with a guard
+  matrix sized at submission plus a guard
 - Pass small values between jobs and layers as step outputs (`$OUTPUTS`), and
   everything else as files whose *paths* travel as inputs
 - Make a workflow report success and failure explicitly, from state files, with
@@ -90,7 +90,7 @@ was not given the budget to arrive.
 `iteration.yaml` is **one** pass through the loop body, as three jobs:
 
 ```
-optimize  ──▶  workers (matrix ×8)  ──▶  decide
+optimize  ──▶  workers (matrix ×batch_size)  ──▶  decide
 propose or     evaluate the cases        exit 0: loop over
 stop           in parallel               exit 1: run me again
 ```
@@ -113,17 +113,18 @@ the case definitions and the results never pass through the YAML — just `N_CAS
 
 A second step guards the contract: if the optimizer ever proposes more cases than
 the workers matrix can take, the job **fails loudly** instead of silently
-evaluating only the first 8 (see [failure semantics](#failure-semantics) for how
-that ends).
+evaluating only the first `batch_size` (see [failure semantics](#failure-semantics)
+for how that ends).
 
-### The `workers` job — a static matrix with a guard
+### The `workers` job — a matrix sized at submission, with a guard
 
 A matrix cannot expand over runtime values — submission itself fails with
 `Could not expand matrix jobs` if the list comes from another job's output. Matrix
-lists must be concrete when the run is submitted.
-
-So the matrix is a **literal list of the maximum batch width**, and a job-level
-`if:` compares each slot against the optimizer's runtime output:
+lists must be concrete when the run is submitted. A form input *is* concrete
+then, so the matrix can be sized by one: a **literal list of the maximum batch
+width, sliced to `batch_size`** with the expression language's `get` operator.
+The number of cases the optimizer actually proposes is a runtime output, which
+no matrix can take, so a job-level `if:` compares each slot against it:
 
 ```yaml
 workers:
@@ -131,13 +132,14 @@ workers:
   strategy:
     fail-fast: false
     matrix:
-      job_id: [1, 2, 3, 4, 5, 6, 7, 8]
+      job_id: ${{ [1, 2, 3, 4, 5, 6, 7, 8] get 0:(inputs.batch_size) }}
   if: ${{ matrix.job_id <= needs.optimize.outputs.N_CASES }}
 ```
 
-Workers beyond `N_CASES` are *skipped*, which costs nothing — including all eight
-on the final pass, when the optimizer stops and emits `N_CASES=0`. Each live
-worker hands its case to the repo's `script_submitter` subworkflow with
+The run page shows exactly `batch_size` workers. Workers beyond `N_CASES` are
+*skipped*, which costs nothing — including all of them on the final pass, when
+the optimizer stops and emits `N_CASES=0`. Each live worker hands its case to the
+repo's `script_submitter` subworkflow with
 
 ```yaml
 rundir: ${{ needs.optimize.outputs.ITER_DIR }}/case_${{ matrix.job_id }}
@@ -146,8 +148,8 @@ rundir: ${{ needs.optimize.outputs.ITER_DIR }}/case_${{ matrix.job_id }}
 so the case directory becomes the working directory, `./run.sh` runs there, and
 the form's scheduler settings (run on the login node, or one SLURM/PBS job per
 case) pass straight through. `fail-fast: false` lets the other cases finish when
-one fails. To allow bigger batches, extend the `job_id` list and the `batch_size`
-caps — the width is a deliberate, validated ceiling, not a magic number.
+one fails. To allow bigger batches, extend the literal list and the `batch_size`
+caps — the literal is a deliberate, validated ceiling, not a magic number.
 
 ### The `decide` job — an exit code as the loop signal
 
@@ -179,16 +181,16 @@ optimization_loop
  │   │   optimize ──▶ workers-1 ─┐
  │   │                workers-2  ├──▶ decide ─┬─ exit 1 → retry: next cycle
  │   │                    ⋮      │            └─ exit 0 → loop over
- │   │                workers-8 ─┘
+ │   │                workers-B ─┘
  │   │
  └─ Report            if: always — reads state/status, sets the run's verdict
 ```
 
-(The run page numbers the matrix workers from 0, so `job_id: 1` shows up as
-`workers-0`.)
+(B = `batch_size`. The run page numbers the matrix workers from 0, so `job_id: 1`
+shows up as `workers-0`.)
 
 The `preprocessing` job checks out `app/` from this repo, validates `batch_size`
-against the matrix width, creates `state/` in its own job directory and publishes
+against the matrix ceiling, creates `state/` in its own job directory and publishes
 the two absolute paths:
 
 ```yaml
@@ -266,7 +268,7 @@ or **an explained error (run fails)**. Nothing ends silently.
 | Case | one simulation crashes → no `results.out` | `fail-fast: false` lets the rest of the batch finish; the optimizer drops the missing result and continues |
 | Generation | *every* case of a generation came back without results | the next attempt re-proposes the same generation once (the case files are intact); a second all-miss means something is systematically broken → the optimizer writes `FAILED` |
 | Attempt | the cycle crashed mid-flight (node hiccup, worker infrastructure failure) | `decide` still runs (`if: ${{ always }}`) and exits 1, so the retry re-runs the **same** iteration: `state.json` is written atomically *after* the case directories, so a re-run always finds a consistent state — self-healing, at the price of one attempt from the budget |
-| Contract | the optimizer proposed more cases than the matrix width | the guard step fails the cycle rather than silently evaluating a subset; since re-proposals repeat the violation, the generation-level escalation ends it as `FAILED` two attempts later |
+| Contract | the optimizer proposed more cases than `batch_size`, the matrix width | the guard step fails the cycle rather than silently evaluating a subset; since re-proposals repeat the violation, the generation-level escalation ends it as `FAILED` two attempts later |
 | Budget | the retries ran out while `state/status` still says `CONTINUE` | `Report` fails the run and says so: raise `max_iterations` (crashed attempts also consume budget) or loosen the convergence knobs |
 
 And the two decided endings: `CONVERGED` → `Report` prints the front and the run
@@ -295,10 +297,10 @@ job or process tree), skipped workers never start, and the loop keeps no daemons
 
 ### Scaling and tuning
 
-- **Wider batches** — extend the `job_id` list in `iteration.yaml` and the
-  `batch_size` caps in both forms. Skipped slots are free, so a generous ceiling
-  costs nothing. To limit how many cases run at the same time, add
-  `max-parallel: <n>` under `strategy`.
+- **Wider batches** — extend the literal `job_id` list in `iteration.yaml` and
+  the `batch_size` caps in both forms; the matrix itself follows `batch_size`.
+  To limit how many cases run at the same time, add `max-parallel: <n>` under
+  `strategy`.
 - **More iterations** — every platform iteration adds scheduling overhead (roughly
   a minute at small scale), so budget accordingly; the loop is restartable state,
   so a deeper search is just a bigger `max_iterations`.

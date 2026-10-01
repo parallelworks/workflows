@@ -10,9 +10,9 @@
 #
 # The same YAML is the per-design evaluator of workflows/dakota-openfoam: the
 # optimization loop calls it once per proposed design with case.params_file
-# pointing at the Dakota-style params file of the case and case.case_dir at the
-# case directory, so the design never has to be typed and the results land where
-# the optimizer reads them.
+# pointing at the Dakota-style params file of the case (its values override the
+# form's) and case.case_dir at the case directory, so the results land where the
+# optimizer reads them.
 permissions:
   - '*'
 
@@ -60,27 +60,26 @@ jobs:
           mkdir -p "${case_dir}"
           params_file="${{ inputs.case.params_file }}"
           case "${params_file}" in
-            ''|undefined)
-              printf '%s max_camber\n%s camber_position\n%s thickness\n' \
-                "${{ inputs.case.max_camber }}" "${{ inputs.case.camber_position }}" "${{ inputs.case.thickness }}" \
-                > "${case_dir}/params.in"
-              ;;
+            ''|undefined) params_file="" ;;
             *)
               if [ ! -f "${params_file}" ]; then
                 echo "::error::params_file ${params_file} does not exist"
                 exit 1
               fi
-              if [ "$(readlink -f "${params_file}")" != "$(readlink -f "${case_dir}/params.in")" ]; then
-                cp "${params_file}" "${case_dir}/params.in"
-              fi
               ;;
           esac
-          for name in max_camber camber_position thickness; do
-            if ! awk -v n="${name}" '$2 == n {found = 1} END {exit !found}' "${case_dir}/params.in"; then
-              echo "::error::${case_dir}/params.in has no '${name}' line; the design needs max_camber, camber_position and thickness"
-              exit 1
+          # the file's lines win over the form's values of the same name, and the
+          # form fills in whatever the file does not list (first occurrence wins)
+          {
+            if [ -n "${params_file}" ]; then
+              cat "${params_file}"
+              echo
             fi
-          done
+            printf '%s max_camber\n%s camber_position\n%s thickness\n%s angle_of_attack\n' \
+              "${{ inputs.case.max_camber }}" "${{ inputs.case.camber_position }}" \
+              "${{ inputs.case.thickness }}" "${{ inputs.case.angle_of_attack }}"
+          } | awk 'NF >= 2 && !seen[$2]++' > "${case_dir}/params.in.tmp"
+          mv "${case_dir}/params.in.tmp" "${case_dir}/params.in"
           rm -f "${case_dir}/results.out" "${case_dir}/exit_code"
           # the submitter inlines the script body, so the absolute paths are baked in;
           # it is not named run.sh because the submitter writes its assembled job
@@ -89,8 +88,8 @@ jobs:
           cat > "${case_dir}/case.sh" << PW_CASE_EOF
           #!/bin/bash
           cd "${case_dir}"
-          ALPHA_DEG="${{ inputs.case.angle_of_attack }}" MESH_SCALE="${{ inputs.case.mesh_scale }}" \\
-            CORES_PER_CASE="${cores:-${{ inputs.cluster.cores_per_case }}}" OPENFOAM_ENV="${PWD}/openfoam-env.sh" \\
+          MESH_SCALE="${{ inputs.case.mesh_scale }}" CORES_PER_CASE="${{ inputs.cluster.cores_per_case }}" \\
+            OPENFOAM_ENV="${PWD}/openfoam-env.sh" \\
             bash "${PWD}/workflows/openfoam-naca/app/simulator.sh"
           rc=\$?
           echo "\${rc}" > exit_code
@@ -159,7 +158,7 @@ jobs:
           echo "LIFT_COEFFICIENT=${cl}" | tee -a $OUTPUTS
           echo "RESULTS_FILE=${case_dir}/results.out" | tee -a $OUTPUTS
           echo "PARAVIEW_FILE=${case_dir}/case/case.foam" | tee -a $OUTPUTS
-          echo "::notice::Cd = ${cd_}, Cl = ${cl} for the design in ${case_dir}/params.in (${{ inputs.case.angle_of_attack }} deg, mesh_scale ${{ inputs.case.mesh_scale }}); open ${case_dir}/case/case.foam in ParaView to see the fields"
+          echo "::notice::Cd = ${cd_}, Cl = ${cl} for the design in ${case_dir}/params.in (mesh_scale ${{ inputs.case.mesh_scale }}); open ${case_dir}/case/case.foam in ParaView to see the fields"
 
 'on':
   execute:
@@ -256,8 +255,6 @@ jobs:
             default: 0.02
             min: 0
             max: 0.06
-            hidden: ${{ inputs.case.params_file != '' }}
-            ignore: ${{ .hidden }}
             tooltip: |
               The first NACA digit / 100: 0 is a symmetric airfoil (00xx), 0.02 a
               2412-like one. The box 0-0.06 is where the C-grid generator was
@@ -268,8 +265,6 @@ jobs:
             default: 0.4
             min: 0.3
             max: 0.6
-            hidden: ${{ inputs.case.params_file != '' }}
-            ignore: ${{ .hidden }}
             tooltip: The second NACA digit / 10. Ignored by the geometry when the camber is 0.
           thickness:
             type: number
@@ -277,8 +272,6 @@ jobs:
             default: 0.12
             min: 0.08
             max: 0.18
-            hidden: ${{ inputs.case.params_file != '' }}
-            ignore: ${{ .hidden }}
             tooltip: The last two NACA digits / 100.
           angle_of_attack:
             type: number
@@ -289,9 +282,6 @@ jobs:
             tooltip: |
               Incidence of the freestream. The airfoil stays axis-aligned; the
               angle goes into the far-field velocity and the lift/drag directions.
-              A case setting, not a design variable: an optimization loop passes
-              it next to the params file, and only an angle_of_attack line in
-              that file overrides it.
           mesh_scale:
             type: number
             label: Mesh resolution multiplier
@@ -320,11 +310,11 @@ jobs:
             default: ''
             tooltip: |
               Absolute path of a Dakota-style parameters file, one "<value> <name>"
-              line per variable (max_camber, camber_position, thickness; an
-              optional angle_of_attack line overrides the field above). When
-              set, the three shape fields are hidden and ignored and the file is
-              copied into the case directory as params.in. This is how an
-              optimization loop hands a proposed design to this workflow.
+              line per entry. Its values override the form fields of the same
+              name (max_camber, camber_position, thickness, angle_of_attack); a
+              field the file does not list keeps the form's value, so the file
+              need not carry them all. An optimization loop passes the file of
+              the design it proposed here.
       software:
         type: group
         label: Software Environment

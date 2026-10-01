@@ -153,30 +153,40 @@ def read_pairs(path):
     return pairs
 
 
+def pick(pairs, names):
+    """The values of `names` from (label, value) pairs: by label when every name
+    is labelled (an evaluator may add lines of its own to a case's params.in, and
+    label results.out), else the first len(names) values in order."""
+    by_name = dict(pairs)
+    if all(name in by_name for name in names):
+        return [by_name[name] for name in names]
+    if len(pairs) < len(names):
+        raise KeyError("expected %d values" % len(names))
+    return [v for _, v in pairs[:len(names)]]
+
+
 def ingest(state_dir, gen, problem):
     """Sort the cases of generation `gen` into results ({x, f, key, case}), failed
     ((case_dir, key, x): the evaluator ran and left an exit_code but no usable
     results.out) and unrun ((case_dir, key, x): neither file, the evaluation never
     ran or was killed mid-way)."""
     done, failed, unrun = [], [], []
-    n_var, n_obj = len(problem["variables"]), len(problem["objectives"])
+    names = [v[0] for v in problem["variables"]]
     for case_dir in sorted(glob.glob(os.path.join(state_dir, "iter_%d" % gen, "case_*")),
                            key=lambda d: int(d.rsplit("_", 1)[1])):
         try:
             with open(os.path.join(case_dir, "param.hash")) as fh:
                 key = fh.read().strip()
-            x = [v for _, v in read_pairs(os.path.join(case_dir, "params.in"))]
-        except (OSError, ValueError):
-            continue
-        if len(x) != n_var:
+            x = pick(read_pairs(os.path.join(case_dir, "params.in")), names)
+        except (OSError, ValueError, KeyError):
             continue
         try:
-            f = [v for _, v in read_pairs(os.path.join(case_dir, "results.out"))]
-        except (OSError, ValueError):
+            f = pick(read_pairs(os.path.join(case_dir, "results.out")), problem["objectives"])
+        except (OSError, ValueError, KeyError):
             f = None
         case = os.path.basename(case_dir)
-        if f is not None and len(f) >= n_obj:
-            done.append({"x": x, "f": f[:n_obj], "key": key, "case": case})
+        if f is not None:
+            done.append({"x": x, "f": f, "key": key, "case": case})
         elif os.path.exists(os.path.join(case_dir, "exit_code")):
             failed.append((case, key, x))
         else:
@@ -445,8 +455,8 @@ def write_proposals(iter_dir, problem):
     for case_dir in sorted(glob.glob(os.path.join(iter_dir, "case_*")),
                            key=lambda d: int(d.rsplit("_", 1)[1])):
         try:
-            x = [v for _, v in read_pairs(os.path.join(case_dir, "params.in"))]
-        except (OSError, ValueError):
+            x = pick(read_pairs(os.path.join(case_dir, "params.in")), [v[0] for v in problem["variables"]])
+        except (OSError, ValueError, KeyError):
             continue
         rows.append(os.path.basename(case_dir) + "," + ",".join("%.8e" % v for v in x))
     write_atomic(os.path.join(iter_dir, "proposals.csv"), "\n".join(rows) + "\n")

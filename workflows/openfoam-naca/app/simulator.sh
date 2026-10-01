@@ -65,8 +65,8 @@ if [ -z "${max_camber}" ] || [ -z "${camber_position}" ] || [ -z "${thickness}" 
     echo "params.in is missing max_camber, camber_position or thickness"
     exit 1
 fi
-# the angle is a case setting (ALPHA_DEG) unless the design file carries it,
-# which an optimizer treating the incidence as a fourth variable would do
+# params.in may carry the angle too (the workflow writes it there; an optimizer
+# treating the incidence as a design variable would as well): the file wins
 alpha_in_file=$(awk '$2=="angle_of_attack"{print $1}' params.in)
 if [ -n "${alpha_in_file}" ]; then
     ALPHA_DEG="${alpha_in_file}"

@@ -27,7 +27,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Dakota (Propose or Stop)
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@dakota-openfoam
         with:
           $yaml: workflows/dakota/yamls/hsp.yaml
           resource: ${{ inputs.resource }}
@@ -77,7 +77,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: OpenFOAM (Evaluate the Design)
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@dakota-openfoam
         with:
           $yaml: workflows/openfoam-naca/yamls/hsp.yaml
           resource: ${{ inputs.resource }}

@@ -56,7 +56,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: dakota-openfoam
           sparse_checkout:
             - workflows/dakota/app
       - name: Validate Inputs and Initialize State
@@ -118,7 +118,7 @@ jobs:
       # needs it, only completes once the endpoint is listed and /healthz answers
       # through the platform
       - name: Wait for endpoint
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@dakota-openfoam
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: pareto-${PW_RUN_SLUG}
@@ -174,7 +174,7 @@ jobs:
           # subworkflow, mid-simulation — when it expires. One generation
           # (propose + node boot + queue + solve + decide) must fit in it.
           timeout: ${{ inputs.optimizer.iteration_timeout }}
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@dakota-openfoam
         with:
           $yaml: workflows/dakota-openfoam/yamls/iteration-naca-hsp.yaml
           # the retry counter (0 on the first attempt), so the iteration can say

@@ -5,13 +5,14 @@
     "leftover_patterns": [
       "pw endpoints run",
       "src.server.main"
-    ]
+    ],
+    "endpoint_name": "rdhpcs-status"
   },
+  "platform": "noaa",
   "cluster": {
     "resource": "workspace"
   },
   "service": {
-    "platform": "noaa",
     "cluster_monitor_interval": 180,
     "enable_cluster_monitor": true,
     "enable_cluster_pages": true,

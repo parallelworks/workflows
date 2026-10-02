@@ -5,13 +5,14 @@
     "leftover_patterns": [
       "pw endpoints run",
       "src.server.main"
-    ]
+    ],
+    "endpoint_name": "hpc-status"
   },
+  "platform": "hpcmp",
   "cluster": {
     "resource": "workspace"
   },
   "service": {
-    "platform": "hpcmp",
     "cluster_monitor_interval": 120,
     "enable_cluster_monitor": true,
     "enable_cluster_pages": true,

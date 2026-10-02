@@ -6,11 +6,13 @@
 # Called by: Workflow after controller setup, through script_submitter
 #
 # Required Environment Variables (from inputs.sh):
-#   - pw_endpoints_args: Arguments for pw endpoints run (--name <prefix>-${PW_RUN_SLUG});
-#     endpoints named after the prefix are this dashboard's
+#   - pw_endpoints_args: Arguments for pw endpoints run (--name <endpoint name>);
+#     endpoints named <endpoint name> or <endpoint name>-* are this dashboard's
 #   - service_parent_install_dir: Parent directory of the installation
 #   - service_platform: auto, generic, hpcmp or noaa - the configuration to load
 #   - service_subdomain: Public hostname label (optional, default status-<PW_USER>)
+#   - service_local_port: Port to bind instead of the one pw endpoints run picks (optional)
+#   - service_detach: false when the dashboard stops with its run (optional, default true)
 #   - service_theme, service_enable_cluster_pages, service_enable_cluster_monitor,
 #     service_cluster_monitor_interval, service_sweep_concurrency: dashboard settings
 #   - service_pw_context: Identity every pw call is pinned to (optional)
@@ -34,10 +36,15 @@ if [ ! -f "${app_dir}/src/server/main.py" ]; then
 fi
 
 served_name=$(printf '%s' "${pw_endpoints_args}" | sed -n 's/.*--name[ =]\{1,\}\([^ ]*\).*/\1/p')
-endpoint_prefix="${served_name%-${PW_RUN_SLUG}}"
-if [ -z "${served_name}" ] || [ "${endpoint_prefix}" = "${served_name}" ]; then
-    echo "::error title=Error::pw_endpoints_args must name the endpoint <prefix>-${PW_RUN_SLUG}: ${pw_endpoints_args}"
+if [ -z "${served_name}" ]; then
+    echo "::error title=Error::pw_endpoints_args must name the endpoint: ${pw_endpoints_args}"
     exit 1
+fi
+
+# Only pin a port when asked: the one pw endpoints run picks is free, and 8080 is
+# Grafana on an ACTIVATE workspace
+if [[ "${service_local_port}" =~ ^[1-9][0-9]*$ ]]; then
+    pw_endpoints_args="${pw_endpoints_args} --port ${service_local_port}"
 fi
 
 # A ${{ }} expression cannot look at the host it runs on, so auto is resolved here: a
@@ -94,6 +101,8 @@ if [ -n "${PW_API_KEY:-}" ] && env -u PW_API_KEY pw auth whoami >/dev/null 2>&1;
 fi
 if [ -n "${durable}" ]; then
     echo "::notice::The dashboard authenticates with ${durable}, which outlives this run"
+elif [ "${service_detach}" = "false" ]; then
+    echo "::notice::The dashboard authenticates with this run's key, which lasts as long as the run stays open"
 else
     echo "::warning title=Credentials::Only this run's key authenticates pw on $(hostname), and it is revoked when the run completes: the dashboard will keep serving but stop collecting. Run 'pw auth' on this host, or run the dashboard on the user workspace"
 fi
@@ -107,28 +116,36 @@ fi
 service_subdomain=$(printf '%s' "${service_subdomain}" | tr '[:upper:]' '[:lower:]' \
     | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-63 | sed 's/-*$//')
 
-# Starting again restarts. Two endpoints cannot share the subdomain, and one left
-# behind by a recycled workspace stays listed while serving nothing, so the previous
-# dashboard at this address is deleted first - wherever it runs: its pw endpoints run
-# notices its session is gone and takes its process tree down. Anything else holding
-# the address is not ours to delete.
-endpoints_at_subdomain() {
-    pw endpoints list 2>/dev/null | awk -F'\t' -v host="https://${service_subdomain}." 'index($3, host) == 1 {print $1}'
+# Starting again restarts. The controller already deleted the endpoint with this name;
+# the address can still be held by this dashboard under a name with a suffix - one
+# launched as <name>-<run slug> before the name was fixed, or left listed but serving
+# nothing by a recycled workspace - and two endpoints cannot share a subdomain. Delete
+# those wherever they run: their pw endpoints run notices the session is gone and takes
+# its process tree down. Anything else at the address is not ours to delete; the launch
+# then falls back to a platform-assigned address below.
+listed_names() {
+    pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}'
 }
-for previous in $(endpoints_at_subdomain); do
+replaced=""
+for previous in $(pw endpoints list 2>/dev/null | awk -F'\t' -v host="https://${service_subdomain}." 'index($3, host) == 1 {print $1}'); do
     case "${previous}" in
-        "${endpoint_prefix}"|"${endpoint_prefix}"-*)
+        "${served_name}"|"${served_name}"-*)
             echo "::notice::Replacing the previous dashboard at https://${service_subdomain}.*: deleting endpoint ${previous}"
             pw endpoints delete "${previous}"
+            replaced="${replaced} ${previous}"
             ;;
         *)
-            echo "::error title=Error::https://${service_subdomain}.* is served by endpoint ${previous}, which is not an HPC Status dashboard. Delete it with 'pw endpoints delete ${previous}' or run again with another Public Subdomain"
-            exit 1
+            echo "::notice::https://${service_subdomain}.* is served by endpoint ${previous}, which is not this dashboard; leaving it alone"
             ;;
     esac
 done
 for _ in $(seq 1 30); do
-    [ -z "$(endpoints_at_subdomain)" ] && break
+    remaining=""
+    for previous in ${replaced}; do
+        listed_names | grep -qxF "${previous}" && remaining="${remaining} ${previous}"
+    done
+    replaced="${remaining}"
+    [ -z "${replaced}" ] && break
     sleep 2
 done
 
@@ -169,7 +186,7 @@ echo "::notice::Starting the dashboard: pw endpoints run ${pw_endpoints_args} --
 cat launch-dashboard.sh
 
 endpoint_listed() {
-    pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${served_name}"
+    listed_names | grep -qxF "${served_name}"
 }
 
 started=${SECONDS}

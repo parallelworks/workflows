@@ -51,7 +51,8 @@ The jobs follow the repository's endpoint pattern:
 1. **preprocessing** — on the dashboard host: checks out `workflows/hpc_status/app`,
    writes `inputs.sh`, runs `controller.sh` (the `pw` CLI check, the shared `uv` and the
    dashboard's virtualenv under `${HOME}/pw/software/hpc_status/venv`, idempotent: a venv
-   that imports the server is reused) and assembles the start script.
+   that imports the server is reused; then it deletes the previous dashboard with this
+   endpoint name) and assembles the start script.
 2. **session_runner** — submits the start script through
    [`script_submitter/v3.6`](../script_submitter/), always on the host itself: the
    dashboard needs the `pw` CLI, its credentials and internet access for as long as it
@@ -60,16 +61,19 @@ The jobs follow the repository's endpoint pattern:
 3. **wait_for_endpoint** — the shared [`wait_for_endpoint`](../wait_for_endpoint/)
    subworkflow waits for the endpoint, probes `/` with the run's key until the dashboard
    answers (up to 15 minutes: a first start has no cached fleet and answers only after one
-   full sweep), touches the skip file so the dashboard outlives the run, and cancels the
-   submitter.
+   full sweep). With **Keep Serving After The Run Ends** on (the default) it then touches
+   the skip file so the dashboard outlives the run, and cancels the submitter.
 4. **summary** — prints the dashboard URL and how to stop it.
 
-The run completes within a minute or so; the dashboard keeps serving until its endpoint
-is deleted.
+By default the run completes within a minute or so and the dashboard keeps serving until
+its endpoint is deleted. With **Keep Serving After The Run Ends** off the run stays open
+for as long as the dashboard serves: cancelling the run stops it (the submitter's cleanup
+takes its process group down), and a dashboard stopped by deleting its session ends the
+run as completed.
 
 ### Where it runs, and on which credential
 
-**Service host** defaults to the user workspace, which is the right choice unless you
+**Where To Run** defaults to the user workspace, which is the right choice unless you
 have a reason to move it; pick a long-lived cluster to keep the dashboard serving when the
 workspace recycles.
 
@@ -83,7 +87,8 @@ script hands it a credential that outlives the run, and says in the run log whic
   `/etc/profile.d/parallelworks-env.sh` (only that variable is taken from the file, and
   only when it works);
 - otherwise a warning: the dashboard serves, but stops collecting when the run
-  completes. Run `pw auth` on that host, or use the workspace.
+  completes. Run `pw auth` on that host, or use the workspace. (With Keep Serving off the
+  run's key lasts as long as the dashboard does, so there is nothing to warn about.)
 
 The collector also recovers on its own if the key it holds dies mid-life
 (`src/collectors/pw_cluster.py`).
@@ -94,38 +99,46 @@ Without a subdomain the platform assigns a random one per session. The dashboard
 **`status-<username>`** instead (lowercased and hyphenated, so `Matthew.Shaxted` becomes
 `status-matthew-shaxted`), or the **Public Subdomain** you set — the same URL every run.
 That is a request, not a claim: `pw subdomains reserve status-<username>` keeps it yours.
-When the platform refuses the subdomain the run falls back to an assigned address and
-says so.
+When the platform refuses the subdomain, or another endpoint already serves there, the
+run falls back to an assigned address and says so.
 
-**Starting again restarts.** Before launching, the start script deletes any endpoint at
-that address whose name is this dashboard's (`hpc-status`, `hpc-status-<run>` — or
-`rdhpcs-status…` on NOAA), wherever it runs: its `pw endpoints run` notices the session is
-gone and takes its process tree down. That also clears a session a recycled workspace
-left listed but dead. Any other endpoint at the address stops the run with an error
-rather than being deleted.
+The endpoint is named **`hpc-status`** (`rdhpcs-status` on NOAA), or the **Endpoint
+Name** you set — the same name every run, in the Sessions page and `pw endpoints list`. A
+name is folded like a subdomain: lowercase, anything outside `a-z 0-9 -` becomes a dash.
 
-The endpoint itself is named `hpc-status-<run-slug>` like every endpoint here.
+**Starting again restarts.** Two endpoints cannot share a name, so the controller deletes
+the endpoint with this name before the new dashboard starts, wherever it runs: its
+`pw endpoints run` notices the session is gone and takes its process tree down. That also
+clears a session a recycled workspace left listed but dead. It happens in preprocessing,
+before `wait_for_endpoint` starts looking for the name, so the health check can only ever
+see the new dashboard. The start script then deletes any endpoint at the address named
+`<name>-…` — a dashboard launched while the name carried the run slug — and leaves
+everything else alone. A second dashboard with its own Endpoint Name and Public Subdomain
+runs alongside the first.
 
 ## Inputs
 
 | Input | Default | Meaning |
 |---|---|---|
-| Service host | user workspace | Where the dashboard runs (see above) |
-| Platform | `auto` | `general.yaml` only: `generic`, `hpcmp` or `noaa` configuration; `auto` picks it from the platform host (`*.hpc.mil` → HPCMP, NOAA hosts → NOAA) |
+| Platform | `auto` | `general.yaml` only (hidden elsewhere): `generic`, `hpcmp` or `noaa` configuration; `auto` picks it from the platform host (`*.hpc.mil` → HPCMP, NOAA hosts → NOAA) |
+| Endpoint Name | `hpc-status` (`rdhpcs-status` on NOAA) | Name of the endpoint session; a launch replaces the dashboard running under it |
+| Keep Serving After The Run Ends | on | On: the run completes once the dashboard answers and the dashboard outlives it. Off: the run stays open while it serves; cancel the run to stop it |
 | Public Subdomain | *(blank)* | Hostname label; blank derives `status-<username>` |
+| Clusters Swept At Once | `6` | Clusters collected from simultaneously |
+| Local Port | `0` | Port the dashboard binds on the host; `0` lets `pw endpoints run` pick a free one |
 | UI Theme | `light` | Default color theme |
 | Enable Cluster Pages | on | Queue and quota pages |
 | Enable Cluster Monitor | on | Background cluster collection |
 | Refresh Interval | `120` (`180` on NOAA) | Seconds between collections (at least 60) |
-| Clusters Swept At Once | `6` | Clusters collected from simultaneously |
+| Where To Run | user workspace | Where the dashboard runs (see above), in its own collapsed group |
 
-The settings live in the collapsed **HPC Status Settings** group, so a launch with the
-defaults is one click. Everything else is in the deployment's YAML config
+Everything but Platform lives in the collapsed **Settings** and **Where To Run** groups, so
+a launch with the defaults is one click. Everything else is in the deployment's YAML config
 (`app/configs/`); see [docs/configuration.md](docs/configuration.md).
 
 ## Variants
 
-| YAML | Platform | Configuration | Endpoint prefix |
+| YAML | Platform | Configuration | Endpoint name |
 |---|---|---|---|
 | `yamls/general.yaml` | anything but the two below | `auto` (dropdown) | `hpc-status` |
 | `yamls/hsp.yaml` | `activate.hpc.mil` | `configs/config.hpcmp.yaml` — HPCMP fleet from centers.hpc.mil, DSRC names, purple branding | `hpc-status` |
@@ -140,15 +153,16 @@ account can write there, `${HOME}/pw/software` otherwise (the workspace included
 
 ```bash
 pw workflows run "$PWD/workflows/hpc_status/yamls/general.yaml" -i '{"cluster":{"resource":"workspace"}}'
-pw endpoints list                              # hpc-status-<run-slug> and its URL
-pw endpoints delete hpc-status-<run-slug>      # stops the dashboard
+pw endpoints list                              # hpc-status and its URL
+pw endpoints delete hpc-status                 # stops the dashboard
 ```
 
 ## Stopping it
 
-Delete its session from the Sessions page, or `pw endpoints delete hpc-status-<run-slug>`.
+Delete its session from the Sessions page, or `pw endpoints delete hpc-status`.
 `pw endpoints run` shuts down when its session goes (`Endpoint "..." was deleted; shutting
-down.`), taking the dashboard and its collectors with it. Launching again replaces it.
+down.`), taking the dashboard and its collectors with it. Launching again replaces it. With
+Keep Serving off, cancelling the run stops it too.
 
 ## Debugging
 
@@ -190,7 +204,7 @@ the spec with `python dev/scripts/build_openapi.py` (a test fails while it is st
 workflows/hpc_status/
 ├── yamls/{general,hsp,noaa}.yaml
 ├── app/                     # The only subtree a run checks out
-│   ├── controller.sh        # pw check, uv, the dashboard's virtualenv
+│   ├── controller.sh        # pw check, uv, the dashboard's virtualenv, stop the previous one
 │   ├── start-template.sh    # configuration, durable credential, address, pw endpoints run
 │   ├── requirements.txt
 │   ├── configs/             # config.yaml (generic), config.hpcmp.yaml, config.noaa.yaml

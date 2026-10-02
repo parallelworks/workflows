@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: hpc_status
+          branch: canary
           sparse_checkout:
             - workflows/hpc_status/app
       - name: Create Inputs
@@ -25,16 +25,18 @@ jobs:
           cat <<'EOF' >> inputs.sh
           PATH=$HOME/pw:$PATH
           service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
-          service_name="${{ inputs.service.name }}"
-          service_platform="${{ inputs.service.platform }}"
+          service_platform="${{ inputs.platform }}"
           service_subdomain="${{ inputs.service.subdomain }}"
+          service_local_port="${{ inputs.service.port }}"
+          service_detach="${{ inputs.service.detach }}"
           service_theme="${{ inputs.service.theme }}"
           service_enable_cluster_pages="${{ inputs.service.enable_cluster_pages }}"
           service_enable_cluster_monitor="${{ inputs.service.enable_cluster_monitor }}"
           service_cluster_monitor_interval="${{ inputs.service.cluster_monitor_interval }}"
           service_sweep_concurrency="${{ inputs.service.sweep_concurrency }}"
           service_pw_context="${{ inputs.service.pw_context }}"
-          pw_endpoints_args="--name ${service_name:-rdhpcs-status}-${PW_RUN_SLUG}"
+          service_endpoint_name="$(printf '%s' '${{ inputs.service.name }}' | sed 's/^undefined$//' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
+          pw_endpoints_args="--name ${service_endpoint_name:-rdhpcs-status}"
           EOF
           # Remove empty variables
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
@@ -100,10 +102,18 @@ jobs:
           echo "::notice::Starting service"
           EOF
           cat workflows/hpc_status/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
-          service_name="${{ inputs.service.name }}"
-          echo "ENDPOINT_NAME=${service_name:-rdhpcs-status}-${PW_RUN_SLUG}" | tee -a $OUTPUTS
+          source inputs.sh
+          echo "ENDPOINT_NAME=${pw_endpoints_args#--name }" | tee -a $OUTPUTS
           echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
           echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+          # Kept serving, the healthy dashboard outlives the run through the submitter's
+          # skip file. Otherwise the run stays open while it serves and cancelling the run
+          # is its teardown, so the wait marks a file the submitter does not read
+          if [ "${{ inputs.service.detach }}" = "false" ]; then
+            echo "HEALTHY_MARKER_PATH=${PWD}/SERVING" | tee -a $OUTPUTS
+          else
+            echo "HEALTHY_MARKER_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+          fi
 
   session_runner:
     needs:
@@ -137,8 +147,12 @@ jobs:
         with:
           jobs:
             - wait_for_endpoint
-      - name: Exit Workflow with Error
+      - name: Exit Workflow
         run: |
+          if [ "${{ inputs.service.detach }}" = "false" ] && [ -f "${{ needs.preprocessing.outputs.HEALTHY_MARKER_PATH }}" ]; then
+            echo "::notice::The dashboard stopped serving"
+            exit 0
+          fi
           echo "::error title=Error::The dashboard exited before its endpoint came online"
           exit 1
 
@@ -150,16 +164,17 @@ jobs:
     steps:
       - name: Wait for endpoint
         early-cancel: any-job-failed
-        uses: github/parallelworks/workflows@hpc_status
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: ${{ needs.preprocessing.outputs.ENDPOINT_NAME }}
           host: ${{ inputs.cluster.resource.ip }}
-          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.HEALTHY_MARKER_PATH }}
           # A first start has no cached fleet and answers only after one full sweep:
           # a pw ssh round trip to every cluster, or the HPCMP status pages
           budget: 900
       - name: Cancel Script Submitter
+        if: ${{ inputs.service.detach != false }}
         uses: parallelworks/cancel-jobs
         with:
           jobs:
@@ -178,67 +193,79 @@ jobs:
           endpoint_name="${{ needs.preprocessing.outputs.ENDPOINT_NAME }}"
           url=$(pw endpoints list | awk -F'\t' -v name="${endpoint_name}" '$1 == name {print $3}')
           echo "::notice::Dashboard: ${url:-endpoint ${endpoint_name} (see pw endpoints list)}"
-          echo "The dashboard keeps serving after this run completes; stop it by deleting its session:"
-          echo "  pw endpoints delete ${endpoint_name}"
+          if [ "${{ inputs.service.detach }}" = "false" ]; then
+            echo "The dashboard serves for as long as this run stays open; cancel the run, or delete its session, to stop it."
+          else
+            echo "The dashboard keeps serving after this run completes; stop it by deleting its session:"
+            echo "  pw endpoints delete ${endpoint_name}"
+          fi
 
 'on':
   execute:
     inputs:
-      cluster:
-        type: group
-        label: Dashboard Host
-        items:
-          resource:
-            type: compute-clusters
-            label: Service host
-            include-workspace: true
-            default: workspace
-            tooltip: |
-              Where the dashboard runs. The user workspace needs no setup and is the right
-              choice unless you have a reason to move it; a long-lived cluster keeps it
-              serving when the workspace recycles. That host needs the pw CLI and saved
-              credentials (pw auth there), or the dashboard stops collecting when this run
-              completes.
+      platform:
+        type: dropdown
+        label: Platform
+        default: noaa
+        hidden: true
+        tooltip: Select the deployment platform configuration
+        options:
+          - label: Generic
+            value: generic
+          - label: HPCMP
+            value: hpcmp
+          - label: NOAA
+            value: noaa
       service:
         type: group
-        label: HPC Status Settings
+        label: Settings
         collapsed: true
         items:
           name:
             type: string
-            hidden: true
+            label: Endpoint Name
             default: rdhpcs-status
-            tooltip: Endpoint name prefix; endpoints named after it are replaced by a new launch
-          parent_install_dir:
-            label: Parent Install Directory
-            type: string
-            hidden: true
-            optional: true
-            tooltip: |
-              The dashboard's Python environment is installed under this directory on the
-              dashboard host. Leave empty to use the cluster's shared software directory
-              when this account can write to it, and ${HOME}/pw/software otherwise.
-          platform:
-            type: string
-            hidden: true
-            default: noaa
-            tooltip: The configuration to load (configs/config.noaa.yaml)
-          pw_context:
-            type: string
-            hidden: true
-            default: noaa
             tooltip: >-
-              Identity every pw call is pinned to, so the dashboard queries NOAA clusters
-              whatever context the host's saved credentials are on
+              Name of the endpoint session, shown in your sessions list. A launch
+              replaces the dashboard already running under this name. Lowercase
+              letters, digits and dashes; anything else becomes a dash.
+          detach:
+            type: boolean
+            label: Keep Serving After The Run Ends
+            default: true
+            tooltip: >-
+              On, the run finishes once the dashboard answers and the dashboard keeps
+              serving on a credential that outlives the run; stop it by deleting the
+              session. Off, the run stays open for as long as the dashboard does and
+              cancelling it stops everything.
           subdomain:
             type: string
             label: Public Subdomain
             optional: true
             default: ""
             tooltip: >-
-              Hostname label for the dashboard, so the URL stays the same between runs.
-              Blank derives status-<username>. Reserve it with `pw subdomains reserve
-              <name>` to keep it yours. A launch replaces the dashboard already serving there.
+              Hostname label for the dashboard, so the URL stays the same
+              between runs. Blank derives status-<username>. Reserve it
+              with `pw subdomains reserve <name>` to keep it yours.
+          sweep_concurrency:
+            type: integer
+            label: Clusters Swept At Once
+            default: 6
+            min: 1
+            tooltip: >-
+              Advanced. How many clusters the monitor collects from
+              simultaneously. Each cluster is still handled one connection
+              at a time, so this only overlaps different systems — raise it
+              for a faster sweep of a large fleet, lower it to be gentler.
+          port:
+            type: integer
+            label: Local Port
+            default: 0
+            min: 0
+            tooltip: >-
+              Local port the dashboard binds on the node. Leave at 0 to let
+              the CLI pick a free one — set it only if you need a
+              predictable port, and note that 8080 is already Grafana.
           theme:
             type: dropdown
             label: UI Theme
@@ -253,26 +280,49 @@ jobs:
             type: boolean
             label: Enable Cluster Pages
             default: true
-            tooltip: Enable the queue and quota pages
+            tooltip: Enable queue and quota monitoring pages
           enable_cluster_monitor:
             type: boolean
             label: Enable Cluster Monitor
             default: true
-            tooltip: Enable background cluster data collection (needs the cluster pages)
+            tooltip: Enable background cluster data collection
           cluster_monitor_interval:
             type: integer
             label: Refresh Interval
             default: 180
             min: 60
             tooltip: >-
-              Seconds between cluster data collections (at least 60; 180 recommended for
+              Data refresh interval in seconds (at least 60; 180 recommended for
               NOAA - saccount_params and sreport take a few seconds per cluster)
-          sweep_concurrency:
-            type: integer
-            label: Clusters Swept At Once
-            default: 6
-            min: 1
+          parent_install_dir:
+            label: Parent Install Directory
+            type: string
+            hidden: true
+            optional: true
+            tooltip: |
+              The dashboard's Python environment is installed under this directory on the
+              dashboard host. Leave empty to use the cluster's shared software directory
+              when this account can write to it, and ${HOME}/pw/software otherwise.
+          pw_context:
+            type: string
+            hidden: true
+            default: noaa
             tooltip: >-
-              How many clusters the monitor collects from simultaneously. Each cluster is
-              still handled one connection at a time, so this only overlaps different
-              systems: raise it for a faster sweep of a large fleet, lower it to be gentler.
+              Identity every pw call is pinned to, so the dashboard queries NOAA clusters
+              whatever context the host's saved credentials are on
+      cluster:
+        type: group
+        label: Where To Run
+        collapsed: true
+        items:
+          resource:
+            type: compute-clusters
+            label: Dashboard Host
+            include-workspace: true
+            default: workspace
+            tooltip: >-
+              Advanced. The user workspace needs no setup and is what you want
+              unless you have a reason not to. Pick a cluster to keep the dashboard
+              serving when the workspace recycles — that host needs the pw CLI on
+              its PATH and authenticated (pw auth there), and the run says so
+              plainly if it does not.

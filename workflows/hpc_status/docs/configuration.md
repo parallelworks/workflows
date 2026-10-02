@@ -18,7 +18,9 @@ both.
 | Clusters Swept At Once | `--max-concurrent-ssh <n>` |
 
 The port and base path come from `pw endpoints run` (`--port ${PORT}`,
-`--url-prefix ${PW_ENDPOINT_PATH}`), and the server binds `127.0.0.1`.
+`--url-prefix ${PW_ENDPOINT_PATH}`), and the server binds `127.0.0.1`. A non-zero
+**Local Port** is passed to `pw endpoints run --port`, which then hands that port over
+instead of a free one it picked.
 
 ## Environment Variables
 

@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-02T16:06:01Z,warm,pass,ok,c3c2734,74bcc3d,e9cf964,9c478d8-dirty,79f43b3,dakota-openfoam,alvaro,welcomed-lioness,52,

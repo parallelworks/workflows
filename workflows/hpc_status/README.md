@@ -1,48 +1,124 @@
 # HPC Status Monitor
 
-A single pane of glass for your HPC fleet. At a glance: what's up, what's slow, where
-your jobs will wait, and how much allocation you have left.
-
-![Thumbnail](thumbnails/hpc-status.png)
+A single pane of glass for your HPC fleet. At a glance: what's up, what's
+slow, where your jobs will wait, and how much allocation you have left.
 
 ## What it's for
 
-You have work to run on HPC systems, but the systems are scattered across sites,
-schedulers and login nodes. Before submitting a job you want to know:
+You have work to run on HPC systems, but the systems are scattered across
+sites, schedulers, and login nodes. Before submitting a job you want to
+know:
 
 - Is the system even up right now?
 - Which queue will get me running fastest?
 - Am I close to burning through my allocation?
 - Is `$SCRATCH` about to purge my files?
 
-The Status Monitor answers those questions in one place, refreshed continuously, so you
-don't have to `ssh` around and run five different commands to decide where to submit.
+The Status Monitor answers those questions in one place, refreshed
+continuously, so you don't have to `ssh` around and run five different
+commands to decide where to submit.
 
 ## What you'll see
 
-- **Fleet status.** Every HPC system this deployment knows about, as cards grouped by
-  site: what each machine is for, whether it is up, and how busy it is. "Knows about"
-  merges three sources: the centre's status page, the live sessions the monitor holds to
-  clusters, and the marketplace listings. Systems nothing is watching are marked as such
-  and left out of the uptime figure.
-- **Topology.** An interactive map of sites, systems and the live sessions between them,
-  with hierarchy, radial, force, lane, load and geographic layouts, and a timeline that
-  replays the last 6 hours to 3 days from the monitor's own records.
-- **Queue health.** Live queue depth, node availability and core demand per system, with
-  wait estimates derived from observed core turnover.
-- **Quota usage.** Allocations in core-hours, burn rate, and warnings before the limit.
-- **Storage.** Capacity and usage for `$HOME`, `$WORK` and `$SCRATCH`, with purge-window
-  reminders.
-- **Insights.** Recommendations ("this queue is draining", "you're at 92% of your
-  allocation"), and **Where should I run this?**: describe a job and every queue that can
-  run it is ranked.
-- **API.** Everything on every page is JSON; the **API** tab lists every endpoint, runs it
-  against the live deployment and hands you the `curl` command.
-- **Alerts.** Point `alerts.webhook_url` at Slack, Teams or your own receiver to hear when a
-  system goes down or comes back.
+**Fleet status.** Every HPC system this deployment knows about, as cards
+grouped by site: what each machine is for, whether it is up, and how busy
+it is. Switch to the dense table for login nodes, schedulers and
+timestamps.
 
-Every page has a **Help** button with the HPC terms it uses, and each metric a `ⓘ`
-tooltip.
+"Knows about" means three sources merged, because none of them knows
+everything: the centre's status page publishes some systems, the monitor
+holds live sessions to others, and the marketplace lists what exists and
+describes it. A machine that is reachable but unpublished used to be
+missing here entirely. Systems nothing is watching still appear, marked
+as such, and are left out of the uptime figure — the percentage is over
+monitored systems, not over everything that has a name.
+
+**Topology.** An interactive map of what the monitor is connected to —
+sites, systems, and the live sessions between them. It opens on live
+connections only, since a graph of machines nobody here has a session to
+is mostly noise; untick **Live connections only** for the whole fleet. Group by site
+(a DSRC on an HPCMP deployment), scheduler, status, or connection; switch between hierarchy, radial,
+force, lane, load, and geographic layouts — the geographic one is a real map,
+with each site pinned at its actual coordinates and framed insets for
+anything off the mainland. Cloud clusters are placed too — an AWS GovCloud
+machine pins to its region. Zoom in (or set **Map detail**) and each site
+opens up into the individual systems behind it. A **Timeline** button reveals a transport that replays the last 6 hours to 3 days from the monitor's own
+records — scrub or press play to watch status and load move — and systems
+that change on a live refresh pulse so you can see it happen. The **Load**
+layout plots each system by how busy it is, so replaying a day shows the
+fleet rising and falling; systems the monitor could not measure sit in a
+band below the axis rather than pretending to be idle. Node color is status, size is core
+count, and the outer ring is how busy it is. Nodes with an open insight
+carry a warning badge, links animate at the speed of their measured round
+trip, and each system shows its status timeline for the last 24 hours.
+Click a system to inspect it — click again to jump straight to its queue
+health, or shift-click several to compare them side by side.
+
+**Queue health.** For each system, live queue depth, node availability,
+and core demand — so you can pick the queue that isn't backed up.
+
+**Quota usage.** Your allocations in core-hours, how fast you're burning
+them, and warnings before you hit the limit. Broken down by subproject
+where relevant.
+
+**Storage.** Capacity and usage for `$HOME`, `$WORK`, and `$SCRATCH` on
+every system, with purge-window reminders for scratch.
+
+**Insights.** Automatic recommendations — "this queue is draining, try
+that one", "you're at 92% of your allocation", "scratch is filling up".
+
+**Where should I run this?** Describe a job — cores, walltime, GPUs — and
+the Insights page ranks every queue that can actually run it, using idle
+cores, measured backlog, estimated time-to-start, and how much allocation
+you have left. Queues that *can't* run it say why instead of ranking last.
+
+**Wait estimates.** Queue depth is recorded over time, so the queue page
+can turn a backlog into an estimated start time — derived from observed
+core turnover, and labelled with the confidence behind it. A queue with no
+observed turnover says so rather than inventing a number.
+
+**API.** Everything on every page is available as JSON. The **API** tab
+lists every endpoint with its parameters, runs any of them against the
+running deployment, and hands you the equivalent `curl` command. The list
+is served by the API itself, so it describes the version you are running.
+
+**Alerts.** Point `alerts.webhook_url` at Slack, Teams, or your own
+receiver and the monitor notifies you when a system goes down or comes
+back, with a per-system cooldown so a flapping machine doesn't spam you.
+
+## Launching it
+
+Launch **HPC Status** from your workflows list. It publishes the dashboard as an endpoint
+session and gives you a URL you can hand to someone else:
+`https://status-<your-username>.<sessions domain>/`, the same address every time. The
+platform assigns a free port and tunnels to it without needing any inbound access to the
+machine it runs on. The dashboard keeps serving after the run completes; stop it by
+deleting its session, `hpc-status`, from the Sessions page.
+
+The dashboard picks up every cluster you have access to on the platform. It works with
+PBS/Slurm HPC clusters, GPU servers (via `nvidia-smi`), and plain compute nodes.
+
+## Help while you're using it
+
+Every page has a **Help** button in the top-right with a quick reference
+for the HPC terms you'll see (core-hours, walltime, draining queues, the
+difference between `$HOME` / `$WORK` / `$SCRATCH`, and so on). Each
+metric also has a `ⓘ` tooltip that explains what it means.
+
+## Deployments
+
+The monitor supports branded deployments. The HPCMP build, for example,
+uses the HPCMP purple palette and logo mark — it is what the HSP variant
+(`yamls/hsp.yaml`) loads; elsewhere, set **Platform** to HPCMP.
+
+## For operators and developers
+
+- **How the workflow runs it, its inputs and variants:** the sections below
+- **Configuration options:** [docs/configuration.md](docs/configuration.md)
+- **REST API:** the **API** tab in a running deployment, or
+  [docs/api.md](docs/api.md) / [dev/schemas/openapi.yaml](dev/schemas/openapi.yaml)
+  (generated by `python dev/scripts/build_openapi.py`)
+- **HPC glossary:** [docs/glossary.md](docs/glossary.md)
 
 ## How the workflow runs it
 
@@ -224,3 +300,7 @@ became `controller.sh` (install) and the launcher `start-template.sh` writes, an
 `scripts/serve-endpoint.sh` the rest of `start-template.sh`; the single-job
 `workflow.yaml`, `yamls/hsp.yaml` and `yamls/rdhpcs.yaml` became the three variants here.
 What changed and why: `MIGRATION.md`.
+
+## License
+
+See [LICENSE](../../LICENSE).

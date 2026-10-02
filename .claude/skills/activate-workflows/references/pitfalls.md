@@ -274,3 +274,15 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   guard stays for the count the run actually produces. Extend the literal to raise the
   ceiling; the guard step that compares N against it should compare against the input,
   not the literal (`tutorials/optimization/iteration.yaml`).
+- **The hsp and noaa submitters write SLURM headers in a different order than
+  `general`, which decides what a directive can override** (read from the submitters,
+  2026-10-02; the `existing`-only lines cannot be exercised from a cloud cluster):
+  `general` emits the fixed headers, `--partition` and then the directives; `hsp` adds,
+  for `existing` resources, `--account/--qos/--cpus-per-task/--nodes[/--constraint]`
+  *before* the directives, so a `#SBATCH --nodes=...` typed or composed in
+  `scheduler_directives` still wins (sbatch keeps the last value of a repeated option);
+  `noaa` adds `--account/--qos/--ntasks/--nodes` *after* the directives, so there a job's
+  shape must go through the submitter's `ntasks` and `nodes` inputs, not through a
+  directive (`workflows/openfoam-naca/yamls/noaa.yaml` passes `ntasks: cores_per_case`,
+  `nodes: 1`, and composes the same two directives for every other resource). `hsp`
+  also has no `define_cleanup_script` input and guards an empty `slurm.time`.

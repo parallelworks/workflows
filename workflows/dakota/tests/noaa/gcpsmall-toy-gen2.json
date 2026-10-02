@@ -1,0 +1,24 @@
+{
+  "_test": {
+    "timeout_s": 1200,
+    "endpoint": false,
+    "warm_marker": "${HOME}/pw/software/dakota/miniforge/envs/dakota",
+    "setup": "cd ${HOME}/pw/dakota-tests/toy-noaa && it=$(ls -d iter_* | sort -t_ -k2 -n | tail -1) && for c in ${it}/case_*; do (cd ${c} && python3 -c \"import math; v=dict((l.split()[1], float(l.split()[0])) for l in open('params.in') if l.strip()); f1=v['x1']; g=1+9*v['x2']; f2=g*(1-math.sqrt(f1/g)); open('results.out','w').write('%.10f f1\\n%.10f f2\\n' % (f1, f2))\" && echo 0 > exit_code); done && cat ${it}/case_1/results.out",
+    "leftover_patterns": [
+      "bin/dakota",
+      "app/driver.py"
+    ]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "problem": {
+    "variables": "x1 0 1\nx2 0 1\n",
+    "objectives": "f1 f2"
+  },
+  "optimizer": {
+    "state_dir": "${HOME}/pw/dakota-tests/toy-noaa",
+    "batch_size": 4,
+    "max_generations": 5,
+    "stall_generations": 3,
+    "seed": 4242
+  }
+}

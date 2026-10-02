@@ -102,10 +102,23 @@ attempt; each worker's log is three jobs deep (`workers-<k>` → `preprocessing`
 `run_case`, `results`). `iteration_timeout` (default 2d) caps one generation
 because the platform's default retry timeout is 30 s per attempt.
 
+## Variants
+
+`yamls/hsp-naca.yaml` with `yamls/iteration-naca-hsp.yaml` is the HSP
+(`activate.hpc.mil`) loop, `yamls/noaa-naca.yaml` with
+`yamls/iteration-naca-noaa.yaml` the NOAA (`noaa.parallel.works`) one: the same
+loop and server, with the platform's form (the resource as the top-level input;
+SLURM account, QoS and, on HSP, node type for on-prem `existing` resources; the
+PBS account on HSP) passed through an iteration that calls the matching variants
+of the two workflows. What those variants change is in their READMEs: the module
+hint for HPCMP login nodes without internet access, the shared install directory
+on NOAA, and how each submitter receives the case's core request.
+
 ## Tests
 
 `tests/general-naca/` (the variant is the YAML's basename): `gcpsmall.json`
 (login node, 4 × 4), `gcpsmall-slurm-mpi2.json` (SLURM, 2 ranks) and
-`gcpsmall-mesh3-slurm-4ranks.json` (the saved configuration). The runner
+`gcpsmall-mesh3-slurm-4ranks.json` (the saved configuration); `tests/hsp-naca/`
+and `tests/noaa-naca/` repeat the first two for the variants. The runner
 checks the endpoint and deletes it. Run with
 `python3 tools/tests/run-workflow-test.py <test.json>`.

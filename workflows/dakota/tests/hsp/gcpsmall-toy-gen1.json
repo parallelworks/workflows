@@ -1,0 +1,24 @@
+{
+  "_test": {
+    "timeout_s": 1200,
+    "endpoint": false,
+    "warm_marker": "${HOME}/pw/software/dakota/miniforge/envs/dakota",
+    "setup": "rm -rf ${HOME}/pw/dakota-tests/toy-hsp",
+    "leftover_patterns": [
+      "bin/dakota",
+      "app/driver.py"
+    ]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "problem": {
+    "variables": "x1 0 1\nx2 0 1\n",
+    "objectives": "f1 f2"
+  },
+  "optimizer": {
+    "state_dir": "${HOME}/pw/dakota-tests/toy-hsp",
+    "batch_size": 4,
+    "max_generations": 5,
+    "stall_generations": 3,
+    "seed": 4242
+  }
+}

@@ -94,7 +94,7 @@ class Harness:
             "PW_RUN_SLUG": SLUG,
             "PW_USER": "alvaro",
             "PW_PLATFORM_HOST": "activate.parallel.works",
-            "pw_endpoints_args": f"--name hpc-status-{SLUG}",
+            "pw_endpoints_args": "--name hpc-status",
             "service_parent_install_dir": str(self.root / "software"),
         }
         env.update({k: v for k, v in overrides.items() if v is not None})
@@ -203,6 +203,20 @@ class TestAddress:
         assert "--subdomain" in first and "--subdomain" not in second
         assert "pw subdomains reserve status-alvaro" in result.stdout
 
+    def test_the_endpoint_keeps_the_name_it_is_given(self, harness):
+        """Users know the dashboard as hpc-status; the run slug is not part of it."""
+        assert harness.run().returncode == 0
+        (run,) = harness.calls("endpoints", "run")
+        assert " --name hpc-status " in run
+        assert SLUG not in run
+
+    def test_a_local_port_is_pinned_only_when_asked(self, harness):
+        assert harness.run(service_local_port="9123").returncode == 0
+        assert harness.run(service_local_port="0").returncode == 0
+        pinned, chosen = harness.calls("endpoints", "run")
+        assert " --port 9123 " in pinned
+        assert "--port" not in chosen, "0 lets the CLI pick a free port"
+
     def test_an_endpoint_that_never_registers_fails_the_job(self, harness):
         result = harness.run(FAKE_PW_RUN_STATUS="1")
         assert result.returncode == 1
@@ -225,12 +239,21 @@ class TestStartingAgainRestarts:
         assert len(harness.calls("endpoints", "run")) == 1
 
     def test_someone_elses_endpoint_at_the_address_is_left_alone(self, harness):
+        """The address is taken, so the dashboard serves at an assigned one instead."""
         harness.listed(("grafana-x", "running", "https://status-alvaro.activate.pw/"))
-        result = harness.run()
-        assert result.returncode == 1
+        result = harness.run(FAKE_PW_REFUSE_SUBDOMAIN="1")
+        assert result.returncode == 0, result.stdout + result.stderr
         assert "is served by endpoint grafana-x" in result.stdout
         assert not harness.calls("endpoints", "delete")
-        assert not harness.calls("endpoints", "run")
+        first, second = harness.calls("endpoints", "run")
+        assert "--subdomain" in first and "--subdomain" not in second
+
+    def test_another_dashboard_at_another_address_is_left_alone(self, harness):
+        """A second dashboard has its own name and subdomain, as it always had."""
+        harness.listed(("hpc-status-noaa", "running", "https://status-alvaro-noaa.activate.pw/"))
+        result = harness.run()
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert not harness.calls("endpoints", "delete")
 
 
 class TestDurableCredentials:
@@ -250,6 +273,12 @@ class TestDurableCredentials:
         (run,) = harness.calls("endpoints", "run")
         assert run.startswith("key=run-key ")
         assert "stop collecting" in result.stdout, "say so when nothing outlives the run"
+
+    def test_no_warning_when_the_dashboard_stops_with_its_run(self, harness):
+        """With Keep Serving off the run's key lasts exactly as long as the dashboard."""
+        result = harness.run(service_detach="false")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "stop collecting" not in result.stdout
 
     def test_saved_credentials_win_when_they_authenticate(self, harness):
         harness.env_file.write_text("export PW_API_KEY=workspace-key\n")

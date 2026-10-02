@@ -3,11 +3,12 @@
 # Interactive Session Controller - HPC Status Monitor
 #
 # Purpose: Prepare the dashboard host: the pw CLI check, uv and the dashboard's
-#          virtualenv
+#          virtualenv, then stop the previous dashboard with this endpoint name
 # Runs on: Controller (login) node or the user workspace, with internet access
 # Called by: Workflow preprocessing, before the start script is submitted
 #
 # Required Environment Variables (from inputs.sh):
+#   - pw_endpoints_args: Arguments for pw endpoints run (--name <endpoint name>)
 #   - service_parent_install_dir: Parent directory of the installation
 #   - PW_PARENT_JOB_DIR: Run directory (holds the checked-out app/)
 ################################################################################
@@ -60,8 +61,31 @@ PY
     )
 }
 
+endpoint_name=$(printf '%s' "${pw_endpoints_args}" | sed -n 's/.*--name[ =]\{1,\}\([^ ]*\).*/\1/p')
+endpoint_listed() {
+    pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${endpoint_name}"
+}
+
+# Starting again restarts, and two endpoints cannot share a name: delete the previous
+# dashboard under this name wherever it runs, and its pw endpoints run takes its process
+# tree down. Only once the environment is ready, so a failed install leaves it serving,
+# and before this script returns: the run waits for the endpoint by name, and would take
+# the previous dashboard answering for the new one
+stop_previous() {
+    [ -n "${endpoint_name}" ] && endpoint_listed || return 0
+    echo "::notice::Replacing the previous dashboard: deleting endpoint ${endpoint_name}"
+    pw endpoints delete "${endpoint_name}"
+    for _ in $(seq 1 30); do
+        endpoint_listed || return 0
+        sleep 2
+    done
+    echo "::error title=Error::Endpoint ${endpoint_name} is still listed after deleting it; delete it with 'pw endpoints delete ${endpoint_name}' and launch again"
+    exit 1
+}
+
 if verify_venv 2>/dev/null; then
     echo "Dashboard environment ready at ${venv_dir}"
+    stop_previous
     exit 0
 fi
 
@@ -145,3 +169,4 @@ if ! verify_venv; then
     exit 1
 fi
 echo "Dashboard environment ready at ${venv_dir}"
+stop_previous

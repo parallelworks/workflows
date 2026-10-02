@@ -79,6 +79,7 @@ Optional, stripped before launch.
 | `resource` | cluster | the resource the runner checks (warm marker, leftovers) when the form has no `cluster.resource`, e.g. librechat `general-all` with its `librechat_resource` | none |
 | `scheduler` | cluster | `true` when scheduler jobs are requested through an input the runner cannot see (`ray-cluster`'s workers), so teardown also checks `squeue` | from `cluster.scheduler` |
 | `expect` | cluster | `error` for a failure-path test: pass = the run ends in `error`, then the usual leftover checks | `completed` |
+| `endpoint_name` | both | the exact endpoint name, for a workflow that keeps a fixed one (`hpc_status`'s `hpc-status`): it replaces `*-<run-slug>` in the pass check, the teardown and the leftover check | none |
 
 ## Pass criteria
 
@@ -86,8 +87,9 @@ Cluster lane:
 
 - the run reaches `completed` (which the workflow only allows after its own health
   check of the endpoint URL passed)
-- `pw endpoints list` shows an endpoint named `*-<run-slug>` (skipped when the test
-  sets `_test.endpoint: false`: a batch workflow passes on `completed` alone)
+- `pw endpoints list` shows an endpoint named `*-<run-slug>`, or `_test.endpoint_name`
+  (skipped when the test sets `_test.endpoint: false`: a batch workflow passes on
+  `completed` alone)
 
 Cleanup is verified separately after `pw endpoints delete` of every endpoint ending in
 the run slug (a multi-service workflow registers several): no matching processes

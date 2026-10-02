@@ -129,6 +129,9 @@ To convert an older workflow to this pattern, follow
 - Endpoint names must be lowercase `[a-z0-9-]`. `<service.name>-${PW_RUN_SLUG}` already
   is; a name that comes from a form input must be folded before it reaches
   `pw endpoints` — see the `endpoint_name` input in `workflows/ollama/yamls/general.yaml`.
+  `hpc_status` keeps the fixed name its users know (`hpc-status`): a fixed name has to be
+  freed in preprocessing, before `wait_for_endpoint` looks it up, or the wait finds the
+  previous instance answering (its `controller.sh`).
 - The `wait_for_endpoint` job is two steps: the `wait_for_endpoint` subworkflow
   (`uses: github/parallelworks/workflows@canary`,
   `$yaml: workflows/wait_for_endpoint/general.yaml`, with `early-cancel: any-job-failed`)
@@ -164,7 +167,8 @@ those platforms — validate them statically.
 - Run with the **absolute** YAML path (a relative path is parsed as a git host):
   `pw workflows run /abs/path/workflows/<name>/yamls/general.yaml -i '{"cluster":{"resource":"<cluster>","scheduler":false}}'`
 - **Pass = the run completes and `pw endpoints list` shows `<service.name>-<run-slug>`.**
-  A batch workflow's test sets `_test.endpoint: false`; then pass = the run completes.
+  A batch workflow's test sets `_test.endpoint: false`; then pass = the run completes. A
+  fixed endpoint name goes in `_test.endpoint_name`.
   The run only completes after the workflow's own health check saw the URL answer, so
   the runner does not probe URLs. The service keeps running after the run completes.
 - **Tear down:** `pw endpoints delete <name>` kills the remote process tree; verify

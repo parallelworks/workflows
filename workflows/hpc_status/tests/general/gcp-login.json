@@ -5,7 +5,8 @@
     "leftover_patterns": [
       "pw endpoints run",
       "src.server.main"
-    ]
+    ],
+    "endpoint_name": "hpc-status"
   },
   "cluster": {
     "resource": "pw://alvaro/gcpsmall"

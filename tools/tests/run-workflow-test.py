@@ -49,6 +49,8 @@ The optional "_test" object is stripped before launch:
                        see (ray-cluster's workers), so teardown also checks squeue (cluster lane)
     expect             "error" for a failure-path test: pass = the run ends in error (cluster lane;
                        default "completed")
+    endpoint_name      the exact endpoint name, for a workflow that keeps a fixed one instead of
+                       *-<run-slug> (both lanes; e.g. hpc_status's hpc-status)
 
 Failing runs keep their platform record and get their `pw workflows runs errors`
 output (plus the namespace events on the k8s lane) saved under
@@ -88,7 +90,7 @@ COLUMNS = ["date", "phase", "result", "cleanup", "workflow_tree", "submitter_tre
 COMPUTE_RESOURCES_RE = re.compile(r"^\s*type:\s*compute-resources\s*$", re.M)
 WORKSPACE = {"workspace", "user-workspace"}
 DEFAULTS = {"timeout_s": 1800, "endpoint": True, "warm_marker": "", "setup": "", "resource": "",
-            "scheduler": None, "expect": "completed",
+            "scheduler": None, "expect": "completed", "endpoint_name": "",
             "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
             "leftover_kinds": ["deployments", "services", "pods", "persistentvolumeclaims", "secrets"]}
 
@@ -406,11 +408,15 @@ def wait_k8s(slug, timeout_s):
     return "timeout", data
 
 
-def endpoint(slug, attempts=6):
+def ours(token, slug, fixed):
+    return token == fixed if fixed else token.endswith(f"-{slug}")
+
+
+def endpoint(slug, attempts=6, fixed=""):
     for attempt in range(attempts):
         for line in pw("endpoints", "list", timeout=90).stdout.splitlines():
             tokens = line.split()
-            name = next((t for t in tokens if t.endswith(f"-{slug}")), None)
+            name = next((t for t in tokens if ours(t, slug, fixed)), None)
             if name:
                 return name, next((t for t in tokens if t.startswith("http")), "")
         if attempt + 1 < attempts:
@@ -418,10 +424,10 @@ def endpoint(slug, attempts=6):
     return None, ""
 
 
-def endpoints(slug):
+def endpoints(slug, fixed=""):
     names = []
     for line in pw("endpoints", "list", timeout=90).stdout.splitlines():
-        names += [t for t in line.split() if t.endswith(f"-{slug}")]
+        names += [t for t in line.split() if ours(t, slug, fixed)]
     return names
 
 
@@ -448,7 +454,7 @@ def preexisting_pids(test):
 def teardown(test, slug, endpoint_name, preexisting):
     # A multi-service workflow (librechat general-all) registers one endpoint per
     # service, every one ending in the run slug: all of them come down.
-    for name in endpoints(slug) or ([endpoint_name] if endpoint_name else []):
+    for name in endpoints(slug, test.meta["endpoint_name"]) or ([endpoint_name] if endpoint_name else []):
         r = pw("endpoints", "delete", name, timeout=90)
         log(f"  endpoints delete {name}: rc={r.returncode} {(r.stdout + r.stderr).strip()[:120]}")
     # The checker's own shell is in the user's process list, so nothing in this
@@ -478,7 +484,7 @@ def teardown(test, slug, endpoint_name, preexisting):
             break
         log(f"  waiting for cleanup: {leftovers}")
         time.sleep(15)
-    if endpoint(slug, attempts=1)[0]:
+    if endpoint(slug, attempts=1, fixed=test.meta["endpoint_name"])[0]:
         leftovers.append("endpoint")
     return "ok" if not leftovers else "leftover:" + "+".join(leftovers)
 
@@ -496,7 +502,7 @@ def teardown_k8s(test, slug):
         objects = k8s_leftovers(test, slug)
         unknown = objects is None
         leftovers = ([] if status in FINAL_STATUSES else [f"run:{status}"]) + (objects or [])
-        if endpoint(slug, attempts=1)[0]:
+        if endpoint(slug, attempts=1, fixed=test.meta["endpoint_name"])[0]:
             leftovers.append("endpoint")
         if not leftovers:
             break
@@ -558,7 +564,7 @@ def run_test(test, args, user):
         if test.k8s:
             status, _ = wait_k8s(slug, test.meta["timeout_s"])
             if status == "ready":
-                endpoint_name, url = endpoint(slug)
+                endpoint_name, url = endpoint(slug, fixed=test.meta["endpoint_name"])
                 if not endpoint_name:
                     row["result"], row["error"] = "fail", "wait_for_endpoint completed but no endpoint listed"
                 else:
@@ -584,14 +590,14 @@ def run_test(test, args, user):
                 row["result"] = "pass"
                 log("  run completed; no endpoint expected")
             else:
-                endpoint_name, url = endpoint(slug)
+                endpoint_name, url = endpoint(slug, fixed=test.meta["endpoint_name"])
                 if not endpoint_name:
                     row["result"], row["error"] = "fail", "run completed but no endpoint listed"
                 else:
                     row["result"] = "pass"
                     log(f"  endpoint {endpoint_name} {url} (URL checked by the workflow)")
             if endpoint_name is None and slug:
-                endpoint_name, _ = endpoint(slug, attempts=1)
+                endpoint_name, _ = endpoint(slug, attempts=1, fixed=test.meta["endpoint_name"])
     except Exception as e:
         row["result"], row["error"] = "fail", str(e).replace("\n", " | ")[:300]
     row["duration_s"] = int(time.time() - started)

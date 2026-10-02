@@ -362,7 +362,7 @@ that cloned the repository into `~/pw/src/hpc_status` and exec'd `scripts/serve-
 which detached the endpoint under `setsid nohup` with a fixed name (`hpc-status`), a
 pidfile and its own readiness polling. Here it follows the repository's endpoint pattern
 end to end: the run completes once `wait_for_endpoint` saw the dashboard answer, and the
-dashboard outlives it behind `hpc-status-<run-slug>`.
+dashboard outlives it behind the same fixed name, `hpc-status`.
 
 | Old | New |
 |---|---|
@@ -376,33 +376,47 @@ dashboard outlives it behind `hpc-status-<run-slug>`.
 | `docs/{api,configuration,glossary,rdhpcs-cluster-marketplace}.md`, `examples/` | `docs/`, `docs/examples/`; configuration.md's environment-variable tables described `run.sh` and now map the form to server arguments |
 | `docs/images/thumbnail-{general,hpcmp,noaa}.png` | `thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png` |
 | `README.md`, `docs/deployment.md` | `README.md`, rewritten for the workflow |
-| `REFACTOR.md`, `pyproject.toml`, `LICENSE`, `.gitignore` | left behind: a planning log; packaging for an editable install nothing does any more (dependencies in `app/requirements.txt`, pytest options in `dev/pytest.ini`); this repository's MIT licence (same holder) covers the code; repo-local |
+| `REFACTOR.md`, `pyproject.toml`, `LICENSE`, `.gitignore` | left behind: a planning log; packaging for an editable install nothing does any more (dependencies in `app/requirements.txt`, pytest options in `dev/pytest.ini`); this repository's Apache License 2.0 (same holder, same licence) covers the code; repo-local |
 
-**Behaviour, source → here.** Each change follows from the pattern; nothing the dashboard
-does changed.
+**Behaviour, source → here.** The jobs follow the pattern; what a user sees does not
+change: the same form (labels, defaults, the collapsed **Settings** group), the same
+endpoint name and address, the same restart, fallback and stop behaviour.
 
-- **Lifecycle.** The source defaulted to `detach: true` (the run completes in seconds and
-  the dashboard keeps serving) with `detach: false` keeping the run open for the dashboard's
-  life. Here the run always completes once the dashboard answers and the dashboard always
-  outlives it, so the input is gone.
-- **Endpoint name.** `hpc-status` (fixed) → `hpc-status-<run-slug>` (`rdhpcs-status-…` on
-  NOAA). "Starting again restarts" survives: the start script finds the previous dashboard
-  by its address instead of its name, deletes any endpoint at `https://<subdomain>.` named
-  `hpc-status` or `hpc-status-*` — a dashboard still running from the old workflow
-  included — wherever it runs, and refuses to touch anything else there.
+- **Lifecycle.** **Keep Serving After The Run Ends** (`service.detach`, default on) keeps
+  both modes. On: the run completes once `wait_for_endpoint` saw the dashboard answer (the
+  source: once the URL was announced and the port connected) and the dashboard outlives it.
+  Off: `wait_for_endpoint` marks a file the submitter does not read and the submitter is
+  not cancelled, so the run stays open while the dashboard serves and cancelling it is the
+  teardown (the submitter's cleanup kills the process group); a dashboard stopped by
+  deleting its session ends the run `completed`.
+- **Endpoint name.** `hpc-status` (`rdhpcs-status` on NOAA), the visible **Endpoint Name**
+  (`service.name`), as in the source; folded to `[a-z0-9-]` before it reaches `pw`.
+  "Starting again restarts": `controller.sh` deletes the endpoint with this name wherever
+  it runs (the source's `stop-endpoint.sh`) and waits until it is unlisted. That has to
+  happen in preprocessing: `wait_for_endpoint` looks the endpoint up by name, and would
+  otherwise find the previous dashboard answering and release the run on it. The start
+  script then deletes endpoints at `https://<subdomain>.` named `<name>-*` (dashboards
+  launched while the name carried the run slug, 2026-09-29 to 2026-10-02) and leaves
+  anything else there alone; the launch then falls back to an assigned address, as the
+  source did.
 - **Host.** `settings.host`, an optional `compute-resources` picker (blank = workspace), →
   `cluster.resource`, `compute-clusters` with `include-workspace: true` and
-  `default: workspace` (as agent-orchestrator). `compute-resources` does not hydrate from
-  the CLI and lists Kubernetes clusters, where this cannot run. The submitter never
-  schedules: the dashboard needs `pw`, its credentials and internet access for as long as
-  it serves, and an allocation would end at its walltime.
+  `default: workspace` (as agent-orchestrator), labelled **Where To Run** in its own
+  collapsed group after Settings, so the form still opens on Platform and two collapsed
+  groups. `compute-resources` does not hydrate from the CLI and lists Kubernetes clusters,
+  where this cannot run. The submitter never schedules: the dashboard needs `pw`, its
+  credentials and internet access for as long as it serves, and an allocation would end at
+  its walltime.
 - **Health.** The source grepped its log for `Endpoint live at`, then waited for a TCP
   connect to the port. Here `wait_for_endpoint` probes `/` through the platform with the
   run's key, with a 900 s budget: a first start has no cached fleet and answers only after
   one full sweep (`pw ssh` to every cluster, or the HPCMP pages).
-- **Inputs dropped:** `repo_url`/`repo_branch` (the checkout), `port` (`pw endpoints run`
-  assigns it), `detach`. `name` is the hidden endpoint prefix; the two `number` inputs are
-  `integer`, which the server parses with `int()`.
+- **Inputs.** `platform` stays top level; `settings.*` → `service.*` (same keys and
+  labels), `settings.host` → `cluster.resource`. **Local Port** (`service.port`) is passed
+  to `pw endpoints run --port` when non-zero. Dropped: `repo_url`/`repo_branch` — the
+  dashboard comes from this repository's checkout now, and the subworkflow references are
+  fixed at `canary`. The `number` inputs are `integer` (the server parses them with
+  `int()`), the interval with `min: 60` (the server clamps to 60 anyway).
 - **Credentials:** the same order and effect as `serve-endpoint.sh` — the workspace key
   from `/etc/profile.d/parallelworks-env.sh` when it works, then saved credentials when they
   authenticate on their own — plus a warning in the run log when neither exists (the source
@@ -417,8 +431,17 @@ does changed.
 message. The pytest suite lost `test_workflows.py` (67 tests pinning the three source
 YAMLs and the serve/stop scripts), `TestRunScriptPortHandling` and
 `TestLauncherPrefersDurableAuth` (10, `run.sh` and `serve-endpoint.sh`), and gained
-`test_start_template.py` (24), which runs the new start script against a fake `pw` for the
-same behaviours: 570 pass (the source's 623 − 77 + 24).
+`test_start_template.py` (now 28), which runs the new start script against a fake `pw` for
+the same behaviours, `test_controller.py` (3, the restart by name) and `test_variants.py`
+(8: no run slug in the name, `canary` everywhere, the three forms aligned).
+
+**User experience restored (2026-10-02, branch `status-monitor`).** The move first
+shipped with the endpoint renamed `hpc-status-<run-slug>` (a new name every run, which
+users noticed), `detach`, `port` and a visible `name` dropped, the host picker promoted
+to a top group, Platform moved into the settings, an address held by another endpoint
+failing the run instead of falling back, and `general.yaml`/`noaa.yaml` still fetching
+from the deleted `hpc_status` branch. All of it is back to the source's behaviour above,
+inside the endpoint pattern.
 
 **Judgment calls:**
 
@@ -426,9 +449,9 @@ same behaviours: 570 pass (the source's 623 − 77 + 24).
    branch too.
 2. The development kit (pytest suite, OpenAPI and basemap builders, schemas, reference
    docs) came along, outside `app/`, because development of the dashboard continues here.
-3. A launch deletes the user's own previous dashboard at its address, where openvscode
-   fails when its subdomain is taken: that is the source's documented behaviour, and a
-   dashboard has no unsaved state to lose.
+3. A launch deletes the user's own previous dashboard (by name, and `<name>-*` at its
+   address), where openvscode fails when its subdomain is taken: that is the source's
+   documented behaviour, and a dashboard has no unsaved state to lose.
 4. The server binds `127.0.0.1`, not `0.0.0.0`: only the tunnel on the same host reaches it,
    and it has no login of its own to protect the allocation data on a shared login node.
 5. No `cancel.sh` (`define_cleanup_script: false`, as burst-render-demo): everything the
@@ -454,7 +477,9 @@ Manual: **cancel during start-up** (`immense-lynx`, gcpsmall, cancelled while th
 dashboard ran its first sweep): run `canceled`, no process, no endpoint, no skip file.
 **Address held by something else** (`pleasant-shad`, a throwaway endpoint serving an empty
 directory at `status-alvaro-probe`): the run ended in `error` with the start script's
-explanation, the other endpoint untouched, nothing left on the workspace.
+explanation, the other endpoint untouched, nothing left on the workspace. (Since
+2026-10-02 the run falls back to an assigned address instead, as the source did; these
+results predate the fixed name and need re-running on `status-monitor`.)
 
 Not exercised: the `activate.hpc.mil` and `noaa.parallel.works` platforms themselves (the
 HPCMP scrape, the NOAA identity with saved credentials, the shared install trees and their
@@ -589,9 +614,7 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   `parallelworks/hpc_status`'s `workflow.yaml`, `yamls/hsp.yaml` or `yamls/rdhpcs.yaml` →
   `workflows/hpc_status/yamls/{general,hsp,noaa}.yaml` here (`hsp` on `activate.hpc.mil`,
   `noaa` on `noaa.parallel.works`, `general` elsewhere; thumbnails
-  `workflows/hpc_status/thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png`). The
-  checkout and the `wait_for_endpoint` call reference branch `hpc_status` until it lands on
-  canary.
+  `workflows/hpc_status/thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png`).
 
 ## Test results (2026-08-31, repo public, canary pushed)
 

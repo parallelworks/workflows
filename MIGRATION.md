@@ -375,7 +375,7 @@ dashboard outlives it behind the same fixed name, `hpc-status`.
 | `schemas/`, `scripts/build_openapi.py`, `scripts/build_basemap.py` | `dev/schemas/`, `dev/scripts/` |
 | `docs/{api,configuration,glossary,rdhpcs-cluster-marketplace}.md`, `examples/` | `docs/`, `docs/examples/`; configuration.md's environment-variable tables described `run.sh` and now map the form to server arguments |
 | `docs/images/thumbnail-{general,hpcmp,noaa}.png` | `thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png` |
-| `README.md`, `docs/deployment.md` | `README.md`: the source README's title, What it's for and What you'll see verbatim (what the marketplace listings showed), its usage, help and deployment notes adapted to the workflow, then the workflow's own sections; every variant's registration uses it (no embedded thumbnail: each listing carries its own) |
+| `README.md`, `docs/deployment.md` | `README.md` verbatim (what the marketplace listings show; every variant's registration uses it); `docs/deployment.md` rewritten for the workflow: jobs, inputs, variants, stopping, debugging, development |
 | `REFACTOR.md`, `pyproject.toml`, `LICENSE`, `.gitignore` | left behind: a planning log; packaging for an editable install nothing does any more (dependencies in `app/requirements.txt`, pytest options in `dev/pytest.ini`); this repository's Apache License 2.0 (same holder, same licence) covers the code; repo-local |
 
 **Behaviour, source → here.** The jobs follow the pattern; what a user sees does not

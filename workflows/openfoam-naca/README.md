@@ -107,6 +107,26 @@ this app and prepares its environment itself; the installer takes a lock, so
 concurrent calls on a cold cluster install once. Worked example:
 [`dakota-openfoam/yamls/iteration-naca.yaml`](../dakota-openfoam/yamls/iteration-naca.yaml).
 
+## Variants
+
+`yamls/general.yaml` is the form for cloud and standard on-prem clusters.
+`yamls/hsp.yaml` is the HSP (`activate.hpc.mil`) form: the resource is the form's
+top-level input, the case goes through the `hsp` script submitter, the SLURM group
+adds the per-site **Account**, **QoS** and **Node Type** fields (shown for on-prem
+`existing` resources) and the DSRC `--constraint=mla` hint, and the PBS group adds
+the **Account** (`-A`) and the HSP directive defaults. The case always takes one
+node with `cores_per_case` tasks, so the submitter's `nodes` and `cpus_per_task`
+are fixed rather than asked for. HPCMP login nodes have no internet access: give
+the site's module command in `openfoam_load` there. `yamls/noaa.yaml` is the NOAA
+(`noaa.parallel.works`) form: the `noaa` script submitter and the same **Account**
+and **QoS** fields; the core request reaches that submitter through its `ntasks`
+and `nodes` inputs, which it writes after the directives on `existing` resources,
+and the conda-forge install goes to the cluster's shared software tree
+(`/contrib/pw` on Hera, Mercury and Ursa, `/usw/rdhpcs/software/pw` on Gaea) when
+the account can write there, `${HOME}/pw/software` otherwise. The app is the same
+for the three; on a cloud cluster the variants behave alike, which is how
+`tests/hsp/` and `tests/noaa/` exercise them.
+
 ## Files
 
 | `app/` | Role |
@@ -118,4 +138,5 @@ concurrent calls on a cold cluster install once. Worked example:
 
 Shared: `tools/utils/miniforge.sh`, `tools/utils/prepare-env.sh`. Tests:
 `tests/general/gcpsmall.json` (login node, serial) and
-`tests/general/gcpsmall-slurm-mpi2.json` (one SLURM job, 2 ranks).
+`tests/general/gcpsmall-slurm-mpi2.json` (one SLURM job, 2 ranks), repeated under
+`tests/hsp/` and `tests/noaa/` for the variants.

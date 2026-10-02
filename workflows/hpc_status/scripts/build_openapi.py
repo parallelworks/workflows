@@ -24,7 +24,7 @@ from pathlib import Path
 
 import yaml
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "app"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 
 from src.server.api_catalog import ENDPOINTS, groups  # noqa: E402
 

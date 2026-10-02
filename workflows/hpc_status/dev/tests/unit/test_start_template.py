@@ -17,6 +17,7 @@ import pytest
 
 WORKFLOW = Path(__file__).resolve().parents[3]
 TEMPLATE = WORKFLOW / "app" / "start-template.sh"
+SERVE = WORKFLOW / "scripts" / "serve-endpoint.sh"
 SLUG = "tidy-otter"
 
 FAKE_PW = textwrap.dedent(
@@ -81,7 +82,7 @@ class Harness:
     def listed(self, *rows):
         self.endpoints.write_text("".join("\t".join(row) + "\n" for row in rows))
 
-    def run(self, **overrides):
+    def run(self, script=TEMPLATE, **overrides):
         env = {
             "PATH": f"{self.bin}:/usr/bin:/bin",
             "HOME": str(self.root),
@@ -101,7 +102,7 @@ class Harness:
         for key in [k for k, v in overrides.items() if v is None]:
             env.pop(key, None)
         return subprocess.run(
-            ["bash", str(TEMPLATE)],
+            ["bash", str(script)],
             cwd=self.work,
             env=env,
             capture_output=True,
@@ -287,6 +288,13 @@ class TestDurableCredentials:
         (run,) = harness.calls("endpoints", "run")
         assert run.startswith("key=UNSET ")
 
+    def test_saved_credentials_alone_are_durable(self, harness):
+        """By hand there is no key in the environment, only pw auth."""
+        result = harness.run(PW_API_KEY=None, FAKE_PW_SAVED="1")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "the saved pw credentials" in result.stdout
+        assert "stop collecting" not in result.stdout
+
     def test_an_unauthenticated_host_fails_before_publishing(self, harness):
         result = harness.run(FAKE_PW_GOOD_KEYS="other-key")
         assert result.returncode == 1
@@ -311,3 +319,30 @@ def test_the_template_is_not_traced():
     """set -x would print the keys the credential block handles."""
     source = TEMPLATE.read_text()
     assert "set -x" not in source.replace("No set -x in this block", "")
+
+
+class TestServeEndpointByHand:
+    """scripts/serve-endpoint.sh publishes from a clone with the workflow's own scripts."""
+
+    def test_it_publishes_under_the_name_and_address_users_know(self, harness):
+        result = harness.run(SERVE)
+        assert result.returncode == 0, result.stdout + result.stderr
+        (run,) = harness.calls("endpoints", "run")
+        assert " --name hpc-status --subdomain status-alvaro -- ./launch-dashboard.sh" in run
+        launcher = (harness.root / ".hpc_status" / "endpoint" / "launch-dashboard.sh").read_text()
+        assert f'cd "{WORKFLOW / "app"}"' in launcher
+
+    def test_it_replaces_the_previous_dashboard_first(self, harness):
+        harness.listed(("hpc-status", "running", "https://status-alvaro.activate.pw/"))
+        result = harness.run(SERVE)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert [line.rsplit(" ", 1)[1] for line in harness.calls("endpoints", "delete")] == ["hpc-status"]
+
+    def test_its_environment_reaches_the_launch(self, harness):
+        result = harness.run(SERVE, ENDPOINT_NAME="fleet", ENDPOINT_SUBDOMAIN="my-fleet",
+                             PINNED_PORT="9123", PLATFORM="hpcmp")
+        assert result.returncode == 0, result.stdout + result.stderr
+        (run,) = harness.calls("endpoints", "run")
+        assert " --name fleet --port 9123 --subdomain my-fleet " in run
+        launcher = (harness.root / ".hpc_status" / "endpoint" / "launch-dashboard.sh").read_text()
+        assert "--config configs/config.hpcmp.yaml" in launcher

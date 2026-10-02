@@ -367,16 +367,17 @@ dashboard outlives it behind the same fixed name, `hpc-status`.
 | Old | New |
 |---|---|
 | `src/`, `web/`, `configs/` | `app/src/`, `app/web/`, `app/configs/`, verbatim but for one log line in `src/server/main.py` that pointed at `scripts/run.sh` |
-| `scripts/run.sh` (uv by `curl \| sh` into `~/.local/bin`, venv `~/.venvs/hpc-status` with an editable install, port selection, server command) | `app/controller.sh`: shared `uv` (`${service_parent_install_dir}/.uv/uv`), venv `${service_parent_install_dir}/hpc_status/venv` from `app/requirements.txt`, Python 3.12 through uv when the system one predates 3.10, idempotent, verified by importing the server; the server command is the `launch-dashboard.sh` the start template writes |
-| `scripts/serve-endpoint.sh` | `app/start-template.sh`: configuration, durable credential, subdomain, restart, subdomain fallback — the same behaviours, in the start-template contract |
+| `scripts/run.sh` (uv by `curl \| sh` into `~/.local/bin`, venv `~/.venvs/hpc-status` with an editable install, port selection, server command) | kept for running by hand, from `app/` with `app/requirements.txt` instead of the editable install (its port tests came back with it); in a run, `app/controller.sh`: shared `uv` (`${service_parent_install_dir}/.uv/uv`), venv `${service_parent_install_dir}/hpc_status/venv` from `app/requirements.txt`, Python 3.12 through uv when the system one predates 3.10, idempotent, verified by importing the server; the server command is the `launch-dashboard.sh` the start template writes |
+| `scripts/serve-endpoint.sh` | `app/start-template.sh`: configuration, durable credential, subdomain, restart, subdomain fallback — the same behaviours, in the start-template contract; `scripts/serve-endpoint.sh` stays as a wrapper that runs `controller.sh` and `start-template.sh` by hand |
 | `scripts/stop-endpoint.sh`, `scripts/test.sh` | dropped: `pw endpoints delete` is the teardown, as everywhere here (the pidfile it also used existed only in detached mode); tests run with `cd dev && python -m pytest` |
 | `workflow.yaml`, `yamls/hsp.yaml`, `yamls/rdhpcs.yaml` | `yamls/general.yaml`, `yamls/hsp.yaml`, `yamls/noaa.yaml` |
 | `tests/` | `dev/tests/` (`dev/pytest.ini` puts `../app` on the path) |
-| `schemas/`, `scripts/build_openapi.py`, `scripts/build_basemap.py` | `dev/schemas/`, `dev/scripts/` |
+| `schemas/`, `scripts/build_openapi.py`, `scripts/build_basemap.py` | same paths (briefly `dev/schemas/`, `dev/scripts/`; moved back so the verbatim README's links and commands work) |
 | `docs/{api,configuration,glossary,rdhpcs-cluster-marketplace}.md`, `examples/` | `docs/`, `docs/examples/`; configuration.md's environment-variable tables described `run.sh` and now map the form to server arguments |
 | `docs/images/thumbnail-{general,hpcmp,noaa}.png` | `thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png` |
-| `README.md`, `docs/deployment.md` | `README.md`, rewritten for the workflow |
-| `REFACTOR.md`, `pyproject.toml`, `LICENSE`, `.gitignore` | left behind: a planning log; packaging for an editable install nothing does any more (dependencies in `app/requirements.txt`, pytest options in `dev/pytest.ini`); this repository's Apache License 2.0 (same holder, same licence) covers the code; repo-local |
+| `README.md`, `docs/deployment.md` | `README.md` verbatim (what the marketplace listings show; every variant's registration uses it); `docs/deployment.md` rewritten for the workflow: jobs, inputs, variants, stopping, debugging, development |
+| `REFACTOR.md`, `pyproject.toml`, `.gitignore` | left behind: a planning log; packaging for an editable install nothing does any more (dependencies in `app/requirements.txt`, pytest options in `dev/pytest.ini`); repo-local |
+| `LICENSE` | `LICENSE`, the same Apache License 2.0 as this repository's; the README links it |
 
 **Behaviour, source → here.** The jobs follow the pattern; what a user sees does not
 change: the same form (labels, defaults, the collapsed **Settings** group), the same
@@ -429,11 +430,12 @@ endpoint name and address, the same restart, fallback and stop behaviour.
 
 **Code changes beyond the paths:** the `run.sh` hint in `_create_server`'s busy-port
 message. The pytest suite lost `test_workflows.py` (67 tests pinning the three source
-YAMLs and the serve/stop scripts), `TestRunScriptPortHandling` and
-`TestLauncherPrefersDurableAuth` (10, `run.sh` and `serve-endpoint.sh`), and gained
-`test_start_template.py` (now 28), which runs the new start script against a fake `pw` for
-the same behaviours, `test_controller.py` (3, the restart by name) and `test_variants.py`
-(8: no run slug in the name, `canary` everywhere, the three forms aligned).
+YAMLs and the serve/stop scripts) and `TestLauncherPrefersDurableAuth` (3,
+`serve-endpoint.sh`), kept `TestRunScriptPortHandling` (7, `scripts/run.sh`), and gained
+`test_start_template.py` (32), which runs the new start script, and `serve-endpoint.sh`
+around it, against a fake `pw` for the same behaviours, `test_controller.py` (3, the
+restart by name) and `test_variants.py` (8: no run slug in the name, `canary`
+everywhere, the three forms aligned): 596 pass.
 
 **User experience restored (2026-10-02, branch `status-monitor`).** The move first
 shipped with the endpoint renamed `hpc-status-<run-slug>` (a new name every run, which

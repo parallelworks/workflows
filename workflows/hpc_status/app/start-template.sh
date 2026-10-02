@@ -95,7 +95,9 @@ if [ -r "${pw_env_file}" ]; then
     fi
     unset workspace_key
 fi
-if [ -n "${PW_API_KEY:-}" ] && env -u PW_API_KEY pw auth whoami >/dev/null 2>&1; then
+# Without a key in the environment (scripts/serve-endpoint.sh by hand) the check above
+# already passed on saved credentials
+if [ -z "${PW_API_KEY:-}" ] || env -u PW_API_KEY pw auth whoami >/dev/null 2>&1; then
     unset PW_API_KEY
     durable="the saved pw credentials on $(hostname)"
 fi

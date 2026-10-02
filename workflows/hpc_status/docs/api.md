@@ -4,8 +4,8 @@ The HPC Status Monitor exposes a REST API for programmatic access to fleet and c
 
 The authoritative endpoint list is served by the API itself at `GET /api/endpoints`
 and rendered, with a "Try it" button per endpoint, at `/api.html` in a running
-deployment. `dev/schemas/openapi.yaml` is generated from the same source
-(`python dev/scripts/build_openapi.py`). This document adds the worked examples that a
+deployment. `schemas/openapi.yaml` is generated from the same source
+(`python scripts/build_openapi.py`). This document adds the worked examples that a
 generated spec cannot.
 
 ## Base URL

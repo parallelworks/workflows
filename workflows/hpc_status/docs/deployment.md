@@ -124,6 +124,22 @@ Delete its session from the Sessions page, or `pw endpoints delete hpc-status`.
 down.`), taking the dashboard and its collectors with it. Launching again replaces it. With
 Keep Serving off, cancelling the run stops it too.
 
+## Publishing a dashboard by hand
+
+From a clone of this repository, with the `pw` CLI authenticated:
+
+```bash
+cd workflows/hpc_status
+./scripts/serve-endpoint.sh
+```
+
+It runs the workflow's own `app/controller.sh` and `app/start-template.sh` on this
+machine, so it behaves like a run with Keep Serving off: the same name (`hpc-status`,
+or `ENDPOINT_NAME`), the same address (`status-<username>`, or `ENDPOINT_SUBDOMAIN`), the
+previous dashboard replaced, the same fallback. It holds the session open until you
+press Ctrl-C. `PLATFORM`, `PINNED_PORT` and `DEFAULT_THEME` stand in for the form's
+Platform, Local Port and UI Theme.
+
 ## Debugging
 
 Everything is in the run's job directory on the dashboard host
@@ -147,15 +163,18 @@ The server is standard-library HTTP plus `requests`, `beautifulsoup4`, `pyyaml`
 
 ```bash
 cd workflows/hpc_status
-python3 -m venv ~/.venvs/hpc-status && ~/.venvs/hpc-status/bin/pip install -r app/requirements.txt pytest
+./scripts/run.sh                                          # http://localhost:8080 (or the next free port)
+~/.venvs/hpc-status/bin/pip install pytest
 (cd dev && ~/.venvs/hpc-status/bin/python -m pytest)     # the unit and integration suite
-(cd app && ~/.venvs/hpc-status/bin/python -m src.server.main --port 8080 --config configs/config.yaml)
 ```
 
-With the `pw` CLI authenticated the local server collects from every cluster you have
-access to. After changing the API catalog (`app/src/server/api_catalog.py`), regenerate
-the spec with `python dev/scripts/build_openapi.py` (a test fails while it is stale);
-`dev/scripts/build_basemap.py` rebuilds the topology map outline
+`scripts/run.sh` builds `~/.venvs/hpc-status` from `app/requirements.txt` with `uv` and
+runs the server from `app/`; `PORT`, `CONFIG_FILE` (relative to `app/`), `DEFAULT_THEME`
+and the other variables in its header set it up. With the `pw` CLI authenticated the
+local server collects from every cluster you have access to. After changing the API
+catalog (`app/src/server/api_catalog.py`), regenerate the spec with
+`python scripts/build_openapi.py` (a test fails while it is stale);
+`scripts/build_basemap.py` rebuilds the topology map outline
 (`app/web/assets/data/README.md`).
 
 ## Files
@@ -170,17 +189,23 @@ workflows/hpc_status/
 │   ├── configs/             # config.yaml (generic), config.hpcmp.yaml, config.noaa.yaml
 │   ├── src/                 # collectors, data layer, insights, HTTP server
 │   └── web/                 # pages, assets, bundled basemap
+├── scripts/                 # run.sh, serve-endpoint.sh (by hand); build_openapi.py, build_basemap.py
+├── schemas/                 # OpenAPI spec and JSON schemas
 ├── docs/                    # deployment (this guide), API, configuration, glossary, NOAA marketplace copy, examples
-├── dev/                     # pytest.ini, tests/, scripts/ (OpenAPI, basemap), schemas/
+├── dev/                     # pytest.ini, tests/
 ├── tests/<variant>/         # End-to-end tests (tools/tests/README.md)
-└── thumbnails/              # hpc-status.png, hpcmp-status.png, rdhpcs-status.png
+├── thumbnails/              # hpc-status.png, hpcmp-status.png, rdhpcs-status.png
+├── README.md                # the standalone repository's README, verbatim
+└── LICENSE
 ```
 
 ## Provenance
 
 Moved from the standalone `parallelworks/hpc_status` repository (`main` @ `30ce200`). Its
-`src/`, `web/` and `configs/` are `app/` verbatim but for one log line; `scripts/run.sh`
-became `controller.sh` (install) and the launcher `start-template.sh` writes, and
-`scripts/serve-endpoint.sh` the rest of `start-template.sh`; the single-job
+`src/`, `web/` and `configs/` are `app/` verbatim but for one log line; in a run,
+`scripts/run.sh` became `controller.sh` (install) and the launcher `start-template.sh`
+writes, and `scripts/serve-endpoint.sh` the rest of `start-template.sh`. Both scripts are
+still here for use by hand: `run.sh` adapted to `app/`, `serve-endpoint.sh` a wrapper
+around the workflow's two scripts. The single-job
 `workflow.yaml`, `yamls/hsp.yaml` and `yamls/rdhpcs.yaml` became the three variants here.
 What changed and why: `MIGRATION.md`.

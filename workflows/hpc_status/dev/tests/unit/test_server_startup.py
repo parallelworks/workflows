@@ -12,12 +12,17 @@ the port.
 """
 
 import socket
+import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 
 from src.server.main import _create_server, _identify_listener
+
+REPO = Path(__file__).resolve().parents[3]
+RUN_SH = REPO / "scripts" / "run.sh"
 
 
 @pytest.fixture
@@ -125,3 +130,85 @@ class TestPortArgument:
         finally:
             sys.argv = argv
         assert args.port is None, "an absent --port must let the config file win"
+
+
+class TestRunScriptPortHandling:
+    """scripts/run.sh used to kill whatever held the port.
+
+    On a laptop that is a convenient restart. On a shared workspace it is
+    someone else's Grafana, so the match is now against our own command
+    line rather than the port.
+    """
+
+    def run_in_shell(self, snippet: str, port: str = "8080") -> str:
+        # The assignment needs its own line: `VAR=x source file` scopes the
+        # assignment to the builtin, so it is gone by the next command.
+        script = f'PORT={port}\nsource "{RUN_SH}"\n{snippet}\n'
+        result = subprocess.run(
+            ["bash", "-c", script],
+            capture_output=True,
+            text=True,
+            cwd=REPO,
+            timeout=30,
+        )
+        return result.stdout + result.stderr
+
+    def test_sourcing_does_not_start_a_dashboard(self):
+        """The helpers must be reachable without launching the server."""
+        assert "Starting dashboard" not in self.run_in_shell("echo sourced")
+        assert "sourced" in self.run_in_shell("echo sourced")
+
+    def test_port_is_free_detects_a_listener(self, occupied_port):
+        out = self.run_in_shell(
+            f"port_is_free {occupied_port} && echo FREE || echo BUSY"
+        )
+        assert "BUSY" in out
+
+    def test_port_is_free_on_an_unused_port(self):
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+        out = self.run_in_shell(f"port_is_free {port} && echo FREE || echo BUSY")
+        assert "FREE" in out
+
+    def test_default_port_moves_aside_for_another_service(self, occupied_port):
+        """An unset PORT is a suggestion: step around whatever is there."""
+        out = self.run_in_shell(
+            "PORT_EXPLICIT=0; select_port; echo CHOSE=$PORT", port=str(occupied_port)
+        )
+        assert f"CHOSE={occupied_port}" not in out
+        assert "is in use by another service" in out
+
+    def test_explicit_port_is_never_moved(self, occupied_port):
+        """`pw endpoints run` tunnels to the port it assigned — stay on it."""
+        out = self.run_in_shell(
+            "PORT_EXPLICIT=1; select_port; echo CHOSE=$PORT", port=str(occupied_port)
+        )
+        assert f"CHOSE={occupied_port}" in out
+
+    def test_cleanup_ignores_processes_that_are_not_ours(self, occupied_port):
+        """The old version killed the port holder whatever it was."""
+        # A long-lived process that merely mentions the port, the way an
+        # unrelated service might.
+        victim = subprocess.Popen(
+            ["sleep", "45"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            self.run_in_shell("cleanup_existing", port=str(occupied_port))
+            assert victim.poll() is None, "cleanup killed an unrelated process"
+        finally:
+            victim.terminate()
+            victim.wait(timeout=10)
+
+    def test_cleanup_pattern_matches_only_our_own_dashboard(self):
+        """The pgrep pattern is the whole safety property; pin its shape."""
+        source = RUN_SH.read_text()
+        assert "src\\.server\\.main .*--port" in source, (
+            "cleanup must match our own command line, not the port alone"
+        )
+        assert "lsof -ti" not in source and "netstat -tulpn" not in source, (
+            "killing by port alone is what took down other services"
+        )

@@ -88,7 +88,7 @@ class TestPublishedDocsFollowTheCatalog:
     """Both published descriptions of the API are derived from the catalog."""
 
     def test_openapi_spec_is_regenerated(self):
-        sys.path.insert(0, str(DEV / "scripts"))
+        sys.path.insert(0, str(WORKFLOW / "scripts"))
         from build_openapi import SPEC_PATH, render
 
         assert SPEC_PATH.read_text() == render(), (

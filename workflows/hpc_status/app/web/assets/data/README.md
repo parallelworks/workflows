@@ -27,7 +27,7 @@ internet access is a basemap that fails exactly when it matters.
 base=https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson
 curl -LO $base/ne_110m_admin_1_states_provinces.geojson
 curl -LO $base/ne_110m_admin_0_countries.geojson
-python3 dev/scripts/build_basemap.py \
+python3 scripts/build_basemap.py \
   ne_110m_admin_1_states_provinces.geojson \
   app/web/assets/data/us-states.json \
   ne_110m_admin_0_countries.geojson

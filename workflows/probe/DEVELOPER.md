@@ -22,7 +22,7 @@ thumbnails/probe.png
 `app/` is the only subtree the workflows check out at run time, so everything the
 runner and the dashboards need is below it and nothing else is. The test definitions
 are not here: they live in a tests repository per platform
-(`parallelworks/workflow-tester-tool` for `activate.parallel.works`), together with the
+(`parallelworks/probe-tests-activate-parallel-works` for `activate.parallel.works`), together with the
 GitHub actions that deploy these YAMLs.
 
 No third-party Python packages. The code targets Python 3.8; cluster login nodes run

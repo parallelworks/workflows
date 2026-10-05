@@ -711,7 +711,8 @@ user) and `plot-usage/` (the usage-plotting workflow that runs on the metering s
 ## probe (2026-10-05, from parallelworks/workflow-tester-tool)
 
 `workflows/probe/` is PROBE, moved from `parallelworks/workflow-tester-tool@dev`
-(a9a474d). That repository keeps only the test definitions for `activate.parallel.works`
+(a9a474d), renamed `parallelworks/probe-tests-activate-parallel-works` right after the move.
+That repository keeps only the test definitions for `activate.parallel.works`
 (`tests/<platform>/<user>/<workflow_name>/<name>.json`) and the two GitHub actions that
 deploy these YAMLs from here; the runner, the dashboards and the workflows live here.
 
@@ -724,7 +725,7 @@ deploy these YAMLs from here; the runner, the dashboards and the workflows live 
 | `tools/import_workflow_tests.py` | `workflows/probe/scripts/import_workflow_tests.py` |
 | `thumbnail.png` | `workflows/probe/thumbnails/probe.png` |
 | `README.md`, `DEVELOPER.md` | `workflows/probe/README.md`, `workflows/probe/DEVELOPER.md` |
-| `tests/`, `.github/workflows/` | stay in workflow-tester-tool |
+| `tests/`, `.github/workflows/` | stay in workflow-tester-tool, now probe-tests-activate-parallel-works |
 
 Changes made in the move: the YAMLs check out `workflows/probe/app` from this repository
 at `canary` like every other workflow (the `code` input group that chose the code's

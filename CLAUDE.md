@@ -42,7 +42,7 @@ workflows/wait_for_endpoint/      # shared subworkflow: wait for the endpoint, p
 workflows/dakota-openfoam/        # a loop composed of two standalone workflows (dakota, openfoam-naca)
                                   # called as subworkflows; the single-app original in backup-no-subworkflow/
 workflows/probe/                  # PROBE: runs a platform's workflow tests (definitions in a tests repository,
-                                  # parallelworks/workflow-tester-tool for activate.parallel.works) and serves
+                                  # parallelworks/probe-tests-activate-parallel-works for activate.parallel.works) and serves
                                   # the results dashboards; app/ holds its Python code
 tools/oras, tools/utils      # shared runtime tools, referenced as tools/... from run dirs
                              # (tools/utils/{miniforge,prepare-env}.sh: conda installs + env files)

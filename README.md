@@ -36,7 +36,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [ollama-openwebui](workflows/ollama-openwebui/) | Ollama + OpenWebUI on Kubernetes | k8s |
 | [open-notebook](workflows/open-notebook/) | Open Notebook (Docker) | general |
 | [openvscode](workflows/openvscode/) | OpenVSCode Server | general, emed, hsp, noaa, general_k8s, k8s |
-| [probe](workflows/probe/) | PROBE: runs a platform's workflow tests from their definitions repository ([workflow-tester-tool](https://github.com/parallelworks/workflow-tester-tool) for activate.parallel.works), records the results in a bucket and serves the results dashboards | general, general_run_tests (batch, no endpoint) |
+| [probe](workflows/probe/) | PROBE: runs a platform's workflow tests from their definitions repository ([probe-tests-activate-parallel-works](https://github.com/parallelworks/probe-tests-activate-parallel-works) for activate.parallel.works), records the results in a bucket and serves the results dashboards | general, general_run_tests (batch, no endpoint) |
 | [rag-service](workflows/rag-service/) | RAG search/index service | general |
 | [rag-vllm](workflows/rag-vllm/) | vLLM inference server + optional RAG stack | general, hsp, noaa |
 | [ray-cluster](workflows/ray-cluster/) | Multi-site Ray cluster: head and live dashboard on one resource, SLURM/PBS/SSH workers on any others | general, hsp, noaa, general_add_worker, hsp_add_worker, noaa_add_worker |

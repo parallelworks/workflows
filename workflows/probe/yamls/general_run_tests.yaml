@@ -23,7 +23,7 @@ jobs:
           # A CLI run leaves an omitted input empty or undefined, so the form's
           # defaults are applied here as well
           TESTS_REPO="${{ inputs.tests.repo }}"
-          case "${TESTS_REPO}" in ''|undefined) TESTS_REPO=https://github.com/parallelworks/workflow-tester-tool.git ;; esac
+          case "${TESTS_REPO}" in ''|undefined) TESTS_REPO=https://github.com/parallelworks/probe-tests-activate-parallel-works.git ;; esac
           TESTS_BRANCH="${{ inputs.tests.branch }}"
           case "${TESTS_BRANCH}" in ''|undefined) TESTS_BRANCH=main ;; esac
           TESTS_DIR="${{ inputs.tests.directory }}"
@@ -88,7 +88,7 @@ jobs:
           repo:
             type: string
             label: Repository
-            default: https://github.com/parallelworks/workflow-tester-tool.git
+            default: https://github.com/parallelworks/probe-tests-activate-parallel-works.git
           branch:
             type: string
             label: Branch

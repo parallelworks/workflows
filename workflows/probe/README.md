@@ -6,7 +6,7 @@ waits for the run to end, deletes the endpoint the run registered, and records t
 result. Repeated over time, the records show when a workflow stops working on a system.
 
 The test definitions live in a separate repository per platform:
-[parallelworks/workflow-tester-tool](https://github.com/parallelworks/workflow-tester-tool)
+[parallelworks/probe-tests-activate-parallel-works](https://github.com/parallelworks/probe-tests-activate-parallel-works)
 holds the ones for `activate.parallel.works`. The runner, the dashboards and the
 platform workflows live here.
 
@@ -63,7 +63,7 @@ Run `yamls/general.yaml` on the platform, from the GitHub action or by hand.
 |---|---|
 | Where to run | `cluster.resource`: the user workspace or a cluster login node with the `pw` CLI, `python3` and `git`. Tests started from the admin dashboard are launched from here. |
 | API key | A platform API key of yours (account settings, API keys). The run's own credential stops working when the run completes, so the dashboards use this key afterwards. In the GitHub action it is the platform's repository secret. |
-| Test definitions | Repository, branch and directory of the test files. Defaults to the `tests` directory of `parallelworks/workflow-tester-tool` at `main`. |
+| Test definitions | Repository, branch and directory of the test files. Defaults to the `tests` directory of `parallelworks/probe-tests-activate-parallel-works` at `main`. |
 | Results | Bucket and path of the results. Required. Restored when the run starts; `Refresh` replaces the dashboard's copy with the bucket's content, so results deleted from the bucket disappear too. `Refresh` also re-fetches the test definitions from their repository. |
 
 The run completes once both endpoints answer; the dashboards keep running:
@@ -122,7 +122,7 @@ repository convert into definitions with `scripts/import_workflow_tests.py`:
 
 ```bash
 python3 workflows/probe/scripts/import_workflow_tests.py . --variant general \
-    --platform activate.parallel.works --user alvaro --out /path/to/workflow-tester-tool/tests
+    --platform activate.parallel.works --user alvaro --out /path/to/probe-tests-activate-parallel-works/tests
 ```
 
 ```json

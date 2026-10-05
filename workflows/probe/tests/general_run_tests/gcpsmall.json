@@ -11,7 +11,7 @@
   },
   "selection": "activate.parallel.works/alvaro/script_submitter/gcpsmall-controller.json",
   "tests": {
-    "repo": "https://github.com/parallelworks/workflow-tester-tool.git",
+    "repo": "https://github.com/parallelworks/probe-tests-activate-parallel-works.git",
     "branch": "main",
     "directory": "tests"
   },

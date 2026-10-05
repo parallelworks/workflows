@@ -13,7 +13,7 @@
     "resource": "pw://alvaro/gcpsmall"
   },
   "tests": {
-    "repo": "https://github.com/parallelworks/workflow-tester-tool.git",
+    "repo": "https://github.com/parallelworks/probe-tests-activate-parallel-works.git",
     "branch": "main",
     "directory": "tests"
   },

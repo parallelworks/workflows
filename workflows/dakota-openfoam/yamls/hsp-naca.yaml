@@ -17,9 +17,10 @@
 # The HSP (activate.hpc.mil) variant of general-naca.yaml: the same loop over
 # iteration-naca-hsp.yaml, which calls the hsp variants of the two workflows, with
 # the HSP form (SLURM account, QoS and node type for on-prem `existing` resources,
-# the PBS account, the DSRC hint). HPCMP login nodes have no internet access: give
-# the sites' module commands under Software Environment there rather than relying
-# on the conda-forge installs.
+# the PBS account, the DSRC hint). DSRC OpenFOAM modules only set foamDotFile, so
+# the OpenFOAM commands under Software Environment are the module load plus
+# `source $foamDotFile`; not every HPCMP login node reaches the internet for the
+# conda-forge installs (Nautilus does, and has no Dakota module).
 permissions:
   - '*'
 
@@ -43,6 +44,15 @@ configurations:
         stall_generations: 3
         mesh_scale: 3
         iteration_timeout: 2d
+  # the OpenFOAM environment of Nautilus (Navy DSRC): its openfoam module loads
+  # the compilers and OpenMPI 5 and only points at OpenFOAM through foamDotFile,
+  # asking for the source; Dakota stays on the conda-forge install (no module)
+  nautilus_modules:
+    inputs:
+      software:
+        openfoam_load: |
+          module load openfoam/Intel/v2512
+          source $foamDotFile
 
 jobs:
   preprocessing:
@@ -50,15 +60,18 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       # this workflow has no app of its own: the optimizer and the evaluator check
-      # out theirs inside their subworkflows, and the Pareto front page is the
-      # Dakota app's viewer of the study directory
-      - name: Checkout the Pareto Front Server
+      # out theirs inside their subworkflows. Checked out here: the Pareto front
+      # page (the Dakota app's viewer of the study directory) and the two
+      # installers, for the environment check below
+      - name: Checkout the Pareto Front Server and the Installers
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
           branch: canary
           sparse_checkout:
             - workflows/dakota/app
+            - workflows/openfoam-naca/app
+            - tools/utils
       - name: Validate Inputs and Initialize State
         run: |
           set -e
@@ -75,8 +88,38 @@ jobs:
             echo "::error::cores_per_case must be a positive integer, got '${cores}'"
             exit 1
           fi
+          # 5400 x mesh_scale^2 cells is the C-grid of naca_blockmesh.py; the solver
+          # caps the ranks at one per 1000 cells, so say here, once, what a request
+          # above that buys (16 ranks on the base mesh diverged where 4 converged)
+          ms="${{ inputs.optimizer.mesh_scale }}"
+          if [[ "${ms}" =~ ^[0-9]+$ ]] && [ $(( 5400 * ms * ms / cores )) -lt 1000 ]; then
+            cells=$(( 5400 * ms * ms ))
+            echo "::warning::${cores} cores per case at mesh_scale ${ms} (${cells} cells) leave $(( cells / cores )) cells per rank: each case will run on $(( cells / 1000 > 0 ? cells / 1000 : 1 )) rank(s) and the rest of its allocation idles. Raise mesh_scale (16 ranks need 2 or more) or lower Cores per case."
+          fi
           mkdir -p state
           echo "STATE_DIR=${PWD}/state" | tee -a $OUTPUTS
+      # the check every worker and the optimizer step make, made once here, before
+      # the server starts and before a generation is spent: environment commands
+      # that do not deliver the tools (a site module that only sets a variable, a
+      # typo) fail the run with the tools' own output. Left to the workers, the
+      # loop re-proposes the generation once and ends FAILED with nothing but "no
+      # case ran" at the top level (Nautilus, 2026-10-05). With no commands given,
+      # the conda-forge installs happen here once, not under batch_size workers.
+      - name: Check the Software Environments
+        run: |
+          set -e
+          required="blockMesh potentialFoam simpleFoam"
+          if [ "${{ inputs.cluster.cores_per_case }}" -gt 1 ]; then
+            required="${required} decomposePar reconstructPar mpirun"
+          fi
+          bash tools/utils/prepare-env.sh openfoam "${PWD}/openfoam-env.sh" \
+            workflows/openfoam-naca/app/install-openfoam.sh ${required} << 'PW_LOAD_EOF'
+          ${{ inputs.software.openfoam_load }}
+          PW_LOAD_EOF
+          bash tools/utils/prepare-env.sh dakota "${PWD}/dakota-env.sh" \
+            workflows/dakota/app/install-dakota.sh dakota << 'PW_LOAD_EOF'
+          ${{ inputs.software.dakota_load }}
+          PW_LOAD_EOF
       # the server is a login-node process for the life of the study and beyond:
       # start it in its own session so the end of this step, of this job and of
       # the run never reaches it (tutorials/endpoint-workflows Stage 3). The only
@@ -272,7 +315,10 @@ jobs:
               MPI ranks per OpenFOAM case. 1 runs the solvers serially; more
               decomposes the mesh into N strips and runs potentialFoam and
               simpleFoam under mpirun. Only pays off from mesh_scale 3-4 (2-4 ranks): at the
-              default mesh a decomposed case is slower than a serial one. Scheduled
+              default mesh a decomposed case is slower than a serial one. The solver
+              caps the ranks at one per 1000 cells (5400 x mesh_scale^2 cells per
+              case, so 16 ranks need mesh_scale 2 or more): 16 ranks on the base
+              mesh diverged where 4 converged. Scheduled
               cases request --nodes=1 --ntasks=N (PBS: select=1:ncpus=N:mpiprocs=N),
               so N must fit one node; on the login node, batch_size x N ranks run
               at once.
@@ -500,11 +546,13 @@ jobs:
               Shell commands that put blockMesh, potentialFoam and simpleFoam (and
               decomposePar, reconstructPar plus mpirun when Cores per case > 1) on
               PATH, one per line, e.g. `module load openfoam/2412` or `source
-              /opt/openfoam2412/etc/bashrc`. HPCMP login nodes have no internet
-              access, so give the site's module here; left empty, the workflow
+              /opt/openfoam2412/etc/bashrc`. DSRC openfoam modules only set
+              foamDotFile: give `module load openfoam/Intel/v2512` and `source
+              $foamDotFile` on two lines (Nautilus). Left empty, the workflow
               installs OpenFOAM v2412 from conda-forge (no sudo, ~5 min once) under
               ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca, which
-              only works where the resource can reach the internet.
+              only works where the login node reaches the internet (Nautilus does;
+              not every HPCMP system does).
               Every case sources these commands; `export MPIRUN="srun --mpi=pmix"`
               here replaces the default launcher `mpirun --bind-to none -np N`.
           dakota_load:
@@ -513,7 +561,7 @@ jobs:
             optional: true
             tooltip: |
               Shell commands that put `dakota` on PATH, e.g. `module load dakota`.
-              HPCMP login nodes have no internet access, so give the site's module
-              here; left empty, the workflow installs Dakota 6.16 from conda-forge
-              under ${service_parent_install_dir:-$HOME/pw/software}/dakota, which
-              only works where the resource can reach the internet.
+              Left empty, the workflow installs Dakota 6.16 from conda-forge under
+              ${service_parent_install_dir:-$HOME/pw/software}/dakota, which only
+              works where the login node reaches the internet (Nautilus does, and
+              has no Dakota module; not every HPCMP system does).

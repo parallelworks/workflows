@@ -18,6 +18,13 @@
 - A site install works through the same code path: `module load openfoam/2412` or
   `source /opt/openfoam2412/etc/bashrc` typed into the form becomes one sourceable
   file that every case sources (`tools/utils/prepare-env.sh`).
+- **DSRC modules only point at OpenFOAM** (Nautilus, 2026-10-05): `module load
+  openfoam/Intel/v2512` loads Intel compilers + OpenMPI 5.0.1 and sets `foamDotFile`
+  (`/p/app/openfoam/OpenFOAM-v2512/etc/bashrc-icx`), printing "Issue the command source
+  $foamDotFile"; `blockMesh` is on PATH only after that `source`. The form snippet is
+  therefore two lines, saved as the `nautilus_modules` configuration of the HSP forms
+  (`workflows/openfoam-naca/yamls/hsp.yaml`, `workflows/dakota-openfoam/yamls/hsp-naca.yaml`).
+  `module show` shows the pattern before a run does: `setenv foamDotFile`, no PATH change.
 
 ## Parallel runs (`-parallel`)
 
@@ -53,6 +60,20 @@
 - **Chain:** `blockMesh` → `decomposePar` → `mpirun ... potentialFoam -parallel` →
   `mpirun ... simpleFoam -parallel`. Function objects (`forceCoeffs`) write to
   `case/postProcessing` from the master rank, so objectives need no `reconstructPar`.
+- **Over-decomposition diverges marginal designs** (Nautilus, 2026-10-05, the workflow's
+  own simulator on one compute node, Intel icx and Gcc builds of v2512 identical):
+
+  | design | ranks | mesh_scale | cells/rank | result |
+  |---|---:|---:|---:|---|
+  | NACA 2412 | 1, 16 | 1 | 5400, 337 | Cd 0.0222/0.0223, Cl 0.722 |
+  | camber 0.050 | 1, 4 | 1 | 5400, 1350 | Cd 0.0287, Cl 1.068 |
+  | camber 0.050 | 16 | 1 | 337 | **SIGFPE in `GaussSeidelSmoother` before iteration 100**, Cd 952 at iteration 50 |
+  | both | 16 | 3 | 3037 | converged |
+
+  The simulator therefore caps the ranks at one per `MIN_CELLS_PER_RANK` cells (default
+  1000) after `blockMesh`, from the `nCells` line of its log, and leaves a user-set
+  `MPIRUN` alone with a warning (`workflows/openfoam-naca/app/simulator.sh`). Rank count is
+  a stability variable on this C-grid, not just a speed one.
 - **Under SLURM** one node per case, `--nodes=1 --ntasks=N`: hydra launches its ranks
   locally inside the allocation (verified 2026-09-30 on gcpsmall's 4-core nodes, two
   2-rank cases packed per node). PBS: `-l select=1:ncpus=N:mpiprocs=N`.

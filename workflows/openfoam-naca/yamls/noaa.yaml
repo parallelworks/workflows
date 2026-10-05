@@ -225,8 +225,11 @@ jobs:
               the mesh into N strips and runs potentialFoam and simpleFoam under
               mpirun, then reconstructs the result. Only pays off from mesh_scale
               3-4 (2-4 ranks): at the default mesh a decomposed case is slower
-              than a serial one. A scheduled case requests --nodes=1 --ntasks=N
-              (PBS: select=1:ncpus=N:mpiprocs=N), so N must fit one node.
+              than a serial one. The solver caps the ranks at one per 1000 cells
+              (the mesh has 5400 x mesh_scale^2 cells, so 16 ranks need mesh_scale
+              2 or more): 16 ranks on the base mesh diverged where 4 converged. A
+              scheduled case requests --nodes=1 --ntasks=N (PBS:
+              select=1:ncpus=N:mpiprocs=N), so N must fit one node.
           slurm:
             type: group
             label: SLURM Directives

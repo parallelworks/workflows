@@ -13,9 +13,10 @@
 # section: the resource is only where the state directory lives.
 #
 # The HSP (activate.hpc.mil) variant of general.yaml: the resource is the form's
-# top-level input, as in every HSP form here. HPCMP login nodes have no internet
-# access: give the site's module command in software.dakota_load there rather
-# than relying on the conda-forge install. The step itself is unchanged.
+# top-level input, as in every HSP form here. Where the login node has no internet
+# access, give the site's module command in software.dakota_load rather than
+# relying on the conda-forge install (Nautilus reaches conda-forge and has no
+# Dakota module, so the install is the way there). The step itself is unchanged.
 permissions:
   - '*'
 
@@ -178,8 +179,8 @@ jobs:
             optional: true
             tooltip: |
               Shell commands that put `dakota` on PATH, e.g. `module load dakota`.
-              HPCMP login nodes have no internet access, so give the site's module
-              here; left empty, the workflow installs Dakota 6.16 from conda-forge
-              (no sudo, ~3 min once) under
+              Left empty, the workflow installs Dakota 6.16 from conda-forge (no
+              sudo, ~3 min once) under
               ${service_parent_install_dir:-$HOME/pw/software}/dakota, which only
-              works where the resource can reach the internet.
+              works where the login node reaches the internet (Nautilus does, and
+              has no Dakota module; not every HPCMP system does).

@@ -286,3 +286,26 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   directive (`workflows/openfoam-naca/yamls/noaa.yaml` passes `ntasks: cores_per_case`,
   `nodes: 1`, and composes the same two directives for every other resource). `hsp`
   also has no `define_cleanup_script` input and guards an empty `slurm.time`.
+- **Nested subworkflow job dirs live under the parent run's** (HSP, Nautilus, 2026-10-05):
+  the subworkflow a `uses:` step at index k of job J ran has its job dir at
+  `<run dir>/subworkflows/J/step_k/`, recursively, with its own `logs/`, `subworkflows/`
+  and checkout; matrix instances are `workers-0..N-1` (zero-based). A worker's failing
+  step of the Dakota-OpenFOAM loop was
+  `.../subworkflows/optimization_loop/step_0/subworkflows/workers-3/step_0/logs/preprocessing/step_1/step.out`.
+  Read every failure of a run at once with
+  `find <run dir> -name step.out | xargs grep -h '^::error' | sort | uniq -c` — the top-level
+  Report step only says what the state files say, never why a worker died.
+- **A site module may only point at the software.** `module load openfoam/Intel/v2512` on
+  Nautilus loads the Intel compilers and OpenMPI 5.0.1, sets `foamDotFile` and prints
+  "Issue the command source $foamDotFile": nothing of OpenFOAM is on PATH until that
+  `source`, so the form's environment commands are two lines. `module show <mod>` tells
+  in advance (a `setenv foamDotFile`, no `prepend-path PATH`). The check in
+  `tools/utils/prepare-env.sh` caught it ("blockMesh not found on PATH") but only inside
+  each worker; the loop now makes both checks in its own preprocessing, so a wrong
+  snippet fails the run in seconds with the tools' own output instead of after a
+  re-proposed generation. The same Tcl modulefile aborts in a shell without `SHELL`
+  (`Module ERROR: no such variable ... ::env(SHELL)`, seen under `env -i`).
+- **"HPCMP login nodes have no internet" is per system, not a rule:** Nautilus's login
+  node reaches GitHub and conda-forge (HTTP 200, 2026-10-05), has no Dakota module, and
+  the conda-forge Dakota install worked there. Test with `curl` before telling a user
+  to bring a module.

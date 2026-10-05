@@ -43,15 +43,18 @@ jobs:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:
       # this workflow has no app of its own: the optimizer and the evaluator check
-      # out theirs inside their subworkflows, and the Pareto front page is the
-      # Dakota app's viewer of the study directory
-      - name: Checkout the Pareto Front Server
+      # out theirs inside their subworkflows. Checked out here: the Pareto front
+      # page (the Dakota app's viewer of the study directory) and the two
+      # installers, for the environment check below
+      - name: Checkout the Pareto Front Server and the Installers
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
           branch: canary
           sparse_checkout:
             - workflows/dakota/app
+            - workflows/openfoam-naca/app
+            - tools/utils
       - name: Validate Inputs and Initialize State
         run: |
           set -e
@@ -68,8 +71,38 @@ jobs:
             echo "::error::cores_per_case must be a positive integer, got '${cores}'"
             exit 1
           fi
+          # 5400 x mesh_scale^2 cells is the C-grid of naca_blockmesh.py; the solver
+          # caps the ranks at one per 1000 cells, so say here, once, what a request
+          # above that buys (16 ranks on the base mesh diverged where 4 converged)
+          ms="${{ inputs.optimizer.mesh_scale }}"
+          if [[ "${ms}" =~ ^[0-9]+$ ]] && [ $(( 5400 * ms * ms / cores )) -lt 1000 ]; then
+            cells=$(( 5400 * ms * ms ))
+            echo "::warning::${cores} cores per case at mesh_scale ${ms} (${cells} cells) leave $(( cells / cores )) cells per rank: each case will run on $(( cells / 1000 > 0 ? cells / 1000 : 1 )) rank(s) and the rest of its allocation idles. Raise mesh_scale (16 ranks need 2 or more) or lower Cores per case."
+          fi
           mkdir -p state
           echo "STATE_DIR=${PWD}/state" | tee -a $OUTPUTS
+      # the check every worker and the optimizer step make, made once here, before
+      # the server starts and before a generation is spent: environment commands
+      # that do not deliver the tools (a site module that only sets a variable, a
+      # typo) fail the run with the tools' own output. Left to the workers, the
+      # loop re-proposes the generation once and ends FAILED with nothing but "no
+      # case ran" at the top level (Nautilus, 2026-10-05). With no commands given,
+      # the conda-forge installs happen here once, not under batch_size workers.
+      - name: Check the Software Environments
+        run: |
+          set -e
+          required="blockMesh potentialFoam simpleFoam"
+          if [ "${{ inputs.cluster.cores_per_case }}" -gt 1 ]; then
+            required="${required} decomposePar reconstructPar mpirun"
+          fi
+          bash tools/utils/prepare-env.sh openfoam "${PWD}/openfoam-env.sh" \
+            workflows/openfoam-naca/app/install-openfoam.sh ${required} << 'PW_LOAD_EOF'
+          ${{ inputs.software.openfoam_load }}
+          PW_LOAD_EOF
+          bash tools/utils/prepare-env.sh dakota "${PWD}/dakota-env.sh" \
+            workflows/dakota/app/install-dakota.sh dakota << 'PW_LOAD_EOF'
+          ${{ inputs.software.dakota_load }}
+          PW_LOAD_EOF
       # the server is a login-node process for the life of the study and beyond:
       # start it in its own session so the end of this step, of this job and of
       # the run never reaches it (tutorials/endpoint-workflows Stage 3). The only
@@ -261,7 +294,10 @@ jobs:
               MPI ranks per OpenFOAM case. 1 runs the solvers serially; more
               decomposes the mesh into N strips and runs potentialFoam and
               simpleFoam under mpirun. Only pays off from mesh_scale 3-4 (2-4 ranks): at the
-              default mesh a decomposed case is slower than a serial one. Scheduled
+              default mesh a decomposed case is slower than a serial one. The solver
+              caps the ranks at one per 1000 cells (5400 x mesh_scale^2 cells per
+              case, so 16 ranks need mesh_scale 2 or more): 16 ranks on the base
+              mesh diverged where 4 converged. Scheduled
               cases request --nodes=1 --ntasks=N (PBS: select=1:ncpus=N:mpiprocs=N),
               so N must fit one node; on the login node, batch_size x N ranks run
               at once.

@@ -1,0 +1,111 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+# PROBE: runs tests once and exits. Every test's results go to the bucket as soon
+# as it finishes; the run ends in error when a test fails. No endpoint.
+permissions:
+  - '*'
+jobs:
+  run:
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: workflow-tester-tool
+          sparse_checkout:
+            - workflows/probe/app
+      - name: Fetch test definitions
+        run: |
+          set -eo pipefail
+          cd ${PW_PARENT_JOB_DIR}
+          export PYTHONPATH=${PW_PARENT_JOB_DIR}/workflows/probe/app
+          # A CLI run leaves an omitted input empty or undefined, so the form's
+          # defaults are applied here as well
+          TESTS_REPO="${{ inputs.tests.repo }}"
+          case "${TESTS_REPO}" in ''|undefined) TESTS_REPO=https://github.com/parallelworks/workflow-tester-tool.git ;; esac
+          TESTS_BRANCH="${{ inputs.tests.branch }}"
+          case "${TESTS_BRANCH}" in ''|undefined) TESTS_BRANCH=main ;; esac
+          TESTS_DIR="${{ inputs.tests.directory }}"
+          case "${TESTS_DIR}" in ''|undefined) TESTS_DIR=tests ;; esac
+          python3 -m probe fetch-tests --repo "${TESTS_REPO}" --branch "${TESTS_BRANCH}" \
+            --directory "${TESTS_DIR}" --out tests
+          python3 -m probe list --tests tests --platform "${PW_PLATFORM_HOST}" --user "${PW_USER}" \
+            || echo "::warning::Some test definitions are invalid; see above"
+      - name: Run tests
+        run: |
+          cd ${PW_PARENT_JOB_DIR}
+          export PATH=$HOME/pw:$PATH
+          export PYTHONPATH=${PW_PARENT_JOB_DIR}/workflows/probe/app
+          BUCKET="${{ inputs.results.bucket.uri }}"
+          case "${BUCKET}" in
+            ''|undefined|pw://) echo "::error::A results bucket is required"; exit 1 ;;
+          esac
+          RESULTS_PATH="${{ inputs.results.path }}"
+          case "${RESULTS_PATH}" in ''|undefined) RESULTS_PATH=probe/results ;; esac
+          RESULTS="${BUCKET%/}/${RESULTS_PATH}"
+          RESULTS="${RESULTS%/}"
+          cat > selection.txt <<'SELECTION'
+          ${{ inputs.selection }}
+          SELECTION
+          ARGS=""
+          if [ -z "$(tr -d '[:space:]' < selection.txt)" ] || grep -qx '[[:space:]]*\(all\|undefined\)[[:space:]]*' selection.txt; then
+            ARGS="--all"
+          else
+            for f in $(cat selection.txt); do ARGS="${ARGS} --test ${f}"; done
+          fi
+          echo "::notice::python3 -m probe run --tests tests --results results --bucket ${RESULTS} ${ARGS}"
+          mkdir -p results
+          python3 -u -m probe run --tests tests --results results --bucket "${RESULTS}" ${ARGS}
+'on':
+  execute:
+    inputs:
+      cluster:
+        type: group
+        label: Where to run
+        items:
+          resource:
+            type: compute-clusters
+            label: Host
+            include-workspace: true
+            tooltip: |
+              Where PROBE runs: the user workspace or the login node of a connected
+              cluster with the pw CLI, python3 and git. Tests are launched from here
+              with the pw CLI.
+      selection:
+        type: editor
+        label: Tests to run
+        default: all
+        tooltip: |
+          all, or test definition files relative to the tests directory, one per
+          line or separated by spaces, e.g.
+          activate.parallel.works/alvaro/webshell/gcp-controller.json
+      tests:
+        type: group
+        label: Test definitions
+        tooltip: Git repository, branch and directory of the test definition files.
+        items:
+          repo:
+            type: string
+            label: Repository
+            default: https://github.com/parallelworks/workflow-tester-tool.git
+          branch:
+            type: string
+            label: Branch
+            default: main
+          directory:
+            type: string
+            label: Directory
+            default: tests
+      results:
+        type: group
+        label: Results
+        tooltip: The bucket that holds the results; every test's records and artifacts are uploaded as it finishes.
+        items:
+          bucket:
+            type: bucket
+            label: Bucket
+          path:
+            type: string
+            label: Path in bucket
+            default: probe/results

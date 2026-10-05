@@ -41,6 +41,9 @@ workflows/script_submitter/v3.6/  # shared subworkflow: SLURM/PBS/SSH script sub
 workflows/wait_for_endpoint/      # shared subworkflow: wait for the endpoint, probe its URL, release the submitter
 workflows/dakota-openfoam/        # a loop composed of two standalone workflows (dakota, openfoam-naca)
                                   # called as subworkflows; the single-app original in backup-no-subworkflow/
+workflows/probe/                  # PROBE: runs a platform's workflow tests (definitions in a tests repository,
+                                  # parallelworks/workflow-tester-tool for activate.parallel.works) and serves
+                                  # the results dashboards; app/ holds its Python code
 tools/oras, tools/utils      # shared runtime tools, referenced as tools/... from run dirs
                              # (tools/utils/{miniforge,prepare-env}.sh: conda installs + env files)
 workflows/<name>/tests/<variant>/  # end-to-end tests: <test>.json form inputs + <test>.csv results
@@ -62,7 +65,8 @@ docs/                        # developer + AI docs
 
 Every workflow here but the batch ones — `activate-batch` (runs a command script to
 completion and fails when it fails), `3dcs` (fans a 3DCS simulation out over SLURM
-workers), `openfoam-naca` (one OpenFOAM case) and `dakota` (one optimizer step) —
+workers), `openfoam-naca` (one OpenFOAM case), `dakota` (one optimizer step) and
+`probe`'s `general_run_tests.yaml` (one run of a platform's PROBE tests) —
 serves through a **`pw` endpoint** (`pw endpoints list`) named
 `<service>-${PW_RUN_SLUG}`. `dakota-openfoam` is both: a batch optimization loop that
 joins those last two as subworkflows and serves its live Pareto front as an endpoint;

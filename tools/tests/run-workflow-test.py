@@ -51,6 +51,10 @@ The optional "_test" object is stripped before launch:
                        default "completed")
     endpoint_name      the exact endpoint name, for a workflow that keeps a fixed one instead of
                        *-<run-slug> (both lanes; e.g. hpc_status's hpc-status)
+    secrets            {"<input path>": "<ENVIRONMENT VARIABLE>"}: each variable's value goes into
+                       that input (dotted path, e.g. api_key or service.token) at launch, so a
+                       password input never sits in the test file; the test is skipped when a
+                       variable is unset (both lanes)
 
 Failing runs keep their platform record and get their `pw workflows runs errors`
 output (plus the namespace events on the k8s lane) saved under
@@ -90,7 +94,7 @@ COLUMNS = ["date", "phase", "result", "cleanup", "workflow_tree", "submitter_tre
 COMPUTE_RESOURCES_RE = re.compile(r"^\s*type:\s*compute-resources\s*$", re.M)
 WORKSPACE = {"workspace", "user-workspace"}
 DEFAULTS = {"timeout_s": 1800, "endpoint": True, "warm_marker": "", "setup": "", "resource": "",
-            "scheduler": None, "expect": "completed", "endpoint_name": "",
+            "scheduler": None, "expect": "completed", "endpoint_name": "", "secrets": {},
             "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
             "leftover_kinds": ["deployments", "services", "pods", "persistentvolumeclaims", "secrets"]}
 
@@ -339,6 +343,23 @@ def setup(test):
     log("  setup done")
 
 
+def fill_secrets(test):
+    """Put the environment variables named in _test.secrets into the inputs. Returns
+    the names of the variables that are not set."""
+    missing = []
+    for path, variable in test.meta["secrets"].items():
+        value = os.environ.get(variable, "")
+        if not value:
+            missing.append(variable)
+            continue
+        keys = path.split(".")
+        target = test.inputs
+        for key in keys[:-1]:
+            target = target.setdefault(key, {})
+        target[keys[-1]] = value
+    return missing
+
+
 def launch(test, run_name):
     fd, tmp = tempfile.mkstemp(suffix=".json")
     with os.fdopen(fd, "w") as f:
@@ -539,6 +560,10 @@ def run_test(test, args, user):
     if not active:
         log(f"  SKIP: resource {test.resource} is not active ({why})")
         return None
+    missing = fill_secrets(test)
+    if missing:
+        log(f"  SKIP: {', '.join(missing)} not set in the environment (_test.secrets)")
+        return None
     if test.k8s:
         complete_resource(test, cluster)
     else:
@@ -635,6 +660,8 @@ def main():
                 _, _, cluster = resource_active(t.resource, emit_user)
                 if cluster:
                     hydrate_compute_resource(t, cluster, emit_user)
+            for path, variable in t.meta["secrets"].items():
+                print(f"# {path}: set from ${variable} at launch (_test.secrets)", file=sys.stderr)
             print(f"# pw workflows run {t.yaml} -i <this>", file=sys.stderr)
             print(json.dumps(t.inputs, indent=2))
         return 0

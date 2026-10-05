@@ -24,7 +24,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: workflow-tester-tool
+          branch: canary
           sparse_checkout:
             - workflows/probe/app
       - name: Fetch test definitions

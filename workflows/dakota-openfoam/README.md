@@ -99,7 +99,7 @@ Pick the resource, set `max_iterations`, `batch_size`, `stall_generations` and
 README has the measurements).
 The **Design Problem** group holds the angle of attack, the variable bounds
 (keep the three names) and the Dakota seed. The form's defaults are the demo:
-login node, `mesh_scale` 1, 4 × 10, about 10 min. **Load saved inputs →
+login node, `mesh_scale` 2, 4 × 10, about 20 min. **Load saved inputs →
 `mesh3_slurm_4ranks`** is the converged-mesh study: SLURM, 4 ranks per case,
 `mesh_scale` 3, 8 × 10, 31 min on gcpsmall.
 
@@ -122,7 +122,9 @@ PBS account on HSP) passed through an iteration that calls the matching variants
 of the two workflows. What those variants change is in their READMEs: the module
 hint for HPCMP systems (DSRC OpenFOAM modules only set `foamDotFile`, so the HSP
 forms save a `nautilus_modules` configuration with the module load and the
-`source $foamDotFile` it asks for; not every login node reaches the internet),
+`source $foamDotFile` it asks for, plus `mesh_scale` 4 for the loop; every form
+defaults to `mesh_scale` 2, the floor at which 16 ranks are all used; not every
+login node reaches the internet),
 the shared install directory on NOAA, and how each submitter receives the
 case's core request.
 

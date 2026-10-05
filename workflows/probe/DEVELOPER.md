@@ -205,14 +205,11 @@ PROBE_API_KEY=<key> python3 tools/tests/run-workflow-test.py workflows/probe/tes
 python3 tools/tests/run-workflow-test.py workflows/probe/tests/general_run_tests/gcpsmall.json
 ```
 
-## Adding test definitions
+## Test definitions
 
-In the tests repository: copy a file, give it a new `name`, change the target and
-inputs, and check it with `python3 -m probe list --tests <dir>`, which also notes files
-that are not at `<platform>/<user>/<workflow_name>/<name>.json`. The inputs are the form
-payload of the workflow. The recorded tests under `workflows/<name>/tests/<variant>/`
-here convert with `scripts/import_workflow_tests.py` (their `_test` object maps to
-`timeout_s`, `warm_marker`, `leftover_patterns`, `leftover_commands` and `setup`; tests
-with other `_test` keys are reported and skipped). Keep `timeout_s` above the
-cold-install time of the workflow on that system. A `script_submitter` test needs
-`define_cleanup_script: false` in its inputs or the platform rejects the launch.
+The format is in [README.md](README.md); adding, changing and running tests is described in
+the tests repository's README. `scripts/import_workflow_tests.py` converts the tests recorded
+under `workflows/<name>/tests/<variant>/` here (their `_test` object maps to `timeout_s`,
+`warm_marker`, `leftover_patterns`, `leftover_commands` and `setup`; tests with other `_test`
+keys are reported and skipped). A `script_submitter` test needs `define_cleanup_script: false`
+in its inputs or the platform rejects the launch.

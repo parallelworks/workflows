@@ -86,6 +86,14 @@ under `mpirun --bind-to none -np N`. It pays from `mesh_scale` 3–4 (4 ranks:
 The sourced environment may `export MPIRUN="srun --mpi=pmix"` to replace the
 launcher.
 
+The simulator caps the ranks at one per 1,000 cells (`MIN_CELLS_PER_RANK`, 0
+disables the cap) and says so in the case log: 16 ranks on the 5,400-cell base
+mesh is 337 cells per rank, and on Nautilus a 5% camber design diverged that way
+in under 100 iterations while converging serially, on 4 ranks (1,350 cells per
+rank) and on 16 ranks at `mesh_scale` 3, with the Intel and Gcc builds alike
+(2026-10-05). So 16 ranks need `mesh_scale` 2 or more to be used in full. A
+user-set `MPIRUN` carries its own rank count and is only warned about.
+
 ## As a subworkflow
 
 ```yaml
@@ -116,8 +124,11 @@ adds the per-site **Account**, **QoS** and **Node Type** fields (shown for on-pr
 `existing` resources) and the DSRC `--constraint=mla` hint, and the PBS group adds
 the **Account** (`-A`) and the HSP directive defaults. The case always takes one
 node with `cores_per_case` tasks, so the submitter's `nodes` and `cpus_per_task`
-are fixed rather than asked for. HPCMP login nodes have no internet access: give
-the site's module command in `openfoam_load` there. `yamls/noaa.yaml` is the NOAA
+are fixed rather than asked for. DSRC OpenFOAM modules only set `foamDotFile`, so
+`openfoam_load` there is two lines, the module load and `source $foamDotFile`
+(Nautilus: `module load openfoam/Intel/v2512`, saved as the `nautilus_modules`
+configuration); not every HPCMP login node reaches the internet for the
+conda-forge install. `yamls/noaa.yaml` is the NOAA
 (`noaa.parallel.works`) form: the `noaa` script submitter and the same **Account**
 and **QoS** fields; the core request reaches that submitter through its `ntasks`
 and `nodes` inputs, which it writes after the directives on `existing` resources,
@@ -134,7 +145,7 @@ for the three; on a cloud cluster the variants behave alike, which is how
 | `install-openfoam.sh` | idempotent conda-forge install, the `lib/sys-mpich` link that makes `-parallel` runs load the MPI Pstream, the activation file for `tools/utils/prepare-env.sh` |
 | `naca_blockmesh.py` | NACA 4-digit parameters → structured C-grid `blockMeshDict` |
 | `openfoam-case/` | the case template: boundary conditions, schemes, solver settings |
-| `simulator.sh` | `params.in` → case → `blockMesh` (+ `decomposePar`) → `potentialFoam` → `simpleFoam` → `results.out` → `reconstructPar` + `case.foam`; env contract `MESH_SCALE`, `CORES_PER_CASE`, `OPENFOAM_ENV`, `MPIRUN` |
+| `simulator.sh` | `params.in` → case → `blockMesh` (+ `decomposePar`) → `potentialFoam` → `simpleFoam` → `results.out` → `reconstructPar` + `case.foam`; env contract `MESH_SCALE`, `CORES_PER_CASE`, `MIN_CELLS_PER_RANK`, `OPENFOAM_ENV`, `MPIRUN` |
 
 Shared: `tools/utils/miniforge.sh`, `tools/utils/prepare-env.sh`. Tests:
 `tests/general/gcpsmall.json` (login node, serial) and

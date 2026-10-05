@@ -14,7 +14,12 @@
 # Environment: ALPHA_DEG (default 5) is the angle of attack. MESH_SCALE (default
 # 1) multiplies every cell count — the cost dial. CORES_PER_CASE (default 1) > 1
 # decomposes the mesh and runs the solvers under ${MPIRUN} (default `mpirun
-# --bind-to none -np ${CORES_PER_CASE}`). OPENFOAM_ENV names a file sourced to
+# --bind-to none -np <ranks>`); the ranks are capped so that each keeps at least
+# MIN_CELLS_PER_RANK cells (default 1000, 0 disables the cap): 16 ranks on the
+# 5400-cell base mesh diverged for a marginal design that converged serially, on
+# 4 ranks and on 16 ranks of a finer mesh (Nautilus, 2026-10-05). A user-set
+# MPIRUN carries its own rank count, so it is only warned about, never changed.
+# OPENFOAM_ENV names a file sourced to
 # put OpenFOAM (and mpirun) on PATH; unset, the conda env that
 # install-openfoam.sh creates is activated. Every OpenFOAM step's full output
 # goes to case/log.<step>; the short steps are also streamed to stdout, and the
@@ -46,17 +51,13 @@ STREAM_EVERY="${STREAM_EVERY:-50}"
 # nodes); strips are deterministic and converged for every design tried
 DECOMP_METHOD="${DECOMP_METHOD:-hierarchical}"
 
-# --bind-to none: concurrent launchers on one node (the login-node mode runs
-# batch_size cases at once) would otherwise all pin their ranks to the same first
-# cores; the sourced environment may export MPIRUN to replace the launcher
-LAUNCH=()
-PARALLEL=()
+# the launcher is checked before any work is done; the rank count is settled after
+# blockMesh, from the cell count
 if [ "${CORES_PER_CASE}" -gt 1 ]; then
-    MPIRUN="${MPIRUN:-mpirun --bind-to none -np ${CORES_PER_CASE}}"
-    read -r -a LAUNCH <<< "${MPIRUN}"
-    PARALLEL=(-parallel)
-    command -v "${LAUNCH[0]}" > /dev/null || { echo "${LAUNCH[0]} not on PATH: the OpenFOAM environment must provide the MPI launcher when CORES_PER_CASE > 1"; exit 1; }
+    launcher="${MPIRUN:-mpirun}"
+    command -v "${launcher%% *}" > /dev/null || { echo "${launcher%% *} not on PATH: the OpenFOAM environment must provide the MPI launcher when CORES_PER_CASE > 1"; exit 1; }
 fi
+MIN_CELLS_PER_RANK="${MIN_CELLS_PER_RANK:-1000}"
 
 max_camber=$(awk '$2=="max_camber"{print $1}' params.in)
 camber_position=$(awk '$2=="camber_position"{print $1}' params.in)
@@ -138,27 +139,6 @@ if [ "${MESH_SCALE}" -ge 2 ]; then
     foamDictionary -entry relaxationFactors.equations.nuTilda -set 0.5 case/system/fvSolution > /dev/null
 fi
 
-if [ "${CORES_PER_CASE}" -gt 1 ]; then
-    coeffs=""
-    case "${DECOMP_METHOD}" in
-        hierarchical|simple)
-            coeffs=$(printf 'coeffs\n{\n    n           (%d 1 1);\n    order       xyz;\n}\n' "${CORES_PER_CASE}") ;;
-    esac
-    cat > case/system/decomposeParDict << EOF
-FoamFile
-{
-    version     2.0;
-    format      ascii;
-    class       dictionary;
-    object      decomposeParDict;
-}
-
-numberOfSubdomains ${CORES_PER_CASE};
-method          ${DECOMP_METHOD};
-${coeffs}
-EOF
-fi
-
 # own controlDict: iteration cap (fvSolution's residualControl usually converges
 # earlier) and the forceCoeffs function object that extracts the objectives
 cat > case/system/controlDict << EOF
@@ -238,19 +218,68 @@ foam_solve() {
     ')
 }
 
+f_failed() {
+    echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness} (${RANKS:-${CORES_PER_CASE}} rank(s)); log tails:"
+    # -n: coreutils rejects the short `tail -8 f1 f2` form with several files
+    tail -n 20 case/log.blockMesh case/log.decomposePar case/log.potentialFoam case/log.simpleFoam 2>/dev/null
+    exit 1
+}
+
+foam_step blockMesh blockMesh || f_failed
+
+# the rank count: the request, capped so that every rank keeps MIN_CELLS_PER_RANK
+# cells (the header has the measurements behind the floor)
+n_cells=$(awk '/^ *nCells:/ {print $2; exit}' case/log.blockMesh)
+RANKS="${CORES_PER_CASE}"
+if [ "${CORES_PER_CASE}" -gt 1 ] && [ -n "${n_cells}" ] && [ "${MIN_CELLS_PER_RANK}" -gt 0 ]; then
+    max_ranks=$(( n_cells / MIN_CELLS_PER_RANK ))
+    [ "${max_ranks}" -ge 1 ] || max_ranks=1
+    if [ "${CORES_PER_CASE}" -gt "${max_ranks}" ]; then
+        if [ -n "${MPIRUN:-}" ]; then
+            echo "::warning::${n_cells} cells over ${CORES_PER_CASE} ranks leave $(( n_cells / CORES_PER_CASE )) cells per rank, below the floor of ${MIN_CELLS_PER_RANK}; MPIRUN is set, so the rank count is yours, and a marginal design may diverge: lower CORES_PER_CASE or raise MESH_SCALE"
+        else
+            echo "::notice::${n_cells} cells over ${CORES_PER_CASE} ranks would leave $(( n_cells / CORES_PER_CASE )) cells per rank; running on ${max_ranks} rank(s) instead (floor MIN_CELLS_PER_RANK=${MIN_CELLS_PER_RANK}): raise MESH_SCALE to use more cores"
+            RANKS="${max_ranks}"
+        fi
+    fi
+fi
+export RANKS
+
+# --bind-to none: concurrent launchers on one node (the login-node mode runs
+# batch_size cases at once) would otherwise all pin their ranks to the same first
+# cores; the sourced environment may export MPIRUN to replace the launcher
+LAUNCH=()
+PARALLEL=()
+if [ "${RANKS}" -gt 1 ]; then
+    read -r -a LAUNCH <<< "${MPIRUN:-mpirun --bind-to none -np ${RANKS}}"
+    PARALLEL=(-parallel)
+    coeffs=""
+    case "${DECOMP_METHOD}" in
+        hierarchical|simple)
+            coeffs=$(printf 'coeffs\n{\n    n           (%d 1 1);\n    order       xyz;\n}\n' "${RANKS}") ;;
+    esac
+    cat > case/system/decomposeParDict << EOF
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      decomposeParDict;
+}
+
+numberOfSubdomains ${RANKS};
+method          ${DECOMP_METHOD};
+${coeffs}
+EOF
+    foam_step decomposePar decomposePar || f_failed
+fi
+
 # the potentialFoam initial field is required: starting SIMPLE impulsively from
 # a uniform freestream diverges on this C-mesh (see fvSolution's Phi block).
 # In parallel the forceCoeffs output still lands in case/postProcessing, so the
 # objectives need no reconstructPar.
-if ! { foam_step blockMesh blockMesh \
-        && { [ "${CORES_PER_CASE}" -eq 1 ] || foam_step decomposePar decomposePar; } \
-        && foam_step potentialFoam "${LAUNCH[@]}" potentialFoam "${PARALLEL[@]}" \
-        && foam_solve simpleFoam "${LAUNCH[@]}" simpleFoam "${PARALLEL[@]}"; }; then
-    echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness} (${CORES_PER_CASE} core(s)); log tails:"
-    # -n: coreutils rejects the short `tail -8 f1 f2` form with several files
-    tail -n 20 case/log.blockMesh case/log.decomposePar case/log.potentialFoam case/log.simpleFoam 2>/dev/null
-    exit 1
-fi
+foam_step potentialFoam "${LAUNCH[@]}" potentialFoam "${PARALLEL[@]}" || f_failed
+foam_solve simpleFoam "${LAUNCH[@]}" simpleFoam "${PARALLEL[@]}" || f_failed
 
 python3 - << 'EOF'
 import glob
@@ -280,15 +309,15 @@ cl = sum(float(r[icl]) for r in tail) / len(tail)
 with open("results.out.tmp", "w") as fh:
     fh.write("%.10f drag_coefficient\n%.10f neg_lift_coefficient\n" % (cd, -cl))
 os.rename("results.out.tmp", "results.out")
-print("Cd=%.6f Cl=%.6f (averaged over last %d iterations, %s core(s))"
-      % (cd, cl, len(tail), os.environ.get("CORES_PER_CASE", "1")))
+print("Cd=%.6f Cl=%.6f (averaged over last %d iterations, %s rank(s))"
+      % (cd, cl, len(tail), os.environ.get("RANKS", "1")))
 EOF
 
 # the objectives are safe on disk: everything below only makes the case open in
 # ParaView — reconstruct a decomposed case (the reader handles processor*
 # directories too, as a "Decomposed Case") and leave the empty .foam file the
 # OpenFOAM reader keys on
-if [ "${CORES_PER_CASE}" -gt 1 ]; then
+if [ "${RANKS}" -gt 1 ]; then
     if ! foam_step reconstructPar reconstructPar -latestTime; then
         echo "::warning::reconstructPar failed; open case/case.foam in ParaView as a Decomposed Case (tail of case/log.reconstructPar follows)"
         tail -n 10 case/log.reconstructPar

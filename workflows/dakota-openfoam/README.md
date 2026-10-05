@@ -17,8 +17,9 @@ covers only the loop, the live front and the tests. The loop mechanics come from
 
 ```
 general-naca.yaml
- ├─ preprocessing       state/ (the study); starts pareto-server.py detached under pw endpoints run,
- │                      then waits until the endpoint is listed and /healthz answers through the platform
+ ├─ preprocessing       state/ (the study); checks that the OpenFOAM and Dakota environments deliver
+ │                      their tools; starts pareto-server.py detached under pw endpoints run, then waits
+ │                      until the endpoint is listed and /healthz answers through the platform
  ├─ stop_server_if_unhealthy   if: !completed — kills a server whose endpoint never came up
  └─ optimization_loop   needs the endpoint, then:
      ├─ Iterate         retried step; each attempt runs iteration-naca.yaml once:
@@ -56,7 +57,12 @@ workflow writes the `case.sh` that records `exit_code`, where the driver used
 to. Each worker is a three-job subworkflow instead of one submitter call,
 roughly 10 s more per case on the login node. The installs are separate
 prefixes (`openfoam-naca/miniforge`, `dakota/miniforge`). This directory has
-no `app/`: preprocessing checks out `workflows/dakota/app` for the server only.
+no `app/`: preprocessing checks out `workflows/dakota/app` for the server, plus
+`workflows/openfoam-naca/app` and `tools/utils` to make both environment checks
+once before the loop starts. Environment commands that do not deliver the tools
+(a site module that only sets a variable) fail the run there, with the tools'
+own output; left to the workers, the loop re-proposed the generation once and
+ended `FAILED` with nothing but "no case ran" at the top level.
 
 ## The live Pareto front
 
@@ -87,7 +93,10 @@ running cases and SLURM jobs and leaves only the endpoint.
 ## Running it
 
 Pick the resource, set `max_iterations`, `batch_size`, `stall_generations` and
-`mesh_scale`, and choose login node or scheduled cases with `Cores per case`.
+`mesh_scale`, and choose login node or scheduled cases with `Cores per case`
+(the solver caps the ranks at one per 1,000 cells, so 16 cores need `mesh_scale`
+2 or more; preprocessing warns when a request exceeds that, and the openfoam-naca
+README has the measurements).
 The **Design Problem** group holds the angle of attack, the variable bounds
 (keep the three names) and the Dakota seed. The form's defaults are the demo:
 login node, `mesh_scale` 1, 4 × 10, about 10 min. **Load saved inputs →
@@ -111,8 +120,11 @@ loop and server, with the platform's form (the resource as the top-level input;
 SLURM account, QoS and, on HSP, node type for on-prem `existing` resources; the
 PBS account on HSP) passed through an iteration that calls the matching variants
 of the two workflows. What those variants change is in their READMEs: the module
-hint for HPCMP login nodes without internet access, the shared install directory
-on NOAA, and how each submitter receives the case's core request.
+hint for HPCMP systems (DSRC OpenFOAM modules only set `foamDotFile`, so the HSP
+forms save a `nautilus_modules` configuration with the module load and the
+`source $foamDotFile` it asks for; not every login node reaches the internet),
+the shared install directory on NOAA, and how each submitter receives the
+case's core request.
 
 ## Tests
 

@@ -18,11 +18,23 @@
 # submitted through the hsp script submitter with its form (SLURM account, QoS and
 # node type for on-prem `existing` resources, the PBS account, the DSRC hint). The
 # case always takes one node with cores_per_case tasks, so the submitter's nodes
-# and cpus_per_task are fixed here instead of asked for. HPCMP login nodes have no
-# internet access: give the site's module command in software.openfoam_load there
-# rather than relying on the conda-forge install.
+# and cpus_per_task are fixed here instead of asked for. DSRC OpenFOAM modules only
+# set foamDotFile: software.openfoam_load there is the module load plus `source
+# $foamDotFile`; not every HPCMP login node reaches the internet for the
+# conda-forge install (Nautilus does).
 permissions:
   - '*'
+
+# Saved inputs, offered under "Load saved inputs" on the Execute page: the OpenFOAM
+# environment of Nautilus (Navy DSRC), whose openfoam module loads the compilers
+# and OpenMPI 5 and only points at OpenFOAM through foamDotFile, asking for the source
+configurations:
+  nautilus_modules:
+    inputs:
+      software:
+        openfoam_load: |
+          module load openfoam/Intel/v2512
+          source $foamDotFile
 
 jobs:
   preprocessing:
@@ -208,8 +220,11 @@ jobs:
               the mesh into N strips and runs potentialFoam and simpleFoam under
               mpirun, then reconstructs the result. Only pays off from mesh_scale
               3-4 (2-4 ranks): at the default mesh a decomposed case is slower
-              than a serial one. A scheduled case requests --nodes=1 --ntasks=N
-              (PBS: select=1:ncpus=N:mpiprocs=N), so N must fit one node.
+              than a serial one. The solver caps the ranks at one per 1000 cells
+              (the mesh has 5400 x mesh_scale^2 cells, so 16 ranks need mesh_scale
+              2 or more): 16 ranks on the base mesh diverged where 4 converged. A
+              scheduled case requests --nodes=1 --ntasks=N (PBS:
+              select=1:ncpus=N:mpiprocs=N), so N must fit one node.
           slurm:
             type: group
             label: SLURM Directives
@@ -410,10 +425,12 @@ jobs:
               Shell commands that put blockMesh, potentialFoam and simpleFoam (and
               decomposePar, reconstructPar plus mpirun when Cores per case > 1) on
               PATH, one per line, e.g. `module load openfoam/2412` or `source
-              /opt/openfoam2412/etc/bashrc`. HPCMP login nodes have no internet
-              access, so give the site's module here; left empty, the workflow
+              /opt/openfoam2412/etc/bashrc`. DSRC openfoam modules only set
+              foamDotFile: give `module load openfoam/Intel/v2512` and `source
+              $foamDotFile` on two lines (Nautilus). Left empty, the workflow
               installs OpenFOAM v2412 from conda-forge (no sudo, ~5 min once) under
               ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca, which
-              only works where the resource can reach the internet.
+              only works where the login node reaches the internet (Nautilus does;
+              not every HPCMP system does).
               The case sources these commands; `export MPIRUN="srun --mpi=pmix"`
               here replaces the default launcher `mpirun --bind-to none -np N`.

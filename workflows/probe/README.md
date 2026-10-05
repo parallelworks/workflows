@@ -26,7 +26,7 @@ checked out at run time like every other workflow here) and two workflows:
 | Workflow | What it does |
 |---|---|
 | `yamls/general.yaml` | Starts the two dashboards. The run completes once both endpoints answer; the dashboards keep serving until their endpoints are deleted. |
-| `yamls/general_run_tests.yaml` | Runs all tests, or the files named in `selection`, once. Ends in error when a test fails. No endpoint. |
+| `yamls/general_run_tests.yaml` | Runs all tests, or the files named in `selection`, once. Failed tests are warnings on the run; it ends in error only when PROBE could not run the tests or record their results. No endpoint. |
 
 Both take the test definitions (repository, branch, directory) and the results bucket and
 path as inputs. `general.yaml` also takes:

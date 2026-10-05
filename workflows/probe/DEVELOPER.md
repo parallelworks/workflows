@@ -177,8 +177,10 @@ needs no key: its runner works while its run is alive.
 
 `yamls/general_run_tests.yaml` has one job: checkout, fetch the test definitions, then
 `python3 -m probe run --bucket <bucket>/<path> --all` or `--test <file>` per line of the
-`selection` input. The step's exit code is the runner's, so a failing test ends the run
-in error, which the GitHub action reports.
+`selection` input. The runner exits 1 when a test failed and 2 when it could not run or
+record the tests; the step reports the first as one `::warning::` per failed test and
+exits 0, since the failures are in the bucket and on the dashboard, and fails on the
+second. The GitHub action therefore fails only when the suite could not run.
 
 The GitHub actions live in the tests repository: they install the `pw` CLI on the
 runner, authenticate with the platform's repository secret through `PW_API_KEY`, write

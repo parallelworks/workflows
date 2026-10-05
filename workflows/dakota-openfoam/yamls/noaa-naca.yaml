@@ -22,11 +22,11 @@
 permissions:
   - '*'
 
-# Saved inputs, offered under "Load saved inputs" on the Execute page. The form's
-# defaults are the fast demo (login node, 1 core, mesh_scale 1, ~4 min); this
-# configuration is the converged-mesh study: every generation's 8 cases as SLURM
-# jobs of 4 ranks, ~1.5 min each on 4-core nodes, ~25 min in all on gcpsmall.
-# It pins no resource: pick the cluster in the form.
+# Saved inputs, offered under "Load saved inputs" on the Execute page. The form
+# defaults to mesh_scale 2, the floor at which 16 ranks are all used (login node,
+# 1 core: about 1 min per case); this configuration is the converged-mesh study:
+# every generation's 8 cases as SLURM jobs of 4 ranks, ~1.5 min each on 4-core
+# nodes, ~25 min in all on gcpsmall. It pins no resource: pick the cluster in the form.
 configurations:
   mesh3_slurm_4ranks:
     inputs:
@@ -413,7 +413,7 @@ jobs:
           mesh_scale:
             type: number
             label: Mesh resolution multiplier
-            default: 1
+            default: 2
             min: 1
             max: 6
             tooltip: |

@@ -707,3 +707,30 @@ groups. The behavior changes made in the port are listed in
 [workflows/3dcs/README.md](workflows/3dcs/README.md) ("Provenance"). Left behind in
 `dcs-workflow`: `honda-us.yaml` (the pre-v4 `main.sh` design for the `honda-us` metering
 user) and `plot-usage/` (the usage-plotting workflow that runs on the metering server).
+
+## probe (2026-10-05, from parallelworks/workflow-tester-tool)
+
+`workflows/probe/` is PROBE, moved from `parallelworks/workflow-tester-tool@dev`
+(a9a474d), renamed `parallelworks/probe-tests-activate-parallel-works` right after the move.
+That repository keeps only the test definitions for `activate.parallel.works`
+(`tests/<platform>/<user>/<workflow_name>/<name>.json`) and the two GitHub actions that
+deploy these YAMLs from here; the runner, the dashboards and the workflows live here.
+
+| workflow-tester-tool | here |
+|---|---|
+| `workflow/workflow.yaml` (the dashboards) | `workflows/probe/yamls/general.yaml` |
+| `workflow/run-tests.yaml` | `workflows/probe/yamls/general_run_tests.yaml` |
+| `probe/`, `web/` | `workflows/probe/app/probe/`, `workflows/probe/app/web/` (the sparse-checkout subtree) |
+| `selftest/` | `workflows/probe/selftest/` (`PYTHONPATH=app`) |
+| `tools/import_workflow_tests.py` | `workflows/probe/scripts/import_workflow_tests.py` |
+| `thumbnail.png` | `workflows/probe/thumbnails/probe.png` |
+| `README.md`, `DEVELOPER.md` | `workflows/probe/README.md`, `workflows/probe/DEVELOPER.md` |
+| `tests/`, `.github/workflows/` | stay in workflow-tester-tool, now probe-tests-activate-parallel-works |
+
+Changes made in the move: the YAMLs check out `workflows/probe/app` from this repository
+at `canary` like every other workflow (the `code` input group that chose the code's
+repository and branch is gone); the host input moved from `resource` to
+`cluster.resource`; the `tests` and `results` inputs get their defaults applied in the
+steps, since a CLI run leaves omitted inputs `undefined`. The end-to-end tests of PROBE's
+own YAMLs are under `workflows/probe/tests/`; the dashboards test fills its API key from
+the environment through the runner's new `_test.secrets` key.

@@ -8,7 +8,8 @@ in `app/` or an implementation subdir — the only subtree checked out at run ti
 README, build tooling, and marketplace thumbnails (in `thumbnails/`) all live together. There are **no
 version suffixes** — every file is the latest version; git tags version the repo.
 Every workflow but [activate-batch](workflows/activate-batch/) and [3dcs](workflows/3dcs/)
-serves through the **`pw` endpoint pattern**; those two run batch jobs to completion.
+serves through the **`pw` endpoint pattern**; those two run batch jobs to completion,
+as does [probe](workflows/probe/)'s `general_run_tests.yaml`.
 
 How this repo was assembled, and where anything older lives, is recorded in
 [MIGRATION.md](MIGRATION.md).
@@ -35,6 +36,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [ollama-openwebui](workflows/ollama-openwebui/) | Ollama + OpenWebUI on Kubernetes | k8s |
 | [open-notebook](workflows/open-notebook/) | Open Notebook (Docker) | general |
 | [openvscode](workflows/openvscode/) | OpenVSCode Server | general, emed, hsp, noaa, general_k8s, k8s |
+| [probe](workflows/probe/) | PROBE: runs a platform's workflow tests from their definitions repository ([probe-tests-activate-parallel-works](https://github.com/parallelworks/probe-tests-activate-parallel-works) for activate.parallel.works), records the results in a bucket and serves the results dashboards | general, general_run_tests (batch, no endpoint) |
 | [rag-service](workflows/rag-service/) | RAG search/index service | general |
 | [rag-vllm](workflows/rag-vllm/) | vLLM inference server + optional RAG stack | general, hsp, noaa |
 | [ray-cluster](workflows/ray-cluster/) | Multi-site Ray cluster: head and live dashboard on one resource, SLURM/PBS/SSH workers on any others | general, hsp, noaa, general_add_worker, hsp_add_worker, noaa_add_worker |

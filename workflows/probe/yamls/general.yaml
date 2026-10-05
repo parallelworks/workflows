@@ -1,0 +1,308 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+# PROBE dashboards. Like the other endpoint workflows here: a start script per
+# dashboard is submitted through script_submitter, wait_for_endpoint waits until
+# the endpoint answers and touches the skip-cleanups file, the submitter job is
+# cancelled and the run completes while the dashboards keep serving. Take them
+# down with pw endpoints delete probe-<run slug> and probe-admin-<run slug>.
+# Tests are run from the admin dashboard or from yamls/general_run_tests.yaml;
+# the results bucket is the ground truth.
+#
+# The run's own PW_API_KEY stops working when the run completes and cannot be
+# overridden, so the dashboards run with the API key given as input: the env
+# block carries it into every step, including the script the submitter
+# launches, and each start script exports it as PW_API_KEY.
+permissions:
+  - '*'
+env:
+  PROBE_API_KEY: ${{ inputs.api_key }}
+jobs:
+  setup:
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/probe/app
+      - name: Fetch test definitions
+        run: |
+          set -eo pipefail
+          cd ${PW_PARENT_JOB_DIR}
+          export PYTHONPATH=${PW_PARENT_JOB_DIR}/workflows/probe/app
+          # A CLI run leaves an omitted input empty or undefined, so the form's
+          # defaults are applied here as well
+          TESTS_REPO="${{ inputs.tests.repo }}"
+          case "${TESTS_REPO}" in ''|undefined) TESTS_REPO=https://github.com/parallelworks/probe-tests-activate-parallel-works.git ;; esac
+          TESTS_BRANCH="${{ inputs.tests.branch }}"
+          case "${TESTS_BRANCH}" in ''|undefined) TESTS_BRANCH=main ;; esac
+          TESTS_DIR="${{ inputs.tests.directory }}"
+          case "${TESTS_DIR}" in ''|undefined) TESTS_DIR=tests ;; esac
+          python3 -m probe fetch-tests --repo "${TESTS_REPO}" --branch "${TESTS_BRANCH}" \
+            --directory "${TESTS_DIR}" --out tests
+          python3 -m probe list --tests tests --platform "${PW_PLATFORM_HOST}" --user "${PW_USER}" \
+            || echo "::warning::Some test definitions are invalid; see above"
+      - name: Restore results from the bucket
+        run: |
+          cd ${PW_PARENT_JOB_DIR}
+          export PATH=$HOME/pw:$PATH
+          BUCKET="${{ inputs.results.bucket.uri }}"
+          case "${BUCKET}" in
+            ''|undefined|pw://) echo "::error::A results bucket is required"; exit 1 ;;
+          esac
+          RESULTS_PATH="${{ inputs.results.path }}"
+          case "${RESULTS_PATH}" in ''|undefined) RESULTS_PATH=probe/results ;; esac
+          RESULTS="${BUCKET%/}/${RESULTS_PATH}"
+          RESULTS="${RESULTS%/}"
+          mkdir -p results
+          if out=$(pw buckets cp -r "${RESULTS}/" results/ 2>&1); then
+            echo "::notice::Results restored from ${RESULTS}"
+          elif echo "${out}" | grep -q "no objects found"; then
+            echo "::notice::No results yet at ${RESULTS}"
+          else
+            echo "${out}"
+            echo "::error::Could not restore results from ${RESULTS}"
+            exit 1
+          fi
+      - name: Create the dashboard start scripts
+        run: |
+          set -e
+          cd ${PW_PARENT_JOB_DIR}
+          BUCKET="${{ inputs.results.bucket.uri }}"
+          RESULTS_PATH="${{ inputs.results.path }}"
+          case "${RESULTS_PATH}" in ''|undefined) RESULTS_PATH=probe/results ;; esac
+          RESULTS="${BUCKET%/}/${RESULTS_PATH}"
+          RESULTS="${RESULTS%/}"
+          TESTS_REPO="${{ inputs.tests.repo }}"
+          case "${TESTS_REPO}" in ''|undefined) TESTS_REPO=https://github.com/parallelworks/probe-tests-activate-parallel-works.git ;; esac
+          TESTS_BRANCH="${{ inputs.tests.branch }}"
+          case "${TESTS_BRANCH}" in ''|undefined) TESTS_BRANCH=main ;; esac
+          TESTS_DIR="${{ inputs.tests.directory }}"
+          case "${TESTS_DIR}" in ''|undefined) TESTS_DIR=tests ;; esac
+          case "${PROBE_API_KEY}" in
+            ''|undefined) echo "::error::An API key is required: the dashboards use it after this run completes"; exit 1 ;;
+          esac
+          for kind in dashboard admin; do
+            mkdir -p ${kind}
+            if [ "${kind}" = admin ]; then
+              name="probe-admin-${PW_RUN_SLUG}"; flag="--admin"
+            else
+              name="probe-${PW_RUN_SLUG}"; flag=""
+            fi
+            # Unquoted heredoc: names, paths and the bucket are filled in now; the
+            # escaped variables are evaluated when the script runs.
+            cat > ${kind}/start.sh <<EOF
+          #!/bin/bash
+          # Serves the PROBE ${kind} dashboard as endpoint ${name} until the endpoint is deleted.
+          export PATH=\$HOME/pw:\$PATH
+          export PYTHONPATH=${PW_PARENT_JOB_DIR}/workflows/probe/app
+          export PW_PLATFORM_HOST="${PW_PLATFORM_HOST}" PW_USER="${PW_USER}"
+          # The API key from the workflow input, carried here by the workflow's env block;
+          # the run's own PW_API_KEY stops working when the run completes.
+          export PW_API_KEY="\${PROBE_API_KEY}"
+          if [ -z "\${PW_API_KEY}" ] || [ "\${PW_API_KEY}" = undefined ]; then
+            echo "::error title=Error::No API key for ${name}"
+            exit 1
+          fi
+          echo "pw endpoints delete ${name} || true" > cancel.sh
+          chmod +x cancel.sh
+          cd ${PW_PARENT_JOB_DIR}
+          echo "::notice::Starting endpoint ${name}"
+          pw endpoints run --name ${name} -o text -- \\
+            python3 -u -m probe serve ${flag} --port {port} --prefix {path} --results results --tests tests --bucket "${RESULTS}" \\
+              --tests-repo "${TESTS_REPO}" --tests-branch "${TESTS_BRANCH}" --tests-directory "${TESTS_DIR}"
+          if [ \$? -ne 0 ]; then
+            # pw endpoints run blocks for the life of the endpoint, so it also exits
+            # non-zero when this job is cancelled after a successful start. Only a
+            # start that never registered its endpoint is a failure.
+            if pw endpoints list 2>/dev/null | awk -F'\\t' '{print \$1}' | grep -qxF "${name}"; then
+              echo "::notice::Endpoint ${name} served until this job was cancelled"
+              exit 0
+            fi
+            echo "::error title=Error::pw endpoints run failed for ${name}"
+            exit 1
+          fi
+          EOF
+            chmod +x ${kind}/start.sh
+            echo "--- ${kind}/start.sh"; cat ${kind}/start.sh
+          done
+          echo "DASHBOARD_SCRIPT=${PW_PARENT_JOB_DIR}/dashboard/start.sh" | tee -a $OUTPUTS
+          echo "DASHBOARD_SKIP=${PW_PARENT_JOB_DIR}/dashboard/SKIP_CLEANUP" | tee -a $OUTPUTS
+          echo "ADMIN_SCRIPT=${PW_PARENT_JOB_DIR}/admin/start.sh" | tee -a $OUTPUTS
+          echo "ADMIN_SKIP=${PW_PARENT_JOB_DIR}/admin/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  dashboard_runner:
+    needs:
+      - setup
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/dashboard
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Serve the dashboard
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.cluster.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.setup.outputs.DASHBOARD_SCRIPT }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}/dashboard
+          scheduler: false
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.setup.outputs.DASHBOARD_SKIP }}
+          slurm:
+            is_enabled: false
+          pbs:
+            is_enabled: false
+      - name: Cancel the dashboard wait
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - dashboard_wait
+      - name: Exit with error
+        run: |
+          echo "::error title=Error::The dashboard stopped before its endpoint came online"
+          exit 1
+
+  dashboard_wait:
+    needs:
+      - setup
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/dashboard
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Wait for the dashboard endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: probe-${PW_RUN_SLUG}
+          host: ${{ inputs.cluster.resource.ip }}
+          skip_cleanups_file: ${{ needs.setup.outputs.DASHBOARD_SKIP }}
+      - name: Release the dashboard runner
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - dashboard_runner
+
+  admin_runner:
+    needs:
+      - setup
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/admin
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Serve the admin dashboard
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.cluster.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.setup.outputs.ADMIN_SCRIPT }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}/admin
+          scheduler: false
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.setup.outputs.ADMIN_SKIP }}
+          slurm:
+            is_enabled: false
+          pbs:
+            is_enabled: false
+      - name: Cancel the admin wait
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - admin_wait
+      - name: Exit with error
+        run: |
+          echo "::error title=Error::The admin dashboard stopped before its endpoint came online"
+          exit 1
+
+  admin_wait:
+    needs:
+      - setup
+    working-directory: ${{ env.PW_PARENT_JOB_DIR }}/admin
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Wait for the admin endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: probe-admin-${PW_RUN_SLUG}
+          host: ${{ inputs.cluster.resource.ip }}
+          skip_cleanups_file: ${{ needs.setup.outputs.ADMIN_SKIP }}
+      - name: Release the admin runner
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - admin_runner
+
+'on':
+  execute:
+    inputs:
+      cluster:
+        type: group
+        label: Where to run
+        items:
+          resource:
+            type: compute-clusters
+            label: Host
+            include-workspace: true
+            tooltip: |
+              Where the dashboards run: the user workspace or the login node of a
+              connected cluster with the pw CLI, python3 and git. Tests started from
+              the admin dashboard are launched from here with the pw CLI.
+      api_key:
+        type: password
+        label: API key
+        tooltip: |
+          A platform API key of yours (account settings, API keys). The dashboards
+          use it after this run completes: Refresh pulls the bucket with it and the
+          admin dashboard starts and cancels runs with it. It travels through the
+          workflow's environment and stays in the dashboard processes' environment.
+      tests:
+        type: group
+        label: Test definitions
+        tooltip: Git repository, branch and directory of the test definition files.
+        items:
+          repo:
+            type: string
+            label: Repository
+            default: https://github.com/parallelworks/probe-tests-activate-parallel-works.git
+          branch:
+            type: string
+            label: Branch
+            default: main
+          directory:
+            type: string
+            label: Directory
+            default: tests
+            tooltip: |
+              Every *.json file below this directory is a test definition. Only the
+              ones whose platform and user match this run can be executed.
+      results:
+        type: group
+        label: Results
+        tooltip: |
+          The bucket holds the results. They are restored when the run starts;
+          Refresh on the dashboard pulls them again.
+        items:
+          bucket:
+            type: bucket
+            label: Bucket
+          path:
+            type: string
+            label: Path in bucket
+            default: probe/results

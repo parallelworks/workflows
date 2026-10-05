@@ -1,0 +1,22 @@
+{
+  "_test": {
+    "timeout_s": 1200,
+    "endpoint": false,
+    "leftover_patterns": [
+      "probe run"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall"
+  },
+  "selection": "activate.parallel.works/alvaro/script_submitter/gcpsmall-controller.json",
+  "tests": {
+    "repo": "https://github.com/parallelworks/probe-tests-activate-parallel-works.git",
+    "branch": "main",
+    "directory": "tests"
+  },
+  "results": {
+    "bucket": "pw://alvaro/gcpbucket",
+    "path": "probe/results"
+  }
+}

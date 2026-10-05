@@ -80,6 +80,7 @@ Optional, stripped before launch.
 | `scheduler` | cluster | `true` when scheduler jobs are requested through an input the runner cannot see (`ray-cluster`'s workers), so teardown also checks `squeue` | from `cluster.scheduler` |
 | `expect` | cluster | `error` for a failure-path test: pass = the run ends in `error`, then the usual leftover checks | `completed` |
 | `endpoint_name` | both | the exact endpoint name, for a workflow that keeps a fixed one (`hpc_status`'s `hpc-status`): it replaces `*-<run-slug>` in the pass check, the teardown and the leftover check | none |
+| `secrets` | both | `{"<input path>": "<ENVIRONMENT VARIABLE>"}`: the value of each variable goes into that input (dotted path, e.g. `api_key` or `service.token`) at launch, so a `password` input never sits in the test file (`probe`'s dashboards key). The test is skipped when a variable is unset; `--emit` leaves these inputs as they are in the file | none |
 
 ## Pass criteria
 

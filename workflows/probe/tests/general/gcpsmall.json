@@ -1,0 +1,24 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "secrets": {
+      "api_key": "PROBE_API_KEY"
+    },
+    "leftover_patterns": [
+      "pw endpoints run",
+      "probe serve"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall"
+  },
+  "tests": {
+    "repo": "https://github.com/parallelworks/probe-tests-activate-parallel-works.git",
+    "branch": "main",
+    "directory": "tests"
+  },
+  "results": {
+    "bucket": "pw://alvaro/gcpbucket",
+    "path": "probe/results"
+  }
+}

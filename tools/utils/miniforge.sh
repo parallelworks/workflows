@@ -4,7 +4,7 @@
 #
 #   miniforge_prefix <workflow>           prints <service_parent_install_dir>/<workflow>/miniforge
 #   miniforge_lock <prefix>               serializes every installer of that prefix
-#   miniforge_bootstrap <prefix>          idempotent Miniforge install
+#   miniforge_bootstrap <prefix>          idempotent Miniforge install (MINIFORGE_URL pins the installer)
 #   miniforge_env_file <prefix> <env> <file>   writes the file a run sources to activate <env>
 
 miniforge_prefix() {
@@ -24,7 +24,7 @@ miniforge_bootstrap() {
     if [ -x "${prefix}/bin/conda" ]; then
         return 0
     fi
-    local url="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"
+    local url="${MINIFORGE_URL:-https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh}"
     local installer
     installer=$(mktemp /tmp/miniforge-XXXXXX.sh)
     echo "::notice::Downloading ${url}"

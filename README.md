@@ -22,6 +22,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [activate-batch](workflows/activate-batch/) | Batch job: a list of commands run on the login node or via SLURM/PBS (no endpoint) | general, hsp |
 | [agent-orchestrator](workflows/agent-orchestrator/) | Multi-agent orchestrator service | general |
 | [burst-render-demo](workflows/burst-render-demo/) | Multi-site burst demo: Mandelbrot tiles rendered on N sites in parallel, assembled live in a dashboard | general, hsp, noaa |
+| [h2o](workflows/h2o/) | H2O-3 node with its Flow UI | general, hsp, noaa |
 | [hermes-agent](workflows/hermes-agent/) | Hermes agent with auth/TCP proxies | general |
 | [hpc_status](workflows/hpc_status/) | HPC Status Monitor: fleet status, topology, queues, quota and storage dashboard over every cluster `pw` reaches, at a stable `status-<user>` address | general, hsp, noaa |
 | [jupyter](workflows/jupyter/) | Jupyter Notebook (classic) | general, emed, noaa |
@@ -30,6 +31,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [langflow-singularity](workflows/langflow-singularity/) | Langflow (Singularity) | hsp |
 | [librechat](workflows/librechat/) | LibreChat (+ `-all` stacks with manager & Langflow) | general, hsp, general-all, hsp-all |
 | [lite-agent](workflows/lite-agent/) | Lightweight agent worker | general |
+| [marimo](workflows/marimo/) | marimo notebooks (edit or run mode) | general, hsp, noaa |
 | [mlflow](workflows/mlflow/) | MLFlow on Kubernetes | k8s |
 | [n8n](workflows/n8n/) | n8n automation (Docker/Singularity) | general, emed, hsp, noaa |
 | [ollama](workflows/ollama/) | Ollama GGUF model server (native/container) | general, hsp, noaa |

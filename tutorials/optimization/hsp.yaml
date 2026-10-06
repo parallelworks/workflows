@@ -1,0 +1,307 @@
+# Iterative simulation-based optimization: run a batch of simulations, feed the
+# results to an optimizer, decide stop/continue, repeat with the cases the optimizer
+# proposes. The loop is a retried step: each retry attempt invokes iteration-hsp.yaml
+# (one cycle) fresh, and the iteration exits non-zero to request another cycle.
+# The lesson behind each piece: README.md next to this file.
+#
+# The HSP (activate.hpc.mil) variant of general.yaml: the same loop over
+# iteration-hsp.yaml, which submits every case through the hsp script_submitter,
+# with the HSP form (the resource as the top-level input, as in every HSP form
+# here; SLURM account, QoS and node type for on-prem `existing` resources; the
+# PBS account). The optimizer and the simulator are standard-library Python, so
+# nothing is installed and no site module is needed.
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout Optimization Apps
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - tutorials/optimization/app
+      - name: Validate Inputs and Initialize State
+        run: |
+          set -e
+          batch="${{ inputs.optimizer.batch_size }}"
+          # 8 = the literal list the workers matrix in iteration-hsp.yaml is sliced
+          # from; a matrix cannot expand over runtime values, so the ceiling is
+          # a literal there
+          if [ "${batch}" -lt 1 ] || [ "${batch}" -gt 8 ]; then
+            echo "::error::batch_size ${batch} is out of range 1-8. To raise the cap, extend the literal job_id list in iteration-hsp.yaml and the batch_size max."
+            exit 1
+          fi
+          mkdir -p state
+          echo "STATE_DIR=${PWD}/state" | tee -a $OUTPUTS
+          echo "APP_DIR=${PWD}/tutorials/optimization/app" | tee -a $OUTPUTS
+
+  optimization_loop:
+    needs: [preprocessing]
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      # retry-as-loop: iteration-hsp.yaml exits 1 while the optimizer wants another
+      # generation, and each retry attempt re-invokes it fresh. max-retries is the
+      # loop budget: max_iterations proposal cycles + the final converging call.
+      # Attempt != iteration — a crashed attempt re-runs the same iteration off the
+      # state files and consumes budget. Only the LAST attempt's logs surface here;
+      # per-iteration history lives under state/ and in ::notice lines.
+      - name: Iterate
+        retry:
+          max-retries: ${{ inputs.optimizer.max_iterations }}
+          interval: 10s
+          # retry.timeout defaults to 30s PER ATTEMPT and cancels the whole
+          # iteration subworkflow — mid-simulation — when it expires. The
+          # placeholder simulator finishes in seconds, but a real solver or a
+          # scheduled case (queue + node boot) must fit in this budget.
+          timeout: ${{ inputs.optimizer.iteration_timeout }}
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: tutorials/optimization/iteration-hsp.yaml
+          # the retry counter (0 on the first attempt): attempt != iteration, the
+          # true iteration is the generation counter in state/
+          attempt: ${{ env.PW_WORKFLOW_STEP_CURRENT_RETRY }}
+          resource: ${{ inputs.resource }}
+          scheduler: ${{ inputs.cluster.scheduler }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            account: ${{ inputs.cluster.slurm.account }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            qos: ${{ inputs.cluster.slurm.qos }}
+            node_type: ${{ inputs.cluster.slurm.node_type }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            account: ${{ inputs.cluster.pbs.account }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+          batch_size: ${{ inputs.optimizer.batch_size }}
+          max_iterations: ${{ inputs.optimizer.max_iterations }}
+          stall_generations: ${{ inputs.optimizer.stall_generations }}
+          state_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
+          app_dir: ${{ needs.preprocessing.outputs.APP_DIR }}
+      # if: always — the run's verdict comes from the state files, not from how the
+      # Iterate step ended: CONVERGED is the only success, whether the loop stopped
+      # by decision (Iterate succeeded) or by exhausting its retries (Iterate failed).
+      - name: Report
+        if: ${{ always }}
+        run: |
+          state="${{ needs.preprocessing.outputs.STATE_DIR }}"
+          status=$(cat "${state}/status" 2>/dev/null || echo MISSING)
+          case "${status}" in
+            CONVERGED)
+              n=$(($(wc -l < "${state}/pareto.csv") - 1))
+              echo "::notice::optimization converged: ${n} non-dominated points in ${state}/pareto.csv, plotted in ${state}/pareto.svg"
+              cut -d, -f1-3 "${state}/pareto.csv" | head -15
+              ;;
+            FAILED)
+              echo "::error::the optimizer declared FAILED: an entire generation produced no results twice in a row. Check the last attempt's worker logs and ${state}/iter_*/case_*/"
+              exit 1
+              ;;
+            CONTINUE)
+              echo "::error::loop budget exhausted before convergence: all retries of the Iterate step were used while the optimizer still wanted to continue. Raise max_iterations (crashed attempts also consume budget) or loosen the convergence knobs."
+              exit 1
+              ;;
+            *)
+              echo "::error::no ${state}/status file: the first iteration never reached its optimize step. Read the Iterate attempt logs."
+              exit 1
+              ;;
+          esac
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: Resource where the optimizer and all simulation cases run
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Cases?
+            hidden: ${{ inputs.resource.schedulerType == '' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes → Each case is submitted to the scheduler using sbatch, qsub, etc
+              No  → Cases run on the controller or login node instead
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+                tooltip: Select a partition from the drop down menu.
+              qos:
+                label: Quality of Service [QoS]
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              node_type:
+                label: Node Type
+                type: dropdown
+                optional: true
+                default: ''
+                option-key: ${{ inputs.resource.ip }}
+                tooltip: '--constraint=<value> slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider || (inputs.resource.ip != 'blueback.navydsrc.hpc.mil' && inputs.resource.ip != 'narwhal.navydsrc.hpc.mil' && inputs.resource.ip != 'nautilus.navydsrc.hpc.mil' && inputs.resource.ip != 'raider.afrl.hpc.mil' && inputs.resource.ip != 'crux.mhpcc.hpc.mil') }}
+                hidden: ${{ .ignore }}
+                options:
+                  blueback.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  narwhal.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - smla
+                    - dmla
+                    - viz
+                    - transfer
+                  nautilus.navydsrc.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  raider.afrl.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  crux.mhpcc.hpc.mil:
+                    - AMD
+                    - Intel
+              time:
+                label: Walltime per case
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for each case (format: D-HH:MM:SS or HH:MM:SS, e.g. 7-00:00:00 or 01:00:00)'
+              scheduler_directives:
+                type: editor
+                optional: true
+                default: |
+                  ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+                  Each case is one single-core job: the workflow already sets --nodes=1 and
+                  --cpus-per-task=1 on on-prem resources; a directive here repeating one of
+                  them takes precedence.
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              account:
+                label: Account
+                type: string
+                tooltip: PBS account for job submission (-A)
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                default: |
+                  # Parameters that apply to all sites
+                  #PBS -l walltime=01:00:00
+                  #PBS -V
+                  #PBS -q standard
+                  # Remove first # to activate specific lines
+                  #=====Ruth (Lustre, only vis has NVIDIA)=====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128
+                  #=====Warhawk (Lustre)====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128
+                  #=====Wheat (WEKA, nmlas=4|6)====
+                  ##PBS -l select=1:ncpus=92:mpiprocs=92:nmlas=4
+                  #=====Carpenter=====
+                  ##PBS -l select=1:ncpus=192:mpiprocs=192:nmlas=4
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+                  Each case is one single-core Python process; uncomment the node request
+                  of your site (HPCMP systems allocate whole nodes).
+      optimizer:
+        type: group
+        label: Optimizer Settings
+        items:
+          max_iterations:
+            type: number
+            label: Maximum iterations
+            default: 10
+            min: 1
+            max: 50
+            tooltip: |
+              Generation budget: the optimizer stops with the front found so far after
+              this many evaluated generations. Also the loop's retry budget, so a
+              crashed-and-retried iteration consumes one.
+          batch_size:
+            type: number
+            label: Cases per iteration
+            default: 8
+            min: 1
+            max: 8
+            tooltip: |
+              Simulations submitted in parallel each iteration (the EA population).
+              Sizes the workers matrix of iteration-hsp.yaml, which is sliced from a
+              literal list of 8 at submission.
+          stall_generations:
+            type: number
+            label: Stagnation window
+            default: 3
+            min: 1
+            max: 20
+            tooltip: |
+              Declare convergence when the Pareto front's hypervolume improves by less
+              than 0.001 over this many consecutive generations.
+          iteration_timeout:
+            type: string
+            label: Time budget per iteration
+            default: 2d
+            tooltip: |
+              Maximum wall time for one generation: propose + evaluate every case
+              (including scheduler queue and node boot) + decide. Units like 30s,
+              10m, 12h, 2d. Without this, the platform's 30s-per-attempt default
+              would cancel any generation slower than ~25s mid-simulation. The
+              generous default only trips on a genuinely stuck iteration, which is
+              then canceled and retried (consuming budget).

@@ -60,7 +60,31 @@ done | sort -u
 # ---------------------------------------------------------------------------
 # 1. Bootstrap Spack. Shallow-at-tag: the full history is ~1 GB and buys nothing.
 # ---------------------------------------------------------------------------
-if [ ! -d "$SPACK_ROOT/.git" ]; then
+# The Spack root is a user input and is often reused, so it can be in any state.
+# Every state other than "missing/empty" and "a healthy git clone" used to reach
+# `git clone` or `git rev-parse` and stop the run with a bare git error. Nothing
+# here deletes anything: the root also holds site config, installs and the
+# source cache, so clearing it is the user's call.
+SPACK_UNMANAGED=0
+spack_usable() { [ -x "$SPACK_ROOT/bin/spack" ] && [ -f "$SPACK_ROOT/share/spack/setup-env.sh" ]; }
+
+if [ -d "$SPACK_ROOT/.git" ] && ! git -C "$SPACK_ROOT" rev-parse -q --verify HEAD >/dev/null 2>&1; then
+  # Typically a clone interrupted after .git was created.
+  echo "::error title=Error::$SPACK_ROOT has a .git directory but is not a readable git repository (an interrupted clone?). Delete $SPACK_ROOT or set 'Spack root' to another path." >&2
+  exit 1
+elif [ ! -d "$SPACK_ROOT/.git" ] && [ -e "$SPACK_ROOT" ] && [ -n "$(ls -A "$SPACK_ROOT" 2>/dev/null)" ]; then
+  if spack_usable; then
+    # A Spack that did not come from git (a release tarball, a copy). Usable,
+    # but it cannot be re-pointed to another tag, so the version check below
+    # is the only guard.
+    log "Using the existing non-git Spack at $SPACK_ROOT as-is (cannot switch it to $SPACK_VERSION)"
+    SPACK_UNMANAGED=1
+  else
+    echo "::error title=Error::$SPACK_ROOT exists and is not empty, but holds neither a git clone of Spack nor a usable Spack (no bin/spack). Refusing to clone over it. Empty it or set 'Spack root' to another path." >&2
+    ls -A "$SPACK_ROOT" | head -20 >&2
+    exit 1
+  fi
+elif [ ! -d "$SPACK_ROOT/.git" ]; then
   log "Cloning Spack $SPACK_VERSION -> $SPACK_ROOT"
   mkdir -p "$(dirname "$SPACK_ROOT")"
   git clone -c feature.manyFiles=true -c advice.detachedHead=false \
@@ -93,6 +117,9 @@ case "$SPACK_SEEN" in
   *) echo "::error title=Error::This workflow requires Spack v1.x (compilers are dependencies there); got $SPACK_SEEN" >&2
      exit 1 ;;
 esac
+if [ "$SPACK_UNMANAGED" = 1 ] && [ "v${SPACK_SEEN%% *}" != "$SPACK_VERSION" ]; then
+  echo "::warning::Spack version is $SPACK_SEEN, not the requested $SPACK_VERSION: $SPACK_ROOT is not a git clone, so it was used as found" >&2
+fi
 
 # ---------------------------------------------------------------------------
 # 2. Warm the package repo. Spack v1.2 clones spack-packages on first use; doing

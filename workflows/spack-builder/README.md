@@ -244,7 +244,11 @@ overrides are rejected. Use `cuda-arch=none` to force a CPU-only build.
   change, and it is what the recorded test uses.
 - **Spack root** (`install_prefix`, default `${HOME}/spack`) must be on a
   filesystem shared between login and compute nodes. Keeping it in user space is
-  what removes every `sudo` from this workflow.
+  what removes every `sudo` from this workflow. An existing root is reused, never deleted: a git
+  clone is switched to the requested tag only if it is on a different commit; a
+  usable Spack that is not a git clone is used as found, with a warning if its
+  version differs; and any other non-empty directory, or an unreadable `.git`
+  from an interrupted clone, fails the run with a message naming the path.
 
 ## Where the modules go, and holding several stacks
 

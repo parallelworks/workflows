@@ -84,15 +84,15 @@ def main(argv):  # noqa: C901
     if host <= target:
         emit(host.name, "fallback",
              "build host (%s) cannot emit %s; building for %s instead, which RUNS on "
-             "%s but does not use its newer instructions. Build on a worker node to "
-             "target it exactly." % (host.name, wanted, host.name, wanted))
+             "%s but does not use its newer instructions. Set 'Run the build on' to a "
+             "worker node to target it exactly." % (host.name, wanted, host.name, wanted))
         return
 
     # Incomparable. Nothing the host emits natively is guaranteed to run on the
     # worker, so neither target is an answer.
     if target.family != host.family:
         print("::error title=Error::compute node is %s (%s) and the build host is %s "
-              "(%s): no target can serve both. Build on the compute architecture."
+              "(%s): no target can serve both. Set 'Run the build on' to a worker node."
               % (wanted, target.family, host.name, host.family), file=sys.stderr)
         return 1
 
@@ -108,7 +108,7 @@ def main(argv):  # noqa: C901
     emit(common, "common",
          "compute node (%s) and build host (%s) are different lineages, so neither "
          "can run the other's code; building for %s, the most capable target both "
-         "implement. Build on a worker node to target %s exactly."
+         "implement. Set 'Run the build on' to a worker node to target %s exactly."
          % (wanted, host.name, common, wanted))
 
 

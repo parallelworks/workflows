@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # build.sh — render, concretize, install and publish the Spack MPI stack.
 #
-# Runs on the build node (the login node by default: it has internet for source
-# fetches and is not subject to a queue walltime). It does NOT bootstrap Spack
-# and it does NOT probe hardware -- controller.sh has already set up the install
-# and detect-fabric.sh has already reported what the COMPUTE nodes look like.
-# This script only consumes those results.
+# Runs on the build node: the login node by default (it has internet for source
+# fetches and is not subject to a queue walltime), or a worker when the form's
+# "Run the build on" is set to a compute node (service_build_on=compute; the
+# worker then needs internet too). It does NOT bootstrap Spack and it does NOT
+# probe hardware -- controller.sh has already set up the install and
+# detect-fabric.sh has already reported what the COMPUTE nodes look like. This
+# script only consumes those results.
 #
 # Consumes (from the sourced inputs.sh):
 #   app_dir                  workflows/spack-builder/app, relative to the run dir
@@ -14,6 +16,9 @@
 #   service_build_jobs       -j for builds
 #   service_build_gpu        "true" to add the CUDA-aware path
 #   fabric_env               path to the fabric.env produced by detection/overrides
+#   service_build_on         login | compute -- where this script was sent
+#   externals_compute        site externals discovered on the worker (preferred)
+#   externals_head           site externals discovered on the login node (fallback)
 #
 # The stack compiler version is NOT an input: it is read from
 # templates/spack.yaml.in so the environment definition stays the only place it
@@ -27,6 +32,7 @@ SPACK_ROOT="${service_install_prefix:?service_install_prefix is required}"
 BUILDCACHE_PATH="${service_buildcache_path:?service_buildcache_path is required}"
 JOBS="${service_build_jobs:-$(nproc)}"
 BUILD_GPU="${service_build_gpu:-false}"
+BUILD_ON="${service_build_on:-login}"
 FABRIC_ENV="${fabric_env:-${PWD}/fabric.env}"
 ENV_DIR="${env_dir:-${PWD}/spack-env}"
 MIRROR_NAME="local-buildcache"
@@ -61,6 +67,38 @@ chmod +x cancel.sh
 # shellcheck disable=SC1091
 . "$SPACK_ROOT/share/spack/setup-env.sh"
 log "Spack $(spack --version) at $SPACK_ROOT, -j${JOBS}"
+log "Build host: $(hostname) (${BUILD_ON} node, $(nproc) cores, $(spack arch -t 2>/dev/null || echo '?'))"
+
+# ---------------------------------------------------------------------------
+# 0b. Site externals. Always the WORKER's view, whichever node compiles: the
+#     binaries run on the workers, so an external that only the login node has
+#     would link here and be missing there. Re-applied explicitly rather than
+#     trusting the site scope, which holds whichever node -- or whichever run
+#     sharing this Spack root -- discovered last. See find-externals.sh.
+# ---------------------------------------------------------------------------
+EXT_COMPUTE="${externals_compute:-}"
+EXT_HEAD="${externals_head:-}"
+if [ ! -f "$EXT_COMPUTE" ] && [ "$BUILD_ON" = "compute" ] && [ -n "$EXT_COMPUTE" ]; then
+  # Full overrides skip the inspection job, but this IS a worker.
+  log "No worker externals from inspection; discovering them on this build worker"
+  bash "$APP_DIR/find-externals.sh" discover compute "$EXT_COMPUTE"
+fi
+if [ -f "$EXT_COMPUTE" ]; then
+  log "Site externals: applying the compute node's ($EXT_COMPUTE)"
+  bash "$APP_DIR/find-externals.sh" apply "$EXT_COMPUTE"
+elif [ -f "$EXT_HEAD" ]; then
+  echo "::warning::No compute-node externals for this run (inspection was skipped by the overrides); building against the LOGIN node's externals ($EXT_HEAD). If the images differ, binaries may not find these libraries on the workers." >&2
+  bash "$APP_DIR/find-externals.sh" apply "$EXT_HEAD"
+else
+  echo "::error title=Error::No site externals file for this run (looked for ${EXT_COMPUTE:-<unset>} and ${EXT_HEAD:-<unset>})" >&2
+  exit 1
+fi
+
+# The bootstrap compiler must be one THIS node has. controller.sh registered the
+# login node's; on a worker with a different image that path may not exist here.
+# A no-op when the compiler is already registered.
+log "Registering this build host's system compilers"
+spack compiler find --scope site
 
 # ---------------------------------------------------------------------------
 # 1. Load the resolved profile. Produced either by detect-fabric.sh on a worker
@@ -245,6 +283,15 @@ if [ "${service_concretize_only:-false}" = "true" ]; then
   log "concretize_only set; stopping before the install"
   exit 0
 fi
+
+# Every source this install will compile, downloaded into the shared source
+# cache BEFORE anything builds. `spack install` only fetches what it reaches, so
+# without this a login-node build that fails part way leaves a partial cache and
+# a re-run on a worker would still need the internet. With it, that re-run
+# downloads nothing. Placed after the concretize_only exit so a dry run stays
+# fast. See prefetch-sources.py.
+log "Fetching sources into the shared source cache"
+spack -e "$ENV_DIR" python "$APP_DIR/prefetch-sources.py"
 
 # ---------------------------------------------------------------------------
 # 5. Install, then publish every result to the build cache. --private is

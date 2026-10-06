@@ -6,7 +6,7 @@
 #
 #   1. bootstrap Spack at ${service_install_prefix}
 #   2. warm the package repo (Spack v1.2 fetches it lazily on first use)
-#   3. reconcile site externals against this image
+#   3. discover this node's site externals (logged; the build uses the worker's)
 #   4. register the system compiler that bootstraps the stack compiler
 #   5. create and register the binary build cache mirror
 #
@@ -16,6 +16,7 @@
 #   service_spack_version          git tag; must be v1.x
 #   service_buildcache_path        directory-backed binary mirror
 #   service_use_public_buildcache  "true" to also register Spack's public binary cache
+#   externals_head                 where this node's discovered externals are saved
 #
 # Every config write is pinned to the *site* scope ($SPACK_ROOT/etc/spack) rather
 # than the default user scope (~/.spack). Two reasons: the user scope would leak
@@ -114,45 +115,18 @@ spack repo list
 # 3. Site externals. The checked-in packages.yaml is the baseline — what MUST be
 #    external on any image so the MPIs bind to the real launcher. `external find`
 #    then reconciles it against what this image actually ships.
+#
+#    What is discovered HERE is the login node's view, saved for the log. The
+#    build concretizes against the worker's view (detect-fabric.sh runs the same
+#    discovery there) because the binaries run on the workers -- see
+#    find-externals.sh.
 # ---------------------------------------------------------------------------
 log "Registering site externals"
 mkdir -p "$SPACK_ROOT/etc/spack"
 # The baseline goes to the lower-precedence spack scope and `external find`
 # writes the site scope, so a real discovery always wins over the baseline.
 cp "$APP_DIR/packages.yaml" "$SPACK_ROOT/etc/spack/packages.yaml"
-
-# slurm and rdma-core must match the running cluster and kernel, so they are
-# pinned not-buildable. libfabric and ucx are registered but left buildable on
-# purpose: the fabric profile decides whether to bind the vendor library (the
-# aws fragment pins it external) or let Spack build one with its own variants.
-spack external find --scope site --not-buildable slurm rdma-core || true
-spack external find --scope site libfabric ucx || true
-
-# gmake is a build tool, not part of the delivered stack, and compiling it is
-# where padded install paths bite: with config:install_tree:padded_length set,
-# gmake@4.4.1's config.status intermittently dies with
-#   mv: cannot move './confXXXXXX/out' to 'doc/Makefile': No such file or directory
-#   config.status: error: could not create doc/Makefile
-# It is genuinely intermittent rather than deterministic -- the same padded build
-# failed on two clusters and succeeded on a third attempt with identical settings
-# -- so registering the system make and letting Spack reuse it removes the
-# flakiest package from the build entirely.
-#
-# Deliberately NOT --not-buildable: if some package ever needs a newer make than
-# the image ships, Spack should still be free to build one rather than failing to
-# concretize.
-spack external find --scope site gmake || true
-
-# Drop any external that has libraries but no headers. `external find` detects a
-# package from its libraries, but Spack then compiles against it -- and an image
-# that ships the runtime without the -devel package yields an external that looks
-# valid and fails at configure time. Seen three times now (slurm, rdma-core,
-# libfabric), and it is image-specific: the AWS EFA libfabric under
-# /opt/amazon/efa has headers, the GCE /usr one does not. So it must be probed
-# here rather than decided in a fabric fragment.
-log "Pruning externals that lack development headers"
-spack python "$APP_DIR/prune-headerless-externals.py" \
-    "$SPACK_ROOT/etc/spack/site/packages.yaml" 
+bash "$APP_DIR/find-externals.sh" discover head "${externals_head:?externals_head is required}"
 
 # ---------------------------------------------------------------------------
 # 4. System compiler. This is only the bootstrap compiler: it builds the stack

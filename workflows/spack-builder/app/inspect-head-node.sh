@@ -4,17 +4,22 @@
 # Runs on the LOGIN (head) node, as a second step of the detect job, and does
 # two things the compute-node probe cannot:
 #
-#   1. Records the head node's own parameters. Every build happens here, so its
-#      microarchitecture, OS image and toolchain decide what gets compiled --
-#      yet until now only the worker's parameters were ever written down. When a
-#      stack misbehaves on the worker, the first question is how the two nodes
-#      differ, and that was unanswerable after the fact.
+#   1. Records the head node's own parameters. A login-node build happens here,
+#      so its microarchitecture, OS image and toolchain decide what gets
+#      compiled -- yet until now only the worker's parameters were ever written
+#      down. When a stack misbehaves on the worker, the first question is how
+#      the two nodes differ, and that was unanswerable after the fact.
 #
-#   2. Diffs its headers against the worker's. A header present on the worker
-#      but missing HERE cannot be linked against during the build, even though
-#      the hardware supports the feature -- the classic split-image failure, and
-#      one that otherwise surfaces as a configure error hours into a compile.
-#      That case fails the run immediately and loudly.
+#   2. Diffs its headers against the worker's. For a login-node build, a header
+#      present on the worker but missing HERE cannot be linked against, even
+#      though the hardware supports the feature -- the classic split-image
+#      failure, and one that otherwise surfaces as a configure error hours into
+#      a compile. That case fails the run immediately and loudly. For a worker
+#      build (service_build_on=compute) the head does not compile, so the same
+#      finding is only reported.
+#
+#   3. Diffs the site externals discovered on each node. The build uses the
+#      worker's either way; the diff is logged so a split image is visible.
 #
 # The reverse case -- present here, missing on the worker -- is reported as a
 # warning rather than an error: it builds fine and may still run, because the
@@ -116,14 +121,39 @@ for name in ${names}; do
 done
 
 if [ -n "${missing_on_compute# }" ]; then
-  printf '::warning title=Header present on head but not compute::%s -- builds link here and may fail to resolve at runtime on the worker\n' \
+  printf '::warning title=Header present on head but not compute::%s -- a login-node build links here and may fail to resolve at runtime on the worker\n' \
     "${missing_on_compute# }"
 fi
 
 if [ -n "${missing_on_head# }" ]; then
-  printf '::error title=Headers missing on the build host::%s present on the compute node but absent on the head node. The build links HERE, so these cannot be used no matter what the worker supports -- the images differ. Install the matching -devel packages on the head node, or expect the corresponding externals to be pruned and rebuilt from source.\n' \
-    "${missing_on_head# }" >&2
-  exit 1
+  if [ "${service_build_on:-login}" = "compute" ]; then
+    printf '::notice title=Headers missing on the head node::%s present on the compute node but absent on the head node. Not a problem for this run: the build runs on a worker.\n' \
+      "${missing_on_head# }"
+  else
+    printf '::error title=Headers missing on the build host::%s present on the compute node but absent on the head node. The build links HERE, so these cannot be used no matter what the worker supports -- the images differ. Install the matching -devel packages on the head node, run the build on a worker instead, or expect the corresponding externals to be pruned and rebuilt from source.\n' \
+      "${missing_on_head# }" >&2
+    exit 1
+  fi
+else
+  printf '\n=== [head] header sets are compatible ===\n'
 fi
 
-printf '\n=== [head] header sets are compatible ===\n'
+# ---------------------------------------------------------------------------
+# 4. Site externals: head vs compute. Informational -- the build applies the
+#    compute file wherever it runs (find-externals.sh).
+# ---------------------------------------------------------------------------
+HEAD_EXT="${externals_head:-${RUNDIR}/externals.head.yaml}"
+COMPUTE_EXT="${externals_compute:-${RUNDIR}/externals.compute.yaml}"
+printf '\n=== [head] site externals: head vs compute ===\n'
+if [ -f "${HEAD_EXT}" ] && [ -f "${COMPUTE_EXT}" ]; then
+  if diff -u --label "head ($(hostname))" --label "compute ($(sed -n 's/^DETECT_HOST="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "${RUNDIR}/fabric.env" 2>/dev/null))" \
+       "${HEAD_EXT}" "${COMPUTE_EXT}"; then
+    printf '[head] identical: both nodes discovered the same externals\n'
+  else
+    printf '::notice::the head and compute nodes discovered different site externals (diff above); the build uses the compute node'"'"'s\n'
+  fi
+else
+  printf '[head] skipped: head=%s compute=%s\n' \
+    "$([ -f "${HEAD_EXT}" ] && echo present || echo missing)" \
+    "$([ -f "${COMPUTE_EXT}" ] && echo present || echo missing)"
+fi

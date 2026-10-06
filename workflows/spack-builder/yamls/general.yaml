@@ -12,20 +12,24 @@
 #                 (controller.sh), decide overrides vs detection, assemble the
 #                 two submitted scripts
 #   detect     -> script_submitter, scheduler=true: runs on a WORKER node and
-#                 reports its fabric, GPU and microarchitecture into fabric.env
-#   build      -> script_submitter, scheduler=false: runs on the LOGIN node,
-#                 which has internet for source fetches and no queue walltime
+#                 reports its fabric, GPU, microarchitecture and site externals
+#   build      -> script_submitter: on the LOGIN node by default (scheduler=false;
+#                 internet for source fetches, no queue walltime), or submitted
+#                 to a WORKER when cluster.build_on == 'compute'
 #   verify     -> turn a failed build into a failed run
 #   endpoint   -> a placeholder pw endpoint, and wait_for_endpoint to release the
 #                 run once it is up. The build needs neither; they exist so the
 #                 shared end-to-end test runner, which demands an endpoint, can
 #                 test this workflow at all. See README.md.
 #
-# Why detection and the build run in different places: the login node is
-# routinely a different instance type from the compute nodes, so the stack has to
-# be described by the workers but is cheapest to compile on the login node.
-# build.sh reconciles the two (see app/resolve-target.py) and says out loud when
-# the login node cannot emit the workers' target.
+# Why detection and the build can run in different places: on many clusters only
+# the login node has internet, and it is routinely a different instance type from
+# the compute nodes, so the stack has to be described by the workers but compiled
+# on the login node. build.sh reconciles the two (see app/resolve-target.py) and
+# says out loud when the login node cannot emit the workers' target. Where the
+# workers have internet too, building on one removes that reconciliation.
+# Either way the build uses the site externals discovered on the WORKER
+# (app/find-externals.sh): the binaries run there.
 #
 # Override policy: target, fabric and cuda-arch are all-or-nothing. When all
 # three are set, detection is skipped entirely and no worker is allocated.
@@ -53,8 +57,9 @@ permissions: ['*']
             include-workspace: false
             optional: false
             tooltip: >-
-              The cluster to build on. The compile runs on this resource's login
-              node; a worker is allocated only to inspect the compute hardware.
+              The cluster to build on. A worker is allocated to inspect the compute
+              hardware; the compile runs on the login node unless "Run the build
+              on" below says otherwise.
           scheduler:
             type: boolean
             default: true
@@ -66,9 +71,29 @@ permissions: ['*']
                     microarchitecture, so the stack is built for the right hardware.
               No  → inspect the login node instead. Only correct when the login and
                     compute nodes are the same instance type.
+          build_on:
+            type: dropdown
+            label: Run the build on
+            default: login
+            hidden: ${{ inputs.cluster.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
+            ignore: ${{ .hidden }}
+            options:
+              - label: Login node (needs no worker internet)
+                value: login
+              - label: Compute node (worker must reach the internet)
+                value: compute
+            tooltip: |
+              Login node → compile on the head node: it has internet for source
+                           fetches and no walltime. The build targets the workers,
+                           falling back to a common target if the head cannot emit theirs.
+              Compute node → submit the build as a job in the partition inspected
+                           below. Targets the worker exactly, but the worker must
+                           reach github.com and the source mirrors, and the job must
+                           fit in the build walltime. Request cores to match
+                           "Parallel build jobs" in the extra directives.
           slurm:
             type: group
-            label: SLURM Directives (hardware inspection job)
+            label: SLURM Directives (hardware inspection job, and the build when it runs on a worker)
             hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -92,6 +117,16 @@ permissions: ['*']
                 tooltip: >-
                   Inspection takes seconds, but a cloud-burst node can take 6+ minutes
                   to power on, so the default leaves room for that.
+              build_time:
+                label: Build walltime
+                type: string
+                default: '08:00:00'
+                hidden: ${{ inputs.cluster.build_on != 'compute' }}
+                ignore: ${{ .hidden }}
+                tooltip: >-
+                  Walltime of the build job on the worker. A cold build of the full
+                  stack takes hours; a warm build cache makes it minutes. A build that
+                  runs out of walltime is killed and the run fails.
               gpus:
                 label: Number of GPUs
                 type: number
@@ -110,7 +145,7 @@ permissions: ['*']
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives (hardware inspection job)
+            label: PBS Directives (hardware inspection job, and the build when it runs on a worker)
             hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -126,6 +161,17 @@ permissions: ['*']
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix:
                   #PBS -l mem=16gb
+              build_scheduler_directives:
+                label: Build job directives (added to the above)
+                type: editor
+                optional: true
+                default: '#PBS -l walltime=08:00:00'
+                hidden: ${{ inputs.cluster.build_on != 'compute' }}
+                ignore: ${{ .hidden }}
+                tooltip: |
+                  Extra PBS directives for the build job only, one per line:
+                  #PBS -l walltime=08:00:00
+                  #PBS -l select=1:ncpus=8
 
       spack_header:
         type: header
@@ -292,6 +338,7 @@ jobs:
           service_module_root="${{ inputs.service.module_root }}"
           service_concretize_only="${{ inputs.service.concretize_only }}"
           service_use_public_buildcache="${{ inputs.service.use_public_buildcache }}"
+          service_build_on="${{ inputs.cluster.build_on }}"
           OVERRIDE_TARGET="${{ inputs.service.use_overrides && inputs.service.override_target || '' }}"
           OVERRIDE_FABRIC="${{ inputs.service.use_overrides && inputs.service.override_fabric || '' }}"
           OVERRIDE_CUDA_ARCH="${{ inputs.service.use_overrides && inputs.service.override_cuda_arch || '' }}"
@@ -308,6 +355,8 @@ jobs:
           fabric_env="${PWD}/fabric.env"
           env_dir="${PWD}/spack-env"
           modulepath_env="${PWD}/modulepath.env"
+          externals_head="${PWD}/externals.head.yaml"
+          externals_compute="${PWD}/externals.compute.yaml"
           EOF
           # Remove empty variables
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
@@ -320,7 +369,7 @@ jobs:
         run: |
           set -euo pipefail
           set -x
-          # The login node is the one with internet: bootstrap Spack, reconcile
+          # The login node is the one with internet: bootstrap Spack, record its
           # site externals and register the build cache here, once, before
           # anything is submitted. The inspection job needs this Spack to exist
           # so it can report `spack arch -t`.
@@ -437,11 +486,11 @@ jobs:
             is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
             scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
 
-      # The build links against what the LOGIN node has, not what the worker
-      # has, so the worker's header inventory alone cannot predict a build
+      # A login-node build links against what the LOGIN node has, not what the
+      # worker has, so the worker's header inventory alone cannot predict a build
       # failure. This records the head node's own parameters -- microarch, image,
-      # toolchain -- which were never written down anywhere before, and fails the
-      # run when a header exists on the worker but not here.
+      # toolchain, site externals -- and fails the run when a header exists on the
+      # worker but not here (only reported when the build runs on a worker).
       - name: Inspect head node
         run: |
           set -uo pipefail
@@ -451,10 +500,12 @@ jobs:
                "${{ needs.preprocess.outputs.RUNDIR }}" "${app_dir}"
 
   # -------------------------------------------------------------------------
-  # 3. Build on the LOGIN node: scheduler=false sends this down
+  # 3. Build. On the LOGIN node by default: scheduler=false sends this down
   #    script_submitter's ssh_job path, so there is no queue walltime bounding a
-  #    multi-hour compile and source fetches have internet. Output still streams
-  #    to run.<JOBID>.out for platform log visibility.
+  #    multi-hour compile and source fetches have internet. With build_on ==
+  #    'compute' it is submitted to the partition, GPUs and directives of the
+  #    inspection job (so it lands on the same node type) with its own walltime.
+  #    Output streams to run.<JOBID>.out for platform log visibility either way.
   # -------------------------------------------------------------------------
   build:
     needs:
@@ -473,14 +524,22 @@ jobs:
           script_path: ${{ needs.preprocess.outputs.BUILD_SCRIPT }}
           define_cleanup_script: true
           cleanup_script_path: ./cancel.sh
-          scheduler: false
+          scheduler: ${{ inputs.cluster.build_on == 'compute' }}
           use_scheduler_agent: false
           submit_and_exit: false
           skip_cleanups_file: ''
           slurm:
-            is_enabled: false
+            is_enabled: ${{ inputs.cluster.build_on == 'compute' && inputs.cluster.slurm.is_enabled == true }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            time: ${{ inputs.cluster.slurm.build_time }}
+            gpus: ${{ inputs.cluster.slurm.gpus }}
           pbs:
-            is_enabled: false
+            is_enabled: ${{ inputs.cluster.build_on == 'compute' && inputs.cluster.pbs.is_enabled == true }}
+            # script_submitter keeps only '#' lines, so an empty half is harmless.
+            scheduler_directives: |
+              ${{ inputs.cluster.pbs.scheduler_directives }}
+              ${{ inputs.cluster.pbs.build_scheduler_directives }}
 
   # -------------------------------------------------------------------------
   # 4. Turn a failed build into a failed RUN.
@@ -504,6 +563,12 @@ jobs:
           st="$(cat "${STATUS_FILE}" 2>/dev/null || echo missing)"
           echo "build.sh exit status: ${st}"
           if [ "${st}" != "0" ]; then
+            # A job killed at its walltime gets SIGKILL, which skips build.sh's
+            # EXIT trap -- so a worker build that ran out of time leaves no status.
+            if [ "${st}" = "missing" ] && [ "${{ inputs.cluster.build_on }}" = "compute" ]; then
+              echo "::error title=Error::The build job on the worker left no exit status -- most likely it hit its walltime (cluster.slurm.build_time or the PBS build directives) or the job was cancelled. See run.*.out in ${{ needs.preprocess.outputs.BUILD_DIR }}"
+              exit 1
+            fi
             echo "::error title=Error::Build failed (status '${st}'). See run.*.out in ${{ needs.preprocess.outputs.BUILD_DIR }}"
             exit 1
           fi
@@ -511,8 +576,8 @@ jobs:
 
   # -------------------------------------------------------------------------
   # 5. Execute the built binaries ON A COMPUTE NODE.
-  #    The build runs on the login node, so a binary compiled for the login
-  #    node's ISA runs there perfectly and the build exits 0 either way. Run
+  #    A login-node build can emit a binary for the login node's ISA that runs
+  #    there perfectly, and the build exits 0 either way. Run
   #    fair-mastodon passed every recorded criterion with three GROMACS builds
   #    carrying AVX-512 that its zen2 worker could not execute. Nothing short of
   #    running the result on the target hardware can see that, which is why this

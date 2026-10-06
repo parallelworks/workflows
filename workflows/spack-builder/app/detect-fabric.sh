@@ -203,11 +203,11 @@ probe_gpu() {
 
 # ---------------------------------------------------------------------------
 # 2b. Microarchitecture of THIS node.
-# The build runs on the login node, which is frequently a different instance
-# type from the compute nodes. `spack arch -t` there would bake the login
-# node's ISA into every package -- either leaving compute performance on the
-# table or emitting instructions that SIGILL on the worker. So the whole reason
-# this script is submitted to a worker is to carry that value back.
+# The build runs on the login node by default, which is frequently a different
+# instance type from the compute nodes. `spack arch -t` there would bake the
+# login node's ISA into every package -- either leaving compute performance on
+# the table or emitting instructions that SIGILL on the worker. So the whole
+# reason this script is submitted to a worker is to carry that value back.
 # ---------------------------------------------------------------------------
 probe_target() {
   local root="${service_install_prefix:-}"
@@ -291,6 +291,13 @@ log "wrote $OUT"
 CUDA_PREFIX="${CUDA_PREFIX}" bash "${app_dir}/probe-headers.sh" \
   "$(dirname "$OUT")/headers.compute.env" compute || \
   log "WARNING: header probe failed; continuing (detection is not gated on it)"
+
+# Site externals as THIS node sees them. The build concretizes against this
+# file wherever it compiles, because the binaries run here, not on the login
+# node (find-externals.sh). Fatal on failure: without it the build would fall
+# back to the login node's view, which is the thing this exists to avoid.
+bash "${app_dir}/find-externals.sh" discover compute \
+  "${externals_compute:-$(dirname "$OUT")/externals.compute.yaml}"
 
 # To stdout, not through log(): this is the one artifact the build consumes, and
 # reading it back out of the log is how a wrong fabric profile or target gets

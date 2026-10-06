@@ -21,14 +21,65 @@ endpoint is a placeholder serving an empty page — see
 
 The three MPIs coexist in one environment via `concretizer: unify: false`.
 
+## Where the build runs
+
+**Run the build on** (`cluster.build_on`) picks the node that compiles:
+
+- **Login node** (default) — it has internet for source fetches and no queue
+  walltime, which is why it is the default: on many clusters it is the only node
+  that can download anything.
+- **Compute node** — the build is submitted as a job to the same partition, GPUs
+  and extra directives as the inspection job, with its own walltime
+  (`cluster.slurm.build_time`, default `08:00:00`; on PBS put
+  `#PBS -l walltime=...` in the build job directives). The worker must reach
+  github.com and the source mirrors. This compiles on the hardware the stack is
+  for, so the target is always `exact`. Request cores to match **Parallel build
+  jobs** through the extra directives. A build killed at its walltime leaves no
+  exit status, and `verify` says so.
+
+The option is hidden when there is no scheduler or inspection is turned off.
+Spack is still bootstrapped and the build cache configured on the login node by
+`controller.sh` in both modes.
+
+### Re-running a failed login-node build on a worker
+
+Right after concretizing, `build.sh` downloads the source of every spec it is
+about to compile (`app/prefetch-sources.py`) into Spack's source cache,
+`$SPACK_ROOT/var/spack/cache`, which sits on the shared filesystem. Spack checks
+that cache before any mirror or URL. So when a login-node build fails, typically
+on a header the login image lacks, re-run it with **Run the build on: compute
+node**: the worker unpacks every source from the cache and downloads nothing.
+The log prints one `cached` / `downloaded` line per spec and a summary, so a
+worker run shows whether it touched the network. Specs that the binary cache
+can supply, externals and already-installed specs are skipped. Sources Spack
+cannot cache (a git branch, for example) are named in a warning. Dry runs
+(`concretize_only`) stop before this step.
+
+The build stage itself (`$tempdir/$user/spack-stage`) is node-local and is not
+shared. Only the downloaded archives are.
+
+### Site externals always come from the worker
+
+`spack external find` runs on **both** nodes — the login node in `controller.sh`
+and the inspected worker in `detect-fabric.sh` — through `app/find-externals.sh`,
+and each result is saved to the run directory (`externals.head.yaml`,
+`externals.compute.yaml`) and printed in the log together with that node's
+system compilers. `Inspect head node` diffs the two.
+
+The build then applies the **compute** file to the site scope wherever it
+compiles, because every binary runs on the workers: an external that exists only
+on the login node would link and then be missing at run time. With full
+overrides no worker is inspected; a worker build then discovers on its own node,
+and a login build falls back to the login node's file with a warning.
+
 ## How it decides what to build for
 
-The compile runs on the **login node** — it has internet for source fetches and
-no queue walltime — but the stack is meant for the **compute nodes**, which on
-most clouds are a different instance type. So a short job runs on a worker first
-and reports its fabric, GPU and CPU microarchitecture.
+By default the compile runs on the **login node**, but the stack is meant for
+the **compute nodes**, which on most clouds are a different instance type. So a
+short job runs on a worker first and reports its fabric, GPU and CPU
+microarchitecture.
 
-That split has a consequence worth understanding. Spack only emits code the build
+For a login-node build that split has a consequence worth understanding. Spack only emits code the build
 host can run, and `packages: all: target:` is a *preference*, so an unsupported
 target is silently dropped rather than rejected. `app/resolve-target.py` makes the
 decision explicit:
@@ -39,8 +90,8 @@ decision explicit:
   login node cannot emit it, so the build falls back to the login node's own
   target and says so loudly (`fallback`). Those binaries still *run* on the
   worker — a newer microarchitecture on the same lineage is a superset; they just
-  leave its newer instructions unused. Build on a worker node if that last few
-  percent matters.
+  leave its newer instructions unused. Set **Run the build on** to a compute
+  node if that last few percent matters.
 - **The two are incomparable — different vendors** → neither target works, and
   falling back to the login node's would be silently wrong. The build targets the
   best **common ancestor** instead (`common`).
@@ -377,11 +428,15 @@ against one while the module tree advertises the other.
 ## Layout
 
 ```
-yamls/general.yaml        preprocess -> detect (worker) -> build (login node)
-                          -> verify -> endpoint + wait_for_endpoint
-app/controller.sh         login node: bootstrap Spack, externals, build cache
-app/detect-fabric.sh      worker: fabric + GPU + microarchitecture probe
-app/build.sh              login node: render, concretize, install, push, modules
+yamls/general.yaml        preprocess -> detect (worker) -> build (login node or worker)
+                          -> verify -> exec_check -> endpoint + wait_for_endpoint
+app/controller.sh         login node: bootstrap Spack, head externals, build cache
+app/detect-fabric.sh      worker: fabric + GPU + microarchitecture + externals probe
+app/find-externals.sh     discover one node's site externals / apply a node's file
+app/site-externals.py     move the managed externals between site scope and a file
+app/prefetch-sources.py   download every to-be-compiled source into the shared cache
+app/build.sh              build node: apply worker externals, render, concretize,
+                          install, push, modules
 app/start-template.sh     login node: the placeholder endpoint
 app/inspect-buildcache.py build cache inventory, integrity and hit/miss forecast
 app/resolve-profile.sh    all-or-nothing override policy
@@ -475,8 +530,8 @@ tests/general/            recorded end-to-end test
 ## Verifying the stack actually runs
 
 A build exiting 0 and an endpoint answering HTTP say nothing about whether the
-binaries can execute. The build happens on the **login node**, so a stack
-compiled for the login node's ISA runs there perfectly and every recorded
+binaries can execute. By default the build happens on the **login node**, so a
+stack compiled for the login node's ISA runs there perfectly and every recorded
 criterion passes. Run `fair-mastodon` did exactly that: it passed while 45 specs
 in the environment -- three GROMACS builds among them -- carried `skylake_avx512`
 AVX-512 instructions that its `zen2` worker could not execute.
@@ -560,10 +615,11 @@ Probed: `UCX`, `LIBFABRIC`, `VERBS`, `RDMACM`, `SLURM`, `PMI2`, `PMIX`, `CUDA`,
 
 The two sets are then diffed, and the asymmetry matters:
 
-- **present on compute, missing on head → the run fails loudly.** The build
-  links on the head node, so such a header cannot be used no matter what the
-  worker supports. This is the split-image case, and it otherwise surfaces as a
-  configure error hours into a compile.
+- **present on compute, missing on head → the run fails loudly** for a
+  login-node build. The build links on the head node, so such a header cannot be
+  used no matter what the worker supports. This is the split-image case, and it
+  otherwise surfaces as a configure error hours into a compile. When the build
+  runs on a worker it is only a notice, since the head does not compile.
 - **present on head, missing on compute → warning.** It builds, and may still
   run, because the runtime library can be present while only the headers are
   absent.
@@ -696,6 +752,8 @@ takes two hours, and the two causes look identical from the outside —
 | test | what it covers |
 |---|---|
 | `cpu-smoke.json` | `concretize_only` into a throwaway Spack root on `aws`: bootstrap, externals, build cache, worker inspection, render and solve, in minutes rather than hours. The cheap way to validate a cluster or a spec change |
+| `cpu-smoke-worker.json` | `cpu-smoke` with **Run the build on: compute node** — the scheduled build path, worker externals applied, in minutes |
+| `aws-cpu-worker.json` | a full CPU install built on an `aws` `cpu` worker: install, push, modules and the exec check, all from a compute-node build |
 | `buildcache-redeploy.json` | a full install on `aws` with a build cache already present — the redeployment case: a fresh cluster whose only Spack artifact is a copied `${HOME}/spack-buildcache` |
 | `gce2-buildcache-redeploy.json` | the same redeployment on `gce2`, a different cloud and image: the externals differ, so it is also the test of whether a cache built elsewhere still applies |
 

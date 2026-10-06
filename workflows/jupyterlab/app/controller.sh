@@ -84,6 +84,16 @@ f_conda_env_exists() {
     conda env list | awk '{print $1}' | grep -qx "$1"
 }
 
+# True when <prefix> already serves jupyter-lab from <env>; probed in a subshell so the
+# caller's environment stays untouched
+f_prefix_serves_jupyterlab() {
+    local conda_dir=$1 conda_env=$2
+    [ -f "${conda_dir}/etc/profile.d/conda.sh" ] || return 1
+    (
+        source ${conda_dir}/etc/profile.d/conda.sh && conda activate ${conda_env} && command -v jupyter-lab
+    ) &> /dev/null
+}
+
 f_set_up_conda_from_yaml() {
     local conda_dir=$1 conda_env=$2 conda_yaml=$3 yaml_hash=$4
     local conda_sh=${conda_dir}/etc/profile.d/conda.sh
@@ -137,6 +147,16 @@ f_install_conda_artifact() {
     local tarball=${PWD}/conda-env.tar.gz
     local arch glibc
 
+    if [ -d "${conda_dir}" ] && [ ! -f "${conda_dir}/${conda_source_marker}" ]; then
+        # Installed by hand, or by this workflow before it marked its prefixes (the hsp
+        # form's default directory held such a native Miniconda): never wiped, so it is
+        # used as is when it already serves jupyter-lab
+        if f_prefix_serves_jupyterlab ${conda_dir} ${conda_env}; then
+            echo "::notice::Reusing <${conda_dir}>: not installed by this workflow, but its <${conda_env}> environment already provides jupyter-lab"
+            return 0
+        fi
+        f_fail "<${conda_dir}> exists but was not installed by this workflow and its <${conda_env}> environment has no jupyter-lab; fix that environment or choose another conda installation directory to unpack the prebuilt environment into"
+    fi
     if [[ "${conda_env}" != "base" ]]; then
         f_fail "The prebuilt conda environment only provides the base environment; set the conda environment to base (got '${conda_env}')"
     fi
@@ -146,12 +166,8 @@ f_install_conda_artifact() {
         f_fail "The prebuilt conda environment needs x86_64 and glibc >= 2.28; this node has ${arch} and glibc ${glibc:-unknown}"
     fi
     if [ -d "${conda_dir}" ]; then
-        if [ -f "${conda_dir}/${conda_source_marker}" ]; then
-            echo "::warning::Removing the conda installation in <${conda_dir}>: this workflow installed it and it does not match the requested environment"
-            rm -rf ${conda_dir}
-        else
-            f_fail "<${conda_dir}> exists but was not installed by this workflow; fix that environment or choose another conda installation directory to unpack the prebuilt environment into"
-        fi
+        echo "::warning::Removing the conda installation in <${conda_dir}>: this workflow installed it and it does not match the requested environment"
+        rm -rf ${conda_dir}
     fi
 
     echo "::notice::Pulling the prebuilt conda environment ${ref}"

@@ -337,7 +337,7 @@ jobs:
             default: miniconda3c
             hidden: ${{ inputs.service.conda_install == false }}
             ignore: ${{ .hidden }}
-            tooltip: Ensure the directory has sufficient space for Conda and its packages.
+            tooltip: Ensure the directory has sufficient space for Conda and its packages. A conda installation already there that provides jupyter-lab is reused as is.
           conda_env:
             type: string
             hidden: true

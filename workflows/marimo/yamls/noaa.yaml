@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: marimo-h20
+          branch: canary
           sparse_checkout:
             - workflows/marimo/app
             - tools/utils

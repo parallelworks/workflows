@@ -309,3 +309,20 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   node reaches GitHub and conda-forge (HTTP 200, 2026-10-05), has no Dakota module, and
   the conda-forge Dakota install worked there. Test with `curl` before telling a user
   to bring a module.
+- **Two tests launched in parallel on one resource see each other's `pw endpoints run` as a
+  leftover** (verified 2026-10-06, marimo + h2o on gcpsmall): the runner ignores only the
+  processes that existed before *its own* launch, and every endpoint workflow's default
+  `leftover_patterns` include `pw endpoints run`, so a sibling run's service that started
+  later shows up at teardown. The runner waits for it ("waiting for cleanup:
+  ['proc:pw endpoints run']") and passes once the sibling is torn down, but a sibling that
+  serves longer than the wait turns into a false `leftover:proc:pw endpoints run`. Run the
+  tests of one resource sequentially (one `run-workflow-test.py` invocation takes several
+  test files and runs them in order).
+- **Pin the installer together with an exported conda environment** (`workflows/marimo`,
+  2026-10-06): an env file exported from a Miniforge base pins `conda`, `mamba` and
+  `python`, so applying it on top of a newer Miniforge means downgrading what the installer
+  just shipped. `tools/utils/miniforge.sh` honours `MINIFORGE_URL`; the controller sets it
+  to the release the file was exported from (the tag `releases/latest` redirected to at
+  export time) before `miniforge_bootstrap`, and leaves it unset for `latest` and pasted
+  environments. A `conda install` into base may also bump `conda` itself (26.7.2 → 26.7.3
+  seen), so the export can legitimately differ from the installer's own version.

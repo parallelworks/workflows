@@ -734,3 +734,29 @@ repository and branch is gone); the host input moved from `resource` to
 steps, since a CLI run leaves omitted inputs `undefined`. The end-to-end tests of PROBE's
 own YAMLs are under `workflows/probe/tests/`; the dashboards test fills its API key from
 the environment through the runner's new `_test.secrets` key.
+
+## marimo and h2o (2026-10-06, from interactive_session's legacy generation)
+
+`workflows/marimo/` and `workflows/h2o/` are the endpoint-pattern ports of the
+session-generation `marimo-host/` and `h2o-3/` of `interactive_session` (their v3
+scripts and `workflow/yamls/<name>/{general,hsp,noaa}.yaml`), converted per
+`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`. The
+`-host`/`-3` suffixes are dropped like the other renames; the endpoint names are
+`marimo-<run-slug>` and `h2o-<run-slug>`.
+
+| interactive_session | here |
+|---|---|
+| `marimo-host/controller-v3.sh`, `start-template-v3.sh` | `workflows/marimo/app/controller.sh`, `start-template.sh` (Miniforge + conda-forge through `tools/utils/miniforge.sh` instead of Miniconda; `marimo edit`/`run` under `pw endpoints run` on the loopback with `--headless --no-token`) |
+| `marimo-host/nov2025.yaml` | replaced by `workflows/marimo/app/marimo0.25.1-python3.14.7.yaml`, the export of the first tested install, bootstrapped with the Miniforge release it came from (`MINIFORGE_URL`, new in `tools/utils/miniforge.sh`) |
+| `marimo-host/kill-template.sh`, `transfer_files.sh`, Juice blocks | left behind (the generic cleanup trap, `parallelworks/checkout`, and nothing selected Juice) |
+| `h2o-3/controller-v3.sh`, `start-template-v3.sh` | `workflows/h2o/app/controller.sh`, `start-template.sh` (the zip is unpacked wherever its `h2o.jar` is; a Temurin 17 JRE is downloaded when no `java` is on the PATH; H2O binds `-ip`/`-web_ip` to the loopback with a per-run cloud name; `--slug flow/index.html`) |
+| `workflow/yamls/{marimo-host,h2o-3}/*.yaml` | `workflows/{marimo,h2o}/yamls/{general,hsp,noaa}.yaml`: the `cluster`/`service` groups of the jupyterlab variants; h2o noaa resolves the shared per-cluster install directory like webshell/openvscode noaa |
+
+Form changes: marimo's `script` also accepts a directory (marimo's home page there) or
+a new `.py`; the default marimo installation is the pinned environment, `latest` and a
+pasted YAML stay; the noaa form keeps jupyterlab's `use_conda`/`install_command` route
+(`pip install marimo` with the system `python` module) for the on-premise clusters. h2o
+gained optional `jvm_args` and `load_env` (e.g. `module load java`) inputs and defaults
+to the latest stable release (3.46.0.12). Tests: `workflows/{marimo,h2o}/tests/`, all
+variants exercised on `pw://alvaro/gcpsmall` (the `existing`-only form fields of hsp and
+noaa cannot be exercised from a cloud cluster).

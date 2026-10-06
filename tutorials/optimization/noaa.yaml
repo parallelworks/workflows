@@ -21,7 +21,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: optimization-tutorial
+          branch: canary
           sparse_checkout:
             - tutorials/optimization/app
       - name: Validate Inputs and Initialize State
@@ -59,7 +59,7 @@ jobs:
           # placeholder simulator finishes in seconds, but a real solver or a
           # scheduled case (queue + node boot) must fit in this budget.
           timeout: ${{ inputs.optimizer.iteration_timeout }}
-        uses: github/parallelworks/workflows@optimization-tutorial
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: tutorials/optimization/iteration-noaa.yaml
           # the retry counter (0 on the first attempt): attempt != iteration, the

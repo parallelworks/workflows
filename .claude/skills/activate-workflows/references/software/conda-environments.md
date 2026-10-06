@@ -44,7 +44,10 @@ container). Build with `CONDA_OVERRIDE_GLIBC=<target>` and `PIP_ONLY_BINARY=:all
 whitelist pure-Python sdists (`PIP_NO_BINARY=jupyterlab-slurm`) that publish no wheel.
 Pull it through `tools/oras/libs.sh:oras_pull_file` (retries; anonymous first — a stale
 ghcr login in `~/.docker/config.json` makes `oras pull` say `denied` for a public
-package).
+package). Mark every prefix the installer creates and `rm -rf` only marked ones; an
+unmarked prefix that already serves the tool is reused, not refused: the hsp form's
+default directory still held the native Miniconda from before the marker existed, and
+refusing it failed every default run there (2026-10-06).
 
 ## Concurrent installers and long prefixes
 

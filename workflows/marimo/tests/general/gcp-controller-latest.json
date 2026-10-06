@@ -2,13 +2,10 @@
   "_test": {
     "timeout_s": 1800,
     "warm_marker": "${HOME}/pw/software/.miniforge3-marimo/bin/marimo",
-    "leftover_patterns": [
-      "marimo",
-      "pw endpoints run"
-    ]
+    "leftover_patterns": ["marimo", "pw endpoints run"]
   },
-  "resource": "pw://alvaro/gcpsmall",
   "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
     "scheduler": false
   },
   "service": {
@@ -17,6 +14,6 @@
     "parent_install_dir": "${HOME}/pw/software",
     "conda_install_dir": ".miniforge3-marimo",
     "conda_env": "base",
-    "install_instructions": "marimo0.25.1-python3.14.7"
+    "install_instructions": "latest"
   }
 }

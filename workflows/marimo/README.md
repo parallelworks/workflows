@@ -23,9 +23,11 @@ endpoint answers; the server keeps running until `pw endpoints delete marimo-<ru
   empty (marimo's home page in your home directory, listing the notebooks there and
   creating new ones), a directory (the home page in that directory) or a `.py` that
   does not exist yet (a new notebook). Run mode needs a notebook.
-- **Installation**: the latest marimo and Miniforge from conda-forge, or paste your
-  own conda environment YAML. Or skip the installation and point at an existing
-  environment with a load command.
+- **Installation**: the pinned environment (`app/marimo0.25.1-python3.14.7.yaml`,
+  exported from a tested install and bootstrapped with the Miniforge release it came
+  from), the latest marimo and Miniforge from conda-forge, or paste your own conda
+  environment YAML. Or skip the installation and point at an existing environment
+  with a load command.
 
 ## Variants
 

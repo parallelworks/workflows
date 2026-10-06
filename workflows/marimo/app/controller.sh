@@ -32,6 +32,9 @@ mkdir -p "${service_parent_install_dir}"
 source tools/utils/miniforge.sh
 
 conda_prefix=${service_parent_install_dir}/${service_conda_install_dir}
+# The installer the environment files under workflows/marimo/app were exported from;
+# latest and pasted environments bootstrap the newest Miniforge instead
+miniforge_pinned_url=https://github.com/conda-forge/miniforge/releases/download/26.7.2-0/Miniforge3-Linux-x86_64.sh
 service_conda_sh=${conda_prefix}/etc/profile.d/conda.sh
 
 f_fail() {
@@ -106,6 +109,7 @@ if [[ "${service_conda_install}" == "true" ]]; then
                 conda_yaml_src=workflows/marimo/app/${service_install_instructions}.yaml
                 [ -f "${conda_yaml_src}" ] || f_fail "Conda environment definition ${conda_yaml_src} not found in $(pwd)"
                 cp "${conda_yaml_src}" conda.yaml
+                export MINIFORGE_URL=${miniforge_pinned_url}
             fi
             cat conda.yaml
             yaml_hash=$(f_prepare_yaml conda.yaml)

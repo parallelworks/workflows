@@ -281,10 +281,12 @@ jobs:
             type: dropdown
             hidden: ${{ inputs.service.conda_install == false }}
             ignore: ${{ .hidden }}
-            default: latest
+            default: marimo0.25.1-python3.14.7
             options:
+              - value: marimo0.25.1-python3.14.7
+                label: marimo 0.25.1 with Python 3.14.7
               - value: latest
-                label: Latest versions of marimo and Miniforge
+                label: Latest versions of marimo and Miniforge (not thoroughly tested)
               - value: yaml
                 label: Provide custom Conda environment YAML file
           yaml:

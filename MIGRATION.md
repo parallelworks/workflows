@@ -828,3 +828,25 @@ gone rather than ported (no display route for it; the CSV is the plottable artif
 are what a benchmark measures; the `apirun/` API-client example is not migrated (it
 drove a different demo workflow). The shared `tools/utils/prepare-env.sh` notice now
 names the installer it runs instead of saying "conda-forge install".
+
+**Tests (2026-10-06, `pw://alvaro/gcpsmall`, branch `benchmarks`; rows in
+`workflows/benchmarks/tests/general/*.csv`):** all five pass with `cleanup=ok`.
+
+| Test | Result |
+|---|---|
+| `gcpsmall-pingpong-login` (login node, 2 ranks, `auto` MPI) | PASS `saving-boxer` (cold: the system module `mpi/openmpi-x86_64` was picked and IMB-MPI1 built, 38 s), re-run `liberal-mutt` (warm, 32 s): 0.18 µs, 9.4 GB/s on one node |
+| `gcpsmall-pingpong-2nodes` (2 nodes × 2 ranks) | PASS `informed-hedgehog` (3 min, nodes powering up): `-map 2x2` put the pair on two nodes, 20.9 µs and 2.6 GB/s |
+| `gcpsmall-ior-minimal` (1 node × 4 ranks, `io/` under the job directory) | PASS `national-pelican` (cold: IOR built, 47 s), re-run `cuddly-crawdad` (31 s); the I/O directory was removed |
+| `gcpsmall-mdtest-custom` (custom arguments, `io_dir` `${HOME}/pw/benchmarks-io`) | PASS `ready-goldfish` (63 s) |
+| `gcpsmall-alltoall-conda` (`conda-forge` MPI, 2 nodes × 4 ranks, `-npmin 8`) | PASS `daring-clam` (78 s cold: Miniforge + Open MPI 5.0.11 + compilers installed and IMB-MPI1 built with GCC 15 in about a minute; 8 ranks across the two nodes) |
+
+**Cancel mid-benchmark** (`unbiased-vervet`, then `square-egret` after the fix; IOR
+`standard`, 1 node × 4 ranks): `pw workflows runs cancel` while `ior` ran on the compute
+node left `squeue` empty (job `CANCELLED`), no `ior`/`mpirun` process on the node and no
+I/O directory. The first attempt recorded `benchmark.exit` = `0`: bash ran the exit trap
+with the status of the last command completed before the killed pipeline. The script now
+traps HUP/INT/TERM (`exit 129/130/143`) and removes the I/O directory from the exit trap,
+with `cancel.sh` as the fallback for a SIGKILL; `square-egret` recorded `143`
+(`references/pitfalls.md`). Not exercised: PBS, `MPIRUN` overrides, an Intel MPI with
+its own `IMB-MPI1`, the `commands` MPI mode (its path is `prepare-env.sh`'s, shared with
+`openfoam-naca`).

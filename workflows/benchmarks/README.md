@@ -171,6 +171,11 @@ through their `nodes`/`ntasks` inputs where they write them after the directives
 | `gcpsmall-ior-minimal.json` | IOR, `minimal` preset, one node × 4 ranks, the default I/O directory |
 | `gcpsmall-mdtest-custom.json` | mdtest, `custom` arguments, an `io_dir` with a shell variable |
 
+Every test completed with no SLURM job, process or I/O directory left behind. A run
+cancelled while `ior` was running on the compute node (`pw workflows runs cancel`)
+also left nothing: the submitter's `scancel` and `cancel.sh` removed the job and the
+I/O directory, and `benchmark.exit` recorded `143`.
+
 ## Files
 
 | `app/` | Role |

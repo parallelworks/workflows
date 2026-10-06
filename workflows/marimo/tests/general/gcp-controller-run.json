@@ -1,0 +1,21 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "warm_marker": "${HOME}/pw/software/.miniforge3-marimo/bin/marimo",
+    "setup": "mkdir -p ${HOME}/pw/tests/marimo && cat > ${HOME}/pw/tests/marimo/hello.py <<'PY'\nimport marimo\n\napp = marimo.App()\n\n\n@app.cell\ndef _():\n    import marimo as mo\n    mo.md(\"# Hello from the marimo workflow test\")\n    return\n\n\nif __name__ == \"__main__\":\n    app.run()\nPY\n",
+    "leftover_patterns": ["marimo", "pw endpoints run"]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": false
+  },
+  "service": {
+    "mode": "run",
+    "script": "${HOME}/pw/tests/marimo/hello.py",
+    "conda_install": true,
+    "parent_install_dir": "${HOME}/pw/software",
+    "conda_install_dir": ".miniforge3-marimo",
+    "conda_env": "base",
+    "install_instructions": "latest"
+  }
+}

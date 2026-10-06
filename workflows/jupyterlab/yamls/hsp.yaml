@@ -39,7 +39,7 @@ jobs:
           service_load_env="${{ inputs.service.load_env }}"
           service_password="${{ inputs.service.password }}"
           service_conda_registry="${{ inputs.service.conda_registry }}"
-          pw_endpoints_args="--no-subdomain --name ${{ inputs.service.name }}-${PW_RUN_SLUG} --slug lab"
+          pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG} --slug lab"
           EOF
           # Remove empty variables
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh

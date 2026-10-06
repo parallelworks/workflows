@@ -1,0 +1,21 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "endpoint": false
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "00:30:00",
+      "scheduler_directives": "##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems\n"
+    }
+  },
+  "optimizer": {
+    "max_iterations": 3,
+    "batch_size": 4,
+    "stall_generations": 3
+  }
+}

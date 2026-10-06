@@ -321,6 +321,20 @@ job or process tree), skipped workers never start, and the loop keeps no daemons
   `logs/<job>/step_N/script-unstable.sh` in the job directory, which shows every
   `${{ input }}` as its literal value.
 
+## Variants
+
+`hsp.yaml` with `iteration-hsp.yaml` is the HSP (`activate.hpc.mil`) loop,
+`noaa.yaml` with `iteration-noaa.yaml` the NOAA (`noaa.parallel.works`) one: the
+same loop with the platform's form (the resource as the top-level input; SLURM
+account, QoS and, on HSP, node type for on-prem `existing` resources; the PBS
+account on HSP), passed through an iteration that submits every case with the
+matching `script_submitter` variant. Nothing else changes: the optimizer and the
+simulator are standard-library Python, so no site module is needed.
+
+`tests/<variant>/` records a run of each on a cloud SLURM cluster: on the login
+node (`zdt1.json`) and, for the two variants, with one scheduler job per case
+(`zdt1-slurm.json`); run one with `python3 tools/tests/run-workflow-test.py <test.json>`.
+
 ---
 
 ## Swapping in Dakota and OpenFOAM

@@ -40,7 +40,7 @@ fi
 ${snippet}
 EOT
 else
-    echo "::notice::${tool}: no environment commands given; using the conda-forge install"
+    echo "::notice::${tool}: no environment commands given; running $(basename "${installer}")"
     bash "${installer}" "${env_file}" || exit 1
     if [ ! -f "${env_file}" ]; then
         echo "::error::${tool}: ${installer} did not write ${env_file}"

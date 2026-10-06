@@ -760,3 +760,71 @@ gained optional `jvm_args` and `load_env` (e.g. `module load java`) inputs and d
 to the latest stable release (3.46.0.12). Tests: `workflows/{marimo,h2o}/tests/`, all
 variants exercised on `pw://alvaro/gcpsmall` (the `existing`-only form fields of hsp and
 noaa cannot be exercised from a cloud cluster).
+
+## benchmarks (from parallelworks/benchmarks)
+
+Migrated 2026-10-06 from `parallelworks/benchmarks@main` (2d90518), the cluster
+benchmark demo: one of six benchmarks (`ibm-mpi1-all-to-all`, `ping-pong`,
+`ior-standard`, `ior-minimal`, `mdtest-standard`, `mdtest-minimal`) run as a SLURM
+job, with the output streamed back to the user container. The source predated the
+shared submitter: a `workflow-utils` resource wrapper produced the SLURM header, the
+YAML's own jobs ran `sbatch`, polled `squeue`/`sacct` and tailed a log the benchmark
+scripts pushed over ssh to `usercontainer`. Here it is the repository's batch shape
+(`activate-batch`, `openfoam-naca`): preprocessing → `script_submitter` → a results
+job, no endpoint.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `validate_resource`, `submit_benchmark`, `wait_job`, `stream`) | `yamls/general.yaml` (`preprocessing`, `benchmark` = `script_submitter/v3.6/general.yaml`, `results`) |
+| `benchmarks/<name>/main.sh` × 6 (header + inputs + script concatenated per run, rsynced to the cluster) | `app/run-template.sh`, one script with the benchmark as a `case`; `app/install-mpi.sh`, `app/install-benchmark.sh` for the one-time setup on the login node |
+| `benchmarks/utils/plot-imb-mpi-benchmark.py` (pandas + plotly HTML, shown through a v2 `/me/3001/api/v1/display/` iframe) | `app/summarize.py` (standard library): CSV tables, `::notice` headline, `KEY=value` outputs |
+| form: `benchmark` dropdown of six, `pwrl_host` group with `_sch__dd_*` directive fields, `benchmark_root_dir`, `with_lustre`, `spack_install_intel_mpi`, `load_mpi` | `cluster` (resource, scheduler, `nodes`, `ntasks_per_node`, slurm, pbs), `benchmark` (`name` of four, `imb_args`, `preset` standard/minimal/custom, `ior_args`, `mdtest_args`, `io_dir`), `software` (`mpi` auto/conda-forge/commands, `mpi_load`, `install_dir`) |
+| `apirun/` (a `run_workflow.py` API client for a different demo) | left behind |
+| `benchmark.png` | `thumbnails/benchmarks.png` |
+
+**Code changes beyond the paths:**
+
+- **The MPI.** Every run cloned Spack into its job directory and installed
+  `intel-oneapi-mpi intel-oneapi-compilers` (30+ minutes, never reused), unless the user
+  typed a load command. Now `install-mpi.sh` takes the MPI already on PATH, else a system
+  module (`mpi/openmpi-x86_64`, `mpi/mpich-x86_64`, `openmpi`, `mpich`), else installs
+  Open MPI from conda-forge once under `<install dir>/benchmarks/miniforge`; the form can
+  force the conda-forge install or give commands. The choice is a `::notice` and the job
+  log's `MPI :` line.
+- **The builds are cached per MPI** under `<install dir>/benchmarks/<mpi>/` (the MPI's
+  directory with `/`→`_`), with `MPI.txt` recording the compiler and MPI, under a lock.
+  IMB-MPI1 is built from source (the source relied on Intel MPI shipping the binary;
+  `-DOMPI_SKIP_MPICXX`, and `-Wno-error=template-id-cdtor` for GCC ≥ 14, against the
+  Makefile's `-Werror`); an `IMB-MPI1` on PATH is used instead. IOR 4.0.0 comes from the
+  release tarball (`configure` included: no `./bootstrap`, no `sudo yum install
+  automake`), with `-std=gnu17` for GCC 15; `--with-lustre` is auto-detected rather than
+  a form toggle whose default `true` fails `configure` without the Lustre headers.
+- **Rank layout from the allocation.** The source ran `mpirun -ppn $SLURM_CPUS_ON_NODE`
+  (an Intel MPI flag) and the form's `--ntasks-per-node`/`--nodes` directive fields.
+  The form asks for `nodes` and `ntasks_per_node`, written ahead of the user's directives
+  (so a repeated directive wins), and the script takes `SLURM_NTASKS`/`SLURM_JOB_NUM_NODES`
+  (PBS: the node file) to launch `mpirun -np N`; `MPIRUN` in the environment commands
+  replaces the launcher; Open MPI under PBS gets `--hostfile $PBS_NODEFILE`.
+- **PingPong across nodes.** With 2+ nodes IMB-MPI1 gets `-map <ppn>x<nodes>`, which
+  numbers the ranks so that the pair sits on two nodes; the source measured whatever two
+  ranks came first (both on the first node).
+- **Presets.** `ior-minimal`/`ior-standard`/`mdtest-minimal`/`mdtest-standard` became
+  the `minimal`/`standard` presets of `ior` and `mdtest`, plus `custom` arguments; IOR
+  reads back as well as writes (`-w -r`); `-o`/`-d` point into `<io_dir>/<run slug>`
+  (default `io/` under the job directory), removed afterwards and by `cancel.sh` on a
+  cancel; the source left `${benchmark_root_dir}/pw/jobs/<workflow>/<n>/` behind.
+- **Exit status and results.** The submitter does not forward the script's status, so
+  `benchmark.sh` records it in `benchmark.exit` and the results job fails the run with
+  the tail of the output when it is not `0` (the source's `wait_job` ended `completed`
+  whatever the job did). `summarize.py` writes `results/<benchmark>.csv` and the
+  headline figures as outputs (`latency_usec`, `bandwidth_mbytes_per_sec`,
+  `write_mib_per_sec_mean`, `file_creation_ops_per_sec_mean`, …).
+
+**Judgment calls:** the form's groups are `cluster`, `benchmark`, `software`
+(`benchmark` where the other workflows have `service`, since it is the benchmark); the
+`--with-lustre` toggle is gone rather than kept default-off; the plotly HTML page is
+gone rather than ported (no display route for it; the CSV is the plottable artifact);
+`scheduler` defaults to **Yes**, unlike the other workflows, because the compute nodes
+are what a benchmark measures; the `apirun/` API-client example is not migrated (it
+drove a different demo workflow). The shared `tools/utils/prepare-env.sh` notice now
+names the installer it runs instead of saying "conda-forge install".

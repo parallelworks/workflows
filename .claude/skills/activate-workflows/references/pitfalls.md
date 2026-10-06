@@ -8,7 +8,7 @@
 >
 > "Step N" means SKILL.md's step N; "reference §N" means section N of
 > [activate-platform.md](activate-platform.md). Lessons about one piece of software
-> (OpenFOAM, Dakota, conda environments, Singularity/SIF images) live in
+> (OpenFOAM, Dakota, conda environments, Singularity/SIF images, MPI benchmarks) live in
 > [software/](software/), one file per tool — grep both when a symptom is unclear.
 
 ## Common pitfalls (learned from real runs)
@@ -185,6 +185,16 @@
   `workflows/dakota-openfoam/yamls/general-naca.yaml` exposes it as a form input.
   `tutorials/optimization/general.yaml`'s Iterate step has this latent bug
   (its ~15 s test waves win the race; any real solver loses it).
+
+- **A batch script killed by `scancel` runs its EXIT trap with `$?` = 0** (verified
+  2026-10-06, `workflows/benchmarks`): SIGTERM reaches bash while it waits for the
+  benchmark pipeline, bash runs the exit trap on the way out, and `$?` there is the status
+  of the last command that *completed*, the `echo` before the pipeline, so a
+  `trap 'echo $? > x.exit' EXIT` records `0` for a cancelled job. Trap the signals too
+  (`trap 'exit 143' TERM`, `130` INT, `129` HUP) so the exit file says killed; the
+  submitter's cleanup script stays the belt and braces for the SIGKILL that follows
+  SLURM's KillWait. `activate-batch`'s `commands.exit` has the same latent `0`; harmless
+  there because a cancelled run never reads it.
 
 ## Lessons from LLM-backed & multi-service builds (hermes-agent)
 

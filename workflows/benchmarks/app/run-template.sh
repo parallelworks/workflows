@@ -7,7 +7,24 @@
 # results/<benchmark>.out for summarize.py.
 set -o pipefail
 job_dir="${PWD}"
-trap 'echo $? > "${job_dir}/benchmark.exit"' EXIT
+io_root=""
+io_run_dir=""
+f_exit() {
+    local rc=$?
+    echo "${rc}" > "${job_dir}/benchmark.exit"
+    if [ -n "${io_run_dir}" ]; then
+        rm -rf "${io_run_dir}"
+        if [ "${io_root}" = "${job_dir}/io" ]; then
+            rmdir "${io_root}" 2> /dev/null || true
+        fi
+    fi
+}
+trap f_exit EXIT
+# scancel and qdel send SIGTERM; without these traps bash runs the exit trap with
+# the status of the last command completed before the benchmark, which is 0
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 set -e
 
 source "${benchmark_mpi_env}"
@@ -39,10 +56,9 @@ else
     fi
 fi
 
-# IOR and mdtest work in a directory per run on the file system under test,
-# removed afterwards; the submitter runs cancel.sh when the run is cancelled
-io_root=""
-io_run_dir=""
+# IOR and mdtest work in a directory per run on the file system under test; the
+# exit trap removes it, and so does cancel.sh, which the submitter runs on the node
+# when the run is cancelled (the job may be killed before the trap can run)
 case "${benchmark}" in
     ior|mdtest)
         io_root="${benchmark_io_dir:-${job_dir}/io}"
@@ -50,10 +66,15 @@ case "${benchmark}" in
         mkdir -p "${io_run_dir}"
         ;;
 esac
-cat > "${job_dir}/cancel.sh" << EOF
-#!/bin/bash
-${io_run_dir:+rm -rf "${io_run_dir}"}
-EOF
+{
+    echo '#!/bin/bash'
+    if [ -n "${io_run_dir}" ]; then
+        echo "rm -rf \"${io_run_dir}\""
+        if [ "${io_root}" = "${job_dir}/io" ]; then
+            echo "rmdir \"${io_root}\" 2> /dev/null || true"
+        fi
+    fi
+} > "${job_dir}/cancel.sh"
 chmod +x "${job_dir}/cancel.sh"
 
 mkdir -p "${job_dir}/results"
@@ -109,10 +130,3 @@ echo
 "${cmd[@]}" 2>&1 | tee "${out}"
 echo
 echo "Finished      : $(date)"
-
-if [ -n "${io_run_dir}" ]; then
-    rm -rf "${io_run_dir}"
-    if [ "${io_root}" = "${job_dir}/io" ]; then
-        rmdir "${io_root}" 2> /dev/null || true
-    fi
-fi

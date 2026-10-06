@@ -9,7 +9,9 @@ endpoint answers; the server keeps running until `pw endpoints delete marimo-<ru
 1. `app/controller.sh` runs on the login node: installs Miniforge and marimo from
    conda-forge under the parent install directory (default
    `${HOME}/pw/software/.miniforge3-marimo`) if missing, or loads an existing
-   environment with the command you provide.
+   environment with the command you provide. The default installation is the
+   environment pinned in `app/marimo0.25.1-python3.14.7.yaml`, exported from a
+   tested install and bootstrapped with the Miniforge release it came from.
 2. `app/start-template.sh` runs on the login node or inside a scheduler job
    (SLURM/PBS, your choice in the form) and launches `marimo edit` or `marimo run`
    behind `pw endpoints run`. marimo listens on the loopback address only; the
@@ -23,24 +25,6 @@ endpoint answers; the server keeps running until `pw endpoints delete marimo-<ru
   empty (marimo's home page in your home directory, listing the notebooks there and
   creating new ones), a directory (the home page in that directory) or a `.py` that
   does not exist yet (a new notebook). Run mode needs a notebook.
-- **Installation**: the pinned environment (`app/marimo0.25.1-python3.14.7.yaml`,
-  exported from a tested install and bootstrapped with the Miniforge release it came
-  from), the latest marimo and Miniforge from conda-forge, or paste your own conda
-  environment YAML. Or skip the installation and point at an existing environment
-  with a load command.
-
-## Variants
-
-- `general.yaml`: cloud and on-premise SLURM/PBS clusters.
-- `hsp.yaml`: HPCMP systems (account, QoS, node type). The login node must reach
-  github.com and conda.anaconda.org for the Miniforge install; otherwise bring an
-  environment with the load command.
-- `noaa.yaml`: NOAA RDHPCS systems. On the on-premise clusters the default is a
-  `pip install marimo` into your home with the system `python` module (the
-  JupyterLab workflow's approach there); `Use Conda?` switches to Miniforge.
-
-## Tests
-
-`tests/<variant>/` holds the recorded end-to-end tests; the run-mode test seeds a
-small notebook under `${HOME}/pw/tests/marimo/`. Run them with
-`python3 tools/tests/run-workflow-test.py <test.json>` (see `tools/tests/README.md`).
+- **Installation**: the pinned environment, the latest marimo and Miniforge from
+  conda-forge, or paste your own conda environment YAML. Or skip the installation
+  and point at an existing environment with a load command.

@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-07T12:53:53Z,warm,pass,ok,7801ed4,74bcc3d,ef324c0,5bc0528,5bc0528,dask,alvaro,next-wallaby,37,
 2026-10-07T13:02:18Z,warm,pass,ok,29ddf6f,74bcc3d,ef324c0,318f44b,318f44b,dask,alvaro,tough-mastiff,37,
+2026-10-07T13:24:48Z,warm,pass,ok,c20b676,74bcc3d,ef324c0,50202da-dirty,e30cb60,dask-thumbnail,alvaro,organic-rodent,37,

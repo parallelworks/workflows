@@ -947,3 +947,51 @@ Kubernetes form adds a worker count (2) with 1Gi/2Gi memory defaults. Tests:
 `workflows/mlflow/tests/`, the compute-cluster variants on `pw://alvaro/gcpsmall` (login
 node and SLURM job; the `existing`-only form fields of hsp and noaa cannot be exercised
 from a cloud cluster), the Kubernetes lanes on `k3sgpu`.
+
+## filebrowser (2026-10-07, from parallelworks/filebrowser_workflow)
+
+`workflows/filebrowser/` is the endpoint-pattern port of `parallelworks/filebrowser_workflow@canary`
+(61d70c2): [File Browser](https://filebrowser.org) (`filebrowser/filebrowser:v2.50.0`) with
+Docker Compose. The source served it through a platform session (`sessions:` block,
+`pw agent open-port`, `parallelworks/update-session`, the run alive on `docker compose up`).
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `prep`, `filebrowser`, `create_session`; inputs `resource`, `rundir`) | `yamls/general.yaml` (preprocessing → `script_submitter` → `wait_for_endpoint`; `open-notebook`'s `cluster`/`service` groups) |
+| compose file and `docker compose up` inline in the YAML | `app/controller.sh` (mounted directories), `app/start-template.sh` (Docker detection and pull as `open-notebook`, database bootstrap, compose stack behind `pw endpoints run`, `cancel.sh` = `compose down`) |
+| `README.md` | rewritten: the source's text described the PHP "FileBrowser", a different project |
+| `thumbnail.png` | `thumbnails/filebrowser.png` |
+
+Changes beyond the paths:
+
+- `FB_BASE_URL` is `PW_ENDPOINT_PATH` without its trailing slash: empty on a subdomain
+  endpoint, the `/me/session/<user>/<name>` prefix on a path-based one.
+- The container runs as the workflow user (`user: <uid>:<gid>`) instead of uid 1000; the
+  source's `chown 1000:1000` needed root.
+- Authentication is a form choice applied on every start: *Platform login only*
+  (`noauth`, default) or *File Browser users* (`json`) with an optional admin password.
+  `--noauth`/`--password` only act when the database is created, so the launcher uses
+  the CLI (`config init`/`users add` the first time, `config set`/`users update`
+  afterwards).
+- The served directory (`<rundir>/data` in the source) is the visible **Root Directory**
+  with the same default; the image is an input.
+
+`general` only, as `open-notebook` (no Docker on the HPCMP and NOAA systems). No
+`restart:` policy: a File Browser that dies ends `compose logs -f`, the wrapper and the job.
+
+**Tests (2026-10-07, `pw://alvaro/gcpsmall`, branch `filebrowser`; rows in
+`workflows/filebrowser/tests/general/*.csv`):**
+
+| Test | Result |
+|---|---|
+| `gcp-controller` (login node, form defaults) | PASS `real-oyster` (cold, 37 s; recorded `leftover:proc:filebrowser` because the test's `leftover_commands` snippet contained the pattern verbatim, see `tools/tests/README.md`), `amusing-badger` (warm, 37 s, `cleanup=ok`) |
+| `gcp-controller-users` (File Browser users with a password, root `${HOME}`) | PASS `crack-duckling` (38 s: existing database switched to `json`, password updated; its log showed the password once, from a test under xtrace, fixed), `profound-mako` (32 s, kept for the manual checks) |
+| `gcp-compute` (SLURM job, `compute` partition) | PASS `distinct-cardinal` (163 s, node powering up) |
+
+Manual on `profound-mako`: anonymous GET → `307`; with the platform token `/` → `200`,
+`POST /api/login` → `200`/`403` with the right/wrong password, `/api/resources/` → `401`
+without File Browser's token and `200` with it; `pw endpoints delete` removed container
+and network, no process left. Cancel 11 s after launch (`novel-bass`, endpoint just
+registered): run `canceled`, endpoint deleted by the submitter's cleanup, container and
+network removed, no skip file. Not exercised: PBS, a path-based endpoint, a host without
+`sudo`. The checkout points at `canary` for the merge.

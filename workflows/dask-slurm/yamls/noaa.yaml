@@ -1,0 +1,488 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+# Dask on a SLURM cluster: a dask-jobqueue SLURMCluster whose scheduler and
+# dashboard run on the login node and whose workers are SLURM jobs, scaled
+# between a minimum and a maximum of jobs as work arrives and drains
+# (cluster.adapt). Preprocessing installs Dask in a Miniforge environment, the
+# submitter starts the cluster service on the login node behind a pw endpoint
+# that serves the Dask dashboard, wait_for_endpoint checks the dashboard answers,
+# and the workload job runs the chosen demo computations through the scheduler
+# file while the dashboard shows the worker jobs join and leave. The cluster
+# outlives the run unless "Keep the cluster alive" is off. SLURM clusters only.
+#
+# The NOAA (noaa.parallel.works) form: the resource is the top-level input, the
+# service goes through the noaa script submitter, the worker jobs take the Account
+# and QoS (shown for on-prem `existing` resources), and the install directory
+# defaults to the cluster's shared software tree when this account can write to it.
+# On a cloud cluster it behaves like general.yaml.
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: dask
+          sparse_checkout:
+            - workflows/dask-slurm/app
+            - tools/utils
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          cluster_scheduler_type="${{ inputs.resource.schedulerType }}"
+          dask_account="${{ inputs.cluster.slurm.account }}"
+          dask_partition="${{ inputs.cluster.slurm.partition }}"
+          dask_qos="${{ inputs.cluster.slurm.qos }}"
+          dask_cores="${{ inputs.cluster.slurm.cores }}"
+          dask_memory="${{ inputs.cluster.slurm.memory }}"
+          dask_processes="${{ inputs.cluster.slurm.processes }}"
+          dask_walltime="${{ inputs.cluster.slurm.walltime }}"
+          dask_min_jobs="${{ inputs.cluster.slurm.min_jobs }}"
+          dask_max_jobs="${{ inputs.cluster.slurm.max_jobs }}"
+          dask_mem_directive="${{ inputs.cluster.slurm.mem_directive }}"
+          dask_interface="${{ inputs.cluster.slurm.interface }}"
+          service_workload="${{ inputs.service.workload }}"
+          service_workload_size="${{ inputs.service.workload_size }}"
+          service_workload_timeout="${{ inputs.service.workload_timeout }}"
+          service_keep_alive="${{ inputs.service.keep_alive }}"
+          service_conda_install="${{ inputs.service.conda_install }}"
+          service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
+          service_conda_install_dir="${{ inputs.service.conda_install_dir }}"
+          service_conda_env="${{ inputs.service.conda_env }}"
+          service_load_env="${{ inputs.service.load_env }}"
+          service_install_instructions="${{ inputs.service.install_instructions }}"
+          pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG} --slug status"
+          EOF
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh # remove var=""
+          # Add export= to all lines
+          sed -i 's/^/export /' inputs.sh
+          # Multi-line form values go to files: a line break would split a line of inputs.sh
+          cat <<'EOF' > dask-directives.txt
+          ${{ inputs.cluster.slurm.scheduler_directives }}
+          EOF
+          cat <<'EOF' > conda-env-form.yaml
+          ${{ inputs.service.yaml }}
+          EOF
+      - name: Set Up Install Parent Directory
+        run: |
+          source inputs.sh
+          # NOAA home directories are small: with no install directory given, Miniforge goes
+          # to the cluster's shared software tree if this account can write there. Probe by
+          # creating the directory rather than reading mode bits: the trees are group- or
+          # ACL-writable and list as root-owned.
+          if [ -z "${service_parent_install_dir:-}" ]; then
+            case "${{ inputs.resource.ip }}" in
+              hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
+              mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
+              ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
+              gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
+              *) shared="" ;;                                                    # PPAN, cloud clusters
+            esac
+            install_dir="${HOME}/pw/software"
+            if [ -n "${shared}" ] && mkdir -p "${shared}/${service_conda_install_dir}" 2> /dev/null; then
+              install_dir="${shared}"
+            fi
+            echo "export service_parent_install_dir=\"${install_dir}\"" >> inputs.sh
+            echo "::notice::Installing under ${install_dir}"
+          fi
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/dask-slurm/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT job.ended job.started WORKLOAD_DONE
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/dask-slurm/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  session_runner:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/noaa.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          # the service runs on the login node: it is the one that submits the worker jobs
+          scheduler: false
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::The Dask cluster service ended before its dashboard came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
+          host: ${{ inputs.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          budget: 300
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
+  workload:
+    needs:
+      - wait_for_endpoint
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Run the workloads
+        run: |
+          cd "${PW_PARENT_JOB_DIR}"
+          source inputs.sh
+          source dask-env.sh
+          command -v pw > /dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          endpoint_name="${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          for _i in $(seq 1 30); do
+            [ -s scheduler.json ] && break
+            sleep 2
+          done
+          [ -s scheduler.json ] || { echo "::error title=Error::The scheduler file was not written"; exit 1; }
+          echo "Dask dashboard: $(cat ENDPOINT_URL 2> /dev/null)"
+          echo "Scheduler file: ${PW_PARENT_JOB_DIR}/scheduler.json"
+          echo "Worker job script: ${PW_PARENT_JOB_DIR}/dask-worker.sbatch (logs in dask-worker-logs/)"
+          if [ "${service_workload}" != "none" ]; then
+            python -u workflows/dask-slurm/app/dask_demo.py --scheduler-file scheduler.json \
+              --workload "${service_workload}" --size "${service_workload_size:-small}" \
+              --timeout $(( ${service_workload_timeout:-30} * 60 ))
+          fi
+          touch WORKLOAD_DONE
+          if [ "${service_workload}" != "none" ] && [ "${service_keep_alive}" != "true" ]; then
+            echo "Keep alive is off: stopping the cluster"
+            touch STOP
+            for _i in $(seq 1 24); do
+              [ -f CLUSTER_CLOSED ] && break
+              sleep 5
+            done
+            if [ -f CLUSTER_CLOSED ]; then
+              echo "The cluster is closed and its worker jobs are cancelled; the endpoint ${endpoint_name} is gone"
+            else
+              echo "::warning::The service did not stop within 2 minutes; deleting its endpoint"
+              pw endpoints delete "${endpoint_name}" || true
+            fi
+          else
+            echo "=========================================="
+            echo "The Dask cluster keeps running"
+            echo "  Dashboard: $(cat ENDPOINT_URL 2> /dev/null)"
+            echo "  Connect from any node of the cluster:"
+            echo "    source ${PW_PARENT_JOB_DIR}/dask-env.sh"
+            echo "    python -c \"from dask.distributed import Client; client = Client(scheduler_file='${PW_PARENT_JOB_DIR}/scheduler.json'); print(client)\""
+            echo "  Worker jobs appear in squeue as dask-${PW_RUN_SLUG} while there is work"
+            echo "  Stop it with: pw endpoints delete ${endpoint_name}"
+            echo "=========================================="
+          fi
+        cleanup: |
+          # Cancelled or failed before the workloads finished: the cluster of a run that
+          # did not complete is stopped (its endpoint deleted if the service does not exit)
+          cd "${PW_PARENT_JOB_DIR}"
+          if [ ! -f WORKLOAD_DONE ]; then
+            command -v pw > /dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+            echo "The workloads did not finish; stopping the cluster"
+            touch STOP
+            for _i in $(seq 1 12); do
+              [ -f CLUSTER_CLOSED ] && break
+              sleep 5
+            done
+            [ -f CLUSTER_CLOSED ] || pw endpoints delete "${{ inputs.service.name }}-${PW_RUN_SLUG}" 2> /dev/null || true
+          fi
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: SLURM cluster
+        include-workspace: false
+        tooltip: |
+          The Dask scheduler and its dashboard run on this cluster's login node, and the
+          workers are SLURM jobs submitted there with sbatch: only a SLURM cluster works.
+      not_slurm:
+        label: Not a SLURM cluster
+        type: string
+        default: 'The selected resource has no SLURM scheduler: this workflow submits its Dask workers with sbatch and cannot run there'
+        disabled: true
+        optional: true
+        hidden: ${{ inputs.resource.schedulerType == 'slurm' }}
+        ignore: true
+      cluster:
+        type: group
+        label: SLURM Cluster
+        hidden: ${{ inputs.resource.schedulerType != 'slurm' }}
+        ignore: ${{ inputs.resource.schedulerType != 'slurm' }}
+        items:
+          slurm:
+            type: group
+            label: Dask Worker Jobs
+            items:
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account of the worker jobs'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              partition:
+                type: slurm-partitions
+                label: Partition
+                optional: true
+                resource: ${{ inputs.resource }}
+                tooltip: '--partition of the worker jobs; empty for the cluster default'
+              qos:
+                label: Quality of Service [QoS]
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos of the worker jobs'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              cores:
+                label: Cores per job
+                type: number
+                min: 1
+                default: 2
+                tooltip: |
+                  CPU cores of one worker job (SLURMCluster cores): the Dask threads of the job, split
+                  over its worker processes. All the cores of a node makes one job per node.
+              memory:
+                label: Memory per job
+                type: string
+                default: 4GB
+                tooltip: |
+                  Memory of one worker job (SLURMCluster memory, e.g. 4GB or 16GiB): the workers' memory
+                  limit, split over the processes. SLURM is only asked for it (--mem) when "Request memory
+                  from SLURM" is on.
+              processes:
+                label: Worker processes per job
+                type: number
+                optional: true
+                min: 1
+                tooltip: |
+                  Dask worker processes of one job (SLURMCluster processes), each with cores / processes
+                  threads. Empty for Dask's default (about the square root of the cores); 1 keeps numpy
+                  work in one process, the core count gives pure-Python work a process per core.
+              walltime:
+                label: Walltime
+                type: string
+                default: '01:00:00'
+                tooltip: '--time of the worker jobs (HH:MM:SS); a worker ends with its job and the cluster requests another while there is work'
+              min_jobs:
+                label: Minimum jobs
+                type: number
+                min: 0
+                default: 0
+                tooltip: Worker jobs the cluster keeps even when idle (cluster.adapt minimum_jobs); 0 lets every worker leave once the work is done
+              max_jobs:
+                label: Maximum jobs
+                type: number
+                min: 1
+                default: 4
+                tooltip: Worker jobs the cluster may run at once (cluster.adapt maximum_jobs)
+              mem_directive:
+                label: Request memory from SLURM
+                type: boolean
+                default: false
+                tooltip: |
+                  Yes → the worker jobs ask SLURM for "Memory per job" (#SBATCH --mem)
+                  No  → the directive is skipped: the platform's cloud clusters have no memory accounting and reject it
+              interface:
+                label: Network interface
+                type: string
+                optional: true
+                tooltip: Interface the scheduler and the workers talk over (SLURMCluster interface, e.g. ib0 on an InfiniBand cluster); empty for the default route
+              scheduler_directives:
+                type: editor
+                label: Extra SLURM directives
+                optional: true
+                tooltip: |
+                  Extra directives of the worker jobs, one per line with the #SBATCH prefix
+                  (SLURMCluster job_extra_directives). For example:
+                  #SBATCH --exclusive
+                  #SBATCH --constraint=<node-type>
+
+      service:
+        type: group
+        label: Dask Settings
+        items:
+          name:
+            type: string
+            hidden: true
+            default: dask
+          workload:
+            label: Workload
+            type: dropdown
+            default: all
+            options:
+              - value: all
+                label: All three demo workloads
+              - value: array
+                label: 'Array: mean of a dense matrix product'
+              - value: pi
+                label: 'Monte Carlo pi: many small tasks'
+              - value: dataframe
+                label: 'DataFrame: groupby and correlation over a time series'
+              - value: none
+                label: 'None: start the cluster and leave it to me'
+            tooltip: |
+              Demo computations the run submits to the cluster once its dashboard answers, so the
+              dashboard shows the worker jobs join and leave. None starts the cluster and completes
+              the run; connect from a node of the cluster with
+              Client(scheduler_file='<job directory>/scheduler.json').
+          workload_size:
+            label: Workload size
+            type: dropdown
+            default: small
+            hidden: ${{ inputs.service.workload == 'none' }}
+            ignore: ${{ .hidden }}
+            options:
+              - value: small
+                label: Small (seconds on a few cores)
+              - value: medium
+                label: Medium (about a minute on 8 cores)
+              - value: large
+                label: Large (minutes on 8 cores; sized for more workers)
+            tooltip: |
+              Array: 8,000 / 16,000 / 32,000 square matrices (1 / 8 / 66 TFLOP). Pi: 2 / 10 / 40 billion
+              points in 200 / 1,000 / 4,000 tasks. DataFrame: one month / six months / two years of
+              1-second rows.
+          workload_timeout:
+            label: Workload timeout (minutes)
+            type: number
+            min: 1
+            default: 30
+            hidden: ${{ inputs.service.workload == 'none' }}
+            ignore: ${{ .hidden }}
+            tooltip: Each workload must finish within this time, queueing and node boot included, or the run fails and the cluster is stopped
+          keep_alive:
+            label: Keep the cluster alive after the workloads
+            type: boolean
+            default: true
+            hidden: ${{ inputs.service.workload == 'none' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes → the scheduler and the dashboard keep running after the run completes (idle workers
+                    above the minimum leave on their own); stop them with pw endpoints delete dask-<run-slug>
+              No  → the run stops the cluster once the workloads are done and leaves no endpoint behind
+          conda_install:
+            label: Install Dask in a Miniforge environment if not there?
+            type: boolean
+            default: true
+            tooltip: Select Yes to install Dask, distributed and dask-jobqueue in a Miniforge (conda-forge) environment and No to load an existing Python environment that has them
+          parent_install_dir:
+            label: Parent Install Directory
+            type: string
+            optional: true
+            hidden: ${{ inputs.service.conda_install == false }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Software dependencies are installed in this directory. Leave empty for the cluster's shared
+              software tree when this account can write there (/contrib/pw on Hera, Mercury and Ursa,
+              /usw/rdhpcs/software/pw on Gaea), ${HOME}/pw/software otherwise. Ensure the directory has
+              sufficient space!
+          conda_install_dir:
+            label: Name of the Conda Installation Directory
+            type: string
+            default: .miniforge3-dask
+            hidden: ${{ inputs.service.conda_install == false }}
+            ignore: ${{ .hidden }}
+            tooltip: Ensure the directory has sufficient space for Conda and its packages.
+          conda_env:
+            label: Conda environment
+            type: string
+            default: base
+            hidden: ${{ inputs.service.conda_install == false }}
+            optional: ${{ .hidden }}
+            ignore: ${{ .hidden }}
+            tooltip: Environment to activate. Dask is installed into it when missing.
+          load_env:
+            label: Command to load a Python environment with Dask
+            type: string
+            default: source ${HOME}/pw/software/.miniforge3-dask/etc/profile.d/conda.sh; conda activate base
+            hidden: ${{ inputs.service.conda_install == true }}
+            optional: ${{ .hidden }}
+            ignore: ${{ .hidden }}
+            tooltip: A bash command that puts a python with dask, distributed, dask-jobqueue, bokeh, numpy and pandas on the PATH, e.g. module load python; source ~/venvs/dask/bin/activate
+          install_instructions:
+            label: Select Dask Installation
+            type: dropdown
+            hidden: ${{ inputs.service.conda_install == false }}
+            ignore: ${{ .hidden }}
+            default: dask2026.8.0-python3.14.7
+            options:
+              - value: dask2026.8.0-python3.14.7
+                label: Dask 2026.8.0 and dask-jobqueue 0.9.0 with Python 3.14.7
+              - value: latest
+                label: Latest versions of Dask, dask-jobqueue and Miniforge (not thoroughly tested)
+              - value: yaml
+                label: Provide custom Conda environment YAML file
+          yaml:
+            label: Paste Conda Environment Definition YAML
+            type: editor
+            hidden: ${{ inputs.service.install_instructions != 'yaml' || inputs.service.conda_install == false }}
+            optional: ${{ .hidden }}
+            ignore: ${{ .hidden }}
+            tooltip: Copy and paste a custom Conda environment definition YAML file with dask, distributed, dask-jobqueue, bokeh, numpy and pandas

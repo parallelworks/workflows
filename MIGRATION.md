@@ -994,3 +994,26 @@ the container outlives it behind `filebrowser-<run-slug>`.
 HPCMP and NOAA systems the `hsp`/`noaa` submitters target); no `restart:` policy on the
 container, so a File Browser that dies ends `compose logs -f`, the endpoint wrapper and
 the job, as a crashed server does elsewhere here.
+
+**Tests (2026-10-07, `pw://alvaro/gcpsmall`, branch `filebrowser`; rows in
+`workflows/filebrowser/tests/general/*.csv`):**
+
+| Test | Result |
+|---|---|
+| `gcp-controller` (login node, platform login only, the form's defaults) | PASS `real-oyster` (cold: database created, 37 s), recorded `cleanup=leftover:proc:filebrowser` because the test's own `leftover_commands` snippet contained the pattern `filebrowser` verbatim and the runner's check shell is in the process list (`tools/tests/README.md`); the container had been removed three seconds after the delete. Re-run `amusing-badger` (warm, 37 s) with the fixed test: `cleanup=ok` |
+| `gcp-controller-users` (login node, File Browser users with a password, root directory `${HOME}`) | PASS `crack-duckling` (38 s): the existing database switched to `json` and the admin password was updated. Its log showed the password once, from the `-n` test running under xtrace (fixed); re-run `profound-mako` (32 s, kept for the checks below) shows it nowhere |
+| `gcp-compute` (SLURM job on the `compute` partition) | PASS `distinct-cardinal` (163 s, node powering up): image pulled and container run on the compute node |
+
+Manual, on `profound-mako` (JSON auth): an anonymous GET of the endpoint URL gets the
+platform's `307`; with the platform token `/` and `/health` answer `200`, `POST /api/login`
+answers `200` with the form's password and `403` with a wrong one, `/api/resources/` answers
+`401` without File Browser's token and `200` with it, listing the home directory.
+`pw endpoints delete` ran the trap and `cancel.sh`: container and network removed, no
+process left. **Cancel during start-up** (`novel-bass`, cancelled 11 s after launch, right
+after the endpoint registered and before the health check released the run): run
+`canceled`, the submitter's cleanup deleted the endpoint, the trap removed the container
+and network, no skip file, no process and no endpoint record left.
+
+Not exercised: PBS, a path-based endpoint (`--no-subdomain`: `FB_BASE_URL` was verified by
+hand against the image only) and a host without `sudo` (rootless Docker is not attempted,
+unlike `n8n-docker`). The YAML's checkout points at `canary` for the merge.

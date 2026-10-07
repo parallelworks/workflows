@@ -9,7 +9,7 @@ the dashboard shows the worker jobs join, compute and leave, then completes with
 cluster still running (or stopped, by choice). SLURM clusters only: the form says so
 on any other resource and preprocessing fails before installing anything.
 
-![A scheduler feeding three SLURM worker jobs](thumbnails/dask-slurm.png)
+![The Dask logo](thumbnails/dask-slurm.png)
 
 ## How it works
 

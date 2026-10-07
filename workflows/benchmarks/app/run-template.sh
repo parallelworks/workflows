@@ -13,7 +13,11 @@ f_exit() {
     local rc=$?
     echo "${rc}" > "${job_dir}/benchmark.exit"
     if [ -n "${io_run_dir}" ]; then
-        rm -rf "${io_run_dir}"
+        # ranks on other nodes may still be creating files until the scheduler ends them
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            rm -rf "${io_run_dir}" 2> /dev/null && break
+            sleep 2
+        done
         if [ "${io_root}" = "${job_dir}/io" ]; then
             rmdir "${io_root}" 2> /dev/null || true
         fi
@@ -25,15 +29,28 @@ trap f_exit EXIT
 # The benchmark runs in its own process group (set -m below), so the trap ends it
 # before the exit trap removes the I/O directory: IOR ranks finish the I/O in
 # flight before they honour SIGTERM and keep creating files meanwhile.
+f_tree() {
+    # the processes and their descendants, children first
+    local pid child
+    for pid in "$@"; do
+        for child in $(pgrep -P "${pid}" 2> /dev/null); do
+            f_tree "${child}"
+        done
+        echo "${pid}"
+    done
+}
 f_killed() {
     trap - HUP INT TERM
     if [ -n "${bench_pid:-}" ] && kill -0 "${bench_pid}" 2> /dev/null; then
-        kill -TERM -- "-${bench_pid}" 2> /dev/null || true
-        for _ in 1 2 3 4 5 6 7 8 9 10; do
+        # the group and the tree, taken before the first kill: Open MPI puts the local
+        # ranks in process groups of their own, and once mpirun is gone they are orphans
+        tree=$(f_tree "${bench_pid}")
+        kill -TERM -- "-${bench_pid}" ${tree} 2> /dev/null || true
+        for _ in 1 2 3 4 5; do
             kill -0 "${bench_pid}" 2> /dev/null || break
             sleep 1
         done
-        kill -KILL -- "-${bench_pid}" 2> /dev/null || true
+        kill -KILL -- "-${bench_pid}" ${tree} 2> /dev/null || true
         wait "${bench_pid}" 2> /dev/null || true
     fi
     exit "$1"

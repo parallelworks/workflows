@@ -1,0 +1,24 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "warm_marker": "${HOME}/metabase/metabase.db/metabase.db.mv.db",
+    "leftover_patterns": [
+      "metabase.jar",
+      "docker compose",
+      "pw endpoints run"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "01:00:00"
+    }
+  },
+  "service": {
+    "data_dir": "${HOME}/metabase",
+    "image": "metabase/metabase:v0.64.1"
+  }
+}

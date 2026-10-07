@@ -951,69 +951,47 @@ from a cloud cluster), the Kubernetes lanes on `k3sgpu`.
 ## filebrowser (2026-10-07, from parallelworks/filebrowser_workflow)
 
 `workflows/filebrowser/` is the endpoint-pattern port of `parallelworks/filebrowser_workflow@canary`
-(61d70c2), the [File Browser](https://filebrowser.org) web file manager
-(`filebrowser/filebrowser:v2.50.0`) with Docker Compose. The source served it through a
-platform **session** (`sessions:` block, `pw agent open-port`, `parallelworks/update-session`,
-a job that kept the run alive on `docker compose up`), with `FB_BASE_URL` set to the
-session's path prefix. Here it is the repository's shape: preprocessing →
-`script_submitter` → `wait_for_endpoint`; the run completes once the endpoint answers and
-the container outlives it behind `filebrowser-<run-slug>`.
+(61d70c2): [File Browser](https://filebrowser.org) (`filebrowser/filebrowser:v2.50.0`) with
+Docker Compose. The source served it through a platform session (`sessions:` block,
+`pw agent open-port`, `parallelworks/update-session`, the run alive on `docker compose up`).
 
 | Old | New |
 |---|---|
-| `workflow.yaml` (jobs `prep`, `filebrowser`, `create_session`; inputs `resource`, `rundir`) | `yamls/general.yaml` (`preprocessing`, `session_runner`, `wait_for_endpoint`; the `cluster`/`service` groups of `open-notebook`) |
-| the compose file and `docker compose up` written inline in the YAML | `app/controller.sh` (creates the mounted directories), `app/start-template.sh` (Docker detection and image pull as `open-notebook`, the database bootstrap, the compose stack behind `pw endpoints run`, `cancel.sh` = `compose down`) |
-| `README.md` | `README.md`, rewritten: the source's text described a different project (the PHP "FileBrowser" at `filebrowser.linuxforphp.net`, with Flysystem adapters and a Vue/Bulma front end), not the Go `filebrowser/filebrowser` the workflow runs |
+| `workflow.yaml` (jobs `prep`, `filebrowser`, `create_session`; inputs `resource`, `rundir`) | `yamls/general.yaml` (preprocessing → `script_submitter` → `wait_for_endpoint`; `open-notebook`'s `cluster`/`service` groups) |
+| compose file and `docker compose up` inline in the YAML | `app/controller.sh` (mounted directories), `app/start-template.sh` (Docker detection and pull as `open-notebook`, database bootstrap, compose stack behind `pw endpoints run`, `cancel.sh` = `compose down`) |
+| `README.md` | rewritten: the source's text described the PHP "FileBrowser", a different project |
 | `thumbnail.png` | `thumbnails/filebrowser.png` |
 
-**Code changes beyond the paths:**
+Changes beyond the paths:
 
-- **Base URL.** `FB_BASE_URL` comes from `PW_ENDPOINT_PATH` without its trailing slash:
-  empty on a subdomain endpoint, the `/me/session/<user>/<name>` prefix on a path-based
-  one (`--no-subdomain`), so one launcher serves both (verified by hand on gcpsmall: the
-  page's asset links carry the prefix).
-- **The container runs as the workflow user** (`user: <uid>:<gid>` in the compose file)
-  instead of the image's uid 1000, which the source tried to accommodate with a
-  `chown 1000:1000` that a non-root user cannot perform. Files created through the UI
-  belong to the user; the image's `init.sh` only warns that it cannot preserve the
-  ownership of the default settings file it copies.
-- **Authentication is a form choice applied on every start.** The source left File
-  Browser's JSON login with whatever credentials its quick setup produced (v2.50.0 prints a
-  random admin password in the container log). The form offers *Platform login only*
-  (`noauth`, the default: the endpoint already requires the platform login) and *File
-  Browser users* (`json`) with an optional admin password. Because `--noauth` and
-  `--password` only act when the database is created, the launcher bootstraps and updates
-  the database through the CLI (`config init`/`users add` the first time, `config set
-  --auth.method`/`users update admin --password` afterwards, with `docker compose run`),
-  so changing the dropdown or the password on a later run takes effect.
-- **Form.** `rundir` keeps its meaning (`config/` and `database/`, default
-  `${HOME}/filebrowser`); the served directory, `<rundir>/data` in the source, is the
-  visible **Root Directory** (`data_dir`, same default), and the image is an input.
+- `FB_BASE_URL` is `PW_ENDPOINT_PATH` without its trailing slash: empty on a subdomain
+  endpoint, the `/me/session/<user>/<name>` prefix on a path-based one.
+- The container runs as the workflow user (`user: <uid>:<gid>`) instead of uid 1000; the
+  source's `chown 1000:1000` needed root.
+- Authentication is a form choice applied on every start: *Platform login only*
+  (`noauth`, default) or *File Browser users* (`json`) with an optional admin password.
+  `--noauth`/`--password` only act when the database is created, so the launcher uses
+  the CLI (`config init`/`users add` the first time, `config set`/`users update`
+  afterwards).
+- The served directory (`<rundir>/data` in the source) is the visible **Root Directory**
+  with the same default; the image is an input.
 
-**Judgment calls:** `general` only, as `open-notebook` (Docker is not available on the
-HPCMP and NOAA systems the `hsp`/`noaa` submitters target); no `restart:` policy on the
-container, so a File Browser that dies ends `compose logs -f`, the endpoint wrapper and
-the job, as a crashed server does elsewhere here.
+`general` only, as `open-notebook` (no Docker on the HPCMP and NOAA systems). No
+`restart:` policy: a File Browser that dies ends `compose logs -f`, the wrapper and the job.
 
 **Tests (2026-10-07, `pw://alvaro/gcpsmall`, branch `filebrowser`; rows in
 `workflows/filebrowser/tests/general/*.csv`):**
 
 | Test | Result |
 |---|---|
-| `gcp-controller` (login node, platform login only, the form's defaults) | PASS `real-oyster` (cold: database created, 37 s), recorded `cleanup=leftover:proc:filebrowser` because the test's own `leftover_commands` snippet contained the pattern `filebrowser` verbatim and the runner's check shell is in the process list (`tools/tests/README.md`); the container had been removed three seconds after the delete. Re-run `amusing-badger` (warm, 37 s) with the fixed test: `cleanup=ok` |
-| `gcp-controller-users` (login node, File Browser users with a password, root directory `${HOME}`) | PASS `crack-duckling` (38 s): the existing database switched to `json` and the admin password was updated. Its log showed the password once, from the `-n` test running under xtrace (fixed); re-run `profound-mako` (32 s, kept for the checks below) shows it nowhere |
-| `gcp-compute` (SLURM job on the `compute` partition) | PASS `distinct-cardinal` (163 s, node powering up): image pulled and container run on the compute node |
+| `gcp-controller` (login node, form defaults) | PASS `real-oyster` (cold, 37 s; recorded `leftover:proc:filebrowser` because the test's `leftover_commands` snippet contained the pattern verbatim, see `tools/tests/README.md`), `amusing-badger` (warm, 37 s, `cleanup=ok`) |
+| `gcp-controller-users` (File Browser users with a password, root `${HOME}`) | PASS `crack-duckling` (38 s: existing database switched to `json`, password updated; its log showed the password once, from a test under xtrace, fixed), `profound-mako` (32 s, kept for the manual checks) |
+| `gcp-compute` (SLURM job, `compute` partition) | PASS `distinct-cardinal` (163 s, node powering up) |
 
-Manual, on `profound-mako` (JSON auth): an anonymous GET of the endpoint URL gets the
-platform's `307`; with the platform token `/` and `/health` answer `200`, `POST /api/login`
-answers `200` with the form's password and `403` with a wrong one, `/api/resources/` answers
-`401` without File Browser's token and `200` with it, listing the home directory.
-`pw endpoints delete` ran the trap and `cancel.sh`: container and network removed, no
-process left. **Cancel during start-up** (`novel-bass`, cancelled 11 s after launch, right
-after the endpoint registered and before the health check released the run): run
-`canceled`, the submitter's cleanup deleted the endpoint, the trap removed the container
-and network, no skip file, no process and no endpoint record left.
-
-Not exercised: PBS, a path-based endpoint (`--no-subdomain`: `FB_BASE_URL` was verified by
-hand against the image only) and a host without `sudo` (rootless Docker is not attempted,
-unlike `n8n-docker`). The YAML's checkout points at `canary` for the merge.
+Manual on `profound-mako`: anonymous GET → `307`; with the platform token `/` → `200`,
+`POST /api/login` → `200`/`403` with the right/wrong password, `/api/resources/` → `401`
+without File Browser's token and `200` with it; `pw endpoints delete` removed container
+and network, no process left. Cancel 11 s after launch (`novel-bass`, endpoint just
+registered): run `canceled`, endpoint deleted by the submitter's cleanup, container and
+network removed, no skip file. Not exercised: PBS, a path-based endpoint, a host without
+`sudo`. The checkout points at `canary` for the merge.

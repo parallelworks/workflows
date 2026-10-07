@@ -71,9 +71,10 @@ workers), `benchmarks` (one MPI or file system benchmark as a SLURM/PBS job),
 serves through a **`pw` endpoint** (`pw endpoints list`) named
 `<service>-${PW_RUN_SLUG}`. `dakota-openfoam` is both: a batch optimization loop that
 joins those last two as subworkflows and serves its live Pareto front as an endpoint;
-its server only ever runs on the login node, so it is the one workflow that starts
+its server only ever runs on the login node, so it starts
 `pw endpoints run` detached from a plain step (`tutorials/endpoint-workflows` Stage 3)
-instead of through the submitter below. On a compute cluster,
+instead of through the submitter below; `app-testbed` does the same, at a fixed endpoint
+name (`apptest`) that a re-run reuses. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through
@@ -136,7 +137,8 @@ To convert an older workflow to this pattern, follow
   `pw endpoints` — see the `endpoint_name` input in `workflows/ollama/yamls/general.yaml`.
   `hpc_status` keeps the fixed name its users know (`hpc-status`): a fixed name has to be
   freed in preprocessing, before `wait_for_endpoint` looks it up, or the wait finds the
-  previous instance answering (its `controller.sh`).
+  previous instance answering (its `controller.sh`); `app-testbed` wants exactly that and
+  reuses the instance at `apptest` unless **Restart server** is on.
 - The `wait_for_endpoint` job is two steps: the `wait_for_endpoint` subworkflow
   (`uses: github/parallelworks/workflows@canary`,
   `$yaml: workflows/wait_for_endpoint/general.yaml`, with `early-cancel: any-job-failed`)

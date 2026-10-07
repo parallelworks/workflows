@@ -1,0 +1,37 @@
+Run composed-kite: error (1m9s)
+Reason: executorExitedEarly
+
+Error annotations:
+
+  Error: server not reachable on 127.0.0.1:8097 (is the port free? pid '', wrapper '')
+    in start_server → Start server
+
+Failed jobs/steps:
+
+  start_server > Start server (error, 0s)
+    Error: server not reachable on 127.0.0.1:8097 (is the port free? pid '', wrapper '')
+    starting: pw endpoints run --port 8097 --subdomain apptest --name apptest -- python3 /home/alvaro/app-testbed/server.py {port}
+    ✗ Error: server not reachable on 127.0.0.1:8097 (is the port free? pid '', wrapper '')
+    --- /home/alvaro/app-testbed/endpoint.log ---
+    2026-10-07T15:46:13Z [INFO] Creating endpoint...
+    Endpoint "apptest" serving localhost:8097
+      https://apptest.activate.pw/
+    Press Ctrl+C to stop.
+    
+    
+    Endpoint live at https://apptest.activate.pw/
+    
+    Endpoint "apptest" deleted.
+    2026-10-07T15:46:13Z [ERROR] exit status 1
+    --- /home/alvaro/app-testbed/server.log ---
+    Traceback (most recent call last):
+      File "/home/alvaro/app-testbed/server.py", line 150, in <module>
+        Server(("127.0.0.1", PORT), Handler).serve_forever()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      File "/usr/lib/python3.12/socketserver.py", line 457, in __init__
+        self.server_bind()
+      File "/usr/lib/python3.12/socketserver.py", line 473, in server_bind
+        self.socket.bind(self.server_address)
+    OSError: [Errno 98] Address already in use
+
+Summary: 1 job(s) failed, 1 step(s) failed

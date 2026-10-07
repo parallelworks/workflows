@@ -1,0 +1,276 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+# Reference pattern for a multi-site client-server deployment: a service on one
+# cluster, exposed through a pw endpoint at a fixed address, with workers on
+# other clusters that register over HTTP and hold a WebSocket, reaching the
+# service through SSH tunnels. Workers run on login nodes or as SLURM/PBS
+# batch jobs.
+#
+# The server and worker are minimal stand-ins (stdlib Python, in app/) so the
+# workflow runs anywhere with python3 and the pw CLI. To adapt this to a real
+# application, replace app/server.py and app/worker.py with your own service
+# and client; the deployment pattern (endpoint, tunnels with the websocket
+# probe, remote dispatch, scheduler submission, supervised connect) is the
+# reusable part and needs no changes.
+#
+# Job graph (all jobs run on the server host; worker sites are reached from
+# it over pw ssh):
+#
+#   preprocessing -- start_server --+-- wait_for_endpoint
+#                                   +-- dispatch_workers
+#
+# The server is started detached behind `pw endpoints run` and outlives the
+# run; a re-run finds it and attaches, and deleting the endpoint stops it.
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.server.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/app-testbed/app
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOT' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          deploy_server="${{ inputs.services.deploy_server }}"
+          restart_server="${{ inputs.services.restart_server }}"
+          server_workdir="${{ inputs.app.workdir }}"
+          server_subdomain="${{ inputs.app.subdomain }}"
+          server_port="${{ inputs.app.server_port }}"
+          wait_for_workers="${{ inputs.app.wait_for_workers }}"
+          tunnel_method="${{ inputs.app.tunnel_method }}"
+          server_resource_uri="${{ inputs.server.resource.uri }}"
+          server_resource_name="${{ inputs.server.resource.name }}"
+          server_resource_user="${{ inputs.server.resource.user }}"
+          EOT
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh # remove var=""
+          # Add export= to all lines
+          sed -i 's/^/export /' inputs.sh
+          # The worker rows are JSON; the dispatcher reads them from this file
+          cat <<'EOT' > workers.json
+          ${{ inputs.workers }}
+          EOT
+          # The endpoint is named after its subdomain, the same every run
+          subdomain="${{ inputs.app.subdomain }}"
+          echo "ENDPOINT_NAME=${subdomain:-apptest}" | tee -a $OUTPUTS
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script prepares the server host and always runs on its login node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/app-testbed/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+
+  start_server:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.server.resource.ip }}
+    steps:
+      - name: Start server
+        run: |
+          source "${PW_PARENT_JOB_DIR}/inputs.sh"
+          bash workflows/app-testbed/app/start-server.sh
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+      - start_server
+    if: ${{ inputs.services.deploy_server != false }}
+    ssh:
+      remoteHost: ${{ inputs.server.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ needs.preprocessing.outputs.ENDPOINT_NAME }}
+          host: ${{ inputs.server.resource.ip }}
+      - name: Publish URL
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          endpoint_name="${{ needs.preprocessing.outputs.ENDPOINT_NAME }}"
+          URL=$(pw endpoints list | awk -F'\t' -v name="${endpoint_name}" '$1 == name {print $3}')
+          echo "server is up: ${URL} (worker status at ${URL%/}/workers)"
+          echo "::notice::Server: ${URL} - stop it with: pw endpoints delete ${endpoint_name}"
+          echo "URL=${URL}" | tee -a $OUTPUTS
+
+  dispatch_workers:
+    needs:
+      - preprocessing
+      - start_server
+    ssh:
+      remoteHost: ${{ inputs.server.resource.ip }}
+    steps:
+      - name: Dispatch workers to sites
+        run: |
+          source "${PW_PARENT_JOB_DIR}/inputs.sh"
+          bash workflows/app-testbed/app/dispatch_workers.sh
+
+'on':
+  execute:
+    inputs:
+      server:
+        label: Server host
+        type: group
+        collapsed: false
+        items:
+          resource:
+            label: Cluster
+            type: compute-clusters
+            autoselect: true
+            tooltip: |
+              Cluster for the server and its endpoint session. The server
+              runs on the node the workflow lands on.
+      services:
+        label: Services
+        type: group
+        collapsed: false
+        items:
+          deploy_server:
+            label: Deploy server
+            type: boolean
+            default: true
+            tooltip: |
+              Off: leave any already-running server untouched, e.g. for
+              workers-only runs against a live server.
+          restart_server:
+            label: Restart server if already running
+            type: boolean
+            default: false
+      app:
+        label: Settings
+        type: group
+        collapsed: true
+        items:
+          workdir:
+            label: Server working directory
+            type: string
+            default: ~/app-testbed
+          subdomain:
+            label: Session subdomain
+            type: string
+            default: apptest
+          server_port:
+            label: Server port
+            type: number
+            default: 8090
+          wait_for_workers:
+            label: Wait for workers to connect
+            type: boolean
+            default: true
+            tooltip: |
+              On: the dispatch blocks until each worker connects and the
+              run fails otherwise; keep on when the run result is used
+              to verify tunnel behavior. Off: submit and finish the run.
+          tunnel_method:
+            label: Tunnel method (auto | ssh | pw-forward)
+            type: string
+            default: auto
+            tooltip: |
+              auto: plain ssh via the platform proxy command when the pwcli
+              key exists, otherwise pw forward. ssh: always plain ssh.
+              pw-forward: always pw forward; use this to verify whether a
+              pw CLI release passes websocket upgrades (the dispatch fails
+              if upgrades do not traverse the tunnel).
+      workers:
+        label: Worker sites
+        type: list
+        tooltip: |
+          Clusters to run a worker on. The server host connects directly
+          on localhost; other sites reach the server through a persistent
+          SSH tunnel to the server host.
+        template:
+          resource:
+            label: Resource
+            type: compute-clusters
+          worker_name:
+            label: Worker name (blank = worker-<user>-<hostname>)
+            type: string
+            default: ""
+          workdir:
+            label: Worker working directory
+            type: string
+            default: ~/app-testbed-worker
+          scheduler:
+            label: Submit via scheduler?
+            type: boolean
+            default: false
+            tooltip: |
+              Off: the worker runs on the site's login/mgmt node. On: the
+              worker is submitted as a batch job (SLURM or PBS, detected
+              from the resource) and runs on a compute node for the
+              job's walltime.
+          slurm:
+            label: SLURM directives
+            type: group
+            hidden: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
+            items:
+              partition:
+                label: Partition
+                type: slurm-partitions
+                resource: ${{ inputs.workers.[index].resource }}
+              account:
+                label: Account
+                type: slurm-accounts
+                resource: ${{ inputs.workers.[index].resource }}
+              qos:
+                label: QoS
+                type: slurm-qos
+                resource: ${{ inputs.workers.[index].resource }}
+                optional: true
+              cpus_per_task:
+                label: CPUs per task
+                type: number
+                default: 1
+                tooltip: CPUs for the worker job (--cpus-per-task)
+              time:
+                label: Walltime
+                type: string
+                default: "01:00:00"
+              scheduler_directives:
+                label: Additional directives
+                type: editor
+                optional: true
+                tooltip: |
+                  Extra SLURM directives inserted into the batch script
+                  verbatim; include the #SBATCH prefix on each line.
+                default: "##SBATCH --exclusive  # example; uncomment or replace with site-specific directives"
+          pbs:
+            label: PBS directives
+            type: group
+            hidden: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
+            items:
+              account:
+                label: Account
+                type: string
+                default: ""
+                tooltip: PBS account string for job submission (-A)
+              scheduler_directives:
+                label: Directives
+                type: editor
+                tooltip: |
+                  Inserted into the batch script verbatim; keep the #PBS
+                  prefix on each line. -N, -o, -j and -V come from the
+                  workflow. Add account (-A) and select lines as the
+                  system requires.
+                default: |
+                  #PBS -q debug
+                  #PBS -l select=1:ncpus=1
+                  #PBS -l walltime=00:30:00

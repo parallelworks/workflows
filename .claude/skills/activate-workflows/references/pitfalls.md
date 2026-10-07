@@ -397,3 +397,9 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   deregistering. When the submitter's own cleanup does the killing (a failed health check),
   the log shows `Endpoint "<name>" deleted.` instead. A `stopped` record is inert, but a
   cancel-cleanup check should look at `pw endpoints list` too and delete what it finds.
+- **`pw endpoints run` substitutes `{port}` inside a longer argument** (verified 2026-10-07,
+  `workflows/app-testbed`): `-- sh -c "exec python3 server.py {port} >> server.log 2>&1"`
+  works, and `--port N` pins the port when a client must know it (a worker's tunnel).
+- **A run can leave `~/.ssh/pwcli` on a cloud login node** (observed 2026-10-07, gcpsmall):
+  the key was absent before the first app-testbed run and present after it, so a script
+  that branches on the key's presence can take another branch on a node a run has used.

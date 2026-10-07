@@ -1,0 +1,32 @@
+{#-
+  Fallback chat template for models whose tokenizer defines none (common for
+  base/completion-only checkpoints such as allenai/OLMo-2-0425-1B -- as of
+  transformers v4.44, vLLM's OpenAI-compatible /v1/chat/completions endpoint
+  hard-errors instead of falling back to an implicit default in that case).
+  Only used by start-template.sh when the model directory has no
+  chat_template of its own and the workflow's `model.chat_template` input is
+  left blank -- see that script for the detection logic.
+
+  Renders the "### Instruction:\n<user>\n\n### Response:\n<assistant>"
+  (Alpaca) layout, the convention such checkpoints are instruction-tuned
+  against, so a fine-tuned base model is served in the format it was trained
+  on. Multi-turn history renders as repeated pairs of the same two headers.
+-#}
+{%- if messages[0]['role'] == 'system' -%}
+{{ messages[0]['content'] }}{{ "\n\n" }}
+{%- set messages = messages[1:] -%}
+{%- endif -%}
+{%- for message in messages -%}
+{%- if message['role'] == 'user' -%}
+### Instruction:
+{{ message['content'] }}
+
+{% elif message['role'] == 'assistant' -%}
+### Response:
+{{ message['content'] }}
+
+{% endif -%}
+{%- endfor -%}
+{%- if add_generation_prompt -%}
+### Response:
+{% endif -%}

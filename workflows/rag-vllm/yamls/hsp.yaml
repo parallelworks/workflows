@@ -47,6 +47,7 @@ jobs:
           hf_token="${{ inputs.model.hf_token }}"
           cached_model_id="${{ inputs.model.cached_model_id }}"
           model_cache_dir="${{ inputs.model.cache_dir }}"
+          chat_template_override="${{ inputs.model.chat_template }}"
           vllm_attention_backend="${{ inputs.vllm.attention_backend }}"
           rag_docsdir="${{ inputs.rag.docsdir }}"
           rag_max_tokens="${{ inputs.rag.max_tokens }}"
@@ -635,6 +636,20 @@ jobs:
             tooltip: Directory holding downloaded and pre-cached models ($PROJECTS_HOME defaults to $HOME/pw if unset). Ensure sufficient disk space.
             hidden: ${{ inputs.model.source == 'local' }}
             ignore: ${{ inputs.model.source == 'local' }}
+          chat_template:
+            type: string
+            label: Chat Template Override
+            optional: true
+            default: ""
+            tooltip: >
+              Path (on the cluster) to a Jinja2 chat template file, for models
+              whose tokenizer does not ship one -- as of transformers v4.44,
+              vLLM's chat endpoint errors instead of falling back to a default
+              ("default chat template is no longer allowed"), which affects
+              base/completion-only checkpoints such as OLMo. Leave blank to
+              auto-detect: the tokenizer's own template is used when present,
+              otherwise this workflow falls back to a bundled Alpaca-style
+              template matching the finetuning workflow's training format.
 
       vllm:
         type: group

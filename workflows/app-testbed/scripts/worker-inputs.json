@@ -1,0 +1,56 @@
+{
+  "server": {
+    "resource": {
+      "$type": "computeResource",
+      "id": "",
+      "ip": "REPLACE_WITH_IP",
+      "name": "cluster-a",
+      "namespace": "OWNER",
+      "provider": "REPLACE",
+      "schedulerType": "slurm",
+      "type": "REPLACE",
+      "uri": "pw://OWNER/cluster-a",
+      "user": "OWNER"
+    }
+  },
+  "services": {
+    "deploy_server": true,
+    "restart_server": false
+  },
+  "app": {
+    "workdir": "~/app-testbed",
+    "subdomain": "apptest",
+    "server_port": 8090,
+    "tunnel_method": "auto",
+    "wait_for_workers": true
+  },
+  "workers": [
+    {
+      "resource": {
+        "$type": "computeResource",
+        "id": "",
+        "ip": "REPLACE_WITH_IP",
+        "name": "cluster-b",
+        "namespace": "OWNER",
+        "provider": "REPLACE",
+        "schedulerType": "slurm",
+        "type": "REPLACE",
+        "uri": "pw://OWNER/cluster-b",
+        "user": "OWNER"
+      },
+      "worker_name": "",
+      "workdir": "~/app-testbed-worker",
+      "scheduler": false,
+      "slurm": {
+        "partition": "",
+        "account": "",
+        "time": "01:00:00",
+        "extra": ""
+      },
+      "pbs": {
+        "account": "",
+        "scheduler_directives": "#PBS -q debug\n#PBS -l select=1:ncpus=1\n#PBS -l walltime=00:30:00\n"
+      }
+    }
+  ]
+}

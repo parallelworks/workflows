@@ -9,13 +9,21 @@
 # output to the run log. The results job checks the exit status, writes the
 # result tables as CSV and publishes the headline figures as outputs. The run
 # completes when the benchmark does and fails when it fails.
+#
+# The NOAA (noaa.parallel.works) form: the resource is the top-level input, the job
+# goes through the noaa script submitter, the SLURM group adds the Account and QoS
+# fields (shown for on-prem `existing` resources), the layout also reaches the
+# submitter through its ntasks and nodes inputs (it writes them after the
+# directives there), and the install directory defaults to the cluster's shared
+# software tree when this account can write to it. On a cloud cluster it behaves
+# like general.yaml.
 permissions:
   - '*'
 
 jobs:
   preprocessing:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Checkout
         uses: parallelworks/checkout
@@ -74,6 +82,25 @@ jobs:
               ;;
           esac
           cat inputs.sh
+          # NOAA home directories are small: with no install directory given, the builds
+          # (and a conda-forge OpenMPI, 2 GB) go to the cluster's shared software tree if
+          # this account can write there. Probe by creating the directory rather than
+          # reading mode bits: the trees are group- or ACL-writable and list as root-owned.
+          if [ -z "${service_parent_install_dir:-}" ]; then
+            case "${{ inputs.resource.ip }}" in
+              hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
+              mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
+              ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
+              gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
+              *) shared="" ;;                                                    # PPAN, cloud clusters
+            esac
+            install_dir="${HOME}/pw/software"
+            if [ -n "${shared}" ] && mkdir -p "${shared}/benchmarks" 2> /dev/null; then
+              install_dir="${shared}"
+            fi
+            echo "export service_parent_install_dir=\"${install_dir}\"" >> inputs.sh
+            echo "::notice::Installing under ${install_dir}"
+          fi
       # the environment is one file the build and the job script source; the heredoc
       # carries the form's load commands verbatim, and an empty snippet makes
       # prepare-env.sh run the installer, which detects or installs an MPI
@@ -126,13 +153,13 @@ jobs:
   benchmark:
     needs: [preprocessing]
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Run the Benchmark
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: workflows/script_submitter/v3.6/general.yaml
-          resource: ${{ inputs.cluster.resource }}
+          $yaml: workflows/script_submitter/v3.6/noaa.yaml
+          resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
           # the submitter cds into the run's job directory, where benchmark.sh and results/ are
           rundir: ${{ env.PW_PARENT_JOB_DIR }}
@@ -145,10 +172,15 @@ jobs:
           submit_and_exit: false
           slurm:
             is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            account: ${{ inputs.cluster.slurm.account }}
             partition: ${{ inputs.cluster.slurm.partition }}
+            qos: ${{ inputs.cluster.slurm.qos }}
+            # the noaa submitter writes --ntasks and --nodes for `existing` resources
+            # after the directives below, so the layout must reach it through these
+            # two; the directives cover every other resource
+            ntasks: ${{ inputs.cluster.nodes * inputs.cluster.ntasks_per_node }}
+            nodes: ${{ inputs.cluster.nodes }}
             time: ${{ inputs.cluster.slurm.time }}
-            # the layout goes first so a directive typed in the form can still override
-            # it: sbatch and qsub keep the last value of a repeated option
             scheduler_directives: |
               #SBATCH --nodes=${{ inputs.cluster.nodes }}
               #SBATCH --ntasks-per-node=${{ inputs.cluster.ntasks_per_node }}
@@ -164,7 +196,7 @@ jobs:
   results:
     needs: [preprocessing, benchmark]
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Check the Exit Status
         run: |
@@ -195,20 +227,20 @@ jobs:
 'on':
   execute:
     inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: The cluster whose nodes, interconnect or file system is benchmarked
       cluster:
         type: group
         label: Compute Cluster Settings
         items:
-          resource:
-            type: compute-clusters
-            label: Compute resource
-            include-workspace: false
-            tooltip: The cluster whose nodes, interconnect or file system is benchmarked
           scheduler:
             type: boolean
             default: true
             label: Schedule Job?
-            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            hidden: ${{ inputs.resource.schedulerType == '' }}
             ignore: ${{ .hidden }}
             tooltip: |
               Yes → The benchmark runs on compute nodes as one SLURM or PBS job of Nodes x MPI ranks per node
@@ -219,7 +251,7 @@ jobs:
             default: 1
             min: 1
             max: 10000
-            hidden: ${{ inputs.cluster.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
             ignore: ${{ .hidden }}
             tooltip: |
               --nodes (PBS select=N). With 2 or more nodes IMB-MPI1 numbers the ranks so that
@@ -238,20 +270,34 @@ jobs:
           slurm:
             type: group
             label: SLURM Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean
                 hidden: true
                 default: true
                 label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
               partition:
                 type: slurm-partitions
                 label: SLURM partition
                 optional: true
-                resource: ${{ inputs.cluster.resource }}
+                resource: ${{ inputs.resource }}
                 tooltip: Select a partition from the drop down menu.
+              qos:
+                label: Quality of Service [QoS]
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
               time:
                 label: Walltime
                 type: string
@@ -265,12 +311,13 @@ jobs:
                   #SBATCH --exclusive
                   #SBATCH --constraint=<feature>
                   The workflow already sets --nodes and --ntasks-per-node from the fields above;
-                  a directive here repeating one of them takes precedence.
+                  a directive here repeating one of them takes precedence, except on NOAA
+                  systems, where --ntasks and --nodes come from the fields above.
           pbs:
             type: group
             label: PBS Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean
@@ -390,8 +437,10 @@ jobs:
           install_dir:
             type: string
             label: Install directory
-            default: ${HOME}/pw/software
+            optional: true
             tooltip: |
               The benchmarks are built once per MPI under <install directory>/benchmarks/<mpi>/
               and reused by later runs; the conda-forge OpenMPI, when used, goes under
-              <install directory>/benchmarks/miniforge.
+              <install directory>/benchmarks/miniforge. Leave empty for the cluster's shared
+              software tree when this account can write there (/contrib/pw on Hera, Mercury
+              and Ursa, /usw/rdhpcs/software/pw on Gaea), ${HOME}/pw/software otherwise.

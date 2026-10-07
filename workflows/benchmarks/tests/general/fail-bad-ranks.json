@@ -1,0 +1,19 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "endpoint": false,
+    "expect": "error",
+    "leftover_patterns": ["IMB-MPI1", "mpirun"]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": false,
+    "ntasks_per_node": 0
+  },
+  "benchmark": {
+    "name": "imb-pingpong"
+  },
+  "software": {
+    "mpi": "auto"
+  }
+}

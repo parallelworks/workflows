@@ -9,13 +9,19 @@
 # output to the run log. The results job checks the exit status, writes the
 # result tables as CSV and publishes the headline figures as outputs. The run
 # completes when the benchmark does and fails when it fails.
+#
+# The HSP (activate.hpc.mil) form: the resource is the top-level input, the job
+# goes through the hsp script submitter, and the SLURM group adds the per-site
+# Account, QoS and Node Type fields (shown for on-prem `existing` resources) and
+# the DSRC --constraint=mla hint; the PBS group adds the Account (-A) and the HSP
+# directive defaults. On a cloud cluster it behaves like general.yaml.
 permissions:
   - '*'
 
 jobs:
   preprocessing:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Checkout
         uses: parallelworks/checkout
@@ -126,18 +132,22 @@ jobs:
   benchmark:
     needs: [preprocessing]
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Run the Benchmark
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: workflows/script_submitter/v3.6/general.yaml
-          resource: ${{ inputs.cluster.resource }}
+          $yaml: workflows/script_submitter/v3.6/hsp.yaml
+          resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
           # the submitter cds into the run's job directory, where benchmark.sh and results/ are
           rundir: ${{ env.PW_PARENT_JOB_DIR }}
           use_existing_script: true
           script_path: ./benchmark.sh
+          # the hsp form does not declare these two, but its steps read them, and an
+          # undeclared input reaches expressions as passed; a SLURM job on hsp still
+          # cleans up through benchmark.sh's exit trap, since that submitter writes
+          # HOSTNAME only after the script (its cleanup needs it to reach the node)
           define_cleanup_script: true
           cleanup_script_path: ./cancel.sh
           scheduler: ${{ inputs.cluster.scheduler }}
@@ -145,7 +155,14 @@ jobs:
           submit_and_exit: false
           slurm:
             is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            account: ${{ inputs.cluster.slurm.account }}
             partition: ${{ inputs.cluster.slurm.partition }}
+            qos: ${{ inputs.cluster.slurm.qos }}
+            # on `existing` resources the hsp submitter writes these before the
+            # directives below, which repeat --nodes and add --ntasks-per-node
+            cpus_per_task: 1
+            nodes: ${{ inputs.cluster.nodes }}
+            node_type: ${{ inputs.cluster.slurm.node_type }}
             time: ${{ inputs.cluster.slurm.time }}
             # the layout goes first so a directive typed in the form can still override
             # it: sbatch and qsub keep the last value of a repeated option
@@ -155,6 +172,7 @@ jobs:
               ${{ inputs.cluster.slurm.scheduler_directives }}
           pbs:
             is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            account: ${{ inputs.cluster.pbs.account }}
             scheduler_directives: |
               #PBS -l select=${{ inputs.cluster.nodes }}:ncpus=${{ inputs.cluster.ntasks_per_node }}:mpiprocs=${{ inputs.cluster.ntasks_per_node }}
               ${{ inputs.cluster.pbs.scheduler_directives }}
@@ -164,7 +182,7 @@ jobs:
   results:
     needs: [preprocessing, benchmark]
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Check the Exit Status
         run: |
@@ -195,20 +213,20 @@ jobs:
 'on':
   execute:
     inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: The cluster whose nodes, interconnect or file system is benchmarked
       cluster:
         type: group
         label: Compute Cluster Settings
         items:
-          resource:
-            type: compute-clusters
-            label: Compute resource
-            include-workspace: false
-            tooltip: The cluster whose nodes, interconnect or file system is benchmarked
           scheduler:
             type: boolean
             default: true
             label: Schedule Job?
-            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            hidden: ${{ inputs.resource.schedulerType == '' }}
             ignore: ${{ .hidden }}
             tooltip: |
               Yes → The benchmark runs on compute nodes as one SLURM or PBS job of Nodes x MPI ranks per node
@@ -219,7 +237,7 @@ jobs:
             default: 1
             min: 1
             max: 10000
-            hidden: ${{ inputs.cluster.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
             ignore: ${{ .hidden }}
             tooltip: |
               --nodes (PBS select=N). With 2 or more nodes IMB-MPI1 numbers the ranks so that
@@ -238,28 +256,85 @@ jobs:
           slurm:
             type: group
             label: SLURM Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean
                 hidden: true
                 default: true
                 label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
               partition:
                 type: slurm-partitions
                 label: SLURM partition
                 optional: true
-                resource: ${{ inputs.cluster.resource }}
+                resource: ${{ inputs.resource }}
                 tooltip: Select a partition from the drop down menu.
+              qos:
+                label: Quality of Service [QoS]
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              node_type:
+                label: Node Type
+                type: dropdown
+                optional: true
+                default: ''
+                option-key: ${{ inputs.resource.ip }}
+                tooltip: '--constraint=<value> slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider || (inputs.resource.ip != 'blueback.navydsrc.hpc.mil' && inputs.resource.ip != 'narwhal.navydsrc.hpc.mil' && inputs.resource.ip != 'nautilus.navydsrc.hpc.mil' && inputs.resource.ip != 'raider.afrl.hpc.mil' && inputs.resource.ip != 'crux.mhpcc.hpc.mil') }}
+                hidden: ${{ .ignore }}
+                options:
+                  blueback.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  narwhal.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - smla
+                    - dmla
+                    - viz
+                    - transfer
+                  nautilus.navydsrc.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  raider.afrl.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  crux.mhpcc.hpc.mil:
+                    - AMD
+                    - Intel
               time:
                 label: Walltime
                 type: string
                 default: '01:00:00'
-                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job (format: D-HH:MM:SS or HH:MM:SS, e.g. 7-00:00:00 or 01:00:00)'
               scheduler_directives:
                 type: editor
                 optional: true
+                default: |
+                  ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
                   #SBATCH --exclusive
@@ -269,23 +344,40 @@ jobs:
           pbs:
             type: group
             label: PBS Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean
                 hidden: true
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              account:
+                label: Account
+                type: string
+                tooltip: PBS account for job submission (-A)
               scheduler_directives:
                 label: Scheduler Directives
                 type: editor
                 optional: true
                 tooltip: |
-                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  Add extra PBS directives, one per line, using the #PBS prefix. The workflow
+                  already sets -l select=N:ncpus=M:mpiprocs=M from the fields above; a select
+                  line uncommented here (the per-site node shapes) takes precedence over it.
+                default: |
+                  # Parameters that apply to all sites
                   #PBS -l walltime=01:00:00
+                  #PBS -V
                   #PBS -q standard
-                  The workflow already sets -l select=N:ncpus=M:mpiprocs=M from the fields above.
+                  # Remove first # to activate specific lines
+                  #=====Ruth (Lustre, only vis has NVIDIA)=====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128
+                  #=====Warhawk (Lustre)====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128
+                  #=====Wheat (WEKA, nmlas=4|6)====
+                  ##PBS -l select=1:ncpus=92:mpiprocs=92:nmlas=4
+                  #=====Carpenter=====
+                  ##PBS -l select=1:ncpus=192:mpiprocs=192:nmlas=4
       benchmark:
         type: group
         label: Benchmark

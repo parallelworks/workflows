@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Benchmarks: a bandwidth curve over two nodes exchanging a ping-pong.
+       Source of benchmarks.png (rendered at 512 px); the marketplace shows it small,
+       so three shapes, one accent. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2567b8"/>
+      <stop offset="1" stop-color="#153f7d"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="496" height="496" rx="88" fill="url(#bg)"/>
+
+  <!-- chart: axes and a saturating bandwidth curve with sample points -->
+  <g stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M96,96 L96,286 L416,286"/>
+    <path d="M110,268 C170,266 190,232 232,190 C270,152 316,124 400,116" stroke="#8fe0ff" stroke-width="18"/>
+  </g>
+  <g fill="#ffffff">
+    <circle cx="140" cy="262" r="15"/>
+    <circle cx="232" cy="190" r="15"/>
+    <circle cx="318" cy="124" r="15"/>
+    <circle cx="400" cy="116" r="15"/>
+  </g>
+
+  <!-- two nodes and the ping-pong between them -->
+  <g fill="none" stroke="#ffffff" stroke-width="12" stroke-linejoin="round">
+    <rect x="80" y="338" width="110" height="94" rx="14"/>
+    <rect x="322" y="338" width="110" height="94" rx="14"/>
+  </g>
+  <g fill="#8fe0ff">
+    <rect x="102" y="360" width="66" height="12" rx="6"/>
+    <rect x="102" y="386" width="66" height="12" rx="6"/>
+    <rect x="344" y="360" width="66" height="12" rx="6"/>
+    <rect x="344" y="386" width="66" height="12" rx="6"/>
+  </g>
+  <g fill="#ffffff" stroke="#ffffff" stroke-linejoin="round">
+    <path d="M226,385 L286,385" stroke-width="12" stroke-linecap="round" fill="none"/>
+    <path d="M232,371 L204,385 L232,399 z" stroke-width="4"/>
+    <path d="M280,371 L308,385 L280,399 z" stroke-width="4"/>
+  </g>
+</svg>

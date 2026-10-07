@@ -771,7 +771,7 @@ shared submitter: a `workflow-utils` resource wrapper produced the SLURM header,
 YAML's own jobs ran `sbatch`, polled `squeue`/`sacct` and tailed a log the benchmark
 scripts pushed over ssh to `usercontainer`. Here it is the repository's batch shape
 (`activate-batch`, `openfoam-naca`): preprocessing → `script_submitter` → a results
-job, no endpoint.
+job.
 
 | Old | New |
 |---|---|
@@ -780,7 +780,7 @@ job, no endpoint.
 | `benchmarks/utils/plot-imb-mpi-benchmark.py` (pandas + plotly HTML, shown through a v2 `/me/3001/api/v1/display/` iframe) | `app/summarize.py` (standard library): CSV tables, `::notice` headline, `KEY=value` outputs |
 | form: `benchmark` dropdown of six, `pwrl_host` group with `_sch__dd_*` directive fields, `benchmark_root_dir`, `with_lustre`, `spack_install_intel_mpi`, `load_mpi` | `cluster` (resource, scheduler, `nodes`, `ntasks_per_node`, slurm, pbs), `benchmark` (`name` of four, `imb_args`, `preset` standard/minimal/custom, `ior_args`, `mdtest_args`, `io_dir`), `software` (`mpi` auto/conda-forge/commands, `mpi_load`, `install_dir`) |
 | `apirun/` (a `run_workflow.py` API client for a different demo) | left behind |
-| `benchmark.png` | `thumbnails/benchmarks.png` |
+| `benchmark.png` (a 120 px plotly screenshot) | replaced: `thumbnails/benchmarks.svg` (the drawing: a bandwidth curve over two nodes exchanging a ping-pong) rendered to `thumbnails/benchmarks.png` at 512 px |
 
 **Code changes beyond the paths:**
 
@@ -850,3 +850,26 @@ with `cancel.sh` as the fallback for a SIGKILL; `square-egret` recorded `143`
 (`references/pitfalls.md`). Not exercised: PBS, `MPIRUN` overrides, an Intel MPI with
 its own `IMB-MPI1`, the `commands` MPI mode (its path is `prepare-env.sh`'s, shared with
 `openfoam-naca`).
+
+**Variants and failure paths (2026-10-07).** `yamls/hsp.yaml` and `yamls/noaa.yaml`
+follow `openfoam-naca`'s: the resource is the top-level input and the job goes through
+the `hsp`/`noaa` submitter with their `account`/`qos` (and hsp's `node_type`, `pbs.account`)
+fields, shown for `existing` resources. The layout differs per submitter: `hsp` writes
+`--nodes` (and `--cpus-per-task=1`) before the form's directives, so the workflow's
+`--nodes`/`--ntasks-per-node` directives still win; `noaa` writes `--ntasks`/`--nodes`
+after them on `existing` resources, so the layout also goes through its `ntasks`
+(`nodes * ntasks_per_node`, an expression) and `nodes` inputs. `hsp.yaml` passes
+`define_cleanup_script`/`cleanup_script_path` although that form does not declare them
+(an undeclared input reaches the submitter's expressions as passed); on a SLURM job there
+the cleanup cannot reach the node anyway because that submitter writes `HOSTNAME` after
+the script, so a cancelled hsp job cleans up through `benchmark.sh`'s exit trap. `noaa.yaml`
+takes the install directory from the cluster's shared software tree when none is given and
+the account can write there (`/contrib/pw`, `/usw/rdhpcs/software/pw`), like `openfoam-naca`.
+The failure-path tests (`_test.expect: error`): `fail-mpi-commands` (the `commands` MPI
+mode with a module that does not exist fails in `prepare-env.sh` before any build),
+`fail-ior-bad-args` (IOR rejects `--no-such-option`, exit 1, the run fails with the
+status and the output tail; also under `hsp/` and `noaa/`) and `fail-bad-ranks`
+(`ntasks_per_node: 0` fails the input check). A first attempt at an "empty custom
+arguments" test could not fail: the platform default-fills an explicit `""` for a group
+item (`references/pitfalls.md`), so that check is unreachable from the API and the test was
+dropped. The README no longer says the workflow registers no endpoint (reviewer feedback).

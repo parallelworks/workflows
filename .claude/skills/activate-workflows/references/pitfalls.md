@@ -113,7 +113,10 @@
   input; only a **list-template** field keeps `""` (reference §12). Reruns built from a past
   run's INPUTS tab send `""` for every hidden field, so this is the normal path. Still build
   a name several jobs must agree on **once**, published as a preprocessing output
-  (`workflows/burst-render-demo`).
+  (`workflows/burst-render-demo`). Corollary (2026-10-07, `workflows/benchmarks`): a
+  failure-path test cannot reach an "input is empty" check by sending `""` for an input
+  that has a default; send a value the form's `min`/`max` would forbid instead
+  (`ntasks_per_node: 0`), which the API passes through unchanged.
 - **`parallelworks/checkout` leaves no `.git`** (verified 2026-09-24): it materializes the
   files only, so a script cannot read back which repo or branch the run used. To give another
   machine the same code, send what this one already has
@@ -191,10 +194,15 @@
   benchmark pipeline, bash runs the exit trap on the way out, and `$?` there is the status
   of the last command that *completed*, the `echo` before the pipeline, so a
   `trap 'echo $? > x.exit' EXIT` records `0` for a cancelled job. Trap the signals too
-  (`trap 'exit 143' TERM`, `130` INT, `129` HUP) so the exit file says killed; the
-  submitter's cleanup script stays the belt and braces for the SIGKILL that follows
-  SLURM's KillWait. `activate-batch`'s `commands.exit` has the same latent `0`; harmless
-  there because a cancelled run never reads it.
+  (`trap 'exit 143' TERM`, `130` INT, `129` HUP) so the exit file says killed, **and run
+  the long command in the background with `wait $!`**: bash defers a trap until a
+  foreground pipeline ends, and an `mpirun` that got SIGTERM kept its IOR ranks writing
+  for 54 s (2026-10-07), past SLURM's `KillWait` (30 s here), so SIGKILL took bash and
+  no trap ran at all; in `wait` the trap runs at once. Wrap the pipeline in a subshell
+  with `pipefail` so `wait` returns the command's status, not `tee`'s. The submitter's
+  cleanup script stays the belt and braces (and on `hsp` it cannot reach the node: that
+  submitter writes `HOSTNAME` after the script). `activate-batch`'s `commands.exit` has
+  the same latent `0`; harmless there because a cancelled run never reads it.
 
 ## Lessons from LLM-backed & multi-service builds (hermes-agent)
 

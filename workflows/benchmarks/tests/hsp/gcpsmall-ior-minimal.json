@@ -1,0 +1,27 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "endpoint": false,
+    "warm_marker": "${HOME}/pw/software/benchmarks/usr_lib64_openmpi/ior-4.0.0/bin/ior",
+    "leftover_patterns": ["bin/ior", "mpirun"]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cluster": {
+    "scheduler": true,
+    "nodes": 1,
+    "ntasks_per_node": 4,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "00:30:00",
+      "scheduler_directives": "##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems\n"
+    }
+  },
+  "benchmark": {
+    "name": "ior",
+    "preset": "minimal"
+  },
+  "software": {
+    "mpi": "auto"
+  }
+}

@@ -9,12 +9,11 @@ Runs one MPI or file system benchmark on a cluster and reports the figures:
 | `ior` | write and read bandwidth of a parallel file system, one file per rank | [IOR](https://github.com/hpc/ior) |
 | `mdtest` | metadata rates of a file system: file and directory creation, stat, read, removal | mdtest (ships with IOR) |
 
-Like [activate-batch](../activate-batch/) it registers **no endpoint**: the run
-completes when the benchmark finishes and fails when it fails. The raw output
-streams to the run log while the job runs; the result tables land as CSV in the
-job directory, and the headline figures come back as workflow outputs.
+The run completes when the benchmark finishes and fails when it fails. The raw
+output streams to the run log while the job runs; the result tables land as CSV in
+the job directory, and the headline figures come back as workflow outputs.
 
-![PingPong bandwidth against message size for several MPI builds](thumbnails/benchmarks.png)
+![A bandwidth curve over two nodes exchanging a ping-pong](thumbnails/benchmarks.png)
 
 ## How it works
 
@@ -154,27 +153,45 @@ benchmark fails the run with its exit status and the tail of its output; a missi
 ## Variants
 
 `yamls/general.yaml` targets standard cloud and on-prem SLURM/PBS clusters.
-There is no `hsp`/`noaa` form yet; one would take those submitters' cluster
-sections (account, QoS, node type) like `activate-batch`'s and pass the layout
-through their `nodes`/`ntasks` inputs where they write them after the directives.
+`yamls/hsp.yaml` is the HSP (`activate.hpc.mil`) form: the resource is the form's
+top-level input, the job goes through the `hsp` script submitter, the SLURM group
+adds the per-site **Account**, **QoS** and **Node Type** fields (shown for on-prem
+`existing` resources) and the DSRC `--constraint=mla` hint, and the PBS group adds
+the **Account** (`-A`) and the HSP directive defaults, whose commented per-site
+`select` lines take precedence over the workflow's when uncommented. That submitter
+writes `--nodes` before the form's directives, so the layout directives still win
+there. `yamls/noaa.yaml` is the NOAA (`noaa.parallel.works`) form: the `noaa`
+submitter and the **Account** and **QoS** fields; because that submitter writes
+`--ntasks` and `--nodes` after the directives on `existing` resources, the layout
+also reaches it through those two inputs (`ntasks` = nodes × ranks per node); and
+with no install directory given, the builds go to the cluster's shared software tree
+(`/contrib/pw` on Hera, Mercury and Ursa, `/usw/rdhpcs/software/pw` on Gaea) when the
+account can write there, `${HOME}/pw/software` otherwise. The app is the same for the
+three; on a cloud cluster the variants behave alike, which is how `tests/hsp/` and
+`tests/noaa/` exercise them.
 
 ## Tests
 
-`tests/general/`, all on `pw://alvaro/gcpsmall` (Rocky 9, Open MPI 4.1.1 module,
+`tests/<variant>/`, all on `pw://alvaro/gcpsmall` (Rocky 9, Open MPI 4.1.1 module,
 8-core compute nodes):
 
 | test | what it exercises |
 |---|---|
-| `gcpsmall-pingpong-login.json` | the login node, 2 ranks, `auto` MPI (the system module), the IMB build |
-| `gcpsmall-pingpong-2nodes.json` | a 2-node SLURM job, 2 ranks per node, `-map 2x2` placing the pair across nodes |
-| `gcpsmall-alltoall-conda.json` | the conda-forge Open MPI across 2 nodes × 4 ranks, `imb_args` (`-npmin 8`) |
-| `gcpsmall-ior-minimal.json` | IOR, `minimal` preset, one node × 4 ranks, the default I/O directory |
-| `gcpsmall-mdtest-custom.json` | mdtest, `custom` arguments, an `io_dir` with a shell variable |
+| `general/gcpsmall-pingpong-login.json` | the login node, 2 ranks, `auto` MPI (the system module), the IMB build |
+| `general/gcpsmall-pingpong-2nodes.json` | a 2-node SLURM job, 2 ranks per node, `-map 2x2` placing the pair across nodes |
+| `general/gcpsmall-alltoall-conda.json` | the conda-forge Open MPI across 2 nodes × 4 ranks, `imb_args` (`-npmin 8`) |
+| `general/gcpsmall-ior-minimal.json` | IOR, `minimal` preset, one node × 4 ranks, the default I/O directory |
+| `general/gcpsmall-mdtest-custom.json` | mdtest, `custom` arguments, an `io_dir` with a shell variable |
+| `general/fail-bad-ranks.json` | failure path: `ntasks_per_node: 0` (the API can send what the form's `min` forbids) fails in preprocessing before anything is built |
+| `general/fail-mpi-commands.json` | failure path: `commands` MPI mode with a module that does not exist fails before anything is built |
+| `general/fail-ior-bad-args.json` | failure path: IOR rejects an unknown option, the run fails with its exit status and the output tail |
+| `hsp/`, `noaa/` | `gcpsmall-pingpong-login`, `gcpsmall-ior-minimal` and `fail-ior-bad-args` through the `hsp` and `noaa` submitters |
 
-Every test completed with no SLURM job, process or I/O directory left behind. A run
-cancelled while `ior` was running on the compute node (`pw workflows runs cancel`)
-also left nothing: the submitter's `scancel` and `cancel.sh` removed the job and the
-I/O directory, and `benchmark.exit` recorded `143`.
+The failure tests set `_test.expect: error`: they pass when the run ends in error
+and nothing is left behind. Every test completed with no SLURM job, process or I/O
+directory left behind. A run cancelled while `ior` was running on the compute node
+(`pw workflows runs cancel`) also left nothing: the submitter's `scancel` and
+`cancel.sh` removed the job and the I/O directory, and `benchmark.exit` recorded `143`.
 
 ## Files
 

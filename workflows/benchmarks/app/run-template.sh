@@ -127,6 +127,12 @@ fi
 echo "Command       : ${cmd[*]}"
 echo "Started       : $(date)"
 echo
-"${cmd[@]}" 2>&1 | tee "${out}"
+# In the background and waited for: bash runs a trap at once while in `wait` but
+# only after a foreground pipeline ends, and an mpirun that got SIGTERM can outlive
+# SLURM's KillWait while its ranks finish their I/O, after which SIGKILL takes bash
+# and the exit trap never runs (seen on a cancel). The subshell carries pipefail so
+# the status waited for is the benchmark's, not tee's.
+( set -o pipefail; "${cmd[@]}" 2>&1 | tee "${out}" ) &
+wait $!
 echo
 echo "Finished      : $(date)"

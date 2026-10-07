@@ -128,6 +128,11 @@ jobs:
           endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
           host: ${{ inputs.resource.ip }}
           skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          # Metabase answers 500 to any Authorization: Bearer header (its OAuth
+          # middleware asserts on unknown tokens), and the probe carries the run's
+          # key; it does so from the moment its initialization completes, while it
+          # answers 503 before, so 500 is the ready signal here.
+          healthy: 2*|3*|500
           path: /api/health
           budget: 600
       - name: Cancel Script Submitter
@@ -468,6 +473,11 @@ jobs:
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: ${{ inputs.service_k8s.name }}-${PW_RUN_SLUG}
+          # Metabase answers 500 to any Authorization: Bearer header (its OAuth
+          # middleware asserts on unknown tokens), and the probe carries the run's
+          # key; it does so from the moment its initialization completes, while it
+          # answers 503 before, so 500 is the ready signal here.
+          healthy: 2*|3*|500
           path: /api/health
           budget: 600
 

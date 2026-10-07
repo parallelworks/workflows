@@ -995,3 +995,42 @@ and network, no process left. Cancel 11 s after launch (`novel-bass`, endpoint j
 registered): run `canceled`, endpoint deleted by the submitter's cleanup, container and
 network removed, no skip file. Not exercised: PBS, a path-based endpoint, a host without
 `sudo`. The checkout points at `canary` for the merge.
+
+## metabase (2026-10-07, from interactive_session's legacy generation)
+
+`workflows/metabase/` is the endpoint-pattern port of `interactive_session`'s
+`workflow/yamls/metabase/general_k8s.yaml` (hybrid: `targetType` dropdown, compute cluster
+or Kubernetes) and `metabase/start-template-v3.sh`, rewritten on the filebrowser (Docker
+Compose) and mlflow (hybrid k8s) shapes. The endpoint is `metabase-<run-slug>` on both paths.
+
+| interactive_session | here |
+|---|---|
+| `metabase/start-template-v3.sh`: the nginx-docker wrapper on `service_port` proxying `127.0.0.1:3000`, then `docker run --network=host` of `${service_image}` named `metabase` with `~/metabase-data:/metabase-data` (one instance per node) | `app/start-template.sh`: the image in a Docker Compose project named after the run, port `${PORT}:3000` behind `pw endpoints run`, data directory from the form, `MUID`/`MGID` set to the workflow user, optional `MB_*` variables from an editor input (`env_file`); `app/controller.sh` creates the data directory |
+| k8s Deployment with code-server's `args` (`--auth password --bind-addr 0.0.0.0:8080`), `containerPort: 80`, a `-lb` Service and `parallelworks/update-session` | the mlflow hybrid's k8s jobs: `MB_JETTY_PORT`/`MB_DB_FILE`/`MB_PLUGINS_DIR` on the PVC mount, `JAVA_OPTS=-XX:MaxRAMPercentage=75`, the `pw-endpoint` sidecar, no Service |
+| form: `pwrl_host`, `service.image` (`metabase/metabase`), `k8s`, `service_k8s.image` | `resource`/`cluster`/`service` (`data_dir`, `image` pinned to `metabase/metabase:v0.64.1`, `env`) and `k8s`/`service_k8s` (`image`, `image_port` 3000); memory defaults 1Gi/2Gi (were 512Mi/1Gi) |
+| `workflow/readmes/metabase/general_k8s.md`, `workflow/thumbnails/metabase.png` | `README.md` (rewritten), `thumbnails/metabase.png` |
+
+`general.yaml` (compute cluster only) is the hybrid's compute path on the standard
+`cluster.resource` form, as every other workflow here offers. The health probe is
+`/api/health` with a 600 s budget and `healthy: 2*|3*|500`: Metabase (v0.64.1 and
+v0.63.19.3 alike, before and after its setup wizard) answers HTTP 500 `Assert failed:
+(m/validate ProviderSetup config)` to any request carrying an `Authorization: Bearer`
+header, on every route, and the probe carries the run's key. It does so from the second
+its log says `Metabase Initialization COMPLETE` and answers 503 before (verified on both
+lanes), so 500 is the ready signal; the tunnel has no option to strip the header.
+Metabase has no URL-prefix mode, so only subdomain endpoints work.
+
+**Tests (2026-10-07, branch `metabase`; rows in `workflows/metabase/tests/*/*.csv`):**
+
+| Test | Result |
+|---|---|
+| `general/gcp-controller` (login node of `pw://alvaro/gcpsmall`, form defaults) | FAIL `credible-wildcat` with the plain `2*\|3*` probe (500 on `/api/health` for the whole 600 s budget; the submitter's cleanup removed the container, no skip file), then PASS `usable-tahr` (68 s, `cleanup=ok`) with `healthy: 2*\|3*\|500` |
+| `general_k8s/gcp-controller` (the hybrid's compute lane, same node) | PASS `present-stinkbug` (69 s) |
+| `general/gcp-compute` (SLURM job, `compute` partition) | PASS `legal-feline` (242 s, node powering up) |
+| `general_k8s/k3sgpu` (Kubernetes lane, namespace `alvarok8s`) | FAIL `wealthy-ibex` with the plain probe (same 500; the Deployment, Secret and PVC were deleted by the cleanups), then PASS `driven-mongrel` (34 s to the endpoint answering; cancel removed every object within the runner's wait) |
+
+Cancel 24 s after launch (`liberal-cricket`, endpoint registered, Metabase still
+initializing): run `canceled`, endpoint deleted by the submitter's cleanup, container and
+network removed by `cancel.sh` (`compose down`), no skip file, no process left. Not
+exercised: PBS, an existing PVC, a host without `sudo`. The checkout points at `canary`
+for the merge.

@@ -1,7 +1,7 @@
 {
   "_test": {
     "timeout_s": 1800,
-    "warm_marker": "${HOME}/metabase/metabase.db.mv.db",
+    "warm_marker": "${HOME}/metabase/metabase.db/metabase.db.mv.db",
     "leftover_patterns": [
       "metabase.jar",
       "docker compose",

@@ -123,6 +123,11 @@ jobs:
           endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
           host: ${{ inputs.cluster.resource.ip }}
           skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          # Metabase answers 500 to any Authorization: Bearer header (its OAuth
+          # middleware asserts on unknown tokens), and the probe carries the run's
+          # key; it does so from the moment its initialization completes, while it
+          # answers 503 before, so 500 is the ready signal here.
+          healthy: 2*|3*|500
           path: /api/health
           budget: 600
       - name: Cancel Script Submitter

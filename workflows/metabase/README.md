@@ -12,8 +12,10 @@ account, first database connection).
 
 ## Compute clusters
 
-The run completes once `/api/health` answers; the container runs until
-`pw endpoints delete metabase-<run-slug>`.
+The run completes once Metabase answers on `/api/health`; the container runs until
+`pw endpoints delete metabase-<run-slug>`. The health probe counts a 500 as up: Metabase
+answers 500 to the `Authorization: Bearer` header the probe carries from the moment its
+initialization completes (503 before), on every route.
 
 - `app/controller.sh` creates the data directory on the login node.
 - `app/start-template.sh` runs on the login node or in a SLURM/PBS job: pulls the image

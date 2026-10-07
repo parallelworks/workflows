@@ -15,7 +15,10 @@
 #   BUILD_TARGET    = spack microarch target of THIS node (e.g. skylake_avx512)
 #   BUILD_ARCH      = full spack arch triple of THIS node
 #   DETECT_HOST     = hostname this ran on
-#   DETECT_NPROC    = cores seen here
+#   DETECT_NPROC    = CPUs this inspection job was given (nproc)
+#   DETECT_CPUS_LOGICAL / DETECT_CPUS_PHYSICAL / DETECT_CPUS_SLURM
+#                   = the whole node's threads, physical cores and Slurm CPUTot
+#                     (cpu-counts.sh); they size a build job on this node type
 #
 # The hardware probe is authoritative. Cloud identity only breaks ties on which
 # vendor libfabric to prefer. An instance on AWS with no EFA -> generic profile.
@@ -227,7 +230,8 @@ probe_target() {
 # ---------------------------------------------------------------------------
 BUILD_TARGET=""; BUILD_ARCH=""
 probe_target
-log "detected on host $(hostname) with $(nproc) cores"
+eval "$(bash "${app_dir}/cpu-counts.sh")"
+log "detected on host $(hostname): ${CPUS_PHYSICAL} physical cores, ${CPUS_LOGICAL} logical CPUs, Slurm CPUTot ${CPUS_SLURM:-n/a}, $(nproc) given to this job"
 CLOUD=$(detect_cloud)
 log "cloud identity: $CLOUD"
 
@@ -279,6 +283,9 @@ BUILD_TARGET="$BUILD_TARGET"
 BUILD_ARCH="$BUILD_ARCH"
 DETECT_HOST="$(hostname)"
 DETECT_NPROC="$(nproc)"
+DETECT_CPUS_LOGICAL="$CPUS_LOGICAL"
+DETECT_CPUS_PHYSICAL="$CPUS_PHYSICAL"
+DETECT_CPUS_SLURM="$CPUS_SLURM"
 EOF
 log "wrote $OUT"
 

@@ -41,6 +41,13 @@ log() { printf '[exec] %s\n' "$*"; }
 printf '\n=== [exec] execution check on %s ===\n' "$(hostname)"
 log "cores: $(nproc 2>/dev/null || echo '?')"
 
+# A dry run installs nothing, so there is nothing to execute -- and failing here
+# would fail every concretize_only run, which is the cheap validation path.
+if [ "${service_concretize_only:-false}" = "true" ]; then
+  printf '::notice::concretize_only run: nothing was installed, so there are no binaries to execute\n'
+  exit 0
+fi
+
 spack_root="${service_install_prefix:-}"
 if [ -z "$spack_root" ] || [ ! -f "${spack_root}/share/spack/setup-env.sh" ]; then
   printf '::error title=Error::no Spack at %s; cannot locate the built binaries\n' "${spack_root:-<unset>}" >&2

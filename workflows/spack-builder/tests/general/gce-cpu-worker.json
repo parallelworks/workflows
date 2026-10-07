@@ -1,8 +1,8 @@
 {
   "_test": {
-    "timeout_s": 3600,
+    "timeout_s": 21600,
     "warm_marker": [
-      "${HOME}/spk/bin/spack",
+      "${HOME}/spack/bin/spack",
       "${HOME}/spack-buildcache/v3"
     ],
     "leftover_patterns": [
@@ -12,20 +12,22 @@
     ]
   },
   "cluster": {
-    "resource": "aws",
+    "resource": "gce",
     "scheduler": true,
     "slurm": {
       "is_enabled": true,
       "partition": "cpu",
-      "time": "00:20:00"
-    }
+      "time": "00:20:00",
+      "build_time": "06:00:00"
+    },
+    "build_on": "compute"
   },
   "service": {
     "spack_version": "v1.2.2",
-    "install_prefix": "${HOME}/spk",
+    "install_prefix": "${HOME}/spack",
     "buildcache_path": "${HOME}/spack-buildcache",
-    "build_jobs": 8,
-    "concretize_only": true,
+    "build_jobs": 4,
+    "concretize_only": false,
     "build_gpu": false,
     "use_overrides": false
   }

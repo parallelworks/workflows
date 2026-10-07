@@ -19,6 +19,17 @@ download sources that are never used -- on a warm redeploy that is gigabytes
 Spack's own (`get_mirrors_for_spec(index_only=True)`), the same index the
 installer consults, so it never disagrees with what install then does.
 
+Two details make that true, and both were learned the hard way (gce run
+in-oarfish reported "0 from the binary cache" and downloaded 59 archives for an
+install that then compiled nothing):
+
+  * The index has to be loaded first. `index_only=True` only reads the
+    in-memory index, which a fresh `spack python` process has not populated;
+    the installer calls BINARY_INDEX.update() before it looks, and so must this.
+  * A spec installed from the binary cache never needs its BUILD-only
+    dependencies (cmake, autotools, ...), so the walk does not descend into
+    them -- only into link/run dependencies, which must be present at run time.
+
 Prints one line per spec saying whether its source was already cached or had to
 be downloaded, then a summary. Exits non-zero if any fetch failed.
 """
@@ -28,8 +39,8 @@ import sys
 
 import spack.binary_distribution as bindist
 import spack.caches
+import spack.deptypes as dt
 import spack.environment as ev
-import spack.traverse
 
 
 def stage_paths(pkg):
@@ -49,21 +60,31 @@ def main():
               file=sys.stderr)
         return 2
 
-    specs = spack.traverse.traverse_nodes(env.concrete_roots(), key=spack.traverse.by_dag_hash)
+    bindist.BINARY_INDEX.update()
+
     external = installed = binary = 0
     cached, downloaded, failed, uncacheable = [], [], [], []
+    seen = set()
+    stack = list(env.concrete_roots())
 
-    for spec in specs:
+    while stack:
+        spec = stack.pop()
+        if spec.dag_hash() in seen:
+            continue
+        seen.add(spec.dag_hash())
         label = spec.cformat("{name}{@version} {/hash:7}")
         if spec.external:
             external += 1
             continue
         if spec.installed:
+            # Its whole link/run closure is installed too.
             installed += 1
             continue
         if bindist.get_mirrors_for_spec(spec, index_only=True):
             binary += 1
+            stack.extend(spec.dependencies(deptype=dt.LINK | dt.RUN))
             continue
+        stack.extend(spec.dependencies())
         pkg = spec.package
         if not pkg.has_code:
             continue

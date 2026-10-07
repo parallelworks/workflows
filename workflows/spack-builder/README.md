@@ -33,9 +33,19 @@ The three MPIs coexist in one environment via `concretizer: unify: false`.
   (`cluster.slurm.build_time`, default `08:00:00`; on PBS put
   `#PBS -l walltime=...` in the build job directives). The worker must reach
   github.com and the source mirrors. This compiles on the hardware the stack is
-  for, so the target is always `exact`. Request cores to match **Parallel build
-  jobs** through the extra directives. A build killed at its walltime leaves no
+  for, so the target is always `exact`. A build killed at its walltime leaves no
   exit status, and `verify` says so.
+
+  On SLURM the build job is one task on one node (`--nodes=1 --ntasks=1`)
+  requesting `--cpus-per-task` = **Parallel build jobs**, capped by the
+  `size_build` job at the inspected worker's **physical** cores and at the CPUs
+  Slurm configures for it (`app/cpu-counts.sh`). Hyperthreads are not counted: a
+  cloud worker launched with hyperthreading disabled can still be configured in
+  Slurm with its instance type's vCPU count, and the gce `c2-standard-4` workers
+  have 4 vCPUs but only 2 Slurm CPUs. Without the request SLURM gives the job a
+  single CPU whatever `-j` says. `build.sh` then caps `-j` at the CPUs the job
+  was actually given. On PBS request the CPUs in the build job directives
+  (`#PBS -l select=1:ncpus=8`); `-j` is still capped at what the job sees.
 
 The option is hidden when there is no scheduler or inspection is turned off.
 Spack is still bootstrapped and the build cache configured on the login node by
@@ -170,6 +180,11 @@ install from it. Notes:
   an unpadded cache: redeploying into a *shorter* root worked in seconds and the
   binaries ran with no references to the original prefix, while a *longer* root
   failed outright. 128 leaves headroom for any target root up to 128 characters.
+  The stack compiler is installed outside the environment, so `build.sh` passes
+  the same padding on its command line (`spack -c
+  config:install_tree:padded_length:128`). Before that, gcc and its dependencies
+  were cached unpadded and a run into a longer root failed on them
+  (`quality-colt`); caches from before the fix need those entries removed once.
 
 ### Archiving and redeploying the build cache
 
@@ -248,7 +263,9 @@ overrides are rejected. Use `cuda-arch=none` to force a CPU-only build.
   clone is switched to the requested tag only if it is on a different commit; a
   usable Spack that is not a git clone is used as found, with a warning if its
   version differs; and any other non-empty directory, or an unreadable `.git`
-  from an interrupted clone, fails the run with a message naming the path.
+  from an interrupted clone, fails the run with a message naming the path. The
+  build cache installs into a Spack root of any path up to 128 characters,
+  because every install is padded (below), including the stack compiler.
 
 ## Where the modules go, and holding several stacks
 
@@ -432,10 +449,11 @@ against one while the module tree advertises the other.
 ## Layout
 
 ```
-yamls/general.yaml        preprocess -> detect (worker) -> build (login node or worker)
+yamls/general.yaml        preprocess -> detect (worker) -> size_build -> build (login node or worker)
                           -> verify -> exec_check -> endpoint + wait_for_endpoint
 app/controller.sh         login node: bootstrap Spack, head externals, build cache
-app/detect-fabric.sh      worker: fabric + GPU + microarchitecture + externals probe
+app/detect-fabric.sh      worker: fabric + GPU + microarchitecture + CPU counts + externals probe
+app/cpu-counts.sh         one node's logical CPUs, physical cores and Slurm CPUTot
 app/find-externals.sh     discover one node's site externals / apply a node's file
 app/site-externals.py     move the managed externals between site scope and a file
 app/prefetch-sources.py   download every to-be-compiled source into the shared cache

@@ -64,10 +64,17 @@ exit 0
 EOF
 chmod +x cancel.sh
 
+# On a worker the job was sized by the size_build job, and nproc is what the
+# scheduler actually granted; compiling wider than that only oversubscribes it.
+if [ "$BUILD_ON" = "compute" ] && [ "$JOBS" -gt "$(nproc)" ]; then
+  echo "::notice::Parallel build jobs capped from ${JOBS} to the $(nproc) CPUs this job was given"
+  JOBS="$(nproc)"
+fi
+
 # shellcheck disable=SC1091
 . "$SPACK_ROOT/share/spack/setup-env.sh"
 log "Spack $(spack --version) at $SPACK_ROOT, -j${JOBS}"
-log "Build host: $(hostname) (${BUILD_ON} node, $(nproc) cores, $(spack arch -t 2>/dev/null || echo '?'))"
+log "Build host: $(hostname) (${BUILD_ON} node, $(nproc) CPUs available, $(spack arch -t 2>/dev/null || echo '?'))"
 
 # ---------------------------------------------------------------------------
 # 0b. Site externals. Always the WORKER's view, whichever node compiles: the
@@ -215,7 +222,13 @@ gcc_built_prefix() {
 
 if [ -z "$(gcc_built_prefix)" ]; then
   log "Installing stack compiler $GCC_SPEC (long; cached after the first run)"
-  spack install --no-check-signature -j"$JOBS" "$GCC_SPEC"
+  # The padding in templates/spack.yaml.in only reaches packages installed IN
+  # the environment, and this install is outside it. Unpadded, gcc and its
+  # dependencies were pushed with prefixes that cannot be relocated into a
+  # longer Spack root (CannotGrowString on aws run quality-colt). Keep the value
+  # equal to the template's.
+  spack -c config:install_tree:padded_length:128 \
+    install --no-check-signature -j"$JOBS" "$GCC_SPEC"
   # --allow-missing: the push walks the whole DAG, and when gcc itself came from
   # the build cache its build-only dependencies were never installed. Without the
   # flag that prints a 27-line "Error: ... PackageNotInstalledError" block for a

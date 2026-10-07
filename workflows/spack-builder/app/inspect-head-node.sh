@@ -42,7 +42,8 @@ log() { printf '[head] %s\n' "$*"; }
 # ---------------------------------------------------------------------------
 printf '\n=== [head] login node parameters ===\n'
 log "host:      $(hostname)"
-log "cores:     $(nproc 2>/dev/null || echo '?')"
+eval "$(bash "${APP_DIR}/cpu-counts.sh")"
+log "cpus:      ${CPUS_PHYSICAL} physical cores, ${CPUS_LOGICAL} logical"
 log "memory:    $(awk '/MemTotal/ {printf "%.1f GiB", $2/1048576}' /proc/meminfo 2>/dev/null || echo '?')"
 log "kernel:    $(uname -r)"
 log "os:        $(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-unknown}" || echo unknown)"

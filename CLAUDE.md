@@ -71,9 +71,13 @@ workers), `benchmarks` (one MPI or file system benchmark as a SLURM/PBS job),
 serves through a **`pw` endpoint** (`pw endpoints list`) named
 `<service>-${PW_RUN_SLUG}`. `dakota-openfoam` is both: a batch optimization loop that
 joins those last two as subworkflows and serves its live Pareto front as an endpoint;
-its server only ever runs on the login node, so it is the one workflow that starts
+its server only ever runs on the login node, so it starts
 `pw endpoints run` detached from a plain step (`tutorials/endpoint-workflows` Stage 3)
-instead of through the submitter below. On a compute cluster,
+instead of through the submitter below. `app-testbed` does the same for its placeholder
+server, at a **fixed** endpoint name (`apptest`, its subdomain): the server outlives the
+run and a re-run attaches to it instead of starting another, so its `wait_for_endpoint`
+finding the previous instance is the point, not a bug; its workers are dispatched to
+other sites over `pw ssh`, in parallel with the health check. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through
@@ -136,7 +140,9 @@ To convert an older workflow to this pattern, follow
   `pw endpoints` — see the `endpoint_name` input in `workflows/ollama/yamls/general.yaml`.
   `hpc_status` keeps the fixed name its users know (`hpc-status`): a fixed name has to be
   freed in preprocessing, before `wait_for_endpoint` looks it up, or the wait finds the
-  previous instance answering (its `controller.sh`).
+  previous instance answering (its `controller.sh`). `app-testbed`'s fixed name (`apptest`)
+  is the exception that wants this: a running server is reused, and only **Restart server**
+  frees the name (its `start-server.sh`).
 - The `wait_for_endpoint` job is two steps: the `wait_for_endpoint` subworkflow
   (`uses: github/parallelworks/workflows@canary`,
   `$yaml: workflows/wait_for_endpoint/general.yaml`, with `early-cancel: any-job-failed`)

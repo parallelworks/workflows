@@ -618,6 +618,14 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   `noaa` on `noaa.parallel.works`, `general` elsewhere; thumbnails
   `workflows/hpc_status/thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png`).
 
+- The marketplace item `app-testbed` (`App Testbed`, `workflow/remote`, v1.0 `latest`;
+  accounts reference it as `marketplace.app-testbed.v1.0`) pins
+  `parallelworks/activate-app-testbed`'s `workflow.yaml`, `README.md` and `thumbnail.png` →
+  `workflows/app-testbed/yamls/general.yaml`, `workflows/app-testbed/README.md` and
+  `workflows/app-testbed/thumbnails/app-testbed.png` here (`general` on every platform: the
+  form carries the SLURM account/QoS and PBS fields itself and there is no script
+  submitter to pick). `scripts/launch-worker.py` keeps targeting that reference.
+
 ## Test results (2026-08-31, repo public, canary pushed)
 
 Method: `pw workflows run <abs path to yamls/general.yaml> -i …` from this repo;

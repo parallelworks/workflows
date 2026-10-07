@@ -87,8 +87,11 @@ if [ -z "$(server_pid)" ]; then
 fi
 
 up=""
-for _ in $(seq 1 60); do
+for i in $(seq 1 60); do
     curl -sf -m 3 -o /dev/null "http://127.0.0.1:${PORT}/health" && up=1 && break
+    # a wrapper that is already gone took the server with it (a port in use, a
+    # subdomain another user holds): no point in waiting out the window
+    [ "${i}" -gt 3 ] && [ -z "$(wrapper_pid)" ] && [ -z "$(server_pid)" ] && break
     sleep 1
 done
 if [ -z "${up}" ]; then

@@ -397,3 +397,13 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   deregistering. When the submitter's own cleanup does the killing (a failed health check),
   the log shows `Endpoint "<name>" deleted.` instead. A `stopped` record is inert, but a
   cancel-cleanup check should look at `pw endpoints list` too and delete what it finds.
+- **`pw endpoints run` substitutes `{port}` inside a longer argument too** (verified
+  2026-10-07, `workflows/app-testbed` on gcpsmall): `pw endpoints run --port 8090 ... --
+  sh -c "exec python3 server.py {port} >> server.log 2>&1"` ran the server on 8090 with its
+  own log file, the way the `--help` Ollama example embeds the token in `OLLAMA_HOST=...`.
+  `--port` pins the local port (a client that must know it, such as a worker's tunnel
+  `-L port:localhost:port`, can then be told it from the form) and `--subdomain <label>
+  --name <label>` gives an endpoint the same name and address every run; a server left
+  from the previous run is then found by `wait_for_endpoint` at once, which is what a
+  workflow that reuses its server wants and what one that restarts it has to free first
+  (`workflows/hpc_status`).

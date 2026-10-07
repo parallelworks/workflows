@@ -22,6 +22,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [3dcs](workflows/3dcs/) | 3DCS Monte Carlo / contributor analysis split over N SLURM workers, merged and uploaded to a bucket, with node-hour metering (no endpoint) | general |
 | [activate-batch](workflows/activate-batch/) | Batch job: a list of commands run on the login node or via SLURM/PBS (no endpoint) | general, hsp |
 | [agent-orchestrator](workflows/agent-orchestrator/) | Multi-agent orchestrator service | general |
+| [app-testbed](workflows/app-testbed/) | Multi-site client-server testbed: a placeholder server behind a fixed endpoint (`apptest`), workers dispatched to other sites over `pw ssh` and SSH tunnels, on login nodes or as SLURM/PBS jobs | general |
 | [benchmarks](workflows/benchmarks/) | MPI and file system benchmarks: IMB-MPI1 PingPong and Alltoall, IOR, mdtest, one per run as a SLURM/PBS job, with the figures as outputs | general, hsp, noaa |
 | [burst-render-demo](workflows/burst-render-demo/) | Multi-site burst demo: Mandelbrot tiles rendered on N sites in parallel, assembled live in a dashboard | general, hsp, noaa |
 | [dask-slurm](workflows/dask-slurm/) | Dask cluster on SLURM: adaptive dask-jobqueue workers, the Dask dashboard as endpoint, demo workloads | general, hsp, noaa |

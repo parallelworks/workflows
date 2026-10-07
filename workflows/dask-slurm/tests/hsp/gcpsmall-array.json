@@ -1,0 +1,30 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "scheduler": true,
+    "warm_marker": "${HOME}/pw/software/.miniforge3-dask/bin/dask",
+    "leftover_patterns": ["dask_cluster", "dask_demo", "pw endpoints run"]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cluster": {
+    "slurm": {
+      "partition": "compute",
+      "cores": 2,
+      "memory": "4GB",
+      "walltime": "00:30:00",
+      "min_jobs": 0,
+      "max_jobs": 4
+    }
+  },
+  "service": {
+    "workload": "array",
+    "workload_size": "small",
+    "workload_timeout": 20,
+    "keep_alive": true,
+    "conda_install": true,
+    "parent_install_dir": "${HOME}/pw/software",
+    "conda_install_dir": ".miniforge3-dask",
+    "conda_env": "base",
+    "install_instructions": "dask2026.8.0-python3.14.7"
+  }
+}

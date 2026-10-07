@@ -24,6 +24,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [agent-orchestrator](workflows/agent-orchestrator/) | Multi-agent orchestrator service | general |
 | [benchmarks](workflows/benchmarks/) | MPI and file system benchmarks: IMB-MPI1 PingPong and Alltoall, IOR, mdtest, one per run as a SLURM/PBS job, with the figures as outputs | general, hsp, noaa |
 | [burst-render-demo](workflows/burst-render-demo/) | Multi-site burst demo: Mandelbrot tiles rendered on N sites in parallel, assembled live in a dashboard | general, hsp, noaa |
+| [dask-slurm](workflows/dask-slurm/) | Dask cluster on SLURM: adaptive dask-jobqueue workers, the Dask dashboard as endpoint, demo workloads | general, hsp, noaa |
 | [h2o](workflows/h2o/) | H2O-3 node with its Flow UI | general, hsp, noaa |
 | [hermes-agent](workflows/hermes-agent/) | Hermes agent with auth/TCP proxies | general |
 | [hpc_status](workflows/hpc_status/) | HPC Status Monitor: fleet status, topology, queues, quota and storage dashboard over every cluster `pw` reaches, at a stable `status-<user>` address | general, hsp, noaa |

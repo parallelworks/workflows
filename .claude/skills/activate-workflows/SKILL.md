@@ -18,7 +18,8 @@ schema, subworkflow interfaces, `pw` CLI, and job-directory layout — this file
 the **process**; that file is the **facts**; and
 [references/pitfalls.md](references/pitfalls.md) is the **memory**: every surprise a
 real run taught, searched by symptom when something misbehaves. What one piece of
-software needs (OpenFOAM, Dakota, conda environments, Singularity/SIF images, MPI benchmarks) has
+software needs (OpenFOAM, Dakota, conda environments, Singularity/SIF images, MPI benchmarks,
+dask-jobqueue) has
 its own file under [references/software/](references/software/). Kubernetes targets
 have their own process and facts in [references/k8s-workflows.md](references/k8s-workflows.md).
 

@@ -1,17 +1,158 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
 permissions:
   - '*'
 env:
   PW_API_KEY: ${PW_API_KEY}
 
 jobs:
+  preprocessing:
+    if: ${{ inputs.resource.type != 'kubernetes' }}
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: mlflow
+          sparse_checkout:
+            - workflows/mlflow/app
+            - tools/utils
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_backend_store_uri="${{ inputs.service.backend_store_uri }}"
+          service_artifacts_destination="${{ inputs.service.artifacts_destination }}"
+          service_port="${{ inputs.service.port }}"
+          service_additional_flags="${{ inputs.service.additional_flags }}"
+          service_conda_install="${{ inputs.service.conda_install }}"
+          service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
+          service_conda_install_dir="${{ inputs.service.conda_install_dir }}"
+          service_conda_env="${{ inputs.service.conda_env }}"
+          service_load_env="${{ inputs.service.load_env }}"
+          service_install_instructions="${{ inputs.service.install_instructions }}"
+          service_yaml="${{ inputs.service.yaml }}"
+          pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          EOF
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh # remove var=""
+          # Add export= to all lines
+          sed -i 's/^/export /' inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/mlflow/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/mlflow/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  session_runner:
+    if: ${{ inputs.resource.type != 'kubernetes' }}
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            time: ${{ inputs.cluster.slurm.time }}
+            gpus: ${{ inputs.cluster.slurm.gpus }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::Session runner failed before the endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    if: ${{ inputs.resource.type != 'kubernetes' }}
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
+          host: ${{ inputs.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
   auth_k8s:
+    if: ${{ inputs.resource.type == 'kubernetes' }}
     steps:
       - name: Authenticate kubectl
         early-cancel: any-job-failed
         run: |
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          pw kube auth ${{ inputs.k8s.cluster }}
+          pw kube auth ${{ inputs.resource.name }}
   prepare_k8s_pvc:
+    if: ${{ inputs.resource.type == 'kubernetes' }}
     needs:
       - auth_k8s
     steps:
@@ -26,7 +167,7 @@ jobs:
             workflow_name=$(pwd | rev | cut -d "/" -f2 | rev)
             pvc_name=$(echo "${PW_USER}${workflow_name}${job_number}" | sed 's|_||g' | sed 's|\.||g' | tr '[:upper:]' '[:lower:]' | tail -c 56)-pvc
           fi
-          pvc_storage_class=${{ inputs.k8s.volumes.pvc_storage_class }} 
+          pvc_storage_class=${{ inputs.k8s.volumes.pvc_storage_class }}
           if [ -z "${pvc_storage_class}" ] || [[ "${pvc_storage_class}" == "undefined" ]]; then
             default_class=$(kubectl get storageclass -n ${{ inputs.k8s.namespace }} | grep '(default)')
             if [ $? -ne 0 ]; then
@@ -52,13 +193,13 @@ jobs:
               - ReadWriteOnce
             resources:
               requests:
-                storage: ${{ inputs.k8s.volumes.pvc_storage_size }}  
-            ${storageClassName} 
+                storage: ${{ inputs.k8s.volumes.pvc_storage_size }}
+            ${storageClassName}
           EOF
           cat pvc.yaml
       - name: Dry Run PVC
         early-cancel: any-job-failed
-        if: ${{ inputs.k8s.volumes.pvc == New }}
+        if: ${{ inputs.resource.type == 'kubernetes' && inputs.k8s.volumes.pvc == New }}
         run: |
           echo "Performing dry run..."
           kubectl apply -f pvc.yaml --dry-run=client
@@ -69,6 +210,7 @@ jobs:
     steps:
       - name: Defining App Name
         early-cancel: any-job-failed
+        if: ${{ inputs.resource.type == 'kubernetes' }}
         run: |
           job_number=$(pwd | rev | cut -d "/" -f1 | rev)
           workflow_name=$(pwd | rev | cut -d "/" -f2 | rev)
@@ -76,6 +218,7 @@ jobs:
           echo "app_name=${app_name}" | tee -a $OUTPUTS | tee -a OUTPUTS
       - name: Creating Deployment YAML
         early-cancel: any-job-failed
+        if: ${{ inputs.resource.type == 'kubernetes' }}
         run: |
           if [[ "${{ inputs.k8s.resources.limits.select_gpu }}" == "Custom" ]]; then
             gpu_limits="${{ inputs.k8s.resources.limits.gpu_resource_key }}: ${{ inputs.k8s.resources.limits.number_of_gpus }}"
@@ -192,10 +335,12 @@ jobs:
           EOF
       - name: Dry Run Deployment
         early-cancel: any-job-failed
+        if: ${{ inputs.resource.type == 'kubernetes' }}
         run: |
           echo "Performing dry run..."
           kubectl apply -f app.yaml --dry-run=client
   apply_k8s_deployment:
+    if: ${{ inputs.resource.type == 'kubernetes' }}
     needs:
       - prepare_k8s_deployment
     steps:
@@ -203,7 +348,7 @@ jobs:
         early-cancel: any-job-failed
         run: cat OUTPUTS >> $OUTPUTS
       - name: Apply PVC
-        if: ${{ inputs.k8s.volumes.pvc == New }}
+        if: ${{ inputs.resource.type == 'kubernetes' && inputs.k8s.volumes.pvc == New }}
         run: kubectl apply -f pvc.yaml
         cleanup: |
           [[ "${DEBUG:-}" == "true" ]] && set -x
@@ -267,7 +412,7 @@ jobs:
               echo
               echo; echo "[INFO] $(date) - Checking deployment status for ${app_name} in namespace ${namespace}..."
               kubectl get deployment "${app_name}" -n "${namespace}" -o wide || echo "[WARN] Unable to get deployment"
-              
+
               echo; echo "[INFO] $(date) - Pods status:"
               kubectl get pods -l app="${app_name}" -n "${namespace}" -o wide || echo "[WARN] Unable to get pods"
 
@@ -276,7 +421,7 @@ jobs:
                 echo; echo "[INFO] $(date) - Describing pod ${pod_name}..."
                 kubectl describe pod "${pod_name}" -n "${namespace}" | grep -A20 "Events"
               fi
-              
+
               echo "---------------------------------------------"
               sleep 10
             done
@@ -284,7 +429,7 @@ jobs:
 
           log &
           log_pid=$!
-          trap "kill ${log_pid}" EXIT
+          trap "kill ${log_pid}" EXIT SIGINT SIGTERM
           [[ "${DEBUG:-}" == "true" ]] && set -x
           kubectl wait --for=condition=available --timeout=600s deployment/${app_name} -n ${namespace}
           exit_code=$?
@@ -306,6 +451,7 @@ jobs:
         early-cancel: any-job-failed
         run: kubectl logs -f deployment/${{ needs.apply_k8s_deployment.outputs.app_name }} -n ${{ inputs.k8s.namespace }} --all-containers
   wait_for_endpoint_k8s:
+    if: ${{ inputs.resource.type == 'kubernetes' }}
     needs:
       - prepare_k8s_deployment
     steps:
@@ -329,20 +475,195 @@ jobs:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: ${{ inputs.service_k8s.name }}-${PW_RUN_SLUG}
           budget: 300
+
 'on':
   execute:
     inputs:
+      resource:
+        type: compute-resources
+        label: Service host
+        include-workspace: false
+        tooltip: Resource to host the service
+      cluster:
+        hidden: ${{ inputs.resource.type == 'kubernetes' || inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.type == 'kubernetes' || inputs.resource.schedulerType == '' }}
+        type: group
+        label: Compute Cluster Settings
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Job?
+            tooltip: |
+              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
+              No  → Job is executed in the controller or login node instead
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+                tooltip: Select a partition from the drop down menu.
+              time:
+                label: Walltime
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              gpus:
+                label: Number of GPUs
+                type: number
+                optional: true
+                min: 0
+                default: 0
+                hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
+                ignore: ${{ .hidden }}
+                tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+
+      service:
+        type: group
+        label: MLflow Settings
+        hidden: ${{ inputs.resource.type == 'kubernetes' }}
+        ignore: ${{ inputs.resource.type == 'kubernetes' }}
+        items:
+          name:
+            type: string
+            hidden: true
+            default: mlflow
+          backend_store_uri:
+            label: Backend Store URI
+            type: string
+            default: sqlite:///${HOME}/mlflow/mlflow.db
+            tooltip: |
+              Where the tracking server keeps experiments, runs, metrics and parameters: a SQLAlchemy
+              database URI (sqlite:///<path>, postgresql://..., mysql://...) or a local directory for
+              MLflow's file store. Reuse the same value across runs to keep the history.
+          artifacts_destination:
+            label: Artifacts Destination
+            type: string
+            default: ${HOME}/mlflow/artifacts
+            tooltip: |
+              Where the server stores the artifacts clients log through it: a local directory or an
+              s3://, gs://, abfs://... location (mlflow server --artifacts-destination, with --serve-artifacts).
+          port:
+            label: Port
+            type: number
+            min: 1024
+            max: 65535
+            optional: true
+            tooltip: |
+              Port the tracking server listens on, on every network interface of its node, so jobs on
+              the cluster can log to http://<node>:<port>. Leave empty to take a free port; either way
+              the address is written to the tracking_uri file in the job directory. The endpoint URL
+              serves the same server outside the cluster.
+          additional_flags:
+            label: Additional Flags
+            type: string
+            optional: true
+            tooltip: |
+              Extra flags for the mlflow server command, e.g. --workers 2 or --app-name basic-auth.
+              See https://mlflow.org/docs/latest/cli.html#mlflow-server
+          conda_install:
+            label: Install MLflow in a Miniforge environment if not there?
+            type: boolean
+            default: true
+            tooltip: Select Yes to install MLflow in a Miniforge (conda-forge) environment and No to load an existing python environment
+          parent_install_dir:
+            label: Parent Install Directory
+            type: string
+            default: ${HOME}/pw/software
+            hidden: ${{ inputs.service.conda_install == false }}
+            ignore: ${{ .hidden }}
+            tooltip: Software dependencies are installed in this directory. Ensure the directory has sufficient space!
+          conda_install_dir:
+            label: Name of the Conda Installation Directory
+            type: string
+            default: .miniforge3-mlflow
+            hidden: ${{ inputs.service.conda_install == false }}
+            ignore: ${{ .hidden }}
+            tooltip: Ensure the directory has sufficient space for Conda and its packages.
+          conda_env:
+            label: Conda environment
+            type: string
+            default: base
+            hidden: ${{ inputs.service.conda_install == false }}
+            optional: ${{ .hidden }}
+            ignore: ${{ .hidden }}
+            tooltip: Environment to activate. MLflow is installed into it when missing.
+          load_env:
+            label: Command to load MLflow to the PATH
+            type: string
+            default: source ${HOME}/pw/software/.miniforge3-mlflow/etc/profile.d/conda.sh; conda activate base
+            hidden: ${{ inputs.service.conda_install == true }}
+            optional: ${{ .hidden }}
+            ignore: ${{ .hidden }}
+            tooltip: Use a bash command, e.g. module load python; export PATH=${HOME}/.local/bin:${PATH} after a pip install --user mlflow
+          install_instructions:
+            label: Select MLflow Installation
+            type: dropdown
+            hidden: ${{ inputs.service.conda_install == false }}
+            ignore: ${{ .hidden }}
+            default: mlflow3.16.1-python3.14.7
+            options:
+              - value: mlflow3.16.1-python3.14.7
+                label: MLflow 3.16.1 with Python 3.14.7
+              - value: latest
+                label: Latest versions of MLflow and Miniforge (not thoroughly tested)
+              - value: yaml
+                label: Provide custom Conda environment YAML file
+          yaml:
+            label: Paste Conda Environment Defition YAML
+            type: editor
+            hidden: ${{ inputs.service.install_instructions != 'yaml' ||  inputs.service.conda_install == false }}
+            optional: ${{ .hidden }}
+            ignore: ${{ .hidden }}
+            tooltip: Copy and paste a custom Conda environment definition YAML file
+
       k8s:
         type: group
         label: Kubernetes Settings
+        hidden: ${{ inputs.resource.type != 'kubernetes' }}
+        ignore: ${{ inputs.resource.type != 'kubernetes' }}
         items:
-          cluster:
-            label: Kubernetes cluster
-            type: kubernetes-clusters
           namespace:
             label: Namespace
             type: kubernetes-namespaces
-            clusterName: ${{ inputs.k8s.cluster }}
+            clusterName: ${{ inputs.resource.name }}
+            optional: ${{ inputs.resource.type != 'kubernetes' }}
           volumes:
             type: group
             label: Volumes
@@ -365,7 +686,7 @@ jobs:
               pvc_existing:
                 label: Select PVC Name
                 type: kubernetes-pvc
-                clusterName: ${{ inputs.k8s.cluster }}
+                clusterName: ${{ inputs.resource.name }}
                 namespace: ${{ inputs.k8s.namespace }}
                 hidden: ${{ inputs.k8s.volumes.pvc != Existing }}
                 ignore: ${{ .hidden }}
@@ -401,6 +722,8 @@ jobs:
           resources:
             type: group
             label: Resources
+            collapsed: true
+            tooltip: Configure CPU, memory, and GPU settings to define the computational resources allocated to the pod.
             items:
               requests:
                 type: group
@@ -471,6 +794,8 @@ jobs:
       service_k8s:
         type: group
         label: Service Settings
+        hidden: ${{ inputs.resource.type != 'kubernetes' }}
+        ignore: ${{ inputs.resource.type != 'kubernetes' }}
         items:
           name:
             type: string

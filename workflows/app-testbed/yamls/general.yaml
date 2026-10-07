@@ -33,7 +33,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: activate-app-testbed
+          branch: canary
           sparse_checkout:
             - workflows/app-testbed/app
       - name: Create Inputs

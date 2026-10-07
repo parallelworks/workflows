@@ -407,3 +407,11 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   from the previous run is then found by `wait_for_endpoint` at once, which is what a
   workflow that reuses its server wants and what one that restarts it has to free first
   (`workflows/hpc_status`).
+- **A `pw ssh` made from inside a run can leave `~/.ssh/pwcli` on the login node it ran
+  from** (observed 2026-10-07, `workflows/app-testbed`): gcpsmall's login node had no
+  platform key before the first run; after a run whose dispatcher called `pw ssh` from
+  that node, `~/.ssh/pwcli` and `pwcli.pub` were there, dated to that run, and a later run
+  opened a plain `ssh -i ~/.ssh/pwcli -o ProxyCommand="pw ssh --proxy-command %h"` tunnel
+  from it. "Only the workspace and `existing` resources carry the key" holds for an
+  untouched cloud login node; a script that branches on the key's presence (the testbed's
+  `auto` tunnel method) may take a different branch on a node a run has used before.

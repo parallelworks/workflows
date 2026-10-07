@@ -7,9 +7,10 @@ The home of the Parallel Works / ACTIVATE platform workflows.
 in `app/` or an implementation subdir — the only subtree checked out at run time),
 README, build tooling, and marketplace thumbnails (in `thumbnails/`) all live together. There are **no
 version suffixes** — every file is the latest version; git tags version the repo.
-Every workflow but [activate-batch](workflows/activate-batch/) and [3dcs](workflows/3dcs/)
-serves through the **`pw` endpoint pattern**; those two run batch jobs to completion,
-as does [probe](workflows/probe/)'s `general_run_tests.yaml`.
+Every workflow but [activate-batch](workflows/activate-batch/), [3dcs](workflows/3dcs/)
+and [benchmarks](workflows/benchmarks/) serves through the **`pw` endpoint pattern**;
+those three run batch jobs to completion, as does [probe](workflows/probe/)'s
+`general_run_tests.yaml`.
 
 How this repo was assembled, and where anything older lives, is recorded in
 [MIGRATION.md](MIGRATION.md).
@@ -21,6 +22,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [3dcs](workflows/3dcs/) | 3DCS Monte Carlo / contributor analysis split over N SLURM workers, merged and uploaded to a bucket, with node-hour metering (no endpoint) | general |
 | [activate-batch](workflows/activate-batch/) | Batch job: a list of commands run on the login node or via SLURM/PBS (no endpoint) | general, hsp |
 | [agent-orchestrator](workflows/agent-orchestrator/) | Multi-agent orchestrator service | general |
+| [benchmarks](workflows/benchmarks/) | MPI and file system benchmarks: IMB-MPI1 PingPong and Alltoall, IOR, mdtest, one per run as a SLURM/PBS job, with the figures as outputs | general, hsp, noaa |
 | [burst-render-demo](workflows/burst-render-demo/) | Multi-site burst demo: Mandelbrot tiles rendered on N sites in parallel, assembled live in a dashboard | general, hsp, noaa |
 | [h2o](workflows/h2o/) | H2O-3 node with its Flow UI | general, hsp, noaa |
 | [hermes-agent](workflows/hermes-agent/) | Hermes agent with auth/TCP proxies | general |
@@ -93,7 +95,7 @@ nothing is left behind (processes, scheduler jobs, containers), and delete test
 endpoints when done — see [DeveloperGuide.md](DeveloperGuide.md).
 
 Every endpoint workflow registers a **`pw` endpoint** (check `pw endpoints list`);
-`activate-batch` and `3dcs` run their batch jobs to completion instead.
+`activate-batch`, `3dcs` and `benchmarks` run their batch jobs to completion instead.
 Note that workflow YAMLs pull this repo from GitHub at runtime
 (`parallelworks/checkout` + subworkflow `uses:`), so local YAML edits only take full
 effect once pushed to the referenced branch (**canary**).

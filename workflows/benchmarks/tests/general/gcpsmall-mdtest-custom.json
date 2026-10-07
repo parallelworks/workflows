@@ -1,0 +1,28 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "endpoint": false,
+    "warm_marker": "${HOME}/pw/software/benchmarks/usr_lib64_openmpi/ior-4.0.0/bin/mdtest",
+    "leftover_patterns": ["bin/mdtest", "mpirun"]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "nodes": 1,
+    "ntasks_per_node": 4,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "00:30:00"
+    }
+  },
+  "benchmark": {
+    "name": "mdtest",
+    "preset": "custom",
+    "mdtest_args": "-n 2000 -i 2 -u",
+    "io_dir": "${HOME}/pw/benchmarks-io"
+  },
+  "software": {
+    "mpi": "auto"
+  }
+}

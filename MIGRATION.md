@@ -760,3 +760,156 @@ gained optional `jvm_args` and `load_env` (e.g. `module load java`) inputs and d
 to the latest stable release (3.46.0.12). Tests: `workflows/{marimo,h2o}/tests/`, all
 variants exercised on `pw://alvaro/gcpsmall` (the `existing`-only form fields of hsp and
 noaa cannot be exercised from a cloud cluster).
+
+## benchmarks (from parallelworks/benchmarks)
+
+Migrated 2026-10-06 from `parallelworks/benchmarks@main` (2d90518), the cluster
+benchmark demo: one of six benchmarks (`ibm-mpi1-all-to-all`, `ping-pong`,
+`ior-standard`, `ior-minimal`, `mdtest-standard`, `mdtest-minimal`) run as a SLURM
+job, with the output streamed back to the user container. The source predated the
+shared submitter: a `workflow-utils` resource wrapper produced the SLURM header, the
+YAML's own jobs ran `sbatch`, polled `squeue`/`sacct` and tailed a log the benchmark
+scripts pushed over ssh to `usercontainer`. Here it is the repository's batch shape
+(`activate-batch`, `openfoam-naca`): preprocessing → `script_submitter` → a results
+job.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `validate_resource`, `submit_benchmark`, `wait_job`, `stream`) | `yamls/general.yaml` (`preprocessing`, `benchmark` = `script_submitter/v3.6/general.yaml`, `results`) |
+| `benchmarks/<name>/main.sh` × 6 (header + inputs + script concatenated per run, rsynced to the cluster) | `app/run-template.sh`, one script with the benchmark as a `case`; `app/install-mpi.sh`, `app/install-benchmark.sh` for the one-time setup on the login node |
+| `benchmarks/utils/plot-imb-mpi-benchmark.py` (pandas + plotly HTML, shown through a v2 `/me/3001/api/v1/display/` iframe) | `app/summarize.py` (standard library): CSV tables, `::notice` headline, `KEY=value` outputs |
+| form: `benchmark` dropdown of six, `pwrl_host` group with `_sch__dd_*` directive fields, `benchmark_root_dir`, `with_lustre`, `spack_install_intel_mpi`, `load_mpi` | `cluster` (resource, scheduler, `nodes`, `ntasks_per_node`, slurm, pbs), `benchmark` (`name` of four, `imb_args`, `preset` standard/minimal/custom, `ior_args`, `mdtest_args`, `io_dir`), `software` (`mpi` auto/conda-forge/commands, `mpi_load`, `install_dir`) |
+| `apirun/` (a `run_workflow.py` API client for a different demo) | left behind |
+| `benchmark.png` (a 120 px plotly screenshot) | replaced: `thumbnails/benchmarks.svg` (the drawing: a bandwidth curve over two nodes exchanging a ping-pong) rendered to `thumbnails/benchmarks.png` at 120 px like the other thumbnails |
+
+**Code changes beyond the paths:**
+
+- **The MPI.** Every run cloned Spack into its job directory and installed
+  `intel-oneapi-mpi intel-oneapi-compilers` (30+ minutes, never reused), unless the user
+  typed a load command. Now `install-mpi.sh` takes the MPI already on PATH, else a system
+  module (`mpi/openmpi-x86_64`, `mpi/mpich-x86_64`, `openmpi`, `mpich`), else installs
+  Open MPI from conda-forge once under `<install dir>/benchmarks/miniforge`; the form can
+  force the conda-forge install or give commands. The choice is a `::notice` and the job
+  log's `MPI :` line.
+- **The builds are cached per MPI** under `<install dir>/benchmarks/<mpi>/` (the MPI's
+  directory with `/`→`_`), with `MPI.txt` recording the compiler and MPI, under a lock.
+  IMB-MPI1 is built from source (the source relied on Intel MPI shipping the binary;
+  `-DOMPI_SKIP_MPICXX`, and `-Wno-error=template-id-cdtor` for GCC ≥ 14, against the
+  Makefile's `-Werror`); an `IMB-MPI1` on PATH is used instead. IOR 4.0.0 comes from the
+  release tarball (`configure` included: no `./bootstrap`, no `sudo yum install
+  automake`), with `-std=gnu17` for GCC 15; `--with-lustre` is auto-detected rather than
+  a form toggle whose default `true` fails `configure` without the Lustre headers.
+- **Rank layout from the allocation.** The source ran `mpirun -ppn $SLURM_CPUS_ON_NODE`
+  (an Intel MPI flag) and the form's `--ntasks-per-node`/`--nodes` directive fields.
+  The form asks for `nodes` and `ntasks_per_node`, written ahead of the user's directives
+  (so a repeated directive wins), and the script takes `SLURM_NTASKS`/`SLURM_JOB_NUM_NODES`
+  (PBS: the node file) to launch `mpirun -np N`; `MPIRUN` in the environment commands
+  replaces the launcher; Open MPI under PBS gets `--hostfile $PBS_NODEFILE`.
+- **PingPong across nodes.** With 2+ nodes IMB-MPI1 gets `-map <ppn>x<nodes>`, which
+  numbers the ranks so that the pair sits on two nodes; the source measured whatever two
+  ranks came first (both on the first node).
+- **Presets.** `ior-minimal`/`ior-standard`/`mdtest-minimal`/`mdtest-standard` became
+  the `minimal`/`standard` presets of `ior` and `mdtest`, plus `custom` arguments; IOR
+  reads back as well as writes (`-w -r`); `-o`/`-d` point into `<io_dir>/<run slug>`
+  (default `io/` under the job directory), removed afterwards and by `cancel.sh` on a
+  cancel; the source left `${benchmark_root_dir}/pw/jobs/<workflow>/<n>/` behind.
+- **Exit status and results.** The submitter does not forward the script's status, so
+  `benchmark.sh` records it in `benchmark.exit` and the results job fails the run with
+  the tail of the output when it is not `0` (the source's `wait_job` ended `completed`
+  whatever the job did). `summarize.py` writes `results/<benchmark>.csv` and the
+  headline figures as outputs (`latency_usec`, `bandwidth_mbytes_per_sec`,
+  `write_mib_per_sec_mean`, `file_creation_ops_per_sec_mean`, …).
+
+**Judgment calls:** the form's groups are `cluster`, `benchmark`, `software`
+(`benchmark` where the other workflows have `service`, since it is the benchmark); the
+`--with-lustre` toggle is gone rather than kept default-off; the plotly HTML page is
+gone rather than ported (no display route for it; the CSV is the plottable artifact);
+`scheduler` defaults to **Yes**, unlike the other workflows, because the compute nodes
+are what a benchmark measures; the `apirun/` API-client example is not migrated (it
+drove a different demo workflow). The shared `tools/utils/prepare-env.sh` notice now
+names the installer it runs instead of saying "conda-forge install".
+
+**Tests (2026-10-06, `pw://alvaro/gcpsmall`, branch `benchmarks`; rows in
+`workflows/benchmarks/tests/general/*.csv`):** all five pass with `cleanup=ok`.
+
+| Test | Result |
+|---|---|
+| `gcpsmall-pingpong-login` (login node, 2 ranks, `auto` MPI) | PASS `saving-boxer` (cold: the system module `mpi/openmpi-x86_64` was picked and IMB-MPI1 built, 38 s), re-run `liberal-mutt` (warm, 32 s): 0.18 µs, 9.4 GB/s on one node |
+| `gcpsmall-pingpong-2nodes` (2 nodes × 2 ranks) | PASS `informed-hedgehog` (3 min, nodes powering up): `-map 2x2` put the pair on two nodes, 20.9 µs and 2.6 GB/s |
+| `gcpsmall-ior-minimal` (1 node × 4 ranks, `io/` under the job directory) | PASS `national-pelican` (cold: IOR built, 47 s), re-run `cuddly-crawdad` (31 s); the I/O directory was removed |
+| `gcpsmall-mdtest-custom` (custom arguments, `io_dir` `${HOME}/pw/benchmarks-io`) | PASS `ready-goldfish` (63 s) |
+| `gcpsmall-alltoall-conda` (`conda-forge` MPI, 2 nodes × 4 ranks, `-npmin 8`) | PASS `daring-clam` (78 s cold: Miniforge + Open MPI 5.0.11 + compilers installed and IMB-MPI1 built with GCC 15 in about a minute; 8 ranks across the two nodes) |
+
+**Cancel mid-benchmark** (`unbiased-vervet`, then `square-egret` after the fix; IOR
+`standard`, 1 node × 4 ranks): `pw workflows runs cancel` while `ior` ran on the compute
+node left `squeue` empty (job `CANCELLED`), no `ior`/`mpirun` process on the node and no
+I/O directory. The first attempt recorded `benchmark.exit` = `0`: bash ran the exit trap
+with the status of the last command completed before the killed pipeline. The script now
+traps HUP/INT/TERM (`exit 129/130/143`) and removes the I/O directory from the exit trap,
+with `cancel.sh` as the fallback for a SIGKILL; `square-egret` recorded `143`
+(`references/pitfalls.md`). Not exercised: PBS, `MPIRUN` overrides, an Intel MPI with
+its own `IMB-MPI1`, the `commands` MPI mode (its path is `prepare-env.sh`'s, shared with
+`openfoam-naca`).
+
+**Variants and failure paths (2026-10-07).** `yamls/hsp.yaml` and `yamls/noaa.yaml`
+follow `openfoam-naca`'s: the resource is the top-level input and the job goes through
+the `hsp`/`noaa` submitter with their `account`/`qos` (and hsp's `node_type`, `pbs.account`)
+fields, shown for `existing` resources. The layout differs per submitter: `hsp` writes
+`--nodes` (and `--cpus-per-task=1`) before the form's directives, so the workflow's
+`--nodes`/`--ntasks-per-node` directives still win; `noaa` writes `--ntasks`/`--nodes`
+after them on `existing` resources, so the layout also goes through its `ntasks`
+(`nodes * ntasks_per_node`, an expression) and `nodes` inputs. `hsp.yaml` passes
+`define_cleanup_script`/`cleanup_script_path` although that form does not declare them
+(an undeclared input reaches the submitter's expressions as passed); on a SLURM job there
+the cleanup cannot reach the node anyway because that submitter writes `HOSTNAME` after
+the script, so a cancelled hsp job cleans up through `benchmark.sh`'s exit trap. `noaa.yaml`
+takes the install directory from the cluster's shared software tree when none is given and
+the account can write there (`/contrib/pw`, `/usw/rdhpcs/software/pw`), like `openfoam-naca`.
+The failure-path tests (`_test.expect: error`): `fail-mpi-commands` (the `commands` MPI
+mode with a module that does not exist fails in `prepare-env.sh` before any build),
+`fail-ior-bad-args` (IOR rejects `--no-such-option`, exit 1, the run fails with the
+status and the output tail; also under `hsp/` and `noaa/`) and `fail-bad-ranks`
+(`ntasks_per_node: 0` fails the input check). A first attempt at an "empty custom
+arguments" test could not fail: the platform default-fills an explicit `""` for a group
+item (`references/pitfalls.md`), so that check is unreachable from the API and the test was
+dropped. The README no longer says the workflow registers no endpoint (reviewer feedback).
+
+**Tests of the variants and failure paths (2026-10-07, `pw://alvaro/gcpsmall`, which had
+been recreated overnight, so every build started cold again):**
+
+| Test | Result |
+|---|---|
+| `hsp/gcpsmall-pingpong-login` | PASS `unique-grubworm` (cold, IMB rebuilt, 2 min) |
+| `hsp/gcpsmall-ior-minimal` | PASS `amused-leech` (27 min: the reused cloud node sat `NOT_RESPONDING+POWERING_UP` for 25 min before SLURM got it back; IOR itself took 12 s) |
+| `hsp/fail-ior-bad-args` | PASS `wired-boar` (run `error` in 38 s: "exited with status 1" and IOR's usage in the tail) |
+| `noaa/gcpsmall-pingpong-login` | PASS `knowing-serval` (48 s) |
+| `noaa/gcpsmall-ior-minimal` | PASS `assuring-sole` (32 s); `ntasks: nodes * ntasks_per_node` verified separately with a throwaway workflow (`2 * 4` rendered `8`, run `on-crappie`) because the job directory no longer keeps rendered step scripts |
+| `noaa/fail-ior-bad-args` | PASS `major-bat` (run `error` in 32 s) |
+| `general/fail-mpi-commands` | PASS `full-osprey` (run `error` in 43 s at *Prepare the MPI Environment*: "does not provide mpicc mpirun", with the module error in the annotation) |
+| `general/fail-ior-bad-args` | PASS `pro-opossum` (run `error` in 6 min, cold node) |
+| `general/fail-bad-ranks` | PASS `summary-bluegill` (run `error` in 16 s at *Create Inputs*) |
+| `general/fail-custom-empty` (withdrawn) | FAIL `obliging-sheep`: the run completed, see above |
+
+**Cancel, revisited.** The hsp cancel test (`helped-grub`) showed that the signal traps alone
+did not hold: `benchmark.exit` was never written and 4.4 GB of IOR files stayed behind.
+IOR's output had the ranks finishing their write phase 54 s after the cancel, past
+SLURM's 30 s `KillWait`: bash defers a trap until the foreground pipeline ends, so SIGKILL
+took it before any trap ran. Three changes, each checked with another cancel:
+`open-labrador` (the pipeline now runs in the background under `wait`, where bash runs the
+trap at once: exit `143` recorded, but `rm -rf` raced ranks still creating files),
+`alert-cow` (the trap also killed the benchmark's process group: still racing, the job
+lived 52 s, because `mpirun` gives each local rank a process group of its own, verified
+with `ps -o pid,pgid`), `ruling-fox` (the trap kills the process tree captured before the
+first signal: the ranks died at once, the job ended in 20 s, exit `143`; one killed rank
+stayed a zombie for two minutes draining 1.1 GB of dirty NFS pages, its file an `.nfs…`
+placeholder, so the directory removal now retries for up to two minutes and the README
+says a cancel on NFS can leave the empty per-run directory). The general variant's cancel
+test with the final script, `proper-jaguar`, ended clean: exit `143`, no SLURM job, no
+I/O directory (the retries outlasted the drain), after a 5-minute hang of the submitter's
+cleanup whose `ssh` to the fresh node 0002 was being refused (`Connection closed by … port
+22`, the node's sshd, not the workflow). On hsp the submitter's cleanup cannot run
+`cancel.sh` on the node (`HOSTNAME` is written after the script), so the trap is the only
+cleanup there; on general the cleanup ran it, racing the same ranks. With the final
+script, `general/gcpsmall-ior-minimal` (`literate-sheep`) and `general/fail-ior-bad-args`
+(`direct-rhino`) pass again: the success path through `wait` and the failure path's exit
+status from the subshell. The checkouts of the three YAMLs point at `canary` for the merge.

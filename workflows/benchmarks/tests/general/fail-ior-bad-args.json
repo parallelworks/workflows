@@ -1,0 +1,29 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "endpoint": false,
+    "expect": "error",
+    "warm_marker": "${HOME}/pw/software/benchmarks/usr_lib64_openmpi/ior-4.0.0/bin/ior",
+    "leftover_patterns": ["bin/ior", "mpirun"]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "nodes": 1,
+    "ntasks_per_node": 2,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "00:30:00",
+      "scheduler_directives": ""
+    }
+  },
+  "benchmark": {
+    "name": "ior",
+    "preset": "custom",
+    "ior_args": "-w -r -i 1 -t 1m -b 2m -s 2 -F -C -e --no-such-option"
+  },
+  "software": {
+    "mpi": "auto"
+  }
+}

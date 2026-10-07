@@ -1,0 +1,20 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "endpoint": false,
+    "expect": "error",
+    "leftover_patterns": ["IMB-MPI1", "mpirun"]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": false,
+    "ntasks_per_node": 2
+  },
+  "benchmark": {
+    "name": "imb-pingpong"
+  },
+  "software": {
+    "mpi": "commands",
+    "mpi_load": "module load does-not-exist/1.0"
+  }
+}

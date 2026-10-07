@@ -65,7 +65,8 @@ docs/                        # developer + AI docs
 
 Every workflow here but the batch ones — `activate-batch` (runs a command script to
 completion and fails when it fails), `3dcs` (fans a 3DCS simulation out over SLURM
-workers), `openfoam-naca` (one OpenFOAM case), `dakota` (one optimizer step) and
+workers), `benchmarks` (one MPI or file system benchmark as a SLURM/PBS job),
+`openfoam-naca` (one OpenFOAM case), `dakota` (one optimizer step) and
 `probe`'s `general_run_tests.yaml` (one run of a platform's PROBE tests) —
 serves through a **`pw` endpoint** (`pw endpoints list`) named
 `<service>-${PW_RUN_SLUG}`. `dakota-openfoam` is both: a batch optimization loop that

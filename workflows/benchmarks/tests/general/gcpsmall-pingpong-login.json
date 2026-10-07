@@ -1,0 +1,19 @@
+{
+  "_test": {
+    "timeout_s": 1200,
+    "endpoint": false,
+    "warm_marker": "${HOME}/pw/software/benchmarks/usr_lib64_openmpi/imb-2021.11/IMB-MPI1",
+    "leftover_patterns": ["IMB-MPI1", "mpirun"]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": false,
+    "ntasks_per_node": 2
+  },
+  "benchmark": {
+    "name": "imb-pingpong"
+  },
+  "software": {
+    "mpi": "auto"
+  }
+}

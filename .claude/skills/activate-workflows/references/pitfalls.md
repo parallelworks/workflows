@@ -397,21 +397,9 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   deregistering. When the submitter's own cleanup does the killing (a failed health check),
   the log shows `Endpoint "<name>" deleted.` instead. A `stopped` record is inert, but a
   cancel-cleanup check should look at `pw endpoints list` too and delete what it finds.
-- **`pw endpoints run` substitutes `{port}` inside a longer argument too** (verified
-  2026-10-07, `workflows/app-testbed` on gcpsmall): `pw endpoints run --port 8090 ... --
-  sh -c "exec python3 server.py {port} >> server.log 2>&1"` ran the server on 8090 with its
-  own log file, the way the `--help` Ollama example embeds the token in `OLLAMA_HOST=...`.
-  `--port` pins the local port (a client that must know it, such as a worker's tunnel
-  `-L port:localhost:port`, can then be told it from the form) and `--subdomain <label>
-  --name <label>` gives an endpoint the same name and address every run; a server left
-  from the previous run is then found by `wait_for_endpoint` at once, which is what a
-  workflow that reuses its server wants and what one that restarts it has to free first
-  (`workflows/hpc_status`).
-- **A `pw ssh` made from inside a run can leave `~/.ssh/pwcli` on the login node it ran
-  from** (observed 2026-10-07, `workflows/app-testbed`): gcpsmall's login node had no
-  platform key before the first run; after a run whose dispatcher called `pw ssh` from
-  that node, `~/.ssh/pwcli` and `pwcli.pub` were there, dated to that run, and a later run
-  opened a plain `ssh -i ~/.ssh/pwcli -o ProxyCommand="pw ssh --proxy-command %h"` tunnel
-  from it. "Only the workspace and `existing` resources carry the key" holds for an
-  untouched cloud login node; a script that branches on the key's presence (the testbed's
-  `auto` tunnel method) may take a different branch on a node a run has used before.
+- **`pw endpoints run` substitutes `{port}` inside a longer argument** (verified 2026-10-07,
+  `workflows/app-testbed`): `-- sh -c "exec python3 server.py {port} >> server.log 2>&1"`
+  works, and `--port N` pins the port when a client must know it (a worker's tunnel).
+- **A run can leave `~/.ssh/pwcli` on a cloud login node** (observed 2026-10-07, gcpsmall):
+  the key was absent before the first app-testbed run and present after it, so a script
+  that branches on the key's presence can take another branch on a node a run has used.

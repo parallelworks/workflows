@@ -618,13 +618,10 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   `noaa` on `noaa.parallel.works`, `general` elsewhere; thumbnails
   `workflows/hpc_status/thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png`).
 
-- The marketplace item `app-testbed` (`App Testbed`, `workflow/remote`, v1.0 `latest`;
-  accounts reference it as `marketplace.app-testbed.v1.0`) pins
+- The marketplace item `app-testbed` (v1.0, `marketplace.app-testbed.v1.0` in accounts) pins
   `parallelworks/activate-app-testbed`'s `workflow.yaml`, `README.md` and `thumbnail.png` →
-  `workflows/app-testbed/yamls/general.yaml`, `workflows/app-testbed/README.md` and
-  `workflows/app-testbed/thumbnails/app-testbed.png` here (`general` on every platform: the
-  form carries the SLURM account/QoS and PBS fields itself and there is no script
-  submitter to pick). `scripts/launch-worker.py` keeps targeting that reference.
+  `workflows/app-testbed/yamls/general.yaml`, `README.md` and `thumbnails/app-testbed.png`
+  here (one variant for every platform).
 
 ## Test results (2026-08-31, repo public, canary pushed)
 
@@ -1006,83 +1003,46 @@ network removed, no skip file. Not exercised: PBS, a path-based endpoint, a host
 
 ## app-testbed (2026-10-07, from parallelworks/activate-app-testbed)
 
-`workflows/app-testbed/` is the multi-site client-server testbed, moved from
-`parallelworks/activate-app-testbed@main` (9100bf7): a placeholder server on one resource
-behind an endpoint at a fixed address, and workers dispatched to other resources over
-`pw ssh`, which reach the server through SSH tunnels (plain ssh via the platform proxy
-command, or `pw forward`) as login-node processes or SLURM/PBS jobs. The source was one
-self-contained `workflow.yaml` (44 KB) with the server and worker Python embedded in
-heredocs so that it ran with no staged files, kept in step with `app/` by a sync script.
-The form, the inputs' meaning, the endpoint's address and the run's behaviour are
-unchanged; the user-facing difference is that `app/` is fetched from this repository at
-run time, like every workflow here.
+`workflows/app-testbed/` is the multi-site client-server testbed from
+`parallelworks/activate-app-testbed@main` (9100bf7): a placeholder server behind an
+endpoint at a fixed address, workers dispatched to other resources over `pw ssh` through
+SSH tunnels, on login nodes or as SLURM/PBS jobs. The form and the run's behaviour are
+unchanged; the source was one self-contained YAML with the Python embedded in heredocs.
 
 | Old | New |
 |---|---|
-| `workflow.yaml` (jobs `setup`, `start_server`, `expose_session`, `dispatch_workers`) | `yamls/general.yaml` (jobs `preprocessing`, `start_server`, `wait_for_endpoint`, `dispatch_workers`); the form is verbatim |
-| `app/server.py`, `app/worker.py` embedded in the YAML's `SPYEOF`/`WPYEOF` heredocs; `scripts/sync-app.py` re-embedded them | `app/server.py`, `app/worker.py` checked out (`parallelworks/checkout`, sparse `workflows/app-testbed/app`); the dispatcher ships `worker.py` to each site as base64 in the same `pw ssh` command as the bootstrap, so a site still needs no GitHub access and runs what the server host checked out; the sync script is gone |
-| `setup` job (`mkdir` of the workdir) | `app/controller.sh`: the same, plus a check for `python3`, `curl`, `setsid` and `pw` |
-| `start_server` (bare `setsid -f python3 server.py`) + `expose_session` (`setsid -f pw endpoints http PORT --subdomain S --name S` + a `session-watch-S` loop that killed the server once the endpoint process was gone) | `app/start-server.sh`: one `setsid -f pw endpoints run --port PORT --subdomain S --name S -- sh -c "exec python3 server.py {port} >> server.log"`; deleting the endpoint takes the wrapper's process tree, and so the server, down, which is what the watcher emulated. `restart_server` deletes the endpoint (and kills a bare server, a `pw endpoints http` or a watcher left by the previous generation) before starting |
-| `expose_session`'s URL grep from the endpoint log | the shared `wait_for_endpoint` subworkflow (name `apptest`, probe through the platform with the run's key), then a `Publish URL` step with the same `URL` output |
-| the `dispatch_workers` step body (437 lines, with the 292-line site bootstrap as a `BOOT_B64` heredoc) | `app/dispatch_workers.sh` and `app/worker-bootstrap.sh`, verbatim apart from their heads: settings come from `inputs.sh`, the worker rows from `workers.json`, the bootstrap and `worker.py` from the checked-out `app/` |
-| `scripts/programmatic/launch-worker.py` + `README.md`, `scripts/manual/{run-worker.sh,worker-inputs.json,README.md}` | `scripts/{launch-worker.py,run-worker.sh,worker-inputs.json}`, the two READMEs folded into the workflow README; `--workflow` takes the absolute YAML path |
+| `workflow.yaml` (jobs `setup`, `start_server`, `expose_session`, `dispatch_workers`) | `yamls/general.yaml` (`preprocessing`, `start_server`, `wait_for_endpoint`, `dispatch_workers`); the form is verbatim |
+| `server.py`/`worker.py` embedded in heredocs, re-embedded by `scripts/sync-app.py` | `app/server.py`, `app/worker.py` checked out; the dispatcher ships `worker.py` to each site with the bootstrap (base64 over `pw ssh`), so sites still need no GitHub access; no sync script |
+| `setup` job | `app/controller.sh` (workdir, plus a check for `python3`, `curl`, `setsid`, `pw`) |
+| bare `server.py` + `pw endpoints http PORT --subdomain S --name S` + a `session-watch` loop | `app/start-server.sh`: one detached `pw endpoints run --port PORT --subdomain S --name S -- sh -c "exec python3 server.py {port} >> server.log"`; deleting the endpoint takes the server down, as the watcher did. Restart deletes the endpoint (and kills a bare server, `pw endpoints http` or watcher left by the old generation) |
+| URL grep in `expose_session` | the shared `wait_for_endpoint` (fixed name, probe with the run's key) + a `Publish URL` step with the same `URL` output |
+| the inline dispatch step and its `BOOT_B64` bootstrap heredoc | `app/dispatch_workers.sh`, `app/worker-bootstrap.sh`, verbatim apart from their heads (`inputs.sh`, `workers.json`, files from `app/`) |
+| `scripts/programmatic/`, `scripts/manual/` (+ two READMEs) | `scripts/{launch-worker.py,run-worker.sh,worker-inputs.json}`; the READMEs folded into the workflow README |
 | `thumbnail.png` | `thumbnails/app-testbed.png` |
-| `README.md` | `README.md`: the pattern, inputs, connection and cleanup sections kept; the jobs, files, testing and provenance sections rewritten |
 
-**Judgment calls:**
+**Judgment calls:** no script submitter (the server only runs on the login node and must
+outlive the run, as `dakota-openfoam`'s Pareto server; `wait_for_endpoint` without a skip
+file); the fixed name `apptest` is kept and a running instance is reused, only **Restart
+server** frees it (`hpc_status` frees its name every run); no `!completed` handler, since
+the source left the server up after a failed or cancelled run and workers-only runs rely
+on it; the form keeps its own groups (`server`, `services`, `app`, `workers`), which the
+launcher scripts and saved inputs address; one `general.yaml` (the form carries the
+account/QoS and PBS fields; there is no submitter variant to pick).
 
-1. **No script submitter.** The server only ever runs on the login node (the sites'
-   tunnels terminate on the host that dispatches them), and it must outlive the run
-   and be found again by the next one, so it starts detached from a plain step, as
-   `dakota-openfoam`'s Pareto server does, with `wait_for_endpoint` as the health check
-   and no `skip_cleanups_file`.
-2. **The endpoint keeps its fixed name** (`apptest`, the subdomain). A previous
-   instance is the desired state: a re-run attaches to it, `deploy_server: false`
-   dispatches workers to it, and only **Restart server** frees the name. `hpc_status`
-   frees its fixed name every run instead.
-3. **No `!completed` handler.** The source left its server running when a run failed
-   or was cancelled (workers-only runs depend on that), so this port does too: the
-   endpoint's lifetime is the server's, and `pw endpoints delete apptest` is the stop.
-4. **The form keeps its own groups** (`server`, `services`, `app`, `workers`) rather
-   than `cluster`/`service`: a multi-resource form (ray-cluster judgment call 4), and
-   the launcher scripts and users' saved inputs files address them by these names.
-5. **One `general.yaml`.** The source ran on every platform from one file: the form
-   carries the SLURM account/QoS pickers and the PBS fields itself, and there is no
-   submitter variant to pick. `hsp`/`noaa` copies would differ only in name.
-6. **The code is checked out, not embedded.** The repository's rule (reference §10, "do
-   not base64-embed files"); the sites keep the no-GitHub property because the server
-   host ships them the code. A server host without GitHub access is the one case the
-   source handled that this port does not; no workflow here does.
-
-**Tests (2026-10-07, `activate.parallel.works`, branch `activate-app-testbed`; rows in
-`workflows/app-testbed/tests/general/*.csv`).** The endpoint keeps a fixed name, so every
-test sets `_test.endpoint_name: apptest` and the runner checks leftovers on
-`_test.resource` (gcpsmall); pass = the run completed (`wait_for_endpoint` saw `apptest`
-answer `HTTP 200` through the platform with the run's key, every worker connected) and
-`apptest` was listed; teardown = `pw endpoints delete apptest`, after which the wrapper
-and the server were gone at once and each worker exited on its own within ~30 s (its
-keep-alive ping fails; the runner's wait shows one or two `waiting for cleanup:
-['proc:worker.py ...']` ticks). The tests share the endpoint name and ran sequentially.
+**Tests (2026-10-07, `pw://alvaro/gcpsmall`, branch `activate-app-testbed`; rows in
+`workflows/app-testbed/tests/general/*.csv`).** Every test sets `_test.endpoint_name:
+apptest`; pass = the run completed (`wait_for_endpoint` saw `HTTP 200`, the workers
+connected) and `apptest` was listed; teardown = `pw endpoints delete apptest`, after which
+the server was gone at once and each worker exited at its next keep-alive ping (~30 s).
 
 | Test | Result |
 |---|---|
-| `gcp-server-gcp-login-worker` (server and worker on the gcpsmall login node, the form's defaults) | PASS `witty-honeybee` (37 s): fresh server behind `pw endpoints run --port 8090 --subdomain apptest --name apptest`, local websocket probe `101`, worker connected over localhost, endpoint `HTTP 200` after 0 s. PASS `rich-stag` (kept), then PASS `smart-flounder` (22 s) **against the kept server**: `server already running (pid ...) behind endpoint apptest`, `worker already running and connected`, `HTTP 200` at once; its teardown stopped both. PASS `saved-owl` (kept, for the restart test below): the worker stranded by the previous teardown was found `not connected` and restarted |
-| `gcp-server-remote-login-worker` (server on gcpsmall, port 8097, **Restart server** on; worker on the `a30gpuserver` login node, an `existing` resource in another cluster) | PASS `awake-krill` (27 s; its row was lost with the session that ran it): `restart requested; stopping the server` deleted the kept `apptest` endpoint, which took the port-8090 server down, and started on 8097; the site had the platform key, so under `auto` it opened `ssh -i ~/.ssh/pwcli -o ProxyCommand="pw ssh --proxy-command %h" -N -L 8097:localhost:8097 alvaro@pw://alvaro/gcpsmall`, probed HTTP and the websocket upgrade through it and connected `worker-alvaro-gpu`. PASS `popular-cat` (54 s): the second run reused that tunnel (no `starting ssh tunnel` line) and restarted the worker |
-| `remote-server-gcp-slurm-worker` (server on `a30gpuserver`, port 8098, **Restart server** on; worker on gcpsmall as a SLURM job, `compute` partition, the form's default directives editor value) | FAIL `composed-kite` with the server on port **8097**: that port on `a30gpuserver` was held by the tunnel the previous test's worker had opened there (tunnels are persistent by design), `server.py` died with `Address already in use`, the wrapper deleted its endpoint and exited, and `start_server` failed with both log tails (now within seconds: the health loop stops when the wrapper is gone). The test moved to 8098. PASS `precise-lobster` (178 s): gcpsmall's login node opened a plain ssh tunnel to `a30gpuserver` bound to its cluster-internal IP (`10.128.0.19:8098`), `sbatch` job 67 went `CONFIGURING` (node powering up) → `RUNNING`, and the worker on the compute node registered and connected through `http://10.128.0.19:8098`; after `pw endpoints delete apptest` the worker's ping failed, the job ended and `squeue` emptied within two minutes (the runner's `waiting for cleanup: ['squeue']` ticks) |
+| `gcp-server-gcp-login-worker` (server and worker on the gcpsmall login node) | PASS `witty-honeybee` (37 s). PASS `smart-flounder` (22 s) against a kept server: `server already running ... behind endpoint apptest`, `worker already running and connected` |
+| `gcp-server-remote-login-worker` (port 8097, **Restart server** on; worker on the `a30gpuserver` login node) | PASS `awake-krill` (27 s, row lost with its session): the restart deleted the kept endpoint and started on 8097; the site opened `ssh -i ~/.ssh/pwcli -o ProxyCommand="pw ssh --proxy-command %h" -N -L 8097:localhost:8097` and connected. PASS `popular-cat` (53 s), reusing that tunnel |
+| `remote-server-gcp-slurm-worker` (server on `a30gpuserver`, SLURM worker on gcpsmall, `compute`) | FAIL `composed-kite` on port 8097: the previous test's tunnel held that port on `a30gpuserver` (`Address already in use`); the test moved to 8098 and `start-server.sh` now fails within seconds when the wrapper is gone. PASS `precise-lobster` (178 s): tunnel bound to the login node's `10.128.0.19:8098`, job 67 `CONFIGURING` → `RUNNING`, the compute node connected; after the delete the job ended within two minutes |
 
-**Workers-only run** (`wired-baboon`, by hand against the server and worker a kept
-`gcp-server-gcp-login-worker` run left on gcpsmall, the test's inputs with
-`deploy_server: false`): `start_server` printed `server deployment disabled; skipping`,
-the `wait_for_endpoint` job did not run (its `if:` on `deploy_server`), the dispatcher
-found `worker already running and connected`, and the run completed in under a minute.
-`pw endpoints delete apptest` then removed the endpoint and the server at once; the
-worker exited at its next keep-alive ping.
-
-Not exercised: a PBS site, `tunnel_method: pw-forward` and `ssh` set explicitly (the
-runs took `auto`'s ssh branch: `a30gpuserver` carries the platform key and gcpsmall's
-login node had acquired one, see the pitfall of the same date), a site that adopts the
-key from the server host, a scheduled worker on the server host's own cluster (the
-placeholder server binds loopback, so that combination reports `server not reachable
-... from other nodes` by design), and the launcher scripts against the marketplace
-reference. The persistent tunnels the tests left on both hosts were removed by hand
-afterwards; `~/app-testbed` and `~/app-testbed-worker` keep their logs, as in the source.
+A workers-only run (`wired-baboon`, `deploy_server: false` against a kept server)
+skipped `start_server` and `wait_for_endpoint` and found the worker connected. Not
+exercised: PBS, `pw-forward`/`ssh` set explicitly, key adoption from the server host, a
+scheduled worker on the server host's own cluster (the placeholder binds loopback), and
+the launcher scripts. The tunnels the tests left were removed by hand.

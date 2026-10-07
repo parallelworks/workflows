@@ -1,57 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <!-- Dask on SLURM: a scheduler feeding three SLURM worker jobs, the task
-       stream between them. Source of dask-slurm.png (rendered at 120 px, the
-       size of the marketplace thumbnails), so three shapes, one accent. -->
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2567b8"/>
-      <stop offset="1" stop-color="#153f7d"/>
-    </linearGradient>
-  </defs>
-
-  <rect x="8" y="8" width="496" height="496" rx="88" fill="url(#bg)"/>
-
-  <!-- the scheduler -->
-  <g fill="none" stroke="#ffffff" stroke-width="12" stroke-linejoin="round">
-    <rect x="166" y="72" width="180" height="92" rx="16"/>
-  </g>
-  <g fill="#8fe0ff">
-    <rect x="190" y="96" width="132" height="12" rx="6"/>
-    <rect x="190" y="122" width="88" height="12" rx="6"/>
-  </g>
-
-  <!-- the task stream to the workers -->
-  <g fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M256,164 L256,214 L116,214 L116,284"/>
-    <path d="M256,214 L256,284"/>
-    <path d="M256,214 L396,214 L396,284"/>
-  </g>
-  <g fill="#8fe0ff">
-    <rect x="98" y="232" width="36" height="36" rx="8"/>
-    <rect x="238" y="232" width="36" height="36" rx="8"/>
-    <rect x="378" y="232" width="36" height="36" rx="8"/>
-  </g>
-  <g fill="#ffffff">
-    <path d="M100,268 L116,296 L132,268 z"/>
-    <path d="M240,268 L256,296 L272,268 z"/>
-    <path d="M380,268 L396,296 L412,268 z"/>
-  </g>
-
-  <!-- three worker jobs -->
-  <g fill="none" stroke="#ffffff" stroke-width="12" stroke-linejoin="round">
-    <rect x="56" y="316" width="120" height="124" rx="16"/>
-    <rect x="196" y="316" width="120" height="124" rx="16"/>
-    <rect x="336" y="316" width="120" height="124" rx="16"/>
-  </g>
-  <g fill="#8fe0ff">
-    <rect x="80" y="342" width="72" height="12" rx="6"/>
-    <rect x="80" y="368" width="72" height="12" rx="6"/>
-    <rect x="80" y="394" width="44" height="12" rx="6"/>
-    <rect x="220" y="342" width="72" height="12" rx="6"/>
-    <rect x="220" y="368" width="72" height="12" rx="6"/>
-    <rect x="220" y="394" width="44" height="12" rx="6"/>
-    <rect x="360" y="342" width="72" height="12" rx="6"/>
-    <rect x="360" y="368" width="72" height="12" rx="6"/>
-    <rect x="360" y="394" width="44" height="12" rx="6"/>
-  </g>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Dask icon, from https://github.com/dask/dask/blob/main/docs/source/images/dask_icon.svg (BSD-3-Clause); source of dask-slurm.png -->
+<!-- Generator: Adobe Illustrator 26.0.3, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 512 512" style="enable-background:new 0 0 512 512;" xml:space="preserve">
+<style type="text/css">
+	.st0{fill:#FFC11E;}
+	.st1{fill:#04255C;}
+	.st2{fill:#FC6E6B;}
+	.st3{fill:#FFFFFF;}
+	.st4{fill:#EF1161;}
+</style>
+<g>
+	<path class="st0" d="M143.71,157.61l126.5-72.99c1.25-0.72,2.02-2.05,2.02-3.5l0.01-43.77c0-6.48-2.66-12.9-7.83-16.81
+		c-6.69-5.06-15.28-5.56-22.33-1.48L65.13,121.17c-6.22,3.59-10.06,10.23-10.06,17.41L55,369.18c0,6.47,2.65,12.89,7.81,16.81
+		c6.68,5.07,15.29,5.57,22.35,1.49l37.48-21.62c1.25-0.72,2.02-2.05,2.02-3.5l0.05-171.85C124.71,176.93,131.95,164.4,143.71,157.61
+		z"/>
+	<path class="st4" d="M446.95,124.53c-3.15-1.82-6.61-2.73-10.06-2.73c-3.45,0-6.9,0.91-10.05,2.73l-176.96,102.1
+		c-6.2,3.58-10.06,10.25-10.06,17.41l-0.07,231.47c0,7.27,3.76,13.78,10.05,17.42c6.3,3.64,13.81,3.64,20.11,0l176.95-102.11
+		c6.2-3.58,10.06-10.25,10.06-17.41L457,141.95C457,134.68,453.24,128.16,446.95,124.53z"/>
+	<path class="st2" d="M240.95,211.14l116.78-67.38c1.25-0.72,2.02-2.05,2.02-3.5l0.02-50.98c0-6.48-2.66-12.9-7.83-16.81
+		c-6.69-5.06-15.27-5.55-22.33-1.48l-48.43,27.95L152.64,173.1c-6.22,3.59-10.06,10.23-10.06,17.41l-0.05,174.18l-0.02,56.41
+		c0,6.48,2.65,12.89,7.81,16.81c6.69,5.07,15.29,5.57,22.35,1.49l47.2-27.24c1.25-0.72,2.02-2.05,2.02-3.5l0.05-164.64
+		C221.95,230.46,229.19,217.92,240.95,211.14z"/>
+</g>
 </svg>

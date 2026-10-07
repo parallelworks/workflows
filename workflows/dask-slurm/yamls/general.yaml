@@ -20,7 +20,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: dask
+          branch: canary
           sparse_checkout:
             - workflows/dask-slurm/app
             - tools/utils

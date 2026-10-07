@@ -1,0 +1,22 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "warm_marker": "${HOME}/metabase/metabase.db/metabase.db.mv.db",
+    "leftover_patterns": [
+      "metabase.jar",
+      "docker compose",
+      "pw endpoints run"
+    ],
+    "leftover_commands": {
+      "docker_containers": "(docker ps -aq --filter name=metabase_ 2>/dev/null || sudo -n docker ps -aq --filter name=metabase_ 2>/dev/null || echo ERR) | wc -l"
+    }
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": false
+  },
+  "service": {
+    "data_dir": "${HOME}/metabase",
+    "image": "metabase/metabase:v0.64.1"
+  }
+}

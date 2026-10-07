@@ -189,9 +189,17 @@ three; on a cloud cluster the variants behave alike, which is how `tests/hsp/` a
 
 The failure tests set `_test.expect: error`: they pass when the run ends in error
 and nothing is left behind. Every test completed with no SLURM job, process or I/O
-directory left behind. A run cancelled while `ior` was running on the compute node
-(`pw workflows runs cancel`) also left nothing: the submitter's `scancel` and
-`cancel.sh` removed the job and the I/O directory, and `benchmark.exit` recorded `143`.
+directory left behind.
+
+**Cancelling a run** (`pw workflows runs cancel`) ends the SLURM/PBS job or the login
+node process; `benchmark.sh` traps the signal, ends the benchmark's whole process tree
+(Open MPI gives every rank a process group of its own, so a group kill is not enough),
+records `143` in `benchmark.exit` and removes the I/O directory. Verified on gcpsmall
+through the `general` and `hsp` submitters with IOR writing on the compute node. One
+caveat on NFS: a killed rank's file lingers as an `.nfs…` placeholder until the kernel
+has drained its dirty pages, so the removal retries for up to two minutes; when the
+scheduler ends the script first (SLURM's `KillWait`, 30 s on gcpsmall) the per-run
+directory can stay behind, empty once the drain finishes.
 
 ## Files
 

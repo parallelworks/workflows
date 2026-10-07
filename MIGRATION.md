@@ -873,3 +873,43 @@ status and the output tail; also under `hsp/` and `noaa/`) and `fail-bad-ranks`
 arguments" test could not fail: the platform default-fills an explicit `""` for a group
 item (`references/pitfalls.md`), so that check is unreachable from the API and the test was
 dropped. The README no longer says the workflow registers no endpoint (reviewer feedback).
+
+**Tests of the variants and failure paths (2026-10-07, `pw://alvaro/gcpsmall`, which had
+been recreated overnight, so every build started cold again):**
+
+| Test | Result |
+|---|---|
+| `hsp/gcpsmall-pingpong-login` | PASS `unique-grubworm` (cold, IMB rebuilt, 2 min) |
+| `hsp/gcpsmall-ior-minimal` | PASS `amused-leech` (27 min: the reused cloud node sat `NOT_RESPONDING+POWERING_UP` for 25 min before SLURM got it back; IOR itself took 12 s) |
+| `hsp/fail-ior-bad-args` | PASS `wired-boar` (run `error` in 38 s: "exited with status 1" and IOR's usage in the tail) |
+| `noaa/gcpsmall-pingpong-login` | PASS `knowing-serval` (48 s) |
+| `noaa/gcpsmall-ior-minimal` | PASS `assuring-sole` (32 s); `ntasks: nodes * ntasks_per_node` verified separately with a throwaway workflow (`2 * 4` rendered `8`, run `on-crappie`) because the job directory no longer keeps rendered step scripts |
+| `noaa/fail-ior-bad-args` | PASS `major-bat` (run `error` in 32 s) |
+| `general/fail-mpi-commands` | PASS `full-osprey` (run `error` in 43 s at *Prepare the MPI Environment*: "does not provide mpicc mpirun", with the module error in the annotation) |
+| `general/fail-ior-bad-args` | PASS `pro-opossum` (run `error` in 6 min, cold node) |
+| `general/fail-bad-ranks` | PASS `summary-bluegill` (run `error` in 16 s at *Create Inputs*) |
+| `general/fail-custom-empty` (withdrawn) | FAIL `obliging-sheep`: the run completed, see above |
+
+**Cancel, revisited.** The hsp cancel test (`helped-grub`) showed that the signal traps alone
+did not hold: `benchmark.exit` was never written and 4.4 GB of IOR files stayed behind.
+IOR's output had the ranks finishing their write phase 54 s after the cancel, past
+SLURM's 30 s `KillWait`: bash defers a trap until the foreground pipeline ends, so SIGKILL
+took it before any trap ran. Three changes, each checked with another cancel:
+`open-labrador` (the pipeline now runs in the background under `wait`, where bash runs the
+trap at once: exit `143` recorded, but `rm -rf` raced ranks still creating files),
+`alert-cow` (the trap also killed the benchmark's process group: still racing, the job
+lived 52 s, because `mpirun` gives each local rank a process group of its own, verified
+with `ps -o pid,pgid`), `ruling-fox` (the trap kills the process tree captured before the
+first signal: the ranks died at once, the job ended in 20 s, exit `143`; one killed rank
+stayed a zombie for two minutes draining 1.1 GB of dirty NFS pages, its file an `.nfs…`
+placeholder, so the directory removal now retries for up to two minutes and the README
+says a cancel on NFS can leave the empty per-run directory). The general variant's cancel
+test with the final script, `proper-jaguar`, ended clean: exit `143`, no SLURM job, no
+I/O directory (the retries outlasted the drain), after a 5-minute hang of the submitter's
+cleanup whose `ssh` to the fresh node 0002 was being refused (`Connection closed by … port
+22`, the node's sshd, not the workflow). On hsp the submitter's cleanup cannot run
+`cancel.sh` on the node (`HOSTNAME` is written after the script), so the trap is the only
+cleanup there; on general the cleanup ran it, racing the same ranks. With the final
+script, `general/gcpsmall-ior-minimal` (`literate-sheep`) and `general/fail-ior-bad-args`
+(`direct-rhino`) pass again: the success path through `wait` and the failure path's exit
+status from the subshell. The checkouts of the three YAMLs point at `canary` for the merge.

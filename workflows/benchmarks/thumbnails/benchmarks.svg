@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <!-- Benchmarks: a bandwidth curve over two nodes exchanging a ping-pong.
-       Source of benchmarks.png (rendered at 512 px); the marketplace shows it small,
+       Source of benchmarks.png (rendered at 120 px, the size of the marketplace thumbnails),
        so three shapes, one accent. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">

@@ -20,11 +20,27 @@ f_exit() {
     fi
 }
 trap f_exit EXIT
-# scancel and qdel send SIGTERM; without these traps bash runs the exit trap with
-# the status of the last command completed before the benchmark, which is 0
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
+# scancel and qdel send SIGTERM; without these traps bash would run the exit trap
+# with the status of the last command completed before the benchmark, which is 0.
+# The benchmark runs in its own process group (set -m below), so the trap ends it
+# before the exit trap removes the I/O directory: IOR ranks finish the I/O in
+# flight before they honour SIGTERM and keep creating files meanwhile.
+f_killed() {
+    trap - HUP INT TERM
+    if [ -n "${bench_pid:-}" ] && kill -0 "${bench_pid}" 2> /dev/null; then
+        kill -TERM -- "-${bench_pid}" 2> /dev/null || true
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            kill -0 "${bench_pid}" 2> /dev/null || break
+            sleep 1
+        done
+        kill -KILL -- "-${bench_pid}" 2> /dev/null || true
+        wait "${bench_pid}" 2> /dev/null || true
+    fi
+    exit "$1"
+}
+trap 'f_killed 129' HUP
+trap 'f_killed 130' INT
+trap 'f_killed 143' TERM
 set -e
 
 source "${benchmark_mpi_env}"
@@ -127,12 +143,15 @@ fi
 echo "Command       : ${cmd[*]}"
 echo "Started       : $(date)"
 echo
-# In the background and waited for: bash runs a trap at once while in `wait` but
-# only after a foreground pipeline ends, and an mpirun that got SIGTERM can outlive
-# SLURM's KillWait while its ranks finish their I/O, after which SIGKILL takes bash
-# and the exit trap never runs (seen on a cancel). The subshell carries pipefail so
-# the status waited for is the benchmark's, not tee's.
+# In the background, in its own process group, and waited for: bash runs a trap at
+# once while in `wait` but only after a foreground pipeline ends, and an mpirun that
+# got SIGTERM can outlive SLURM's KillWait while its ranks finish their I/O, after
+# which SIGKILL takes bash and the exit trap never runs (seen on a cancel). The
+# subshell carries pipefail so the status waited for is the benchmark's, not tee's.
+set -m
 ( set -o pipefail; "${cmd[@]}" 2>&1 | tee "${out}" ) &
-wait $!
+bench_pid=$!
+set +m
+wait "${bench_pid}"
 echo
 echo "Finished      : $(date)"

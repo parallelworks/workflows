@@ -780,7 +780,7 @@ job.
 | `benchmarks/utils/plot-imb-mpi-benchmark.py` (pandas + plotly HTML, shown through a v2 `/me/3001/api/v1/display/` iframe) | `app/summarize.py` (standard library): CSV tables, `::notice` headline, `KEY=value` outputs |
 | form: `benchmark` dropdown of six, `pwrl_host` group with `_sch__dd_*` directive fields, `benchmark_root_dir`, `with_lustre`, `spack_install_intel_mpi`, `load_mpi` | `cluster` (resource, scheduler, `nodes`, `ntasks_per_node`, slurm, pbs), `benchmark` (`name` of four, `imb_args`, `preset` standard/minimal/custom, `ior_args`, `mdtest_args`, `io_dir`), `software` (`mpi` auto/conda-forge/commands, `mpi_load`, `install_dir`) |
 | `apirun/` (a `run_workflow.py` API client for a different demo) | left behind |
-| `benchmark.png` (a 120 px plotly screenshot) | replaced: `thumbnails/benchmarks.svg` (the drawing: a bandwidth curve over two nodes exchanging a ping-pong) rendered to `thumbnails/benchmarks.png` at 512 px |
+| `benchmark.png` (a 120 px plotly screenshot) | replaced: `thumbnails/benchmarks.svg` (the drawing: a bandwidth curve over two nodes exchanging a ping-pong) rendered to `thumbnails/benchmarks.png` at 120 px like the other thumbnails |
 
 **Code changes beyond the paths:**
 

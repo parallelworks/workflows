@@ -54,7 +54,9 @@ printf 'cpu            : %s\n' "$(lscpu 2>/dev/null | sed -n 's/^Model name: *//
 printf 'spack root     : %s\n' "$SPACK_ROOT"
 printf 'build cache    : %s\n' "$BUILDCACHE_PATH"
 for _p in "$HOME" "$(dirname "$SPACK_ROOT")" "$BUILDCACHE_PATH"; do
-  [ -d "$_p" ] && df -h "$_p" | tail -n +2
+  # `if`, not `[ -d ] &&`: under pipefail a missing last path (no build cache yet
+  # on a fresh cluster) made the loop, and so the controller, exit 1.
+  if [ -d "$_p" ]; then df -h "$_p" | tail -n +2; fi
 done | sort -u
 
 # ---------------------------------------------------------------------------

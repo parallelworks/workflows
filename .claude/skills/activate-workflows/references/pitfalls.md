@@ -378,3 +378,11 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   `--workers 2` it is 700 MB. Measure a new server's footprint on a login node (`ps -o
   rss`, or PSS from `/proc/<pid>/smaps_rollup`) before trusting the shared 512Mi/1Gi
   defaults, and probe the image in a pod with the same limits first (k8s reference §3).
+- **A run cancel can leave the endpoint record in `pw endpoints list` as `stopped`**
+  (observed 2026-10-07, `workflows/mlflow` on gcpsmall): `pw workflows runs cancel` while the
+  service was starting ran the cleanup trap, MLflow shut down gracefully and no process
+  survived, but the listing kept `mlflow-<slug>  stopped` until `pw endpoints delete`; the
+  `pw endpoints run` process is killed by the trap's `kill -- -$$` before it finishes
+  deregistering. When the submitter's own cleanup does the killing (a failed health check),
+  the log shows `Endpoint "<name>" deleted.` instead. A `stopped` record is inert, but a
+  cancel-cleanup check should look at `pw endpoints list` too and delete what it finds.

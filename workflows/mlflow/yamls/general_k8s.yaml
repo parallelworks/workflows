@@ -14,7 +14,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: mlflow
+          branch: canary
           sparse_checkout:
             - workflows/mlflow/app
             - tools/utils

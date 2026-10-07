@@ -936,6 +936,14 @@ form fixes one, so the launcher records `http://<node>:<port>` in the job direct
 `mlflow ui` in the container's working directory, and defaults to the official
 `ghcr.io/mlflow/mlflow:v3.17.0` image (the `ubuntu/mlflow:2.1.1_1.0-22.04` default
 dated from January 2023; MLflow 3 clients need a MLflow 3 server for traces and logged
-models). Tests: `workflows/mlflow/tests/`, the compute-cluster variants on
-`pw://alvaro/gcpsmall` (login node and SLURM job; the `existing`-only form fields of hsp
-and noaa cannot be exercised from a cloud cluster), the Kubernetes lanes on `k3sgpu`.
+models). Two MLflow 3 behaviours shaped the launch: the server rejects a `Host` header
+or an `Origin` outside its allow-lists with 403 (the proxied endpoint host is outside
+them), so the cluster launcher composes `--allowed-hosts`/`--cors-allowed-origins` from
+`PW_ENDPOINT_HOST` and the node's names and the containers open both lists; and its
+defaults, four 250 MB uvicorn workers plus a seven-process job runner (2.5 GB PSS
+measured), were `OOMKilled` at the k8s forms' 1Gi limit, so server-side job execution
+(GenAI evaluation jobs) is a form option that is off by default on every variant and the
+Kubernetes form adds a worker count (2) with 1Gi/2Gi memory defaults. Tests:
+`workflows/mlflow/tests/`, the compute-cluster variants on `pw://alvaro/gcpsmall` (login
+node and SLURM job; the `existing`-only form fields of hsp and noaa cannot be exercised
+from a cloud cluster), the Kubernetes lanes on `k3sgpu`.

@@ -351,3 +351,30 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   export time) before `miniforge_bootstrap`, and leaves it unset for `latest` and pasted
   environments. A `conda install` into base may also bump `conda` itself (26.7.2 → 26.7.3
   seen), so the export can legitimately differ from the installer's own version.
+- **MLflow 3 answers 403 behind the endpoint while `/health` says 200** (verified
+  2026-10-07, `workflows/mlflow`): since 3.5 the server validates the `Host` header
+  against an allow-list (localhost variants and private IP ranges by default; `/health`
+  and `/version` are exempt, so a health probe sees nothing wrong) and blocks POST/PUT/
+  DELETE API calls whose `Origin` is not allow-listed, which the browser UI sends on every
+  same-origin POST. The platform proxy forwards the public endpoint host, so the first
+  `GET /` got `403` after the `503`s of startup, and the pod log says `Rejected request
+  with invalid Host header: <endpoint host>`. Setting `--allowed-hosts` *replaces* the
+  defaults (the node's own FQDN is not in them either; its IP is). On a cluster, compose
+  `--allowed-hosts` and `--cors-allowed-origins` in a launcher from `PW_ENDPOINT_HOST`
+  (exported by `pw endpoints run`, pw ≥ 7.105) plus `hostname -f`, `hostname -s` and
+  `hostname -I`; inside a pod served by the `pw-cli` sidecar the host is unknown when the
+  container starts, so set `MLFLOW_SERVER_ALLOWED_HOSTS=*` and
+  `MLFLOW_SERVER_CORS_ALLOWED_ORIGINS=*` (the pod has no Service; the tunnel is the only way
+  in). `pw endpoints run --rewrite-host` alone is not enough: it rewrites `Host`, not
+  `Origin`.
+- **A pod that is `OOMKilled` in a restart loop looks like a slow start: the endpoint
+  answers `503` for the whole budget** (verified 2026-10-07, `workflows/mlflow` on k3sgpu):
+  the sidecar registers at once, the proxy returns `503` while nothing listens, and the
+  streamed log shows the server starting again and again; only `kubectl get pod -o
+  jsonpath='{.status.containerStatuses[0].lastState}'` (or the `BackOff` event) says
+  `OOMKilled/137`. MLflow 3's `mlflow server` defaults are 4 uvicorn workers plus a job
+  runner of 7 huey processes, about 250 MB each (PSS 2.5 GB measured on gcpsmall), far over
+  the k8s forms' 1Gi limit; with `MLFLOW_SERVER_ENABLE_JOB_EXECUTION=false` and
+  `--workers 2` it is 700 MB. Measure a new server's footprint on a login node (`ps -o
+  rss`, or PSS from `/proc/<pid>/smaps_rollup`) before trusting the shared 512Mi/1Gi
+  defaults, and probe the image in a pod with the same limits first (k8s reference §3).

@@ -18,6 +18,7 @@
 #       (default: ${HOME}/mlflow/artifacts)
 #   - service_port: port to listen on (optional; a free one is taken otherwise)
 #   - service_additional_flags: extra mlflow server flags (optional)
+#   - service_job_execution: true to run MLflow 3's server-side job runner (default: false)
 ################################################################################
 
 if [ -z "${service_parent_install_dir}" ]; then
@@ -73,10 +74,12 @@ fi
 # answers 403 to any Host header outside its allow-list (localhost and private IPs
 # by default: the endpoint host and the node's own name are not) and to the UI's
 # POSTs when their Origin is not allow-listed, so both lists name the endpoint and
-# every name of this node.
+# every name of this node. The job runner (GenAI evaluation jobs) is seven 250 MB
+# processes on top of the workers, so it only runs when the form asks for it.
 tracking_uri_file=${PW_PARENT_JOB_DIR:-${PWD}}/tracking_uri
 cat > launch-mlflow-${PW_JOB_ID}.sh <<EOF
 #!/bin/bash
+export MLFLOW_SERVER_ENABLE_JOB_EXECUTION=${service_job_execution:-false}
 node_fqdn=\$(hostname -f 2>/dev/null || hostname)
 allowed_hosts="localhost,localhost:*,127.0.0.1,127.0.0.1:*"
 cors_origins=""

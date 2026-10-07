@@ -29,6 +29,7 @@ jobs:
           service_artifacts_destination="${{ inputs.service.artifacts_destination }}"
           service_port="${{ inputs.service.port }}"
           service_additional_flags="${{ inputs.service.additional_flags }}"
+          service_job_execution="${{ inputs.service.job_execution }}"
           service_conda_install="${{ inputs.service.conda_install }}"
           service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
           service_conda_install_dir="${{ inputs.service.conda_install_dir }}"
@@ -257,6 +258,13 @@ jobs:
             tooltip: |
               Extra flags for the mlflow server command, e.g. --workers 2 or --app-name basic-auth.
               See https://mlflow.org/docs/latest/cli.html#mlflow-server
+          job_execution:
+            label: Enable server-side job execution?
+            type: boolean
+            default: false
+            tooltip: |
+              MLflow 3's job runner executes GenAI evaluation and scorer jobs on the server. It adds
+              about 1.8 GB of memory (seven worker processes); experiment tracking does not need it.
           conda_install:
             label: Install MLflow in a Miniforge environment if not there?
             type: boolean

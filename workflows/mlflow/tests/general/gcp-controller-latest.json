@@ -18,6 +18,7 @@
     "parent_install_dir": "${HOME}/pw/software",
     "conda_install_dir": ".miniforge3-mlflow",
     "conda_env": "base",
-    "install_instructions": "latest"
+    "install_instructions": "latest",
+    "job_execution": false
   }
 }

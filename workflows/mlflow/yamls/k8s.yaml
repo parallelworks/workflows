@@ -139,12 +139,15 @@ jobs:
                     # MLflow 3 answers 403 to a Host header or an Origin outside its
                     # allow-lists; the endpoint host only exists once the sidecar has
                     # registered, and the pod is reachable through that login-protected
-                    # tunnel alone, so both lists are opened
+                    # tunnel alone, so both lists are opened. Its job runner is seven
+                    # 250 MB processes, so it stays off unless asked for.
                     env:
                       - name: MLFLOW_SERVER_ALLOWED_HOSTS
                         value: "*"
                       - name: MLFLOW_SERVER_CORS_ALLOWED_ORIGINS
                         value: "*"
+                      - name: MLFLOW_SERVER_ENABLE_JOB_EXECUTION
+                        value: "${{ inputs.service_k8s.job_execution }}"
                     # The stores live on the PVC so the tracking data outlives the pod
                     command: ["mlflow", "server"]
                     args:
@@ -157,6 +160,8 @@ jobs:
                       - "--artifacts-destination"
                       - "${{ inputs.k8s.volumes.pvc_mount_path }}/artifacts"
                       - "--serve-artifacts"
+                      - "--workers"
+                      - "${{ inputs.service_k8s.workers }}"
                     resources:
                       requests:
                         memory: "${{ inputs.k8s.resources.requests.memory }}"
@@ -418,7 +423,7 @@ jobs:
                   memory:
                     label: Memory
                     type: string
-                    default: 512Mi
+                    default: 1Gi
                     tooltip: Specify the minimum memory required for the pod (e.g., 512Mi, 1Gi).
                   cpu:
                     label: CPU
@@ -432,7 +437,7 @@ jobs:
                   memory:
                     label: Memory
                     type: string
-                    default: 1Gi
+                    default: 2Gi
                     tooltip: Set the maximum memory the pod can use (e.g., 1Gi, 2Gi).
                   cpu:
                     label: CPU
@@ -495,3 +500,16 @@ jobs:
             type: number
             default: 5000
             tooltip: Define the port on which the MLflow server runs inside the container.
+          workers:
+            label: Worker Processes
+            type: number
+            min: 1
+            default: 2
+            tooltip: Request-handling processes (mlflow server --workers); each takes about 250 MB. Fit them to the pod's CPU and memory limits.
+          job_execution:
+            label: Enable server-side job execution?
+            type: boolean
+            default: false
+            tooltip: |
+              MLflow 3's job runner executes GenAI evaluation and scorer jobs on the server. It adds
+              about 1.8 GB of memory (seven worker processes); experiment tracking does not need it.

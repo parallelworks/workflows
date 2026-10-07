@@ -4,3 +4,4 @@ date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fe
 2026-09-21T10:15:56Z,,pass,ok,,73e678d,436820d,9b833fc,aa37094-dirty,aa37094,dev,alvaro,evolving-lamb,31,
 2026-09-21T10:26:52Z,,pass,ok,,3436478,436820d,2d967eb,7e7e5bf,7e7e5bf,dev,alvaro,precise-piranha,31,
 2026-10-07T11:37:17Z,,fail,ok,,7c3043d,74bcc3d,ef324c0,ddf4b5d,ddf4b5d,mlflow,alvaro,artistic-jaguar,344,"run error before the endpoint came online: wait_for_endpoint > Check endpoint health (error, 0s)"
+2026-10-07T11:48:01Z,,fail,ok,,d0d27b1,74bcc3d,ef324c0,a17bd2c,a17bd2c,mlflow,alvaro,relaxing-mosquito,344,"run error before the endpoint came online: wait_for_endpoint > Check endpoint health (error, 0s)"

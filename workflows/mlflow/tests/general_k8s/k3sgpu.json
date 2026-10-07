@@ -16,11 +16,11 @@
     },
     "resources": {
       "requests": {
-        "memory": "512Mi",
+        "memory": "1Gi",
         "cpu": "1"
       },
       "limits": {
-        "memory": "1Gi",
+        "memory": "2Gi",
         "cpu": "2",
         "select_gpu": "None"
       }
@@ -29,6 +29,8 @@
   "service_k8s": {
     "name": "mlflow",
     "image": "ghcr.io/mlflow/mlflow:v3.17.0",
-    "image_port": 5000
+    "image_port": 5000,
+    "workers": 2,
+    "job_execution": false
   }
 }

@@ -59,6 +59,10 @@ export MLFLOW_TRACKING_TOKEN=<your pw API key>
 - **Additional Flags**: anything else for
   [`mlflow server`](https://mlflow.org/docs/latest/cli.html#mlflow-server), e.g.
   `--workers 2` or `--app-name basic-auth`.
+- **Enable server-side job execution?**: MLflow 3's job runner, which executes GenAI
+  evaluation and scorer jobs on the server. Off by default: it is seven worker processes
+  of about 250 MB each on top of the request workers (about 250 MB each, four by default),
+  and experiment tracking does not use it.
 - **Installation**: the pinned environment, the latest MLflow and Miniforge from
   conda-forge, or paste your own conda environment YAML. Or skip the installation and
   point at an existing environment with a load command (MLflow 3 needs Python 3.10 or
@@ -73,6 +77,12 @@ running `mlflow server` on the configured port (default 5000), with a `pw` clien
 that publishes that port as the endpoint, waits for the pod to be ready and for the
 endpoint to answer, and streams the pod logs into the run for the life of the
 deployment.
+
+Memory: each request worker is about 250 MB and the optional job runner about 1.8 GB,
+so the form defaults to two workers, job execution off, and 1Gi requested / 2Gi limit;
+a 1Gi limit with MLflow's own defaults (four workers, job runner on) is `OOMKilled` in a
+restart loop while the endpoint answers 503. Raise the memory limit when you turn the
+job runner on or add workers.
 
 Storage: a PersistentVolumeClaim is mounted at the configured mount path (default
 `/mnt`); create a new PVC (size, storage class) or select an existing one. The sqlite

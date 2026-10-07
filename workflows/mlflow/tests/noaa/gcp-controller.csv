@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-07T11:50:19Z,warm,pass,ok,d0d27b1,74bcc3d,ef324c0,a17bd2c,a17bd2c,mlflow,alvaro,fine-rooster,37,

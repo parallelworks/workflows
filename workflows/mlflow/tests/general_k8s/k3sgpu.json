@@ -2,8 +2,11 @@
   "_test": {
     "timeout_s": 1200
   },
+  "resource": {
+    "name": "k3sgpu",
+    "type": "kubernetes"
+  },
   "k8s": {
-    "cluster": "k3sgpu",
     "namespace": "alvarok8s",
     "volumes": {
       "pvc": "New",
@@ -24,6 +27,7 @@
     }
   },
   "service_k8s": {
+    "name": "mlflow",
     "image": "ghcr.io/mlflow/mlflow:v3.17.0",
     "image_port": 5000,
     "workers": 2,

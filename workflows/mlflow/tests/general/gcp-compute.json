@@ -1,0 +1,31 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "warm_marker": "${HOME}/pw/software/.miniforge3-mlflow/bin/mlflow",
+    "leftover_patterns": [
+      "mlflow",
+      "pw endpoints run"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "00:30:00"
+    }
+  },
+  "service": {
+    "backend_store_uri": "sqlite:///${HOME}/mlflow/mlflow.db",
+    "artifacts_destination": "${HOME}/mlflow/artifacts",
+    "port": 5000,
+    "additional_flags": "--workers 2",
+    "conda_install": true,
+    "parent_install_dir": "${HOME}/pw/software",
+    "conda_install_dir": ".miniforge3-mlflow",
+    "conda_env": "base",
+    "install_instructions": "mlflow3.16.1-python3.14.7",
+    "job_execution": false
+  }
+}

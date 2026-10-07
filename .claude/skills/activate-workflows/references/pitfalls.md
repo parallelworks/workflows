@@ -8,7 +8,7 @@
 >
 > "Step N" means SKILL.md's step N; "reference §N" means section N of
 > [activate-platform.md](activate-platform.md). Lessons about one piece of software
-> (OpenFOAM, Dakota, conda environments, Singularity/SIF images, MPI benchmarks) live in
+> (OpenFOAM, Dakota, conda environments, Singularity/SIF images, MPI benchmarks, dask-jobqueue) live in
 > [software/](software/), one file per tool — grep both when a symptom is unclear.
 
 ## Common pitfalls (learned from real runs)
@@ -210,6 +210,17 @@
   cleanup script stays the belt and braces (and on `hsp` it cannot reach the node: that
   submitter writes `HOSTNAME` after the script). `activate-batch`'s `commands.exit` has
   the same latent `0`; harmless there because a cancelled run never reads it.
+
+- **A `pw ssh` call that launches a detached script and then keeps working did not
+  return** (2026-10-07, twice, `workflows/dask-slurm`'s dev loop): `pw ssh <r> 'setsid
+  nohup bash script.sh > out 2>&1 < /dev/null & sleep 25; cat out'` and a `bash -c` whose
+  body backgrounds a long-lived python stayed open for minutes, past the tool timeout,
+  while `pw ssh <r> 'setsid nohup bash -c "..." > log 2>&1 < /dev/null & echo started'`
+  (nothing after the launch, nothing backgrounded inside) returned at once. Stage the
+  script with `pw ssh <r> 'cat > remote.sh' < local.sh`, launch it as the last thing in
+  its own call, and poll the logs in separate calls. Kill the leftover launcher shells
+  (`ps -u $USER -o pid,etime,args`) or their delayed commands run later against a newer
+  state: a demo client from the stale launch connected to the next test's scheduler.
 
 ## Lessons from LLM-backed & multi-service builds (hermes-agent)
 

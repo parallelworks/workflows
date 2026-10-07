@@ -44,7 +44,8 @@ def env_int(name, default):
 
 
 def fail(message):
-    log.error("::error title=Error::%s", message)
+    # a platform annotation must start the line: no logging prefix in front of it
+    print(f"::error title=Error::{message}", flush=True)
     sys.exit(1)
 
 

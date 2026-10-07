@@ -124,6 +124,9 @@ jobs:
           $yaml: workflows/script_submitter/v3.6/hsp.yaml
           resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
+          # the submitter works in the run's job directory: the service's output
+          # (run.<id>.out) lands there and ./cancel.sh is the one the start script writes
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}
           use_existing_script: true
           script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
           define_cleanup_script: true

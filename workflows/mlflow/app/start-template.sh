@@ -66,19 +66,41 @@ if [ -n "${service_port}" ]; then
     endpoint_port_args="--port ${service_port}"
 fi
 
-# pw endpoints run exports PORT to the wrapped command; the launcher reads it at
-# runtime and records the in-cluster address, since jobs on the cluster log to the
-# server directly while the endpoint serves it outside. The server binds every
-# interface for the same reason.
+# pw endpoints run exports PORT and PW_ENDPOINT_HOST to the wrapped command, so the
+# launcher composes what only exists at runtime. The server binds every interface
+# because jobs on the cluster log to it directly while the endpoint serves it
+# outside; the in-cluster address goes to the job directory for them. MLflow 3
+# answers 403 to any Host header outside its allow-list (localhost and private IPs
+# by default: the endpoint host and the node's own name are not) and to the UI's
+# POSTs when their Origin is not allow-listed, so both lists name the endpoint and
+# every name of this node.
+tracking_uri_file=${PW_PARENT_JOB_DIR:-${PWD}}/tracking_uri
 cat > launch-mlflow-${PW_JOB_ID}.sh <<EOF
 #!/bin/bash
-tracking_uri="http://\$(hostname -f 2>/dev/null || hostname):\${PORT}"
-echo "\${tracking_uri}" > "${PWD}/tracking_uri"
-echo "::notice title=Tracking URI::In-cluster MLflow tracking URI \${tracking_uri} (also in ${PWD}/tracking_uri)"
+node_fqdn=\$(hostname -f 2>/dev/null || hostname)
+allowed_hosts="localhost,localhost:*,127.0.0.1,127.0.0.1:*"
+cors_origins=""
+for h in \${node_fqdn} \$(hostname -s 2>/dev/null) \$(hostname -I 2>/dev/null); do
+    allowed_hosts="\${allowed_hosts},\${h},\${h}:*"
+    cors_origins="\${cors_origins},http://\${h}:*"
+done
+if [ -n "\${PW_ENDPOINT_HOST}" ]; then
+    allowed_hosts="\${allowed_hosts},\${PW_ENDPOINT_HOST}"
+    cors_origins="https://\${PW_ENDPOINT_HOST}\${cors_origins}"
+else
+    echo "::warning::pw endpoints run did not export the endpoint host; accepting every Host header and Origin"
+    allowed_hosts="*"
+    cors_origins="*"
+fi
+tracking_uri="http://\${node_fqdn}:\${PORT}"
+echo "\${tracking_uri}" > "${tracking_uri_file}"
+echo "::notice title=Tracking URI::In-cluster MLflow tracking URI \${tracking_uri} (also in ${tracking_uri_file})"
 exec mlflow server --host 0.0.0.0 --port "\${PORT}" \\
     --backend-store-uri "${backend_store_uri}" \\
     --artifacts-destination "${artifacts_destination}" \\
-    --serve-artifacts ${service_additional_flags}
+    --serve-artifacts \\
+    --allowed-hosts "\${allowed_hosts}" \\
+    --cors-allowed-origins "\${cors_origins#,}" ${service_additional_flags}
 EOF
 chmod +x launch-mlflow-${PW_JOB_ID}.sh
 

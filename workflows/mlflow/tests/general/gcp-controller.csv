@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-07T11:37:20Z,cold,fail,ok,7c3043d,74bcc3d,ef324c0,ddf4b5d,ddf4b5d,mlflow,alvaro,notable-cockatoo,239,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"

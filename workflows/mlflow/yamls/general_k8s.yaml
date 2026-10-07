@@ -279,6 +279,15 @@ jobs:
                     image: ${{ inputs.service_k8s.image }}
                     ports:
                       - containerPort: ${{ inputs.service_k8s.image_port }}
+                    # MLflow 3 answers 403 to a Host header or an Origin outside its
+                    # allow-lists; the endpoint host only exists once the sidecar has
+                    # registered, and the pod is reachable through that login-protected
+                    # tunnel alone, so both lists are opened
+                    env:
+                      - name: MLFLOW_SERVER_ALLOWED_HOSTS
+                        value: "*"
+                      - name: MLFLOW_SERVER_CORS_ALLOWED_ORIGINS
+                        value: "*"
                     # The stores live on the PVC so the tracking data outlives the pod
                     command: ["mlflow", "server"]
                     args:

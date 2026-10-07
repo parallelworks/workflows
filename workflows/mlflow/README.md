@@ -29,7 +29,10 @@ The run completes once the endpoint answers; the server keeps running until
 
 The server listens on every interface of its node so jobs on the cluster can log to it
 directly. Its in-cluster address is printed by the run and written to the `tracking_uri`
-file in the job directory (`~/pw/jobs/<run-slug>/tracking_uri` for a CLI run):
+file in the job directory (`~/pw/jobs/<run-slug>/tracking_uri` for a CLI run). MLflow 3
+rejects requests whose `Host` header or `Origin` it does not know (HTTP 403), so the
+launcher allow-lists the endpoint host and the node's own names and addresses; a
+`--allowed-hosts` or `--cors-allowed-origins` in **Additional Flags** replaces that list.
 
 ```bash
 export MLFLOW_TRACKING_URI=$(cat ~/pw/jobs/<run-slug>/tracking_uri)   # http://<node>:<port>

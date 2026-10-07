@@ -10,7 +10,7 @@
 | layout | files | use it when |
 |---|---|---|
 | Standalone, k8s-only | `workflows/{jupyterlab,kasmvnc,openvscode,mlflow,ollama-openwebui}/yamls/k8s.yaml` | the service only runs on Kubernetes; `mlflow` is the smallest complete example to copy |
-| Hybrid | `workflows/{jupyterlab,kasmvnc,openvscode}/yamls/general_k8s.yaml` | one form for compute clusters and Kubernetes; every k8s job carries `if: ${{ inputs.resource.type == 'kubernetes' }}` and every script_submitter job the negation |
+| Hybrid | `workflows/{jupyterlab,kasmvnc,openvscode,mlflow}/yamls/general_k8s.yaml` | one form for compute clusters and Kubernetes; every k8s job carries `if: ${{ inputs.resource.type == 'kubernetes' }}` and every script_submitter job the negation |
 
 Both keep the repo's one rule: the app is served as a **`pw` endpoint** named
 `<service_k8s.name>-${PW_RUN_SLUG}`. The standalone files stay in the repo as k8s-only

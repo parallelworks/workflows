@@ -80,7 +80,7 @@ Variant YAMLs land at `workflows/<new>/yamls/`, scripts at `workflows/<new>/`
 | `workflows/hermes-agent` | hermes-agent: general_v5 | v4 pair (only generation) + proxies | |
 | `workflows/lite-agent` | lite-agent: general_v5 | v4 pair → unsuffixed + .py files | |
 | `workflows/rag-service` | rag-service: general_v5 | v4 pair → unsuffixed + support files, `fixtures/` | checkout branch `rag-service` was deleted upstream → now `canary` (see "dead branches") |
-| `workflows/mlflow` | `workflow/k8s/mlflow/general.yaml` → `yamls/k8s.yaml` | none (self-contained) | k8s-only workflow |
+| `workflows/mlflow` | `workflow/k8s/mlflow/general.yaml` → `yamls/k8s.yaml` | none (self-contained) | k8s-only workflow at the time; the compute-cluster variants followed on 2026-10-07 (see "mlflow on compute clusters") |
 | `workflows/ollama-openwebui` | `workflow/k8s/ollama-openwebui/general.yaml` → `yamls/k8s.yaml` | none (self-contained) | k8s-only workflow |
 | `workflows/session_runner/v1.4` | copied + READMEs updated | — | internal `uses`/`$yaml` re-pointed; **removed later** with vncserver + langflow-host, its only consumers (review change 6) |
 | `workflows/script_submitter/v3.6` | copied as-is + READMEs | — | fully self-contained |
@@ -913,3 +913,29 @@ cleanup there; on general the cleanup ran it, racing the same ranks. With the fi
 script, `general/gcpsmall-ior-minimal` (`literate-sheep`) and `general/fail-ior-bad-args`
 (`direct-rhino`) pass again: the success path through `wait` and the failure path's exit
 status from the subshell. The checkouts of the three YAMLs point at `canary` for the merge.
+
+## mlflow on compute clusters (2026-10-07, from interactive_session's legacy generation)
+
+`workflows/mlflow/` was k8s-only (above); the compute-cluster side is the
+endpoint-pattern port of `interactive_session`'s `mlflow/start-template-v3.sh` and
+`workflow/yamls/mlflow/{general,general_k8s}.yaml`, rewritten on the marimo port's
+shape rather than converted line by line. The endpoint name stays `mlflow-<run-slug>`
+on both paths.
+
+| interactive_session | here |
+|---|---|
+| `mlflow/start-template-v3.sh` (`eval` of a pip install or load command, then `mlflow server --port ${service_port} --host ${HOSTNAME} ${additional_flags}` with `./mlruns` wherever the job ran) | `workflows/mlflow/app/controller.sh` (Miniforge + conda-forge `mlflow` through `tools/utils/miniforge.sh`, pinned in `app/mlflow3.16.1-python3.14.7.yaml` and bootstrapped with the Miniforge release it was exported from; `latest`, a pasted YAML, a load command, or noaa's `install_command`) and `start-template.sh` (`mlflow server` behind `pw endpoints run` with `--backend-store-uri`, `--artifacts-destination` and `--serve-artifacts` from the form, local stores created when missing) |
+| form: `install_mlflow`, `mlflow_install_cmd`/`mlflow_load_cmd`, `port` (required, default 5000), `additional_flags` | `service`: `backend_store_uri` (default `sqlite:///${HOME}/mlflow/mlflow.db`), `artifacts_destination` (default `${HOME}/mlflow/artifacts`), optional `port`, `additional_flags`, and the marimo/jupyterlab installation group (`conda_install`, `install_instructions`, `load_env`, ...) |
+| `workflow/yamls/mlflow/general_k8s.yaml` (`targetType` dropdown: compute cluster or Kubernetes, `k8s.cluster` input) | `yamls/general_k8s.yaml`: the jupyterlab hybrid shape (`resource: compute-resources`, every job gated on `inputs.resource.type`) |
+
+The server binds every interface (the legacy `--host ${HOSTNAME}`) because jobs on the
+cluster log to it directly; `pw endpoints run` still picks the local port unless the
+form fixes one, so the launcher records `http://<node>:<port>` in the job directory's
+`tracking_uri` file. The Kubernetes path (`k8s.yaml` and the hybrid) now runs
+`mlflow server` with the sqlite store and the artifacts on the PVC mount instead of
+`mlflow ui` in the container's working directory, and defaults to the official
+`ghcr.io/mlflow/mlflow:v3.17.0` image (the `ubuntu/mlflow:2.1.1_1.0-22.04` default
+dated from January 2023; MLflow 3 clients need a MLflow 3 server for traces and logged
+models). Tests: `workflows/mlflow/tests/`, the compute-cluster variants on
+`pw://alvaro/gcpsmall` (login node and SLURM job; the `existing`-only form fields of hsp
+and noaa cannot be exercised from a cloud cluster), the Kubernetes lanes on `k3sgpu`.

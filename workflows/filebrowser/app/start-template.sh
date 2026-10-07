@@ -106,12 +106,12 @@ if [ ! -f "${filebrowser_rundir}/database/filebrowser.db" ]; then
     set -x
 else
     fb config set --auth.method="${filebrowser_auth_method}"
+    set +x
     if [ -n "${filebrowser_admin_password}" ]; then
-        set +x
         fb users update admin --password "${filebrowser_admin_password}" \
             || echo "::warning::Could not update the password of the admin user; the existing database keeps its users"
-        set -x
     fi
+    set -x
 fi
 
 ${docker_cmd} compose -p "${project_name}" up -d

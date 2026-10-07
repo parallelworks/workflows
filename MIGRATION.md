@@ -947,3 +947,50 @@ Kubernetes form adds a worker count (2) with 1Gi/2Gi memory defaults. Tests:
 `workflows/mlflow/tests/`, the compute-cluster variants on `pw://alvaro/gcpsmall` (login
 node and SLURM job; the `existing`-only form fields of hsp and noaa cannot be exercised
 from a cloud cluster), the Kubernetes lanes on `k3sgpu`.
+
+## filebrowser (2026-10-07, from parallelworks/filebrowser_workflow)
+
+`workflows/filebrowser/` is the endpoint-pattern port of `parallelworks/filebrowser_workflow@canary`
+(61d70c2), the [File Browser](https://filebrowser.org) web file manager
+(`filebrowser/filebrowser:v2.50.0`) with Docker Compose. The source served it through a
+platform **session** (`sessions:` block, `pw agent open-port`, `parallelworks/update-session`,
+a job that kept the run alive on `docker compose up`), with `FB_BASE_URL` set to the
+session's path prefix. Here it is the repository's shape: preprocessing →
+`script_submitter` → `wait_for_endpoint`; the run completes once the endpoint answers and
+the container outlives it behind `filebrowser-<run-slug>`.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `prep`, `filebrowser`, `create_session`; inputs `resource`, `rundir`) | `yamls/general.yaml` (`preprocessing`, `session_runner`, `wait_for_endpoint`; the `cluster`/`service` groups of `open-notebook`) |
+| the compose file and `docker compose up` written inline in the YAML | `app/controller.sh` (creates the mounted directories), `app/start-template.sh` (Docker detection and image pull as `open-notebook`, the database bootstrap, the compose stack behind `pw endpoints run`, `cancel.sh` = `compose down`) |
+| `README.md` | `README.md`, rewritten: the source's text described a different project (the PHP "FileBrowser" at `filebrowser.linuxforphp.net`, with Flysystem adapters and a Vue/Bulma front end), not the Go `filebrowser/filebrowser` the workflow runs |
+| `thumbnail.png` | `thumbnails/filebrowser.png` |
+
+**Code changes beyond the paths:**
+
+- **Base URL.** `FB_BASE_URL` comes from `PW_ENDPOINT_PATH` without its trailing slash:
+  empty on a subdomain endpoint, the `/me/session/<user>/<name>` prefix on a path-based
+  one (`--no-subdomain`), so one launcher serves both (verified by hand on gcpsmall: the
+  page's asset links carry the prefix).
+- **The container runs as the workflow user** (`user: <uid>:<gid>` in the compose file)
+  instead of the image's uid 1000, which the source tried to accommodate with a
+  `chown 1000:1000` that a non-root user cannot perform. Files created through the UI
+  belong to the user; the image's `init.sh` only warns that it cannot preserve the
+  ownership of the default settings file it copies.
+- **Authentication is a form choice applied on every start.** The source left File
+  Browser's JSON login with whatever credentials its quick setup produced (v2.50.0 prints a
+  random admin password in the container log). The form offers *Platform login only*
+  (`noauth`, the default: the endpoint already requires the platform login) and *File
+  Browser users* (`json`) with an optional admin password. Because `--noauth` and
+  `--password` only act when the database is created, the launcher bootstraps and updates
+  the database through the CLI (`config init`/`users add` the first time, `config set
+  --auth.method`/`users update admin --password` afterwards, with `docker compose run`),
+  so changing the dropdown or the password on a later run takes effect.
+- **Form.** `rundir` keeps its meaning (`config/` and `database/`, default
+  `${HOME}/filebrowser`); the served directory, `<rundir>/data` in the source, is the
+  visible **Root Directory** (`data_dir`, same default), and the image is an input.
+
+**Judgment calls:** `general` only, as `open-notebook` (Docker is not available on the
+HPCMP and NOAA systems the `hsp`/`noaa` submitters target); no `restart:` policy on the
+container, so a File Browser that dies ends `compose logs -f`, the endpoint wrapper and
+the job, as a crashed server does elsewhere here.

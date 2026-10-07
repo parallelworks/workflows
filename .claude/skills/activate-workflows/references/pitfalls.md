@@ -199,7 +199,14 @@
   foreground pipeline ends, and an `mpirun` that got SIGTERM kept its IOR ranks writing
   for 54 s (2026-10-07), past SLURM's `KillWait` (30 s here), so SIGKILL took bash and
   no trap ran at all; in `wait` the trap runs at once. Wrap the pipeline in a subshell
-  with `pipefail` so `wait` returns the command's status, not `tee`'s. The submitter's
+  with `pipefail` so `wait` returns the command's status, not `tee`'s. **Killing the
+  job's process group does not end Open MPI ranks**: `mpirun` puts every local rank in
+  a process group of its own (verified with `ps -o pid,pgid`: two `ior` ranks each had
+  their own pgid while `mpirun` shared the subshell's), so a `kill -- -<pgid>` left the
+  ranks writing and the `rm -rf` of their directory failed with "Directory not empty".
+  Walk the tree (`pgrep -P`, recursively, captured *before* the first kill, since
+  orphans re-parent) and signal the pids, then SIGKILL; the removal is retried while
+  ranks on other nodes die with the step. The submitter's
   cleanup script stays the belt and braces (and on `hsp` it cannot reach the node: that
   submitter writes `HOSTNAME` after the script). `activate-batch`'s `commands.exit` has
   the same latent `0`; harmless there because a cancelled run never reads it.

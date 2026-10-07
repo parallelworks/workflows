@@ -13,8 +13,11 @@ f_exit() {
     local rc=$?
     echo "${rc}" > "${job_dir}/benchmark.exit"
     if [ -n "${io_run_dir}" ]; then
-        # ranks on other nodes may still be creating files until the scheduler ends them
-        for _ in 1 2 3 4 5 6 7 8 9 10; do
+        # After a cancel the killed ranks' files linger as NFS .nfs* placeholders until
+        # the kernel has drained their dirty pages (a gigabyte takes a while), and ranks
+        # on other nodes create files until the scheduler ends them: keep trying. The
+        # scheduler may end this script first (SLURM's KillWait), leaving the directory.
+        for _ in $(seq 1 60); do
             rm -rf "${io_run_dir}" 2> /dev/null && break
             sleep 2
         done

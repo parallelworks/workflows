@@ -1,0 +1,32 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "endpoint": false,
+    "scheduler": true
+  },
+  "cluster": {
+    "resource": "pw://Hanif/3dcsv3",
+    "slurm": {
+      "time": "",
+      "scheduler_directives": "#SBATCH --exclusive\n",
+      "partition": "c5-2xlarge"
+    }
+  },
+  "service": {
+    "dry_run": false,
+    "version": "8.2.0.0",
+    "analysis_type": "montecarlo",
+    "bucket": "pw://Weisheng.Gan/s33dcshonda",
+    "model_directory": "models/Rail_CM",
+    "output_directory": "outputs/Rail_CM",
+    "concurrency": 2,
+    "thread": 1,
+    "metering_user": "",
+    "metering_ip": "",
+    "org_name": "",
+    "run_hours_3dcs_group": "",
+    "monitoring_conda_dir": "",
+    "monitoring_conda_env": "",
+    "num_seeds": 100
+  }
+}

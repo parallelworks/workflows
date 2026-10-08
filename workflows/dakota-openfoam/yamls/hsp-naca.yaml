@@ -203,6 +203,12 @@ jobs:
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           de_dir=$(cat design-explorer-dir.txt)
           pareto_url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="pareto-${PW_RUN_SLUG}" '$1 == name {print $3}')
+          # quoted for the script below: quotes written into the heredoc itself
+          # are dropped, and the label's space would split the argument
+          link=""
+          if [ -n "${pareto_url}" ]; then
+            printf -v link -- '--link %q' "Pareto front=${pareto_url}"
+          fi
           cat <<EOF > start-design-explorer.sh
           #!/bin/bash
           command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
@@ -210,7 +216,7 @@ jobs:
           exec pw endpoints run --name "design-explorer-${PW_RUN_SLUG}" -- \
               python3 "${PWD}/workflows/doe-openfoam/app/design-explorer-server.py" \
               --cases-dir "${PWD}/state" --design-explorer "${de_dir}" --port {port} \
-              --title "NACA airfoil optimization - ${PW_RUN_SLUG}" ${pareto_url:+--link "Pareto front=${pareto_url}"}
+              --title "NACA airfoil optimization - ${PW_RUN_SLUG}" ${link}
           EOF
           chmod +x start-design-explorer.sh
           if command -v setsid >/dev/null 2>&1; then

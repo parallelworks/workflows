@@ -1,7 +1,7 @@
 # DOE-OpenFOAM: Design of Experiments with Design Explorer
 
 A design of experiments over the NACA 4-digit airfoil: a sampler spreads designs
-over the variable bounds, every design is solved by
+over the variable bounds, or you paste your own, every design is solved by
 [`workflows/openfoam-naca`](../openfoam-naca/README.md) in parallel, and
 [Design Explorer](https://tt-acm.github.io/DesignExplorer/) shows the inputs, the
 coefficients and the flow images of every design side by side.
@@ -47,10 +47,30 @@ variable fixed.
 | Random | independent uniform samples (Monte Carlo) | `n` |
 | Full factorial | a grid of `L` levels per variable, the largest `L` with `L^d <= n` | `L^d` |
 | One at a time | the center, then each variable alone at `k = (n-1)/d` levels | `1 + d*k` |
+| Your own cases (CSV) | the rows of a table you paste in **Cases (CSV)** | one per row, up to 32 |
 
 `d` counts the variables that are not fixed. The two grid designs decide their
 own size, and the spare matrix slots are skipped. **Random seed** makes the
-other three repeatable.
+first three repeatable.
+
+### Your own cases
+
+Paste one row per case under a header naming the variables:
+
+```
+max_camber,camber_position,thickness,angle_of_attack
+0.00,0.40,0.12,4
+0.02,0.40,0.12,4
+0.04,0.40,0.12,4
+```
+
+- Commas, tabs (a paste from a spreadsheet), semicolons or spaces separate the
+  values.
+- A variable without a column is held at the middle of its bounds in **Design
+  variables**. A value outside the bounds runs with a warning.
+- Case, status and coefficient columns are skipped, so a previous run's
+  `doe.csv`, `results.csv` or the page's `data.csv` pastes as it is. Any other
+  unknown column stops the run, so a typo cannot fix a variable by accident.
 
 ## The Design Explorer page
 
@@ -122,6 +142,8 @@ write there.
 | `tests/general/gcpsmall.json` | 6 Latin hypercube designs on the login node, images and page |
 | `tests/general/gcpsmall-slurm-mpi2.json` | 4 Sobol designs as SLURM jobs of 2 ranks |
 | `tests/general/gcpsmall-no-images.json` | a full factorial over 3 variables (8 designs), images off |
+| `tests/general/gcpsmall-csv.json` | 5 pasted cases (tab-separated, one variable left out) |
+| `tests/hsp/gcpsmall-csv.json` | 3 cases pasted from a previous `doe.csv`, through the HSP form |
 | `tests/hsp/gcpsmall.json` | 9 one-at-a-time designs through the HSP form |
 | `tests/noaa/gcpsmall.json` | 4 random designs through the NOAA form |
 
@@ -131,8 +153,8 @@ Run one with `python3 tools/tests/run-workflow-test.py <test.json>`.
 
 | `app/` | Role |
 |---|---|
-| `doe.py` | the sampler: bounds → `cases/case_<j>/params.in` and `doe.csv` |
-| `study.py` | the collector: case directories → `results.csv` and `data.csv` |
+| `doe.py` | the sampler: bounds or a pasted table → `cases/case_<j>/params.in` and `doe.csv` |
+| `study.py` | the collector: case directories (a DOE's or a Dakota study's) → `results.csv` and `data.csv` |
 | `design-explorer.html` | the page |
 | `design-explorer-server.py` | serves the page, its libraries, the images and the tables |
 | `install-design-explorer.sh` | downloads Design Explorer once, at a pinned commit |

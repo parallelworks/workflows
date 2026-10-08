@@ -25,7 +25,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [app-testbed](workflows/app-testbed/) | Multi-site client-server pattern: a placeholder server behind a fixed endpoint, workers on other sites through SSH tunnels (login node or SLURM/PBS job) | general |
 | [benchmarks](workflows/benchmarks/) | MPI and file system benchmarks: IMB-MPI1 PingPong and Alltoall, IOR, mdtest, one per run as a SLURM/PBS job, with the figures as outputs | general, hsp, noaa |
 | [burst-render-demo](workflows/burst-render-demo/) | Multi-site burst demo: Mandelbrot tiles rendered on N sites in parallel, assembled live in a dashboard | general, hsp, noaa |
-| [doe-openfoam](workflows/doe-openfoam/) | Design of experiments over the NACA airfoil case (Latin hypercube, Sobol, random, full factorial, one at a time): every design an `openfoam-naca` call in parallel, the results as a table and, with images on, Design Explorer over the study as an endpoint | general, hsp, noaa |
+| [doe-openfoam](workflows/doe-openfoam/) | Design of experiments over the NACA airfoil case (Latin hypercube, Sobol, random, full factorial, one at a time, or your own cases as CSV): every design an `openfoam-naca` call in parallel, the results as a table and, with images on, Design Explorer over the study as an endpoint | general, hsp, noaa |
 | [dask-slurm](workflows/dask-slurm/) | Dask cluster on SLURM: adaptive dask-jobqueue workers, the Dask dashboard as endpoint, demo workloads | general, hsp, noaa |
 | [filebrowser](workflows/filebrowser/) | File Browser web file manager (Docker) | general |
 | [h2o](workflows/h2o/) | H2O-3 node with its Flow UI | general, hsp, noaa |

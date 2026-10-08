@@ -73,8 +73,9 @@ workers), `benchmarks` (one MPI or file system benchmark as a SLURM/PBS job),
 `probe`'s `general_run_tests.yaml` (one run of a platform's PROBE tests) —
 serves through a **`pw` endpoint** (`pw endpoints list`) named
 `<service>-${PW_RUN_SLUG}`. `dakota-openfoam` is both: a batch optimization loop that
-joins those last two as subworkflows and serves its live Pareto front as an endpoint;
-its server only ever runs on the login node, so it starts
+joins those last two as subworkflows and serves its live Pareto front as an endpoint
+(and, with images on, a Design Explorer page as a second one); its servers only ever
+run on the login node, so it starts
 `pw endpoints run` detached from a plain step (`tutorials/endpoint-workflows` Stage 3)
 instead of through the submitter below; `doe-openfoam` (a design of experiments over
 `openfoam-naca`, Design Explorer served over the cases) and `app-testbed` do the same,

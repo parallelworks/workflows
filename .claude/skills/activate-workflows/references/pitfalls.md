@@ -421,3 +421,20 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   [software/paraview.md](software/paraview.md): name the OSMesa window with
   `VTK_DEFAULT_OPENGL_WINDOW`, end the script with `os._exit()`, bound the run with `timeout`
   and judge completeness by a file written last.
+- **A matrix can be sized by a ternary over form inputs, but quote the whole value**
+  (verified 2026-10-08, `workflows/doe-openfoam`, run holy-worm): `job_id: "${{ [1, ..., 32]
+  get 0:(inputs.doe.method == 'csv' ? 32 : inputs.doe.n_cases) }}"` expanded to 32 slots
+  when the form said `csv` (5 ran, the rest skipped by the runtime guard). Unquoted, the
+  ternary's `: ` makes the line invalid YAML and the platform answers only `Invalid YAML`.
+- **An `editor` input keeps tabs**: a table pasted from a spreadsheet reached the run's
+  heredoc tab-separated (verified 2026-10-08, same run), so a parser can split on them.
+- **Publish step outputs from a file, not from a program's stdout**: `prog | tee -a
+  $OUTPUTS` also sends its `::notice::` lines there, and a `set -e` step without
+  `pipefail` hides the program's failure behind `tee`'s success. Write `KEY=value` lines
+  to a file and `cat` it into `$OUTPUTS` (`workflows/doe-openfoam`, Sample the Designs).
+- **Quotes inside `${var:+...}` in an unquoted heredoc are dropped**: a start step wrote
+  `${pareto_url:+--link "Pareto front=${pareto_url}"}` into a generated script and the
+  script got `--link Pareto front=https://...`, two arguments; the server exited with
+  `unrecognized arguments` and the liveness check failed the run (2026-10-08,
+  `workflows/dakota-openfoam`, run vocal-magpie). Build the argument before the heredoc
+  with `printf -v arg -- '--link %q' "Pareto front=${url}"` and write `${arg}`.

@@ -73,10 +73,11 @@ fi
 # The per-worker inputs of the merge are already in the bucket under job_dir_<n>/
 rm -f Results/"${model_name}"_*."${result_ext}"
 
-# The pw CLI mis-signs S3 keys that contain spaces (403 SignatureDoesNotMatch), and 3DCS
-# names some result files with spaces (e.g. "CMRailTraining .hsu")
-find Results -depth -name '* *' | while IFS= read -r f; do
-    mv "${f}" "$(dirname "${f}")/$(basename "${f}" | tr -d ' ')"
+# The pw CLI mis-signs S3 keys with characters that need URL-encoding (403 SignatureDoesNotMatch), and 3DCS
+# names result files after the model's measurements (e.g. "CMRailTraining .hsu", "TRUNK×BUMPER", "INST（FR）"):
+# drop spaces, and turn every other run of bytes outside [A-Za-z0-9._-] into "_", whatever the node's locale
+LC_ALL=C find Results -depth -name '*[!A-Za-z0-9._-]*' | while IFS= read -r f; do
+    mv -n "${f}" "$(dirname "${f}")/$(basename "${f}" | LC_ALL=C tr -d ' ' | LC_ALL=C tr -cs 'A-Za-z0-9._\n-' '_')"
 done
 
 echo "$(date) INFO: Uploading the merge to ${dcs_output_uri}"

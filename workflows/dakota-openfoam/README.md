@@ -98,7 +98,7 @@ Turn on **Generate images and serve Design Explorer?** (off by default) and ever
 case renders its flow fields with ParaView, and a second endpoint,
 `design-explorer-<run slug>`, serves the study next to the Pareto front:
 
-![Design Explorer over an optimization: generation, design variables, coefficients and the Pareto-front flag as axes, the thumbnails of every solved design colored by generation](thumbnails/design-explorer.png)
+![Design Explorer over a three-generation optimization: generation, design variables, coefficients and the Pareto-front flag as axes, the flag brushed so 8 of 11 designs stay selected and the dominated ones fade, lines and thumbnails colored by generation](thumbnails/design-explorer.png)
 
 - One axis per design variable and coefficient, plus **generation** and
   **pareto_front** (1 for the designs no other design beats on both drag and

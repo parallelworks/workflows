@@ -406,7 +406,7 @@
       // options through the constructor: a setter such as margin() redraws at
       // once, before the dimensions are known
       var pc = d3.parcoords({
-        margin: { top: 44, left: 64, right: 64, bottom: 14 },
+        margin: { top: 60, left: 64, right: 64, bottom: 14 },
         alpha: 0.7,
         composite: "source-over",
         color: function (r) { return scale(r[S.colorBy]); }
@@ -433,7 +433,9 @@
       pc.on("axesreorder", function (keys) {
         var hidden = S.order.filter(function (k) { return S.hidden[k]; });
         S.order = keys.concat(hidden);
+        staggerTitles(pc);
       });
+      staggerTitles(pc);
       var extents = {};
       axes.forEach(function (k) { if (S.extents[k]) { extents[k] = S.extents[k]; } });
       if (d3.keys(extents).length) {
@@ -441,6 +443,22 @@
       }
       S.pc = pc;
       S.brushed = pc.brushed ? pc.brushed() : null;
+    }
+    // titles wider than the space between two axes (many axes, a narrow
+    // window, long names) alternate between two rows instead of overlapping
+    function staggerTitles(pc) {
+      var keys = pc.getOrderedDimensionKeys();
+      var width = $("pc").clientWidth - 128;
+      var spacing = keys.length > 1 ? width / (keys.length - 1) : width;
+      var widest = 0;
+      d3.selectAll("#pc g.dimension text.label").each(function () {
+        try { widest = Math.max(widest, this.getComputedTextLength()); } catch (err) { /* not rendered yet */ }
+      });
+      var crowded = widest + 8 > spacing;
+      d3.selectAll("#pc g.dimension").each(function (k) {
+        var up = crowded && keys.indexOf(k) % 2 === 1;
+        d3.select(this).select("text.label").style("transform", "translate(0px, " + (up ? -30 : -14) + "px)");
+      });
     }
     function onBrush(d) {
       S.brushed = (d && d.length !== undefined) ? d : null;
@@ -739,8 +757,9 @@
     });
 
     // a few states reachable from the URL, for screenshots without a mouse:
-    // ?demo=brush brushes the middle of the first output axis, ?demo=lightbox
-    // opens the first thumbnail, ?demo=dark switches the theme
+    // ?demo=brush brushes the middle of the first output axis, ?demo=front the
+    // Pareto designs of an optimization, ?demo=lightbox opens the first
+    // thumbnail, ?demo=dark switches the theme
     function demo() {
       if (!DEMO) { return; }
       var m = [null, DEMO];
@@ -750,6 +769,11 @@
         var e = {}; e[k] = [ext[0] + (ext[1] - ext[0]) * 0.3, ext[1]];
         S.pc.brushExtents(e);
         S.extents = e; S.brushed = S.pc.brushed(); renderGrid();
+      }
+      if (m[1] === "front" && S.pc && S.outputs.indexOf("out:pareto_front") >= 0) {
+        var f = { "out:pareto_front": [0.5, 1] };
+        S.pc.brushExtents(f);
+        S.extents = f; S.brushed = S.pc.brushed(); renderGrid();
       }
       if (m[1] === "lightbox") { openLightbox(0); }
     }

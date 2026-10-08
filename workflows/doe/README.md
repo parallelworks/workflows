@@ -62,7 +62,9 @@ cases/
 └── doe.env                                 N_CASES, CASES_DIR and METHOD
 ```
 
-The same three values are the run's outputs.
+The same three values are the run's outputs. `case_<j>/` is one of the two
+layouts [`design-explorer`](../design-explorer/README.md) reads, so the cases
+can be served there as they are evaluated.
 
 ## As a subworkflow
 

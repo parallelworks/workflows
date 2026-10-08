@@ -88,13 +88,4 @@ A parent passes the form's groups through `with:` and reads the count back from
 `noaa.parallel.works`) are the same step with the resource as the form's
 top-level input.
 
-## Tests
-
-| Test | Runs |
-|---|---|
-| `tests/general/gcpsmall.json` | 8 Latin hypercube designs |
-| `tests/hsp/gcpsmall-csv.json` | 3 pasted cases, semicolons and decimal commas, one variable left out |
-| `tests/noaa/gcpsmall.json` | 16 Sobol designs |
-
-Run one with `python3 tools/tests/run-workflow-test.py <test.json>`. The sampler
-is `app/doe.py`, standard library only.
+The sampler is `app/doe.py`, standard library only.

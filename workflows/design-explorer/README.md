@@ -70,19 +70,6 @@ Explorer's libraries are downloaded once, at a pinned commit, under
 the libraries go to the cluster's shared software tree when the account can
 write there.
 
-## Tests
-
-The tests seed a small study of six cases, one of them failed, under
-`~/pw/tests/design-explorer/study` and serve it.
-
-| Test | Runs |
-|---|---|
-| `tests/general/gcpsmall.json` | the page over the seeded study, with a link |
-| `tests/general/gcpsmall-relative-dir.json` | a relative study path, which must fail the run |
-| `tests/hsp/gcpsmall.json`, `tests/noaa/gcpsmall.json` | the same page through the HSP and NOAA forms |
-
-Run one with `python3 tools/tests/run-workflow-test.py <test.json>`.
-
 ## Files
 
 | `app/` | Role |

@@ -13,7 +13,7 @@ Three standalone workflows do the work, called as subworkflows:
 | explore the results | [`workflows/design-explorer`](../design-explorer/README.md) | the `preprocessing` job, with images on |
 
 Their READMEs describe the sampling methods, the case and the page; this one
-covers the fan-out, the results and the tests. The matrix mechanics come from
+covers the fan-out and the results. The matrix mechanics come from
 [`tutorials/optimization`](../../tutorials/optimization/README.md).
 
 ## How the pieces connect
@@ -93,20 +93,6 @@ top-level input, the SLURM account and QoS, and on HSP the node type and the PBS
 account. The HSP form saves a `nautilus_modules` configuration with Nautilus's
 OpenFOAM module. On NOAA the installs go to the cluster's shared software tree
 when the account can write there.
-
-## Tests
-
-| Test | Runs |
-|---|---|
-| `tests/general/gcpsmall.json` | 6 Latin hypercube designs on the login node, images and page |
-| `tests/general/gcpsmall-slurm-mpi2.json` | 4 Sobol designs as SLURM jobs of 2 ranks |
-| `tests/general/gcpsmall-no-images.json` | a full factorial over 3 variables (8 designs), images off |
-| `tests/general/gcpsmall-csv.json` | 5 pasted cases (tab-separated, one variable left out) |
-| `tests/hsp/gcpsmall-csv.json` | 3 cases pasted from a previous `doe.csv`, through the HSP form |
-| `tests/hsp/gcpsmall.json` | 9 one-at-a-time designs through the HSP form |
-| `tests/noaa/gcpsmall.json` | 4 random designs through the NOAA form |
-
-Run one with `python3 tools/tests/run-workflow-test.py <test.json>`.
 
 ## Files
 

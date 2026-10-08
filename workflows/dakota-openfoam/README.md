@@ -9,7 +9,7 @@ NACA airfoil shape optimization as a loop of two standalone workflows:
 | explore the designs (optional) | [`workflows/design-explorer`](../design-explorer/README.md) | `preprocessing`, with images on |
 
 Their READMEs describe the optimizer, the evaluator, the page and their inputs;
-this one covers only the loop, the live pages and the tests. The loop mechanics come from
+this one covers only the loop and the live pages. The loop mechanics come from
 [`tutorials/optimization`](../../tutorials/optimization/README.md).
 
 ## How the pieces connect
@@ -151,13 +151,3 @@ defaults to `mesh_scale` 2, the floor at which 16 ranks are all used; not every
 login node reaches the internet),
 the shared install directory on NOAA, and how each submitter receives the
 case's core request.
-
-## Tests
-
-`tests/general-naca/` (the variant is the YAML's basename): `gcpsmall.json`
-(login node, 4 × 4), `gcpsmall-slurm-mpi2.json` (SLURM, 2 ranks) and
-`gcpsmall-mesh3-slurm-4ranks.json` (the saved configuration) and
-`gcpsmall-images.json` (login node, 4 × 3, images and Design Explorer);
-`tests/hsp-naca/` and `tests/noaa-naca/` repeat the first two and the images
-test for the variants. The runner checks the endpoints and deletes them. Run with
-`python3 tools/tests/run-workflow-test.py <test.json>`.

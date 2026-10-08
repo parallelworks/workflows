@@ -180,9 +180,9 @@ install from it. Notes:
   an unpadded cache: redeploying into a *shorter* root worked in seconds and the
   binaries ran with no references to the original prefix, while a *longer* root
   failed outright. 128 leaves headroom for any target root up to 128 characters.
-  The stack compiler is installed outside the environment, so `build.sh` passes
-  the same padding on its command line (`spack -c
-  config:install_tree:padded_length:128`). Before that, gcc and its dependencies
+  The stack compiler is installed outside the environment, so `build.sh` also
+  sets the same padding in the Spack root's site scope
+  (`config:install_tree:padded_length:128`), which every command then shares. Before that, gcc and its dependencies
   were cached unpadded and a run into a longer root failed on them
   (`quality-colt`); caches from before the fix need those entries removed once.
 
@@ -263,9 +263,13 @@ overrides are rejected. Use `cuda-arch=none` to force a CPU-only build.
   clone is switched to the requested tag only if it is on a different commit; a
   usable Spack that is not a git clone is used as found, with a warning if its
   version differs; and any other non-empty directory, or an unreadable `.git`
-  from an interrupted clone, fails the run with a message naming the path. The
-  build cache installs into a Spack root of any path up to 128 characters,
-  because every install is padded (below), including the stack compiler.
+  from an interrupted clone, fails the run with a message naming the path.
+  Every install is padded (below), including the stack compiler, so cached
+  binaries relocate into any root up to 128 characters. Cache *hits* for the
+  stack are still tied to the root, though: the built gcc is registered as an
+  external, an external's hash includes its path, and every stack package
+  depends on it. A different root puts gcc at a different path, so its stack
+  packages get new hashes and are compiled rather than taken from the cache.
 
 ## Where the modules go, and holding several stacks
 

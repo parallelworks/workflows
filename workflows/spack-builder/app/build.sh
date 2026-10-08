@@ -220,15 +220,19 @@ gcc_built_prefix() {
   spack find --format '{prefix}' "$GCC_SPEC" 2>/dev/null | grep "^${SPACK_ROOT}/opt/" | head -1
 }
 
+# The padding in templates/spack.yaml.in only reaches commands run IN the
+# environment, and the gcc install, find and push below run outside it.
+# Unpadded, gcc and its dependencies were cached with prefixes that cannot be
+# relocated into a longer Spack root (CannotGrowString on aws run quality-colt).
+# It goes in the site scope, not on the install command: the padded tree is a
+# separate store with its own database, so every later command must see the
+# same setting or gcc "matches no installed packages" right after installing
+# (gce run cute-cockatoo). Keep the value equal to the template's.
+spack config --scope site add config:install_tree:padded_length:128
+
 if [ -z "$(gcc_built_prefix)" ]; then
   log "Installing stack compiler $GCC_SPEC (long; cached after the first run)"
-  # The padding in templates/spack.yaml.in only reaches packages installed IN
-  # the environment, and this install is outside it. Unpadded, gcc and its
-  # dependencies were pushed with prefixes that cannot be relocated into a
-  # longer Spack root (CannotGrowString on aws run quality-colt). Keep the value
-  # equal to the template's.
-  spack -c config:install_tree:padded_length:128 \
-    install --no-check-signature -j"$JOBS" "$GCC_SPEC"
+  spack install --no-check-signature -j"$JOBS" "$GCC_SPEC"
   # --allow-missing: the push walks the whole DAG, and when gcc itself came from
   # the build cache its build-only dependencies were never installed. Without the
   # flag that prints a 27-line "Error: ... PackageNotInstalledError" block for a

@@ -1,0 +1,28 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "endpoint": true,
+    "warm_marker": [
+      "${HOME}/pw/software/openfoam-naca/miniforge/envs/openfoam",
+      "${HOME}/pw/software/openfoam-naca/paraview/ParaView-6.1.1/.render-checked",
+      "${HOME}/pw/software/doe-openfoam/DesignExplorer-215d17ee12de/index.html"
+    ],
+    "leftover_patterns": [
+      "pw endpoints",
+      "design-explorer-server.py",
+      "simpleFoam",
+      "blockMesh",
+      "pvpython"
+    ]
+  },
+  "cluster": {
+    "scheduler": false
+  },
+  "doe": {
+    "method": "csv",
+    "cases_csv": "case,max_camber,camber_position,thickness,angle_of_attack\ncase_1,0.01,0.35,0.10,2\ncase_2,0.05,0.55,0.16,6\ncase_3,0.03,0.45,0.13,10\n",
+    "max_parallel": 5,
+    "mesh_scale": 1
+  },
+  "resource": "pw://alvaro/gcpsmall"
+}

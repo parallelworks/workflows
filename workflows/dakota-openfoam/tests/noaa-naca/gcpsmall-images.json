@@ -1,0 +1,35 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "endpoint": true,
+    "warm_marker": [
+      "${HOME}/pw/software/openfoam-naca/miniforge/envs/openfoam",
+      "${HOME}/pw/software/dakota/miniforge/envs/dakota",
+      "${HOME}/pw/software/openfoam-naca/paraview/ParaView-6.1.1/.render-checked",
+      "${HOME}/pw/software/doe-openfoam/DesignExplorer-215d17ee12de/index.html"
+    ],
+    "leftover_patterns": [
+      "pw endpoints",
+      "pareto-server.py",
+      "bin/dakota",
+      "app/driver.py",
+      "simpleFoam",
+      "blockMesh",
+      "design-explorer-server.py",
+      "pvpython"
+    ]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cluster": {
+    "scheduler": false
+  },
+  "optimizer": {
+    "max_iterations": 3,
+    "batch_size": 4,
+    "stall_generations": 3,
+    "mesh_scale": 1
+  },
+  "postprocessing": {
+    "generate_images": true
+  }
+}

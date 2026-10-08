@@ -1,7 +1,8 @@
 # Design of experiments over the NACA 4-digit airfoil problem: a sampling
 # method (Latin hypercube, Sobol, Monte Carlo, full factorial, one at a time)
 # proposes the designs inside the variable bounds (max camber, camber position,
-# thickness, angle of attack), every design is one call of
+# thickness, angle of attack), or the user pastes them as a CSV table; every
+# design is one call of
 # workflows/openfoam-naca, run in parallel as a matrix, and the results are
 # collected into one table. Each case is exactly a standalone openfoam-naca run:
 # its own checkout and environment check, its own submitter job and, when
@@ -54,7 +55,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: design-explorer
           sparse_checkout:
             - workflows/doe-openfoam/app
             - workflows/openfoam-naca/app
@@ -106,19 +107,39 @@ jobs:
           fi
       # the sampler writes cases/case_<j>/params.in for every design and the
       # table of them; the count it produced (the structured methods decide
-      # their own: a full factorial is L^d cases) guards the workers matrix
+      # their own: a full factorial is L^d cases; a pasted table has as many as
+      # it has rows) guards the workers matrix. Only doe.env becomes outputs:
+      # the sampler's notices go to the log
       - name: Sample the Designs
         run: |
-          set -e
+          set -e -o pipefail
           cat > variables.txt << 'PW_VARS_EOF'
           ${{ inputs.doe.variables }}
           PW_VARS_EOF
-          python3 workflows/doe-openfoam/app/doe.py --method "${{ inputs.doe.method }}" \
-            --n-cases "${{ inputs.doe.n_cases }}" --seed "${{ inputs.doe.seed }}" \
-            --variables-file variables.txt --out-dir "${PWD}/cases" | tee -a $OUTPUTS
+          method="${{ inputs.doe.method }}"
+          if [ "${method}" = csv ]; then
+            cat > cases-input.csv << 'PW_CSV_EOF'
+          ${{ inputs.doe.cases_csv }}
+          PW_CSV_EOF
+            # the matrix below takes all 32 slots in this mode: the table's size
+            # is only known now, and a matrix is sized at submission
+            slots=32
+            python3 workflows/doe-openfoam/app/doe.py --method csv --cases-csv cases-input.csv \
+              --variables-file variables.txt --out-dir "${PWD}/cases"
+          else
+            slots="${{ inputs.doe.n_cases }}"
+            python3 workflows/doe-openfoam/app/doe.py --method "${method}" \
+              --n-cases "${{ inputs.doe.n_cases }}" --seed "${{ inputs.doe.seed }}" \
+              --variables-file variables.txt --out-dir "${PWD}/cases"
+          fi
+          cat cases/doe.env >> $OUTPUTS
           n=$(awk -F= '$1 == "N_CASES" {print $2}' cases/doe.env)
-          if [ "${n}" -gt "${{ inputs.doe.n_cases }}" ]; then
-            echo "::error::the sampler proposed ${n} cases but the workers matrix has ${{ inputs.doe.n_cases }} slots (n_cases); fix the sampler"
+          if [ "${n}" -gt "${slots}" ]; then
+            if [ "${method}" = csv ]; then
+              echo "::error::the table has ${n} cases; the workers matrix takes at most ${slots}. Split the table over several runs, or extend the literal job_id list of the workers matrix."
+            else
+              echo "::error::the sampler proposed ${n} cases but the workers matrix has ${slots} slots (n_cases); fix the sampler"
+            fi
             exit 1
           fi
           echo "--- ${PWD}/cases/doe.csv (${n} cases, ${{ inputs.doe.method }})"
@@ -227,8 +248,9 @@ jobs:
 
   # The guarded matrix: a matrix can only expand over values that are concrete
   # at submission, so the list below is a literal of the maximum width sliced
-  # to n_cases (a form input), and the job-level if: compares each slot against
-  # the runtime output N_CASES: a structured design that produced fewer cases
+  # to n_cases (a form input; all 32 for a pasted table, whose size the form
+  # cannot know), and the job-level if: compares each slot against the runtime
+  # output N_CASES: a structured design or a table that produced fewer cases
   # skips the surplus slots for free. max-parallel caps how many cases run at
   # once (a login node has only so many cores). Each live slot is one call of
   # the standalone OpenFOAM workflow, exactly as it runs from the platform by
@@ -239,7 +261,7 @@ jobs:
       fail-fast: false
       max-parallel: ${{ inputs.doe.max_parallel }}
       matrix:
-        job_id: ${{ [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] get 0:(inputs.doe.n_cases) }}
+        job_id: "${{ [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] get 0:(inputs.doe.method == 'csv' ? 32 : inputs.doe.n_cases) }}"
     if: ${{ matrix.job_id <= needs.preprocessing.outputs.N_CASES }}
     ssh:
       remoteHost: ${{ inputs.cluster.resource.ip }}
@@ -425,7 +447,8 @@ jobs:
               different bounds); one at a time varies each variable alone across
               its range with the others at the center of the box (a sensitivity
               screening). The structured designs may produce fewer cases than
-              asked; the log says how many.
+              asked; the log says how many. Your own cases runs the designs of
+              a table you paste below, one row per case.
             options:
               - label: Latin hypercube
                 value: lhs
@@ -437,12 +460,36 @@ jobs:
                 value: full_factorial
               - label: One at a time
                 value: one_at_a_time
+              - label: Your own cases (CSV)
+                value: csv
+          cases_csv:
+            type: editor
+            label: Cases (CSV)
+            hidden: ${{ inputs.doe.method != 'csv' }}
+            ignore: ${{ .hidden }}
+            default: |
+              max_camber,camber_position,thickness,angle_of_attack
+              0.00,0.40,0.12,4
+              0.02,0.40,0.12,4
+              0.04,0.40,0.12,4
+              0.02,0.40,0.09,4
+              0.02,0.40,0.15,4
+            tooltip: |
+              One row per case under a header naming the variables, up to 32
+              cases. Paste from a spreadsheet (tabs) or type it with commas,
+              semicolons or spaces. A variable without a column is held at the
+              middle of its bounds in Design variables; a value outside the
+              bounds runs with a warning. Columns a study table also carries
+              (case, generation, status, the coefficients, Design Explorer's
+              in:/out:/img: columns) are skipped, so a previous doe.csv,
+              results.csv or data.csv pastes as it is.
           n_cases:
             type: number
             label: Number of cases
             default: 8
             min: 1
             max: 32
+            hidden: ${{ inputs.doe.method == 'csv' }}
             tooltip: |
               Designs to sample and solve. Sizes the workers matrix (sliced from a
               literal list of 32 at submission); a full factorial or one-at-a-time
@@ -464,6 +511,7 @@ jobs:
             label: Random seed
             default: 4242
             min: 1
+            hidden: ${{ inputs.doe.method == 'csv' || inputs.doe.method == 'full_factorial' || inputs.doe.method == 'one_at_a_time' }}
             tooltip: |
               Seed of the Latin hypercube, random and Sobol (shift) samples; the
               same seed and bounds give the same designs again. The grid designs
@@ -493,7 +541,8 @@ jobs:
               One line per variable: <name> <lower> <upper>. Keep the four names
               (the OpenFOAM case reads them); narrow the bounds to focus the
               study, or give a variable equal bounds to hold it fixed (it then
-              takes no sampling dimension). The camber, position and thickness
+              takes no sampling dimension). With your own cases, a variable the
+              table has no column for is held at the middle of its bounds. The camber, position and thickness
               box is where the mesh generator was validated; the angle of attack
               is validated from -5 to 12 degrees.
       postprocessing:

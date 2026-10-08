@@ -13,6 +13,12 @@
 # after the run completes until `pw endpoints delete` removes it. The server
 # only ever runs on the login node, so it is started detached from a plain step
 # (tutorials/endpoint-workflows Stage 3) rather than through script_submitter.
+# With postprocessing.generate_images, every case also renders its fields with
+# ParaView and a second page, Design Explorer over the same study (the page and
+# server of workflows/doe-openfoam), serves as design-explorer-<run slug>: the
+# generation, the design variables, the coefficients and the Pareto front as
+# brushable axes, the images of every design as thumbnails. It is started and
+# checked the same way, and links to the Pareto front page.
 #
 # The NOAA (noaa.parallel.works) variant of general-naca.yaml: the same loop over
 # iteration-naca-noaa.yaml, which calls the noaa variants of the two workflows,
@@ -50,16 +56,18 @@ jobs:
     steps:
       # this workflow has no app of its own: the optimizer and the evaluator check
       # out theirs inside their subworkflows. Checked out here: the Pareto front
-      # page (the Dakota app's viewer of the study directory) and the two
-      # installers, for the environment check below
+      # page (the Dakota app's viewer of the study directory), the Design
+      # Explorer page and its server (the doe-openfoam app, used when images are
+      # on) and the installers, for the environment check below
       - name: Checkout the Pareto Front Server and the Installers
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: design-explorer
           sparse_checkout:
             - workflows/dakota/app
             - workflows/openfoam-naca/app
+            - workflows/doe-openfoam/app
             - tools/utils
       - name: Validate Inputs and Initialize State
         run: |
@@ -97,6 +105,22 @@ jobs:
       - name: Check the Software Environments
         run: |
           set -e
+          # NOAA home directories are small: when no environment commands are
+          # given, the installs go to the cluster's shared software tree if this
+          # account can write there, as every case's own check does. Probe by
+          # creating the directory rather than reading mode bits: the trees are
+          # group- or ACL-writable and list as root-owned.
+          case "${{ inputs.resource.ip }}" in
+            hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
+            mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
+            ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
+            gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
+            *) shared="" ;;                                                    # PPAN, cloud clusters
+          esac
+          if [ -n "${shared}" ] && mkdir -p "${shared}/openfoam-naca" "${shared}/dakota" "${shared}/doe-openfoam" 2>/dev/null; then
+            export service_parent_install_dir="${shared}"
+            echo "::notice::installing under the shared software directory ${shared}"
+          fi
           required="blockMesh potentialFoam simpleFoam"
           if [ "${{ inputs.cluster.cores_per_case }}" -gt 1 ]; then
             required="${required} decomposePar reconstructPar mpirun"
@@ -109,6 +133,12 @@ jobs:
             workflows/dakota/app/install-dakota.sh dakota << 'PW_LOAD_EOF'
           ${{ inputs.software.dakota_load }}
           PW_LOAD_EOF
+          if [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
+            bash tools/utils/prepare-env.sh paraview "${PWD}/paraview-env.sh" \
+              workflows/openfoam-naca/app/install-paraview.sh pvpython << 'PW_LOAD_EOF'
+          ${{ inputs.software.paraview_load }}
+          PW_LOAD_EOF
+          fi
       # the server is a login-node process for the life of the study and beyond:
       # start it in its own session so the end of this step, of this job and of
       # the run never reaches it (tutorials/endpoint-workflows Stage 3). The only
@@ -157,31 +187,111 @@ jobs:
           host: ${{ inputs.resource.ip }}
           path: /healthz
           budget: 120
+      # with images on, the second page: Design Explorer over the same study
+      # directory, downloaded once (pinned commit) and served by the doe-openfoam
+      # app's server, which reads state/iter_<N>/case_<j>/ directly, so a case
+      # shows as soon as it solved. Started, checked and torn down like the
+      # Pareto front server; it links to that page
+      - name: Install Design Explorer
+        if: ${{ inputs.postprocessing.generate_images == true }}
+        run: |
+          set -e
+          # NOAA home directories are small: when no environment commands are
+          # given, the installs go to the cluster's shared software tree if this
+          # account can write there, as every case's own check does. Probe by
+          # creating the directory rather than reading mode bits: the trees are
+          # group- or ACL-writable and list as root-owned.
+          case "${{ inputs.resource.ip }}" in
+            hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
+            mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
+            ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
+            gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
+            *) shared="" ;;                                                    # PPAN, cloud clusters
+          esac
+          if [ -n "${shared}" ] && mkdir -p "${shared}/openfoam-naca" "${shared}/dakota" "${shared}/doe-openfoam" 2>/dev/null; then
+            export service_parent_install_dir="${shared}"
+            echo "::notice::installing under the shared software directory ${shared}"
+          fi
+          bash workflows/doe-openfoam/app/install-design-explorer.sh "${PWD}/design-explorer-dir.txt"
+      - name: Start the Design Explorer Server
+        if: ${{ inputs.postprocessing.generate_images == true }}
+        run: |
+          set -e
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          de_dir=$(cat design-explorer-dir.txt)
+          pareto_url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="pareto-${PW_RUN_SLUG}" '$1 == name {print $3}')
+          cat <<EOF > start-design-explorer.sh
+          #!/bin/bash
+          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
+          # {port} is replaced by pw endpoints run with the local port it forwards to
+          exec pw endpoints run --name "design-explorer-${PW_RUN_SLUG}" -- \
+              python3 "${PWD}/workflows/doe-openfoam/app/design-explorer-server.py" \
+              --cases-dir "${PWD}/state" --design-explorer "${de_dir}" --port {port} \
+              --title "NACA airfoil optimization - ${PW_RUN_SLUG}" ${pareto_url:+--link "Pareto front=${pareto_url}"}
+          EOF
+          chmod +x start-design-explorer.sh
+          if command -v setsid >/dev/null 2>&1; then
+            setsid ./start-design-explorer.sh > design-explorer.out 2>&1 < /dev/null &
+          else
+            nohup ./start-design-explorer.sh > design-explorer.out 2>&1 < /dev/null &
+          fi
+          echo $! > design-explorer.pid
+          echo "::notice::Design Explorer server started (pid $(cat design-explorer.pid)); its output is ${PWD}/design-explorer.out"
+      - name: Check the Design Explorer Server Is Alive
+        if: ${{ inputs.postprocessing.generate_images == true }}
+        run: |
+          sleep 10
+          if ! kill -0 "$(cat design-explorer.pid)" 2>/dev/null; then
+            echo "::error::the Design Explorer server exited within 10 s of starting; its output follows"
+            cat design-explorer.out
+            exit 1
+          fi
+          echo "::notice::server alive after 10 s; $(tail -n 1 design-explorer.out)"
+      - name: Wait for the Design Explorer endpoint
+        if: ${{ inputs.postprocessing.generate_images == true }}
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: design-explorer-${PW_RUN_SLUG}
+          host: ${{ inputs.resource.ip }}
+          path: /healthz
+          budget: 120
 
-  # a server whose endpoint never became healthy is killed here (!completed:
-  # preprocessing failed, at the health check or before, or the run was canceled
-  # before it passed); a healthy one is never touched by the workflow again.
-  # Fixed paths, not job outputs: a canceled preprocessing publishes none.
+  # wait_for_endpoint only checks: it fails the job when an endpoint never
+  # answers and tears nothing down, and these servers are started detached from
+  # plain steps, with no submitter behind them, so this job is their cleanup. It
+  # runs when preprocessing did not complete (a health check failed, a step
+  # before it, or the run was canceled first): it deletes an endpoint that
+  # registered and kills a server whose endpoint never did (`pw endpoints
+  # delete` cannot reach that one), for the Pareto front server and, when images
+  # are on, the Design Explorer one. A run that passed preprocessing never
+  # touches them again. Fixed paths, not job outputs: a canceled preprocessing
+  # publishes none.
   stop_server_if_unhealthy:
     needs: [preprocessing]
     if: ${{ !completed }}
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      - name: Kill the Pareto Front Server
+      - name: Kill the Servers
         run: |
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          name="pareto-${PW_RUN_SLUG}"
-          if pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${name}"; then
-            echo "::warning::the endpoint ${name} registered but the run ended before its health check passed; deleting it"
-            pw endpoints delete "${name}" 2>/dev/null || true
-          fi
-          pid=$(cat "${PW_PARENT_JOB_DIR}/pareto.pid" 2>/dev/null || true)
-          if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
-            echo "::warning::killing the Pareto front server (pid ${pid})"
-            kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
-          fi
-          pkill -f "pareto-server.py --state-dir ${PW_PARENT_JOB_DIR}/state" 2>/dev/null || true
+          # <endpoint prefix and pid file>:<command line of its server>
+          for server in "pareto:pareto-server.py --state-dir" \
+                        "design-explorer:design-explorer-server.py --cases-dir"; do
+            prefix="${server%%:*}"
+            name="${prefix}-${PW_RUN_SLUG}"
+            if pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${name}"; then
+              echo "::warning::the endpoint ${name} registered but the run ended in preprocessing; deleting it"
+              pw endpoints delete "${name}" 2>/dev/null || true
+            fi
+            pid=$(cat "${PW_PARENT_JOB_DIR}/${prefix}.pid" 2>/dev/null || true)
+            if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+              echo "::warning::killing the ${prefix} server (pid ${pid})"
+              kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
+            fi
+            pkill -f "${server#*:} ${PW_PARENT_JOB_DIR}/state" 2>/dev/null || true
+          done
 
   # preprocessing only completes once the front is being served, so a server
   # that cannot start fails the run before any case is spent, and the page is
@@ -206,7 +316,7 @@ jobs:
           # subworkflow, mid-simulation — when it expires. One generation
           # (propose + node boot + queue + solve + decide) must fit in it.
           timeout: ${{ inputs.optimizer.iteration_timeout }}
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@design-explorer
         with:
           $yaml: workflows/dakota-openfoam/yamls/iteration-naca-noaa.yaml
           # the retry counter (0 on the first attempt), so the iteration can say
@@ -235,6 +345,8 @@ jobs:
           seed: ${{ inputs.problem.seed }}
           openfoam_load: ${{ inputs.software.openfoam_load }}
           dakota_load: ${{ inputs.software.dakota_load }}
+          generate_images: ${{ inputs.postprocessing.generate_images }}
+          paraview_load: ${{ inputs.software.paraview_load }}
           state_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
       # if: always — the run's verdict comes from the state files, not from how the
       # Iterate step ended: CONVERGED is the only success, whether the loop stopped
@@ -249,6 +361,12 @@ jobs:
             echo "::notice::the Pareto front page keeps serving at ${url} (every evaluation, hover for the design); remove it with: pw endpoints delete pareto-${PW_RUN_SLUG}"
           else
             echo "::warning::the Pareto front endpoint pareto-${PW_RUN_SLUG} is no longer listed; the front is still in ${state}/pareto.csv and ${state}/pareto.svg"
+          fi
+          if [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
+            de_url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="design-explorer-${PW_RUN_SLUG}" '$1 == name {print $3}')
+            if [ -n "${de_url}" ]; then
+              echo "::notice::Design Explorer keeps serving the study at ${de_url} (every solved design with its images); remove it with: pw endpoints delete design-explorer-${PW_RUN_SLUG}"
+            fi
           fi
           status=$(cat "${state}/status" 2>/dev/null || echo MISSING)
           case "${status}" in
@@ -467,6 +585,25 @@ jobs:
             default: 4242
             min: 1
             tooltip: Fixed for the run (Dakota's restart replay requires a deterministic method); change it to get a different search.
+      postprocessing:
+        type: group
+        label: Postprocessing
+        items:
+          generate_images:
+            type: boolean
+            label: Generate images and serve Design Explorer?
+            default: false
+            tooltip: |
+              Yes → every OpenFOAM case renders its fields with ParaView (pressure,
+              velocity, streamlines, eddy viscosity, wake, mesh), and a second
+              page, design-explorer-<run slug>, serves the study next to the
+              Pareto front: the generation, the design variables, the
+              coefficients and the front as brushable axes, the images of every
+              design as thumbnails. ParaView comes from the commands in Software
+              Environment or, left empty, from the official binaries the
+              workflow downloads once (no sudo, ~830 MB); rendering adds about
+              5 s per case.
+              No → the Pareto front page only.
       software:
         type: group
         label: Software Environment
@@ -497,3 +634,16 @@ jobs:
               cluster's shared software directory (/contrib/pw on Hera, Mercury
               and Ursa, /usw/rdhpcs/software/pw on Gaea) when this account can
               write there, else under $HOME/pw/software.
+          paraview_load:
+            type: editor
+            label: ParaView environment commands
+            optional: true
+            hidden: ${{ inputs.postprocessing.generate_images == false }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Shell commands that put pvpython on PATH, one per line, e.g.
+              `module load paraview/5.13`. Leave empty to download the official
+              ParaView 6.1.1 Linux binaries (x86_64, no sudo, ~830 MB once, 2.7 GB
+              on disk) under
+              ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca/paraview;
+              they render without a display. Needs ParaView 5.10 or newer.

@@ -61,8 +61,8 @@
   <text x="606" y="100" font-size="15" font-weight="bold" fill="#0b0b0b">design-explorer-&lt;run slug&gt;</text>
   <text x="606" y="118" font-size="12" fill="#52514e">the pw endpoint, login node</text>
   <text x="606" y="144" font-size="12" fill="#0b0b0b">design-explorer-server.py</text>
-  <text x="606" y="162" font-size="11" fill="#52514e">serves Design Explorer (static page,</text>
-  <text x="606" y="176" font-size="11" fill="#52514e">downloaded once, pinned commit)</text>
+  <text x="606" y="162" font-size="11" fill="#52514e">serves design-explorer.html over Design</text>
+  <text x="606" y="176" font-size="11" fill="#52514e">Explorer's libraries (downloaded once)</text>
   <text x="606" y="196" font-size="11" fill="#52514e">/data/data.csv rebuilt from cases/</text>
   <text x="606" y="210" font-size="11" fill="#52514e">on every request; /data/case_j/images/*</text>
   <!-- a sketch of the parallel coordinates -->

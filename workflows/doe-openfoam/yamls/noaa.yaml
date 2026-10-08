@@ -8,13 +8,13 @@
 # images are wanted, its ParaView images of the fields.
 #
 # With postprocessing.generate_images (the default), preprocessing starts a
-# small server on the login node that serves Design Explorer
-# (https://tt-acm.github.io/DesignExplorer/) over the study as a pw endpoint
-# (design-explorer-<run slug>): a parallel coordinates plot of the inputs and
-# the outputs (drag and lift coefficients, lift-to-drag) with the rendered
-# fields of every design; reloading the page shows the cases that finished
-# meanwhile, and the endpoint keeps serving after the run until `pw endpoints
-# delete` removes it. The server only ever runs on the login node, so it is
+# small server on the login node that serves a Design Explorer page
+# (https://tt-acm.github.io/DesignExplorer/, its parallel coordinates engine
+# in a shell styled for the platform) over the study as a pw endpoint
+# (design-explorer-<run slug>): the inputs and the outputs (drag and lift
+# coefficients, lift-to-drag) as brushable axes, the rendered fields of every
+# design as thumbnails; the page picks up the cases as they finish, and the
+# endpoint keeps serving after the run until `pw endpoints delete` removes it. The server only ever runs on the login node, so it is
 # started detached from a plain step (tutorials/endpoint-workflows Stage 3)
 # rather than through script_submitter, as workflows/dakota-openfoam does with
 # its Pareto front. The matrix mechanics (a literal list sliced to the form's
@@ -148,13 +148,14 @@ jobs:
           echo "--- ${PWD}/cases/doe.csv (${n} cases, ${{ inputs.doe.method }})"
           column -t -s, cases/doe.csv 2>/dev/null || cat cases/doe.csv
           echo "::notice::${n} designs sampled with ${{ inputs.doe.method }} into ${PWD}/cases (doe.csv lists them)"
-      # the page: Design Explorer downloaded once (pinned commit) into the
-      # software directory, served over the cases directory by a login-node
-      # process for the life of the study and beyond. Started in its own session
-      # so the end of this step, of this job and of the run never reaches it
+      # the page: the app's design-explorer.html over Design Explorer's
+      # libraries (downloaded once, pinned commit, into the software directory),
+      # served over the cases directory by a login-node process for the life of
+      # the study and beyond. Started in its own session so the end of this
+      # step, of this job and of the run never reaches it
       # (tutorials/endpoint-workflows Stage 3); the only off switch is `pw
-      # endpoints delete`, and stop_server_if_unhealthy covers a server that
-      # never registered.
+      # endpoints delete`, and stop_server_if_unhealthy covers a server whose
+      # endpoint never became healthy.
       - name: Install Design Explorer
         if: ${{ inputs.postprocessing.generate_images == true }}
         run: |
@@ -234,9 +235,15 @@ jobs:
             echo "::notice::images off: no Design Explorer page for this run; the results table is written by the results job"
           fi
 
-  # a server whose endpoint never became healthy is killed here (!completed:
-  # preprocessing failed, at the health check or before, or the run was canceled
-  # before it passed); a healthy one is never touched by the workflow again.
+  # wait_for_endpoint only checks: it fails the job when the endpoint never
+  # answers and tears nothing down. In the submitter pattern that failure is
+  # what makes the submitter's cleanup kill the service; this server is started
+  # detached from a plain step, with no submitter behind it, so this job is that
+  # cleanup. It runs when preprocessing did not complete (the health check
+  # failed, a step before it failed, or the run was canceled before it passed),
+  # kills a server whose endpoint never registered (nothing else can reach it:
+  # `pw endpoints delete` knows no such endpoint) or deletes one that registered
+  # but never answered. A healthy server is never touched by the workflow again.
   # Fixed paths, not job outputs: a canceled preprocessing publishes none.
   stop_server_if_unhealthy:
     needs: [preprocessing]

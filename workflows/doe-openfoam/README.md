@@ -7,7 +7,7 @@ one standalone workflow:
 |---|---|---|
 | sample the designs | `app/doe.py` (this workflow) | the `preprocessing` job of `general.yaml` |
 | solve one design | [`workflows/openfoam-naca`](../openfoam-naca/README.md) | the `workers` matrix of `general.yaml`, once per design, in parallel |
-| explore the results | [Design Explorer](https://tt-acm.github.io/DesignExplorer/) served by `app/design-explorer-server.py` | a `pw` endpoint started by `preprocessing` |
+| explore the results | `app/design-explorer.html`, [Design Explorer](https://tt-acm.github.io/DesignExplorer/)'s engine in a platform-styled shell, served by `app/design-explorer-server.py` | a `pw` endpoint started by `preprocessing` |
 
 The OpenFOAM README describes the case, its inputs and the images it renders;
 this one covers the sampling, the fan-out, the page and the tests. The
@@ -62,43 +62,52 @@ goes to `openfoam-naca` as a params file, so the four names (`max_camber`,
 
 ## The Design Explorer page
 
-`design-explorer-<run slug>` (in `pw endpoints list` and on the run page)
-serves [Design Explorer](https://github.com/tt-acm/DesignExplorer), a static
-parallel-coordinates page from Thornton Tomasetti's CORE studio, over the
-study:
+`design-explorer-<run slug>` (in `pw endpoints list` and on the run page) is
+`app/design-explorer.html`: the parallel-coordinates engine of
+[Design Explorer](https://github.com/tt-acm/DesignExplorer) (Thornton
+Tomasetti's CORE studio; d3 and `d3.parcoords` from its tree, downloaded once
+per cluster by `app/install-design-explorer.sh`) in a shell laid out for a
+design study and styled with the platform's dashboard tokens (the same as
+`hpc_status`): a light and a dark theme.
 
-- one axis per input (the four design variables) and per output (`Cd`, `Cl`
-  and `Cl/Cd`), one line per solved design; **brush an axis** (drag along it)
-  to keep the designs in a range, combine brushes across axes, **Reset
-  Selection** to clear;
-- the thumbnails under the plot are the pressure images of the selected
-  designs; **click one** to see it full size, with the design's values, and
-  the dropdown above the image switches to the velocity, streamlines, eddy
-  viscosity, wake or mesh image of the same design;
-- **Save Selection to File** downloads the selected rows as a CSV.
+![The page: axis toggles and input sliders at the left, the selection tools above the parallel coordinates of the four inputs and the three outputs, the thumbnails of the solved designs below, bordered in the color of their drag coefficient](thumbnails/design-explorer.png)
+
+- **Parallel coordinates**: one axis per input and per output (`Cd`, `Cl`,
+  `Cl/Cd`), one line per solved design, colored by the **Color by** variable.
+  Drag along an axis to **brush** a range, combine brushes across axes, drag a
+  title to reorder, double-click one to flip. **Parametric variables** shows
+  or hides axes; the **Cases** sliders narrow the inputs before brushing.
+- **Reset selection**, **Exclude selection** and **Zoom to selection** work on
+  the brushed designs; **Save selection to file** downloads them as a CSV.
+- **Thumbnails**: one per design in view, sorted by any variable (**Sort by**),
+  showing the image picked under **Image** (pressure, velocity, streamlines,
+  turbulence, wake, mesh) in three sizes; designs outside the brush fade.
+  Hover one to trace its line; click it for the full image with the design's
+  values, arrow keys for the next or previous design.
+- The page polls the server every 10 s while cases are pending and reloads
+  the table when new cases have solved (brushes and exclusions kept), so a
+  tab left open fills in as the study runs; a case appears as soon as its
+  coefficients are on disk and its images a few seconds later.
 
 The server (`app/design-explorer-server.py`, standard library) rebuilds
-`data.csv` from the case directories on every request, so **reloading the
-page** shows the cases that finished meanwhile: a case appears as soon as its
-coefficients are on disk and its images a few seconds later (a gray
-placeholder stands in until then). Only solved cases are listed (a row
-without numbers would break the axes). `results.csv` on the same endpoint
-is every case with its status, and `status.json` the counts. The page is
-opened with `?ID=<base64 of "data/">`, which is how Design Explorer is told
-where its folder is; the endpoint's root redirects there.
+`data/data.csv` from the case directories on every request (only solved
+cases: a row without numbers would break the axes), serves the images, and
+answers `status.json` (the counts), `results.csv` (every case with its
+status) and `healthz`. `data.csv` is in Design Explorer's own format (`in:`,
+`out:` and `img:` columns), so it also loads in the upstream page.
 
 Like the Pareto front of `dakota-openfoam`, the server only ever runs on the
 login node and **outlives the run**: after the study finishes, or after a
 cancel, it keeps serving until `pw endpoints delete design-explorer-<run
-slug>`, which kills `pw endpoints run` and the server under it. A server whose
-endpoint never became healthy is killed by `stop_server_if_unhealthy`. With
-**Generate images** off there is no server and no page; the results table is
-still written.
-
-Design Explorer is downloaded once per cluster (`app/install-design-explorer.sh`,
-a pinned commit, 35 MB, into
-`${service_parent_install_dir:-$HOME/pw/software}/doe-openfoam`); the
-browser loads nothing from the internet, every file comes from the endpoint.
+slug>`, which kills `pw endpoints run` and the server under it. The
+`wait_for_endpoint` call only checks the endpoint; it tears nothing down, and
+with no submitter behind this server nothing else would. That is what
+`stop_server_if_unhealthy` is for: when preprocessing does not complete (the
+health check failed, a step before it, or a cancel before the check passed),
+it kills a server whose endpoint never registered, which `pw endpoints
+delete` cannot reach, or deletes one that registered but never answered. A
+healthy server is never touched again. With **Generate images** off there is
+no server and no page; the results table is still written.
 
 ## Running it
 
@@ -151,8 +160,9 @@ endpoint and deletes it. Run with
 |---|---|
 | `doe.py` | the sampler: variables and bounds → `cases/case_<j>/params.in`, `doe.csv`, `doe.env` |
 | `study.py` | the collector: every case directory → `results.csv`, `data.csv` (Design Explorer format), the counts; imported by the server |
-| `design-explorer-server.py` | serves Design Explorer and the study (`/data/data.csv`, the images, `/results.csv`, `/status.json`, `/healthz`) |
-| `install-design-explorer.sh` | idempotent download of Design Explorer at a pinned commit |
+| `design-explorer.html` | the page: Design Explorer's parallel coordinates in a shell styled for the platform (sliders, axis toggles, selection tools, thumbnails, lightbox, live reload) |
+| `design-explorer-server.py` | serves the page, its libraries and the study (`/data/data.csv`, the images, `/results.csv`, `/status.json`, `/healthz`) |
+| `install-design-explorer.sh` | idempotent download of Design Explorer at a pinned commit (the page's libraries) |
 
 Checked out with it: `workflows/openfoam-naca/app` (the OpenFOAM and ParaView
 installers, for the environment checks) and `tools/utils`.

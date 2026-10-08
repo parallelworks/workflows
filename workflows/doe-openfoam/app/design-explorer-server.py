@@ -3,26 +3,27 @@
 
     design-explorer-server.py --cases-dir CASES --design-explorer DIR --port P [--title TEXT]
 
-Serves Design Explorer (https://tt-acm.github.io/DesignExplorer/, the files
-install-design-explorer.sh downloads into DIR) and, next to it, the study as
-the "server folder" Design Explorer loads: data/data.csv with the solved
-cases (in: columns for the design variables, out: columns for the
-coefficients, img: columns pointing at the images each case rendered) and
-data/<case>/images/<name>.png. The page is opened with ?ID=<base64 of "data/">,
-which is how Design Explorer is told where the folder is; a request for the
-root without it is redirected there, so the endpoint URL alone opens the
-study. Nothing is cached server side: data.csv is rebuilt from the case
-directories on every request (study.py), so reloading the page shows the
-cases that finished meanwhile.
+Serves the page design-explorer.html next to this script: the parallel
+coordinates engine of Design Explorer (https://tt-acm.github.io/DesignExplorer/,
+d3 + d3.parcoords from the tree install-design-explorer.sh downloads into DIR)
+in a shell laid out and styled for the ACTIVATE platform (the hpc_status
+tokens): axis toggles and input sliders at the side, the brush tools above the
+plot, the thumbnails of the designs below it, each one opening its images.
+The study is served under data/: data.csv with the solved cases (in: columns
+for the design variables, out: columns for the coefficients, img: columns
+pointing at the images each case rendered, the format Design Explorer itself
+reads) and data/<case>/images/<name>.png. Nothing is cached server side:
+data.csv is rebuilt from the case directories on every request (study.py),
+and the page polls status.json and reloads the cases when their count
+changes, until every case has finished.
 
-Routes: /  Design Explorer (redirected to ?ID=...); /data/data.csv  the solved
-cases; /data/<case>/images/<img>.png  the images; /results.csv  every case with
-its status; /status.json  the counts; /healthz  200 once the server is up;
-anything else is a file of the Design Explorer tree. Standard library only.
+Routes: /  the page; /data/data.csv  the solved cases; /data/<case>/images/<img>.png
+the images; /results.csv  every case with its status; /status.json  the counts
+and the title; /healthz  200 once the server is up; anything else is a file of
+the Design Explorer tree (its libraries). Standard library only.
 """
 
 import argparse
-import base64
 import io
 import json
 import mimetypes
@@ -41,9 +42,7 @@ CASES_DIR = ""
 DE_DIR = ""
 TITLE = "Design of experiments"
 STARTED = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
-# the "folder" Design Explorer loads data.csv and the images from, relative to
-# the page, so it needs no knowledge of the endpoint's host or path prefix
-FOLDER_ID = base64.b64encode(b"data/").decode()
+PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "design-explorer.html")
 
 
 def placeholder_png():
@@ -81,11 +80,6 @@ def results_csv():
         text = fh.read()
     os.remove(tmp)
     return text
-
-
-def settings_json():
-    return json.dumps({"studyInfo": {"name": TITLE, "date": STARTED},
-                       "dimScales": {}, "dimTicks": {}, "dimMark": {}})
 
 
 def safe_join(root, rel):
@@ -134,16 +128,7 @@ class Handler(BaseHTTPRequestHandler):
             path = path[len(prefix):] or "/"
         try:
             if path in ("/", "/index.html"):
-                if "ID=" not in query.upper():
-                    self.send_response(302)
-                    self.send_header("Location", "%s/?ID=%s" % (prefix, FOLDER_ID))
-                    self.send_header("Content-Length", "0")
-                    self.end_headers()
-                    return
-                if not os.path.isfile(os.path.join(DE_DIR, "index.html")):
-                    self.send(500, "Design Explorer is not installed in %s\n" % DE_DIR, "text/plain")
-                    return
-                self.send_file(os.path.join(DE_DIR, "index.html"), cache=False)
+                self.send_file(PAGE, cache=False)
             elif path == "/healthz":
                 self.send(200, "ok\n", "text/plain")
             elif path == "/status.json":
@@ -155,11 +140,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(200, data_csv(), "text/csv; charset=utf-8")
             elif path == "/results.csv":
                 self.send(200, results_csv(), "text/csv; charset=utf-8")
-            elif path in ("/data/no-image.png", "/data/settings.json", "/design_explorer_data/settings.json"):
-                if path.endswith(".png"):
-                    self.send(200, PLACEHOLDER, "image/png", cache=True)
-                else:
-                    self.send(200, settings_json(), "application/json")
+            elif path == "/data/no-image.png":
+                self.send(200, PLACEHOLDER, "image/png", cache=True)
             elif path.startswith("/data/"):
                 target = safe_join(CASES_DIR, path[len("/data/"):])
                 if target is None or not os.path.isfile(target) or not target.endswith(".png"):
@@ -187,8 +169,10 @@ def main():
     CASES_DIR = os.path.abspath(args.cases_dir)
     DE_DIR = os.path.abspath(args.design_explorer)
     TITLE = args.title
-    if not os.path.isfile(os.path.join(DE_DIR, "index.html")):
-        sys.exit("design-explorer-server: no index.html in %s" % DE_DIR)
+    for required in (PAGE, os.path.join(DE_DIR, "d3", "d3.v3.min.js"),
+                     os.path.join(DE_DIR, "pc_source_files", "d3", "d3.parcoords.js")):
+        if not os.path.isfile(required):
+            sys.exit("design-explorer-server: missing %s" % required)
 
     # not http.server.ThreadingHTTPServer: that arrived in Python 3.7 and HSP
     # login nodes run 3.6

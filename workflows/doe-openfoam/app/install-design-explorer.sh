@@ -1,7 +1,8 @@
 #!/bin/bash
 # Usage: install-design-explorer.sh [path-file]
 # Idempotent download of Design Explorer (https://github.com/tt-acm/DesignExplorer,
-# a static web page: HTML, JavaScript and CSS, no build step) into
+# a static web page: HTML, JavaScript and CSS, no build step; the server uses its
+# libraries, d3 and d3.parcoords, under the app's own page) into
 # ${service_parent_install_dir:-$HOME/pw/software}/doe-openfoam/DesignExplorer-<commit>,
 # pinned to DESIGN_EXPLORER_COMMIT so every run serves the same page. Runs on
 # the login node with internet access; safe to re-run — an install with its

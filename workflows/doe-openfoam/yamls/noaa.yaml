@@ -57,7 +57,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: design-explorer
+          branch: canary
           sparse_checkout:
             - workflows/openfoam-naca/app
             - workflows/design-explorer/app
@@ -130,7 +130,7 @@ jobs:
       # own: a full factorial is L^d cases; a pasted table has as many as it has
       # rows) is read back from its doe.env to guard the workers matrix
       - name: DOE (Sample the Designs)
-        uses: github/parallelworks/workflows@design-explorer
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/doe/yamls/noaa.yaml
           resource: ${{ inputs.resource }}
@@ -165,7 +165,7 @@ jobs:
       # solves and shows each one as it finishes
       - name: Design Explorer (Serve the Study)
         if: ${{ inputs.postprocessing.generate_images == true }}
-        uses: github/parallelworks/workflows@design-explorer
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/design-explorer/yamls/noaa.yaml
           resource: ${{ inputs.resource }}

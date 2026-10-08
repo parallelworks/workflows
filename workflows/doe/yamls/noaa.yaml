@@ -26,7 +26,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: design-explorer
+          branch: canary
           sparse_checkout:
             - workflows/doe/app
       # only doe.env becomes outputs: the sampler's notices go to the log

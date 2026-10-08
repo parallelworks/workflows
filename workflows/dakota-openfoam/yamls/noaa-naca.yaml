@@ -62,7 +62,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: design-explorer
+          branch: canary
           sparse_checkout:
             - workflows/dakota/app
             - workflows/openfoam-naca/app
@@ -198,7 +198,7 @@ jobs:
           echo "PARETO_URL=${url}" | tee -a $OUTPUTS
       - name: Design Explorer (Serve the Study)
         if: ${{ inputs.postprocessing.generate_images == true }}
-        uses: github/parallelworks/workflows@design-explorer
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/design-explorer/yamls/noaa.yaml
           resource: ${{ inputs.resource }}
@@ -260,7 +260,7 @@ jobs:
           # subworkflow, mid-simulation — when it expires. One generation
           # (propose + node boot + queue + solve + decide) must fit in it.
           timeout: ${{ inputs.optimizer.iteration_timeout }}
-        uses: github/parallelworks/workflows@design-explorer
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/dakota-openfoam/yamls/iteration-naca-noaa.yaml
           # the retry counter (0 on the first attempt), so the iteration can say

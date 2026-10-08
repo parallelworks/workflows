@@ -438,3 +438,14 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   `unrecognized arguments` and the liveness check failed the run (2026-10-08,
   `workflows/dakota-openfoam`, run vocal-magpie). Build the argument before the heredoc
   with `printf -v arg -- '--link %q' "Pareto front=${url}"` and write `${arg}`.
+- **`range` and `fromJSON` are not on activate.parallel.works yet** (checked 2026-10-08, CLI
+  v7.105.0): core PR #20674, merged into core's canary, adds `range` (`${{ 1 range inputs.n + 1 }}`
+  gives 1..n) and `fromJSON`, which would size a matrix straight from a form input. On
+  activate.parallel.works a dry-run of `range inputs.count` fails with `Expression Parser Error:
+  max recursion exceeded`; a run renders `${{ range(inputs.count) }}` as the text `range3` and
+  `${{ fromJSON(inputs.json) }}` as ``fromJSON`[1, 2, 4]` `` (the keyword glued to its argument,
+  the old parser), and a matrix over `fromJSON` fails with `Could not expand matrix jobs`. Keep
+  the sliced literal list (`[1, ..., N] get 0:(inputs.n)`) until a run renders
+  `${{ range(3) }}` as `[0,1,2]`; then `job_id: ${{ 1 range inputs.n + 1 }}` replaces it in
+  `workflows/doe-openfoam` and `workflows/dakota-openfoam/yamls/iteration-naca*.yaml`, and
+  the n_cases and batch_size caps can go.

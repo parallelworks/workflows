@@ -136,8 +136,9 @@ jobs:
   # it failed, or the run was canceled first): it deletes an endpoint that
   # registered and kills a server whose endpoint never did (`pw endpoints
   # delete` cannot reach that one). A healthy server is never touched again.
-  # Its pid file is in this workflow's job directory, where preprocessing wrote
-  # it; not a job output, because a canceled preprocessing publishes none.
+  # The pid file and the endpoint name, not job outputs: a canceled
+  # preprocessing publishes none. Verified nested: canceling a doe-openfoam run
+  # while this workflow started its server ran this job and removed the endpoint.
   stop_server_if_unhealthy:
     needs: [preprocessing]
     if: ${{ !completed }}
@@ -157,7 +158,10 @@ jobs:
             echo "::warning::killing the Design Explorer server (pid ${pid})"
             kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
           fi
-          pkill -f "${PWD}/workflows/design-explorer/app/design-explorer-server.py" 2>/dev/null || true
+          # without the pid file, the same process group found by its endpoint name
+          for pid in $(pgrep -f "[p]w endpoints run --name ${name}( |$)" 2>/dev/null); do
+            kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
+          done
 
 'on':
   execute:

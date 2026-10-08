@@ -5,8 +5,9 @@
 > [Design Explorer](https://github.com/tt-acm/DesignExplorer) (d3 v3.5 and its
 > build of `d3.parcoords`), downloaded once per cluster at a pinned commit by
 > `app/install-design-explorer.sh` and served by `app/design-explorer-server.py`.
-> `workflows/dakota-openfoam` serves the same page over its Dakota study as an
-> option (checking out `workflows/doe-openfoam/app`).
+> Since 2026-10-08 the page is its own workflow, `workflows/design-explorer` (the
+> `app/` paths below are its own), which `doe-openfoam` and `dakota-openfoam` call
+> as a subworkflow with the study directory; it serves any such directory standalone.
 
 ## One server, two study layouts
 

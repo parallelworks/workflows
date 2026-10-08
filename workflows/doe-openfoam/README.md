@@ -1,96 +1,55 @@
 # DOE-OpenFOAM: Design of Experiments with Design Explorer
 
 A design of experiments over the NACA 4-digit airfoil: a sampler spreads designs
-over the variable bounds, or you paste your own, every design is solved by
-[`workflows/openfoam-naca`](../openfoam-naca/README.md) in parallel, and
-[Design Explorer](https://tt-acm.github.io/DesignExplorer/) shows the inputs, the
-coefficients and the flow images of every design side by side.
+over the variable bounds, or you paste your own, every design is solved in
+parallel, and [Design Explorer](https://tt-acm.github.io/DesignExplorer/) shows
+the inputs, the coefficients and the flow images of every design side by side.
+Three standalone workflows do the work, called as subworkflows:
 
-| Piece | Where | Runs in |
+| Piece | Workflow | Called by |
 |---|---|---|
-| sample the designs | `app/doe.py` | the `preprocessing` job |
+| sample the designs | [`workflows/doe`](../doe/README.md) | the `preprocessing` job |
 | solve one design | [`workflows/openfoam-naca`](../openfoam-naca/README.md) | the `workers` matrix, once per design |
-| explore the results | `app/design-explorer.html` | the `design-explorer-<run slug>` endpoint |
+| explore the results | [`workflows/design-explorer`](../design-explorer/README.md) | the `preprocessing` job, with images on |
 
-The openfoam-naca README describes the case, its inputs and its images; this one
-covers the sampling, the fan-out and the page. The matrix mechanics come from
+Their READMEs describe the sampling methods, the case and the page; this one
+covers the fan-out, the results and the tests. The matrix mechanics come from
 [`tutorials/optimization`](../../tutorials/optimization/README.md).
 
 ## How the pieces connect
 
-![general.yaml: preprocessing samples the designs into cases/ and starts the Design Explorer server; the workers matrix calls openfoam-naca once per case; results collects every case into results.csv; the server reads cases/ on every request](thumbnails/doe-wiring.svg)
+![general.yaml: preprocessing calls the doe workflow, which samples the designs into cases/, and the design-explorer workflow, which starts the server; the workers matrix calls openfoam-naca once per case; results collects every case into results.csv; the server reads cases/ on every request](thumbnails/doe-wiring.svg)
 
 ```
 general.yaml
- ├─ preprocessing       checks the OpenFOAM and ParaView environments, samples the designs into
- │                      cases/, starts the Design Explorer server and waits until its endpoint answers
- ├─ stop_server_if_unhealthy   if: !completed — removes a server whose endpoint never answered
+ ├─ preprocessing       checks the OpenFOAM and ParaView environments, then calls doe (the designs
+ │                      into cases/) and, with images on, design-explorer (the page, once it answers)
  ├─ workers-1..n        matrix, if: job_id <= N_CASES — openfoam-naca on cases/case_<j>
  └─ results             if: always — every case into results.csv; fails only if none solved
 ```
 
-The jobs share only the files under `cases/`: the sampler writes
+The pieces share only the files under `cases/`: the sampler writes
 `case_<j>/params.in`, each OpenFOAM call leaves `results.out` (or `exit_code` when
 the solver failed) and `images/` next to it, and the collector and the page read
-them.
+them. preprocessing reads the number of designs back from `cases/doe.env`.
 
-## Sampling methods
+## Sampling
 
-**Sampling method** spreads **Number of cases** designs over the bounds in
-**Design variables**, one `<name> <lower> <upper>` per line. Equal bounds hold a
-variable fixed.
+**Sampling method**, **Number of cases**, **Random seed** and **Design
+variables** go to [`workflows/doe`](../doe/README.md), whose README has the
+methods and the rules for pasting your own cases. A pasted table runs up to 32
+cases, the width of the workers matrix.
 
-| Method | How it spreads the designs | Cases |
-|---|---|---|
-| Latin hypercube (default) | each variable split into `n` intervals, each used once | `n` |
-| Sobol sequence | quasi-random, even coverage in every dimension | `n` |
-| Random | independent uniform samples (Monte Carlo) | `n` |
-| Full factorial | a grid of `L` levels per variable, the largest `L` with `L^d <= n` | `L^d` |
-| One at a time | the center, then each variable alone at `k = (n-1)/d` levels | `1 + d*k` |
-| Your own cases (CSV) | the rows of a table you paste in **Cases (CSV)** | one per row, up to 32 |
-
-`d` counts the variables that are not fixed. The two grid designs decide their
-own size, and the spare matrix slots are skipped. **Random seed** makes the
-first three repeatable.
-
-### Your own cases
-
-Paste one row per case under a header naming the variables:
-
-```
-max_camber,camber_position,thickness,angle_of_attack
-0.00,0.40,0.12,4
-0.02,0.40,0.12,4
-0.04,0.40,0.12,4
-```
-
-- Commas, tabs (a paste from a spreadsheet), semicolons or spaces separate the
-  values.
-- A variable without a column is held at the middle of its bounds in **Design
-  variables**. A value outside the bounds runs with a warning.
-- Case, status and coefficient columns are skipped, so a previous run's
-  `doe.csv`, `results.csv` or the page's `data.csv` pastes as it is. Any other
-  unknown column stops the run, so a typo cannot fix a variable by accident.
+![16 designs of each sampling method over max camber and thickness](../doe/thumbnails/sampling-methods.svg)
 
 ## The Design Explorer page
 
 With **Generate images** on (the default), every case renders its flow fields
-with ParaView and the endpoint `design-explorer-<run slug>` serves the study:
-[Design Explorer](https://github.com/tt-acm/DesignExplorer)'s parallel
-coordinates in a page styled for the platform, light or dark.
+with ParaView and [`workflows/design-explorer`](../design-explorer/README.md)
+serves the study at the endpoint `design-explorer-<run slug>`, whose README
+describes the page. It shows each case as soon as it solves.
 
-![The page: axis toggles and input sliders at the left, the selection tools above the parallel coordinates of the four inputs and the three outputs, the thumbnails of the solved designs below, bordered in the color of their drag coefficient](thumbnails/design-explorer.png)
-
-- **Brush** an axis (drag along it) to select a range, and combine brushes
-  across axes. Drag a title to reorder the axes, double-click it to flip one.
-- The **Cases** sliders narrow the inputs, **Parametric variables** hides axes,
-  and **Color by** colors the lines and the thumbnails.
-- **Exclude selection** and **Zoom to selection** act on the brushed designs;
-  **Save selection to file** downloads them as CSV.
-- Thumbnails outside the selection fade. Hover one to trace its line, click it
-  for the full image and the design's values. **Image** switches between
-  pressure, velocity, streamlines, turbulence, wake and mesh.
-- The page refreshes itself while cases are still running.
+![The page: axis toggles and input sliders at the left, the selection tools above the parallel coordinates of the four inputs and the three outputs, the thumbnails of the solved designs below, bordered in the color of their drag coefficient](../design-explorer/thumbnails/design-explorer.png)
 
 The endpoint keeps serving after the run ends, until
 `pw endpoints delete design-explorer-<run slug>`. With **Generate images** off
@@ -151,13 +110,9 @@ Run one with `python3 tools/tests/run-workflow-test.py <test.json>`.
 
 ## Files
 
-| `app/` | Role |
-|---|---|
-| `doe.py` | the sampler: bounds or a pasted table → `cases/case_<j>/params.in` and `doe.csv` |
-| `study.py` | the collector: case directories (a DOE's or a Dakota study's) → `results.csv` and `data.csv` |
-| `design-explorer.html` | the page |
-| `design-explorer-server.py` | serves the page, its libraries, the images and the tables |
-| `install-design-explorer.sh` | downloads Design Explorer once, at a pinned commit |
-
-Also checked out: `workflows/openfoam-naca/app`, for the environment checks, and
-`tools/utils`.
+This directory has no `app/`: the sampler, the page and the study reader belong
+to [`workflows/doe`](../doe/README.md) and
+[`workflows/design-explorer`](../design-explorer/README.md), which check out
+their own. preprocessing checks out `workflows/openfoam-naca/app` and
+`tools/utils` for the environment checks, and `workflows/design-explorer/app` for
+the results job's `study.py`.

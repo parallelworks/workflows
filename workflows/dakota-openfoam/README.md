@@ -6,10 +6,10 @@ NACA airfoil shape optimization as a loop of two standalone workflows:
 |---|---|---|
 | propose designs or stop | [`workflows/dakota`](../dakota/README.md) | the `optimize` job of `iteration-naca.yaml` |
 | solve one design | [`workflows/openfoam-naca`](../openfoam-naca/README.md) | the `workers` matrix of `iteration-naca.yaml`, once per design |
-| explore the designs (optional) | the Design Explorer page of [`workflows/doe-openfoam`](../doe-openfoam/README.md) | a second endpoint started by `preprocessing` |
+| explore the designs (optional) | [`workflows/design-explorer`](../design-explorer/README.md) | `preprocessing`, with images on |
 
-Their READMEs describe the optimizer, the evaluator and their inputs; this one
-covers only the loop, the live pages and the tests. The loop mechanics come from
+Their READMEs describe the optimizer, the evaluator, the page and their inputs;
+this one covers only the loop, the live pages and the tests. The loop mechanics come from
 [`tutorials/optimization`](../../tutorials/optimization/README.md).
 
 ## How the pieces connect
@@ -21,8 +21,8 @@ general-naca.yaml
  ├─ preprocessing       state/ (the study); checks that the OpenFOAM and Dakota environments deliver
  │                      their tools; starts pareto-server.py detached under pw endpoints run, then waits
  │                      until the endpoint is listed and /healthz answers through the platform; with
- │                      images on, the same for the Design Explorer server
- ├─ stop_server_if_unhealthy   if: !completed — removes the servers whose endpoints never came up
+ │                      images on, calls design-explorer for the second page
+ ├─ stop_server_if_unhealthy   if: !completed — removes the Pareto server if its endpoint never came up
  └─ optimization_loop   needs the endpoint, then:
      ├─ Iterate         retried step; each attempt runs iteration-naca.yaml once:
      │                    optimize ──▶ workers-1..batch_size ──▶ decide
@@ -108,11 +108,11 @@ case renders its flow fields with ParaView, and a second endpoint,
 - A case appears as soon as it solved; the page follows the study until
   Dakota's status is final. **Pareto front ↗** opens the other page.
 
-The page and its server come from the doe-openfoam app, which its README
-describes. ParaView comes from **ParaView environment commands** or, left
-empty, from the official binaries downloaded once; rendering adds about 5 s per
-case. The endpoint outlives the run like the Pareto one, and the same handler
-removes it when preprocessing fails.
+[`workflows/design-explorer`](../design-explorer/README.md) serves the page, and
+its README describes it. ParaView comes from **ParaView environment commands**
+or, left empty, from the official binaries downloaded once; rendering adds
+about 5 s per case. The endpoint outlives the run like the Pareto one, and the
+design-explorer workflow removes its server when the endpoint never answers.
 
 ## Running it
 

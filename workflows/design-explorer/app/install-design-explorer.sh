@@ -3,7 +3,7 @@
 # Idempotent download of Design Explorer (https://github.com/tt-acm/DesignExplorer,
 # a static web page: HTML, JavaScript and CSS, no build step; the server uses its
 # libraries, d3 and d3.parcoords, under the app's own page) into
-# ${service_parent_install_dir:-$HOME/pw/software}/doe-openfoam/DesignExplorer-<commit>,
+# ${service_parent_install_dir:-$HOME/pw/software}/design-explorer/DesignExplorer-<commit>,
 # pinned to DESIGN_EXPLORER_COMMIT so every run serves the same page. Runs on
 # the login node with internet access; safe to re-run — an install with its
 # index.html is kept. Prints DESIGN_EXPLORER_DIR=<dir> and, with [path-file],
@@ -14,7 +14,7 @@ set -o pipefail
 DESIGN_EXPLORER_COMMIT="${DESIGN_EXPLORER_COMMIT:-215d17ee12deb1d27ec2b6c0c3887ef2e2f3fb0d}"
 DESIGN_EXPLORER_URL="${DESIGN_EXPLORER_URL:-https://codeload.github.com/tt-acm/DesignExplorer/tar.gz/${DESIGN_EXPLORER_COMMIT}}"
 SOFTWARE_DIR="${service_parent_install_dir:-${HOME}/pw/software}"
-PREFIX="${SOFTWARE_DIR}/doe-openfoam"
+PREFIX="${SOFTWARE_DIR}/design-explorer"
 INSTALL_DIR="${PREFIX}/DesignExplorer-${DESIGN_EXPLORER_COMMIT:0:12}"
 
 mkdir -p "${PREFIX}" || exit 1

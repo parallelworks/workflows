@@ -1,0 +1,181 @@
+# Design Explorer (https://tt-acm.github.io/DesignExplorer/) over a study of NACA
+# airfoil cases, served as the pw endpoint design-explorer-<run slug>: the design
+# variables and the coefficients (drag, lift, lift-to-drag) as brushable
+# parallel coordinates, the images each case rendered as thumbnails. A study is
+# a directory of workflows/openfoam-naca case directories (case_<j>/ with
+# params.in, results.out and images/): the cases/ of workflows/doe-openfoam or
+# the state/ of workflows/dakota-openfoam, where the generation and the Pareto
+# front become axes too. Both call this workflow as a subworkflow. The server
+# reads the directory on every request, so the page follows a study that is
+# still running and can be served before its first case exists.
+#
+# The server only ever runs on the login node, so it is started detached from a
+# plain step (tutorials/endpoint-workflows Stage 3) rather than through
+# script_submitter, and the wait_for_endpoint subworkflow checks that the
+# endpoint is listed and /healthz answers before the run completes. The endpoint
+# outlives the run until `pw endpoints delete` removes it.
+#
+# The HSP (activate.hpc.mil) variant of general.yaml: the resource is the form's
+# top-level input, as in every HSP form here. Design Explorer's libraries are
+# downloaded from GitHub once, which needs a login node that reaches the
+# internet (Nautilus does; not every HPCMP system does).
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout the Design Explorer App
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: design-explorer
+          sparse_checkout:
+            - workflows/design-explorer/app
+      # the page: the app's design-explorer.html over Design Explorer's libraries,
+      # downloaded once (pinned commit) into the software directory
+      - name: Install Design Explorer
+        run: |
+          set -e
+          bash workflows/design-explorer/app/install-design-explorer.sh "${PWD}/design-explorer-dir.txt"
+      # started in its own session so the end of this step, of this job and of
+      # the run never reaches it; the only off switch is `pw endpoints delete`,
+      # and stop_server_if_unhealthy covers a server whose endpoint never became
+      # healthy
+      - name: Start the Design Explorer Server
+        run: |
+          set -e
+          cases_dir="${{ inputs.study.cases_dir }}"
+          if [[ "${cases_dir}" != /* ]]; then
+            echo "::error::the study directory must be an absolute path on the resource, got '${cases_dir}'"
+            exit 1
+          fi
+          IFS= read -r title << 'PW_TITLE_EOF' || true
+          ${{ inputs.study.title }}
+          PW_TITLE_EOF
+          case "${title}" in ''|undefined) title="Design Explorer" ;; esac
+          # quoted for the script below: quotes written into its heredoc are
+          # dropped, and a space would split an argument
+          printf -v args -- '--cases-dir %q --title %q' "${cases_dir}" "${title} - ${PW_RUN_SLUG}"
+          while IFS= read -r link; do
+            link="${link#"${link%%[![:space:]]*}"}"
+            link="${link%"${link##*[![:space:]]}"}"
+            case "${link}" in ''|undefined) continue ;; esac
+            printf -v arg -- ' --link %q' "${link}"
+            args+="${arg}"
+          done << 'PW_LINKS_EOF'
+          ${{ inputs.study.links }}
+          PW_LINKS_EOF
+          de_dir=$(cat design-explorer-dir.txt)
+          cat <<EOF > start-design-explorer.sh
+          #!/bin/bash
+          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
+          # {port} is replaced by pw endpoints run with the local port it forwards to
+          exec pw endpoints run --name "design-explorer-${PW_RUN_SLUG}" -- \
+              python3 "${PWD}/workflows/design-explorer/app/design-explorer-server.py" \
+              --design-explorer "${de_dir}" --port {port} ${args}
+          EOF
+          chmod +x start-design-explorer.sh
+          if command -v setsid >/dev/null 2>&1; then
+            setsid ./start-design-explorer.sh > design-explorer.out 2>&1 < /dev/null &
+          else
+            nohup ./start-design-explorer.sh > design-explorer.out 2>&1 < /dev/null &
+          fi
+          echo $! > design-explorer.pid
+          echo "::notice::Design Explorer server started over ${cases_dir} (pid $(cat design-explorer.pid)); its output is ${PWD}/design-explorer.out"
+      # the wait below has no budget while the endpoint is not listed, so a server
+      # that dies on start (a missing pw client, an old python) must fail the run
+      # here, with its output, rather than leave it polling for ever
+      - name: Check the Server Is Alive
+        run: |
+          sleep 10
+          if ! kill -0 "$(cat design-explorer.pid)" 2>/dev/null; then
+            echo "::error::the Design Explorer server exited within 10 s of starting; its output follows"
+            cat design-explorer.out
+            exit 1
+          fi
+          echo "::notice::server alive after 10 s; $(tail -n 1 design-explorer.out)"
+      # the health check of the endpoint pattern: the run only completes once the
+      # endpoint is listed and /healthz answers through the platform
+      - name: Wait for endpoint
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: design-explorer-${PW_RUN_SLUG}
+          host: ${{ inputs.resource.ip }}
+          path: /healthz
+          budget: 120
+      - name: Publish the Page
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="design-explorer-${PW_RUN_SLUG}" '$1 == name {print $3}')
+          echo "URL=${url}" | tee -a $OUTPUTS
+          echo "::notice::Design Explorer is serving ${{ inputs.study.cases_dir }} at ${url}: the page follows the study as cases finish; remove it with: pw endpoints delete design-explorer-${PW_RUN_SLUG}"
+
+  # wait_for_endpoint only checks: it fails the job when the endpoint never
+  # answers and tears nothing down, and this server is started detached from a
+  # plain step, with no submitter behind it, so this job is its cleanup. It runs
+  # when preprocessing did not complete (the health check failed, a step before
+  # it failed, or the run was canceled first): it deletes an endpoint that
+  # registered and kills a server whose endpoint never did (`pw endpoints
+  # delete` cannot reach that one). A healthy server is never touched again.
+  # Its pid file is in this workflow's job directory, where preprocessing wrote
+  # it; not a job output, because a canceled preprocessing publishes none.
+  stop_server_if_unhealthy:
+    needs: [preprocessing]
+    if: ${{ !completed }}
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Kill the Design Explorer Server
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          name="design-explorer-${PW_RUN_SLUG}"
+          if pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${name}"; then
+            echo "::warning::the endpoint ${name} registered but the run ended before its health check passed; deleting it"
+            pw endpoints delete "${name}" 2>/dev/null || true
+          fi
+          pid=$(cat design-explorer.pid 2>/dev/null || true)
+          if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+            echo "::warning::killing the Design Explorer server (pid ${pid})"
+            kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
+          fi
+          pkill -f "${PWD}/workflows/design-explorer/app/design-explorer-server.py" 2>/dev/null || true
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: Resource whose filesystem holds the study. The server runs on its login node.
+      study:
+        type: group
+        label: Study
+        items:
+          cases_dir:
+            type: string
+            label: Study directory
+            tooltip: |
+              Absolute path of the study on the resource: a directory of
+              openfoam-naca case directories (case_<j>/ with params.in,
+              results.out and images/), such as the cases/ of a doe-openfoam run
+              or the state/ of a dakota-openfoam run, both in the run's job
+              directory. The page follows the directory as cases are added, so
+              it can be served before the first one exists.
+          title:
+            type: string
+            label: Page title
+            default: NACA airfoil study
+            tooltip: The title in the page's header; the run slug is added to it.
+          links:
+            type: editor
+            label: Links
+            optional: true
+            tooltip: |
+              Buttons in the page's header, one <label>=<URL> per line, for
+              example a Pareto front page. dakota-openfoam links its own this
+              way.

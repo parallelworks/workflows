@@ -1,0 +1,15 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "endpoint": false,
+    "leftover_patterns": [
+      "doe.py"
+    ]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "doe": {
+    "method": "sobol",
+    "n_cases": 16,
+    "seed": 7
+  }
+}

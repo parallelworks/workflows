@@ -6,7 +6,7 @@
       "${HOME}/pw/software/openfoam-naca/miniforge/envs/openfoam",
       "${HOME}/pw/software/dakota/miniforge/envs/dakota",
       "${HOME}/pw/software/openfoam-naca/paraview/ParaView-6.1.1/.render-checked",
-      "${HOME}/pw/software/doe-openfoam/DesignExplorer-215d17ee12de/index.html"
+      "${HOME}/pw/software/design-explorer/DesignExplorer-215d17ee12de/index.html"
     ],
     "leftover_patterns": [
       "pw endpoints",

@@ -14,11 +14,11 @@
 # only ever runs on the login node, so it is started detached from a plain step
 # (tutorials/endpoint-workflows Stage 3) rather than through script_submitter.
 # With postprocessing.generate_images, every case also renders its fields with
-# ParaView and a second page, Design Explorer over the same study (the page and
-# server of workflows/doe-openfoam), serves as design-explorer-<run slug>: the
+# ParaView and preprocessing calls workflows/design-explorer, which serves a
+# second page over the same study as design-explorer-<run slug>: the
 # generation, the design variables, the coefficients and the Pareto front as
-# brushable axes, the images of every design as thumbnails. It is started and
-# checked the same way, and links to the Pareto front page.
+# brushable axes, the images of every design as thumbnails, and a link to the
+# Pareto front page.
 permissions:
   - '*'
 
@@ -48,11 +48,10 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:
-      # this workflow has no app of its own: the optimizer and the evaluator check
-      # out theirs inside their subworkflows. Checked out here: the Pareto front
-      # page (the Dakota app's viewer of the study directory), the Design
-      # Explorer page and its server (the doe-openfoam app, used when images are
-      # on) and the installers, for the environment check below
+      # this workflow has no app of its own: the optimizer, the evaluator and
+      # Design Explorer check out theirs inside their subworkflows. Checked out
+      # here: the Pareto front page (the Dakota app's viewer of the study
+      # directory) and the installers, for the environment check below
       - name: Checkout the Pareto Front Server and the Installers
         uses: parallelworks/checkout
         with:
@@ -61,7 +60,6 @@ jobs:
           sparse_checkout:
             - workflows/dakota/app
             - workflows/openfoam-naca/app
-            - workflows/doe-openfoam/app
             - tools/utils
       - name: Validate Inputs and Initialize State
         run: |
@@ -166,100 +164,57 @@ jobs:
           path: /healthz
           budget: 120
       # with images on, the second page: Design Explorer over the same study
-      # directory, downloaded once (pinned commit) and served by the doe-openfoam
-      # app's server, which reads state/iter_<N>/case_<j>/ directly, so a case
-      # shows as soon as it solved. Started, checked and torn down like the
-      # Pareto front server; it links to that page
-      - name: Install Design Explorer
+      # directory, served by its own workflow, which reads state/iter_<N>/case_<j>/
+      # directly (a case shows as soon as it solved), waits until its endpoint
+      # answers and removes a server that never did. It links to the Pareto
+      # front page, whose URL is looked up first
+      - name: Find the Pareto Front Page
         if: ${{ inputs.postprocessing.generate_images == true }}
         run: |
-          set -e
-          bash workflows/doe-openfoam/app/install-design-explorer.sh "${PWD}/design-explorer-dir.txt"
-      - name: Start the Design Explorer Server
-        if: ${{ inputs.postprocessing.generate_images == true }}
-        run: |
-          set -e
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          de_dir=$(cat design-explorer-dir.txt)
-          pareto_url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="pareto-${PW_RUN_SLUG}" '$1 == name {print $3}')
-          # quoted for the script below: quotes written into the heredoc itself
-          # are dropped, and the label's space would split the argument
-          link=""
-          if [ -n "${pareto_url}" ]; then
-            printf -v link -- '--link %q' "Pareto front=${pareto_url}"
-          fi
-          cat <<EOF > start-design-explorer.sh
-          #!/bin/bash
-          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
-          # {port} is replaced by pw endpoints run with the local port it forwards to
-          exec pw endpoints run --name "design-explorer-${PW_RUN_SLUG}" -- \
-              python3 "${PWD}/workflows/doe-openfoam/app/design-explorer-server.py" \
-              --cases-dir "${PWD}/state" --design-explorer "${de_dir}" --port {port} \
-              --title "NACA airfoil optimization - ${PW_RUN_SLUG}" ${link}
-          EOF
-          chmod +x start-design-explorer.sh
-          if command -v setsid >/dev/null 2>&1; then
-            setsid ./start-design-explorer.sh > design-explorer.out 2>&1 < /dev/null &
-          else
-            nohup ./start-design-explorer.sh > design-explorer.out 2>&1 < /dev/null &
-          fi
-          echo $! > design-explorer.pid
-          echo "::notice::Design Explorer server started (pid $(cat design-explorer.pid)); its output is ${PWD}/design-explorer.out"
-      - name: Check the Design Explorer Server Is Alive
+          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="pareto-${PW_RUN_SLUG}" '$1 == name {print $3}')
+          echo "PARETO_URL=${url}" | tee -a $OUTPUTS
+      - name: Design Explorer (Serve the Study)
         if: ${{ inputs.postprocessing.generate_images == true }}
-        run: |
-          sleep 10
-          if ! kill -0 "$(cat design-explorer.pid)" 2>/dev/null; then
-            echo "::error::the Design Explorer server exited within 10 s of starting; its output follows"
-            cat design-explorer.out
-            exit 1
-          fi
-          echo "::notice::server alive after 10 s; $(tail -n 1 design-explorer.out)"
-      - name: Wait for the Design Explorer endpoint
-        if: ${{ inputs.postprocessing.generate_images == true }}
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@design-explorer
         with:
-          $yaml: workflows/wait_for_endpoint/general.yaml
-          endpoint_name: design-explorer-${PW_RUN_SLUG}
-          host: ${{ inputs.cluster.resource.ip }}
-          path: /healthz
-          budget: 120
+          $yaml: workflows/design-explorer/yamls/general.yaml
+          cluster:
+            resource: ${{ inputs.cluster.resource }}
+          study:
+            cases_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
+            title: NACA airfoil optimization
+            links: Pareto front=${{ needs.preprocessing.outputs.PARETO_URL }}
 
-  # wait_for_endpoint only checks: it fails the job when an endpoint never
-  # answers and tears nothing down, and these servers are started detached from
-  # plain steps, with no submitter behind them, so this job is their cleanup. It
-  # runs when preprocessing did not complete (a health check failed, a step
-  # before it, or the run was canceled first): it deletes an endpoint that
-  # registered and kills a server whose endpoint never did (`pw endpoints
-  # delete` cannot reach that one), for the Pareto front server and, when images
-  # are on, the Design Explorer one. A run that passed preprocessing never
-  # touches them again. Fixed paths, not job outputs: a canceled preprocessing
-  # publishes none.
+  # wait_for_endpoint only checks: it fails the job when the endpoint never
+  # answers and tears nothing down, and the Pareto front server is started
+  # detached from a plain step, with no submitter behind it, so this job is its
+  # cleanup. It runs when preprocessing did not complete (the health check
+  # failed, a step before it, or the run was canceled first): it deletes an
+  # endpoint that registered and kills a server whose endpoint never did (`pw
+  # endpoints delete` cannot reach that one). A run that passed preprocessing
+  # never touches it again; the Design Explorer workflow cleans up its own
+  # server. Fixed paths, not job outputs: a canceled preprocessing publishes none.
   stop_server_if_unhealthy:
     needs: [preprocessing]
     if: ${{ !completed }}
     ssh:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:
-      - name: Kill the Servers
+      - name: Kill the Pareto Front Server
         run: |
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          # <endpoint prefix and pid file>:<command line of its server>
-          for server in "pareto:pareto-server.py --state-dir" \
-                        "design-explorer:design-explorer-server.py --cases-dir"; do
-            prefix="${server%%:*}"
-            name="${prefix}-${PW_RUN_SLUG}"
-            if pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${name}"; then
-              echo "::warning::the endpoint ${name} registered but the run ended in preprocessing; deleting it"
-              pw endpoints delete "${name}" 2>/dev/null || true
-            fi
-            pid=$(cat "${PW_PARENT_JOB_DIR}/${prefix}.pid" 2>/dev/null || true)
-            if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
-              echo "::warning::killing the ${prefix} server (pid ${pid})"
-              kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
-            fi
-            pkill -f "${server#*:} ${PW_PARENT_JOB_DIR}/state" 2>/dev/null || true
-          done
+          name="pareto-${PW_RUN_SLUG}"
+          if pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${name}"; then
+            echo "::warning::the endpoint ${name} registered but the run ended before its health check passed; deleting it"
+            pw endpoints delete "${name}" 2>/dev/null || true
+          fi
+          pid=$(cat "${PW_PARENT_JOB_DIR}/pareto.pid" 2>/dev/null || true)
+          if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+            echo "::warning::killing the Pareto front server (pid ${pid})"
+            kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
+          fi
+          pkill -f "pareto-server.py --state-dir ${PW_PARENT_JOB_DIR}/state" 2>/dev/null || true
 
   # preprocessing only completes once the front is being served, so a server
   # that cannot start fails the run before any case is spent, and the page is

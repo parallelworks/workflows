@@ -1,26 +1,20 @@
-# Design of experiments over the NACA 4-digit airfoil problem: a sampling
-# method (Latin hypercube, Sobol, Monte Carlo, full factorial, one at a time)
-# proposes the designs inside the variable bounds (max camber, camber position,
-# thickness, angle of attack), or the user pastes them as a CSV table; every
-# design is one call of
-# workflows/openfoam-naca, run in parallel as a matrix, and the results are
-# collected into one table. Each case is exactly a standalone openfoam-naca run:
-# its own checkout and environment check, its own submitter job and, when
-# images are wanted, its ParaView images of the fields.
+# Design of experiments over the NACA 4-digit airfoil problem, assembled from
+# standalone workflows called as subworkflows: workflows/doe samples the designs
+# inside the variable bounds (Latin hypercube, Sobol, Monte Carlo, full
+# factorial, one at a time) or takes them from a pasted CSV table, every design
+# is one call of workflows/openfoam-naca, run in parallel as a matrix, and the
+# results are collected into one table. Each case is exactly a standalone
+# openfoam-naca run: its own checkout and environment check, its own submitter
+# job and, when images are wanted, its ParaView images of the fields.
 #
-# With postprocessing.generate_images (the default), preprocessing starts a
-# small server on the login node that serves a Design Explorer page
-# (https://tt-acm.github.io/DesignExplorer/, its parallel coordinates engine
-# in a shell styled for the platform) over the study as a pw endpoint
-# (design-explorer-<run slug>): the inputs and the outputs (drag and lift
-# coefficients, lift-to-drag) as brushable axes, the rendered fields of every
-# design as thumbnails; the page picks up the cases as they finish, and the
-# endpoint keeps serving after the run until `pw endpoints delete` removes it. The server only ever runs on the login node, so it is
-# started detached from a plain step (tutorials/endpoint-workflows Stage 3)
-# rather than through script_submitter, as workflows/dakota-openfoam does with
-# its Pareto front. The matrix mechanics (a literal list sliced to the form's
-# case count, guarded by the count the sampler produced) come from
-# tutorials/optimization.
+# With postprocessing.generate_images (the default), preprocessing also calls
+# workflows/design-explorer, which serves a Design Explorer page over the study
+# as a pw endpoint (design-explorer-<run slug>): the inputs and the outputs (drag
+# and lift coefficients, lift-to-drag) as brushable axes, the rendered fields of
+# every design as thumbnails. The page picks up the cases as they finish, and
+# the endpoint keeps serving after the run until `pw endpoints delete` removes
+# it. The matrix mechanics (a literal list sliced to the form's case count,
+# guarded by the count the sampler produced) come from tutorials/optimization.
 permissions:
   - '*'
 
@@ -47,18 +41,19 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:
-      # checked out here: the sampler, the collector and the Design Explorer
-      # server of this app, plus the OpenFOAM app and the shared tools for the
-      # environment checks below (every case checks out the OpenFOAM app again
-      # inside its subworkflow)
-      - name: Checkout the DOE App and the Installers
+      # this workflow has no app of its own: the sampler and Design Explorer
+      # check out theirs inside their subworkflows. Checked out here: the
+      # OpenFOAM app and the shared tools, for the environment checks below
+      # (every case checks out the OpenFOAM app again inside its subworkflow),
+      # and the study reader of the Design Explorer app, for the results job
+      - name: Checkout the Installers and the Study Reader
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
           branch: design-explorer
           sparse_checkout:
-            - workflows/doe-openfoam/app
             - workflows/openfoam-naca/app
+            - workflows/design-explorer/app
             - tools/utils
       - name: Validate Inputs
         run: |
@@ -83,6 +78,7 @@ jobs:
             cells=$(( 5400 * ms * ms ))
             echo "::warning::${cores} cores per case at mesh_scale ${ms} (${cells} cells) leave $(( cells / cores )) cells per rank: each case will run on $(( cells / 1000 > 0 ? cells / 1000 : 1 )) rank(s) and the rest of its allocation idles. Raise mesh_scale (16 ranks need 2 or more) or lower Cores per case."
           fi
+          echo "CASES_DIR=${PWD}/cases" | tee -a $OUTPUTS
       # the checks every case makes, made once here before any case is spent:
       # environment commands that do not deliver the tools fail the run with the
       # tools' own output, and with no commands given the installs (OpenFOAM from
@@ -105,146 +101,64 @@ jobs:
           ${{ inputs.software.paraview_load }}
           PW_LOAD_EOF
           fi
-      # the sampler writes cases/case_<j>/params.in for every design and the
-      # table of them; the count it produced (the structured methods decide
-      # their own: a full factorial is L^d cases; a pasted table has as many as
-      # it has rows) guards the workers matrix. Only doe.env becomes outputs:
-      # the sampler's notices go to the log
-      - name: Sample the Designs
-        run: |
-          set -e -o pipefail
-          cat > variables.txt << 'PW_VARS_EOF'
-          ${{ inputs.doe.variables }}
-          PW_VARS_EOF
-          method="${{ inputs.doe.method }}"
-          if [ "${method}" = csv ]; then
-            cat > cases-input.csv << 'PW_CSV_EOF'
-          ${{ inputs.doe.cases_csv }}
-          PW_CSV_EOF
-            # the matrix below takes all 32 slots in this mode: the table's size
-            # is only known now, and a matrix is sized at submission
-            slots=32
-            python3 workflows/doe-openfoam/app/doe.py --method csv --cases-csv cases-input.csv \
-              --variables-file variables.txt --out-dir "${PWD}/cases"
-          else
-            slots="${{ inputs.doe.n_cases }}"
-            python3 workflows/doe-openfoam/app/doe.py --method "${method}" \
-              --n-cases "${{ inputs.doe.n_cases }}" --seed "${{ inputs.doe.seed }}" \
-              --variables-file variables.txt --out-dir "${PWD}/cases"
-          fi
-          cat cases/doe.env >> $OUTPUTS
-          n=$(awk -F= '$1 == "N_CASES" {print $2}' cases/doe.env)
-          if [ "${n}" -gt "${slots}" ]; then
-            if [ "${method}" = csv ]; then
-              echo "::error::the table has ${n} cases; the workers matrix takes at most ${slots}. Split the table over several runs, or extend the literal job_id list of the workers matrix."
-            else
-              echo "::error::the sampler proposed ${n} cases but the workers matrix has ${slots} slots (n_cases); fix the sampler"
-            fi
-            exit 1
-          fi
-          echo "--- ${PWD}/cases/doe.csv (${n} cases, ${{ inputs.doe.method }})"
-          column -t -s, cases/doe.csv 2>/dev/null || cat cases/doe.csv
-          echo "::notice::${n} designs sampled with ${{ inputs.doe.method }} into ${PWD}/cases (doe.csv lists them)"
-      # the page: the app's design-explorer.html over Design Explorer's
-      # libraries (downloaded once, pinned commit, into the software directory),
-      # served over the cases directory by a login-node process for the life of
-      # the study and beyond. Started in its own session so the end of this
-      # step, of this job and of the run never reaches it
-      # (tutorials/endpoint-workflows Stage 3); the only off switch is `pw
-      # endpoints delete`, and stop_server_if_unhealthy covers a server whose
-      # endpoint never became healthy.
-      - name: Install Design Explorer
-        if: ${{ inputs.postprocessing.generate_images == true }}
-        run: |
-          set -e
-          bash workflows/doe-openfoam/app/install-design-explorer.sh "${PWD}/design-explorer-dir.txt" | tee -a $OUTPUTS
-      - name: Start the Design Explorer Server
-        if: ${{ inputs.postprocessing.generate_images == true }}
-        run: |
-          set -e
-          de_dir=$(cat design-explorer-dir.txt)
-          cat <<EOF > start-design-explorer.sh
-          #!/bin/bash
-          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
-          # {port} is replaced by pw endpoints run with the local port it forwards to
-          exec pw endpoints run --name "design-explorer-${PW_RUN_SLUG}" -- \
-              python3 "${PWD}/workflows/doe-openfoam/app/design-explorer-server.py" \
-              --cases-dir "${PWD}/cases" --design-explorer "${de_dir}" --port {port} \
-              --title "NACA airfoil DOE (${{ inputs.doe.method }}) - ${PW_RUN_SLUG}"
-          EOF
-          chmod +x start-design-explorer.sh
-          if command -v setsid >/dev/null 2>&1; then
-            setsid ./start-design-explorer.sh > design-explorer.out 2>&1 < /dev/null &
-          else
-            nohup ./start-design-explorer.sh > design-explorer.out 2>&1 < /dev/null &
-          fi
-          echo $! > design-explorer.pid
-          echo "::notice::Design Explorer server started (pid $(cat design-explorer.pid)); its output is ${PWD}/design-explorer.out"
-      # the wait below has no budget while the endpoint is not listed, so a server
-      # that dies on start (a missing pw client, an old python) must fail the run
-      # here, with its output, rather than leave it polling for ever
-      - name: Check the Server Is Alive
-        if: ${{ inputs.postprocessing.generate_images == true }}
-        run: |
-          sleep 10
-          if ! kill -0 "$(cat design-explorer.pid)" 2>/dev/null; then
-            echo "::error::the Design Explorer server exited within 10 s of starting; its output follows"
-            cat design-explorer.out
-            exit 1
-          fi
-          echo "::notice::server alive after 10 s; $(tail -n 1 design-explorer.out)"
-      # the health check of the endpoint pattern: this job, and so the cases that
-      # need it, only completes once the endpoint is listed and /healthz answers
-      # through the platform
-      - name: Wait for endpoint
-        if: ${{ inputs.postprocessing.generate_images == true }}
-        uses: github/parallelworks/workflows@canary
+      # the sampler writes cases/case_<j>/params.in for every design and
+      # doe.csv; the count it produced (the structured methods decide their
+      # own: a full factorial is L^d cases; a pasted table has as many as it has
+      # rows) is read back from its doe.env to guard the workers matrix
+      - name: DOE (Sample the Designs)
+        uses: github/parallelworks/workflows@design-explorer
         with:
-          $yaml: workflows/wait_for_endpoint/general.yaml
-          endpoint_name: design-explorer-${PW_RUN_SLUG}
-          host: ${{ inputs.cluster.resource.ip }}
-          path: /healthz
-          budget: 120
+          $yaml: workflows/doe/yamls/general.yaml
+          cluster:
+            resource: ${{ inputs.cluster.resource }}
+          doe:
+            method: ${{ inputs.doe.method }}
+            cases_csv: ${{ inputs.doe.cases_csv }}
+            n_cases: ${{ inputs.doe.n_cases }}
+            seed: ${{ inputs.doe.seed }}
+            variables: ${{ inputs.doe.variables }}
+            cases_dir: ${{ needs.preprocessing.outputs.CASES_DIR }}
+      - name: Publish the Designs
+        run: |
+          set -e
+          cases="${{ needs.preprocessing.outputs.CASES_DIR }}"
+          tee -a $OUTPUTS < "${cases}/doe.env"
+          n=$(awk -F= '$1 == "N_CASES" {print $2}' "${cases}/doe.env")
+          # a pasted table takes all 32 slots of the matrix below: its size is
+          # only known now, and a matrix is sized at submission
+          if [ "${{ inputs.doe.method }}" = csv ]; then
+            if [ "${n}" -gt 32 ]; then
+              echo "::error::the table has ${n} cases; the workers matrix takes at most 32. Split the table over several runs, or extend the literal job_id list of the workers matrix."
+              exit 1
+            fi
+          elif [ "${n}" -gt "${{ inputs.doe.n_cases }}" ]; then
+            echo "::error::the sampler proposed ${n} cases but the workers matrix has ${{ inputs.doe.n_cases }} slots (n_cases); fix the sampler"
+            exit 1
+          fi
+      # the page: Design Explorer over cases/, served by its own workflow,
+      # which starts the server detached on the login node, waits until the
+      # endpoint answers and removes a server that never did. Its server reads
+      # cases/ on every request, so the page is live before the first case
+      # solves and shows each one as it finishes
+      - name: Design Explorer (Serve the Study)
+        if: ${{ inputs.postprocessing.generate_images == true }}
+        uses: github/parallelworks/workflows@design-explorer
+        with:
+          $yaml: workflows/design-explorer/yamls/general.yaml
+          cluster:
+            resource: ${{ inputs.cluster.resource }}
+          study:
+            cases_dir: ${{ needs.preprocessing.outputs.CASES_DIR }}
+            title: NACA airfoil DOE (${{ inputs.doe.method }})
       - name: Publish the Page
         run: |
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
           if [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
             url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="design-explorer-${PW_RUN_SLUG}" '$1 == name {print $3}')
-            echo "::notice::Design Explorer is serving at ${url}: the parallel coordinates fill in as the cases finish (reload the page); remove it with: pw endpoints delete design-explorer-${PW_RUN_SLUG}"
+            echo "::notice::Design Explorer is serving at ${url}: the parallel coordinates fill in as the cases finish; remove it with: pw endpoints delete design-explorer-${PW_RUN_SLUG}"
           else
             echo "::notice::images off: no Design Explorer page for this run; the results table is written by the results job"
           fi
-
-  # wait_for_endpoint only checks: it fails the job when the endpoint never
-  # answers and tears nothing down. In the submitter pattern that failure is
-  # what makes the submitter's cleanup kill the service; this server is started
-  # detached from a plain step, with no submitter behind it, so this job is that
-  # cleanup. It runs when preprocessing did not complete (the health check
-  # failed, a step before it failed, or the run was canceled before it passed),
-  # kills a server whose endpoint never registered (nothing else can reach it:
-  # `pw endpoints delete` knows no such endpoint) or deletes one that registered
-  # but never answered. A healthy server is never touched by the workflow again.
-  # Fixed paths, not job outputs: a canceled preprocessing publishes none.
-  stop_server_if_unhealthy:
-    needs: [preprocessing]
-    if: ${{ !completed }}
-    ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
-    steps:
-      - name: Kill the Design Explorer Server
-        run: |
-          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          name="design-explorer-${PW_RUN_SLUG}"
-          if pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${name}"; then
-            echo "::warning::the endpoint ${name} registered but the run ended before its health check passed; deleting it"
-            pw endpoints delete "${name}" 2>/dev/null || true
-          fi
-          pid=$(cat "${PW_PARENT_JOB_DIR}/design-explorer.pid" 2>/dev/null || true)
-          if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
-            echo "::warning::killing the Design Explorer server (pid ${pid})"
-            kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
-          fi
-          pkill -f "design-explorer-server.py --cases-dir ${PW_PARENT_JOB_DIR}/cases" 2>/dev/null || true
 
   # The guarded matrix: a matrix can only expand over values that are concrete
   # at submission, so the list below is a literal of the maximum width sliced
@@ -312,7 +226,7 @@ jobs:
             echo "::error::no cases directory ${cases}: the designs were never sampled (read the preprocessing log)"
             exit 1
           fi
-          python3 workflows/doe-openfoam/app/study.py --cases-dir "${cases}" \
+          python3 workflows/design-explorer/app/study.py --cases-dir "${cases}" \
             --results "${cases}/results.csv" --data-csv "${cases}/data.csv" --summary | tee -a $OUTPUTS
           echo "--- ${cases}/results.csv"
           column -t -s, "${cases}/results.csv" 2>/dev/null || cat "${cases}/results.csv"
@@ -466,7 +380,6 @@ jobs:
             type: editor
             label: Cases (CSV)
             hidden: ${{ inputs.doe.method != 'csv' }}
-            ignore: ${{ .hidden }}
             default: |
               max_camber,camber_position,thickness,angle_of_attack
               0.00,0.40,0.12,4

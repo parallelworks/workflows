@@ -307,6 +307,10 @@ def main():
 
 def write_cases(args, variables, designs):
     out = os.path.abspath(args.out_dir)
+    # the cases of two studies must never mix: an evaluator, the collector and
+    # Design Explorer take every case_* they find for one study
+    if any(name.startswith("case_") for name in (os.listdir(out) if os.path.isdir(out) else [])):
+        fail("%s already holds case directories: give a new or empty directory" % out)
     os.makedirs(out, exist_ok=True)
     names = [v[0] for v in variables]
     for j, design in enumerate(designs, start=1):

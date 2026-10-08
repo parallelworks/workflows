@@ -33,7 +33,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: design-explorer
+          branch: canary
           sparse_checkout:
             - workflows/openfoam-naca/app
             - tools/utils

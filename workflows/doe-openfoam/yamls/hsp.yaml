@@ -71,7 +71,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: design-explorer
+          branch: canary
           sparse_checkout:
             - workflows/doe-openfoam/app
             - workflows/openfoam-naca/app
@@ -262,7 +262,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: OpenFOAM (Solve the Design)
-        uses: github/parallelworks/workflows@design-explorer
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/openfoam-naca/yamls/hsp.yaml
           resource: ${{ inputs.resource }}

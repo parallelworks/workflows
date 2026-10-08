@@ -1,131 +1,93 @@
 # DOE-OpenFOAM: Design of Experiments with Design Explorer
 
-A design of experiments over the NACA 4-digit airfoil problem, as a fan-out of
-one standalone workflow:
+A design of experiments over the NACA 4-digit airfoil: a sampler spreads designs
+over the variable bounds, every design is solved by
+[`workflows/openfoam-naca`](../openfoam-naca/README.md) in parallel, and
+[Design Explorer](https://tt-acm.github.io/DesignExplorer/) shows the inputs, the
+coefficients and the flow images of every design side by side.
 
-| Piece | Workflow | Called by |
+| Piece | Where | Runs in |
 |---|---|---|
-| sample the designs | `app/doe.py` (this workflow) | the `preprocessing` job of `general.yaml` |
-| solve one design | [`workflows/openfoam-naca`](../openfoam-naca/README.md) | the `workers` matrix of `general.yaml`, once per design, in parallel |
-| explore the results | `app/design-explorer.html`, [Design Explorer](https://tt-acm.github.io/DesignExplorer/)'s engine in a platform-styled shell, served by `app/design-explorer-server.py` | a `pw` endpoint started by `preprocessing` |
+| sample the designs | `app/doe.py` | the `preprocessing` job |
+| solve one design | [`workflows/openfoam-naca`](../openfoam-naca/README.md) | the `workers` matrix, once per design |
+| explore the results | `app/design-explorer.html` | the `design-explorer-<run slug>` endpoint |
 
-The OpenFOAM README describes the case, its inputs and the images it renders;
-this one covers the sampling, the fan-out, the page and the tests. The
-guarded matrix comes from [`tutorials/optimization`](../../tutorials/optimization/README.md)
-and the detached login-node server from
-[`workflows/dakota-openfoam`](../dakota-openfoam/README.md).
+The openfoam-naca README describes the case, its inputs and its images; this one
+covers the sampling, the fan-out and the page. The matrix mechanics come from
+[`tutorials/optimization`](../../tutorials/optimization/README.md).
 
 ## How the pieces connect
 
-![general.yaml: preprocessing samples the designs into cases/ and starts the Design Explorer server; the workers matrix calls openfoam-naca once per case; results collects every case into results.csv; the server rebuilds data.csv from cases/ on every request and serves the page](thumbnails/doe-wiring.svg)
+![general.yaml: preprocessing samples the designs into cases/ and starts the Design Explorer server; the workers matrix calls openfoam-naca once per case; results collects every case into results.csv; the server reads cases/ on every request](thumbnails/doe-wiring.svg)
 
 ```
 general.yaml
- ├─ preprocessing       checks the OpenFOAM (and ParaView) environments; doe.py samples
- │                      n_cases designs into cases/case_<j>/params.in; with images on,
- │                      downloads Design Explorer once, starts the server detached under
- │                      pw endpoints run, waits until the endpoint is listed and /healthz answers
- ├─ stop_server_if_unhealthy   if: !completed — kills a server whose endpoint never came up
- ├─ workers-1..n        matrix, if: job_id <= N_CASES, max-parallel = cases at a time:
- │                      openfoam-naca with params_file + case_dir = cases/case_<j>,
- │                      generate_images as the form says
- └─ results             if: always — study.py reads every case into results.csv;
-                        the run fails only when no case solved
+ ├─ preprocessing       checks the OpenFOAM and ParaView environments, samples the designs into
+ │                      cases/, starts the Design Explorer server and waits until its endpoint answers
+ ├─ stop_server_if_unhealthy   if: !completed — removes a server whose endpoint never answered
+ ├─ workers-1..n        matrix, if: job_id <= N_CASES — openfoam-naca on cases/case_<j>
+ └─ results             if: always — every case into results.csv; fails only if none solved
 ```
 
-The pieces share only the files under `cases/`: the sampler writes
-`case_<j>/params.in`, each OpenFOAM call leaves `results.out` (or `exit_code`
-without it when the solver failed) and `images/*.png` next to it, and the
-collector and the server read them. Every case is exactly a standalone
-`openfoam-naca` run: its own checkout and environment check (lock-serialized
-install), its own submitter job, its own `case/case.foam`.
+The jobs share only the files under `cases/`: the sampler writes
+`case_<j>/params.in`, each OpenFOAM call leaves `results.out` (or `exit_code` when
+the solver failed) and `images/` next to it, and the collector and the page read
+them.
 
 ## Sampling methods
 
-The **Sampling method** dropdown picks how `n_cases` designs are spread over
-the bounds of the **Design variables** editor (`<name> <lower> <upper>` per
-line; equal bounds fix a variable). All five are standard-library Python in
-`app/doe.py`:
+**Sampling method** spreads **Number of cases** designs over the bounds in
+**Design variables**, one `<name> <lower> <upper>` per line. Equal bounds hold a
+variable fixed.
 
-| Method | What it does | Cases |
+| Method | How it spreads the designs | Cases |
 |---|---|---|
-| Latin hypercube (default) | every variable split into `n` strata, each used once at a random position; even one-dimensional coverage at any `n` | `n` |
-| Sobol sequence | the Sobol quasi-random sequence (Joe-Kuo direction numbers), shifted by a seeded random vector so the seed matters; even multi-dimensional coverage, extendable | `n` |
+| Latin hypercube (default) | each variable split into `n` intervals, each used once | `n` |
+| Sobol sequence | quasi-random, even coverage in every dimension | `n` |
 | Random | independent uniform samples (Monte Carlo) | `n` |
-| Full factorial | a regular grid of `L` levels per free variable, the largest `L` with `L^d <= n` (at least 2) | `L^d` |
-| One at a time | the center of the box, then each variable alone at `k = (n-1)/d` evenly spaced levels with the others at the center: a sensitivity screening | `1 + d*k` |
+| Full factorial | a grid of `L` levels per variable, the largest `L` with `L^d <= n` | `L^d` |
+| One at a time | the center, then each variable alone at `k = (n-1)/d` levels | `1 + d*k` |
 
-The structured designs decide their own size; the surplus matrix slots are
-skipped for free and the log says how many designs were sampled. Every design
-goes to `openfoam-naca` as a params file, so the four names (`max_camber`,
-`camber_position`, `thickness`, `angle_of_attack`) must stay.
+`d` counts the variables that are not fixed. The two grid designs decide their
+own size, and the spare matrix slots are skipped. **Random seed** makes the
+other three repeatable.
 
 ## The Design Explorer page
 
-`design-explorer-<run slug>` (in `pw endpoints list` and on the run page) is
-`app/design-explorer.html`: the parallel-coordinates engine of
-[Design Explorer](https://github.com/tt-acm/DesignExplorer) (Thornton
-Tomasetti's CORE studio; d3 and `d3.parcoords` from its tree, downloaded once
-per cluster by `app/install-design-explorer.sh`) in a shell laid out for a
-design study and styled with the platform's dashboard tokens (the same as
-`hpc_status`): a light and a dark theme.
+With **Generate images** on (the default), every case renders its flow fields
+with ParaView and the endpoint `design-explorer-<run slug>` serves the study:
+[Design Explorer](https://github.com/tt-acm/DesignExplorer)'s parallel
+coordinates in a page styled for the platform, light or dark.
 
 ![The page: axis toggles and input sliders at the left, the selection tools above the parallel coordinates of the four inputs and the three outputs, the thumbnails of the solved designs below, bordered in the color of their drag coefficient](thumbnails/design-explorer.png)
 
-- **Parallel coordinates**: one axis per input and per output (`Cd`, `Cl`,
-  `Cl/Cd`), one line per solved design, colored by the **Color by** variable.
-  Drag along an axis to **brush** a range, combine brushes across axes, drag a
-  title to reorder, double-click one to flip. **Parametric variables** shows
-  or hides axes; the **Cases** sliders narrow the inputs before brushing.
-- **Reset selection**, **Exclude selection** and **Zoom to selection** work on
-  the brushed designs; **Save selection to file** downloads them as a CSV.
-- **Thumbnails**: one per design in view, sorted by any variable (**Sort by**),
-  showing the image picked under **Image** (pressure, velocity, streamlines,
-  turbulence, wake, mesh) in three sizes; designs outside the brush fade.
-  Hover one to trace its line; click it for the full image with the design's
-  values, arrow keys for the next or previous design.
-- The page polls the server every 10 s while cases are pending and reloads
-  the table when new cases have solved (brushes and exclusions kept), so a
-  tab left open fills in as the study runs; a case appears as soon as its
-  coefficients are on disk and its images a few seconds later.
+- **Brush** an axis (drag along it) to select a range, and combine brushes
+  across axes. Drag a title to reorder the axes, double-click it to flip one.
+- The **Cases** sliders narrow the inputs, **Parametric variables** hides axes,
+  and **Color by** colors the lines and the thumbnails.
+- **Exclude selection** and **Zoom to selection** act on the brushed designs;
+  **Save selection to file** downloads them as CSV.
+- Thumbnails outside the selection fade. Hover one to trace its line, click it
+  for the full image and the design's values. **Image** switches between
+  pressure, velocity, streamlines, turbulence, wake and mesh.
+- The page refreshes itself while cases are still running.
 
-The server (`app/design-explorer-server.py`, standard library) rebuilds
-`data/data.csv` from the case directories on every request (only solved
-cases: a row without numbers would break the axes), serves the images, and
-answers `status.json` (the counts), `results.csv` (every case with its
-status) and `healthz`. `data.csv` is in Design Explorer's own format (`in:`,
-`out:` and `img:` columns), so it also loads in the upstream page.
-
-Like the Pareto front of `dakota-openfoam`, the server only ever runs on the
-login node and **outlives the run**: after the study finishes, or after a
-cancel, it keeps serving until `pw endpoints delete design-explorer-<run
-slug>`, which kills `pw endpoints run` and the server under it. The
-`wait_for_endpoint` call only checks the endpoint; it tears nothing down, and
-with no submitter behind this server nothing else would. That is what
-`stop_server_if_unhealthy` is for: when preprocessing does not complete (the
-health check failed, a step before it, or a cancel before the check passed),
-it kills a server whose endpoint never registered, which `pw endpoints
-delete` cannot reach, or deletes one that registered but never answered. A
-healthy server is never touched again. With **Generate images** off there is
-no server and no page; the results table is still written.
+The endpoint keeps serving after the run ends, until
+`pw endpoints delete design-explorer-<run slug>`. With **Generate images** off
+there are no images and no page; the results table is still written.
 
 ## Running it
 
-Pick the resource, the sampling method, the number of cases and `mesh_scale`,
-and choose login node or scheduled cases with **Cores per case** (the solver
-caps the ranks at one per 1,000 cells; preprocessing warns when a request
-exceeds that). **Cases at a time** caps how many cases run at once: on a
-login node keep it times the cores per case within the node. The form's
-defaults are the demo: 8 Latin hypercube designs at `mesh_scale` 2 on the
-login node, images on, about 3 min on gcpsmall. **Load saved inputs →
-`mesh3_slurm_4ranks`** is the converged-mesh study: 16 Sobol designs as SLURM
-jobs of 4 ranks at `mesh_scale` 3.
+Pick the resource, the sampling method, the number of cases and **Cases at a
+time**, and choose login node or scheduled cases. The defaults run 8 Latin
+hypercube designs at `mesh_scale` 2 on the login node, images on. **Load saved
+inputs → `mesh3_slurm_4ranks`** runs 16 Sobol designs as SLURM jobs of 4 ranks
+at the converged mesh, `mesh_scale` 3. On a login node, keep **Cases at a time**
+× **Cores per case** within its cores.
 
-The run succeeds when at least one case solved; cases whose solver diverged
-are `FAILED` rows of the table (a result of the study, not an infrastructure
-failure) and are listed in a warning, as are cases that never ran. Each
-worker's log is three jobs deep (`workers-<k>` → `preprocessing`, `run_case`,
-`results`).
+The run succeeds when at least one case solved. A case whose solver diverged is
+a `FAILED` row of the table, a result of the study, and the run lists it in a
+warning.
 
 ## What a run leaves
 
@@ -133,36 +95,47 @@ In the run's job directory on the cluster:
 
 ```
 cases/
-├── doe.csv                the designs as a table (case, max_camber, ...)
-├── doe.env                N_CASES, CASES_DIR, METHOD
-├── case_1/ ... case_n/    one openfoam-naca case each:
-│   ├── params.in            the design
-│   ├── results.out          "<Cd> drag_coefficient", "<-Cl> neg_lift_coefficient" (or exit_code without it)
-│   ├── case/case.foam       the solved case, for ParaView
-│   └── images/              pressure, velocity, streamlines, turbulence, wake, mesh (PNG) + render.log
-├── results.csv            every case: status, inputs, Cd, Cl, Cl/Cd, exit code, images
-└── data.csv               the solved cases in Design Explorer's format
-design-explorer.out        the server's output; design-explorer.pid its pid
+├── doe.csv               the sampled designs
+├── case_1/ ... case_n/   one openfoam-naca case each:
+│   ├── params.in           the design
+│   ├── results.out         Cd and -Cl (or exit_code alone when the solver failed)
+│   ├── case/case.foam      the solved case, for ParaView
+│   └── images/             pressure, velocity, streamlines, turbulence, wake, mesh
+├── results.csv           every case: status, inputs, Cd, Cl, Cl/Cd
+└── data.csv              the solved cases, as the page reads them
 ```
+
+## Variants
+
+`yamls/hsp.yaml` (HSP, `activate.hpc.mil`) and `yamls/noaa.yaml` (NOAA,
+`noaa.parallel.works`) run the same study with the platform's form and the
+matching openfoam-naca variant: the resource as the top-level input, the SLURM
+account and QoS, and on HSP the node type and the PBS account. The HSP form
+saves a `nautilus_modules` configuration with Nautilus's OpenFOAM module. On
+NOAA the installs go to the cluster's shared software tree when the account can
+write there.
 
 ## Tests
 
-`tests/general/`: `gcpsmall.json` (login node, 6 Latin hypercube designs,
-images and the page), `gcpsmall-slurm-mpi2.json` (4 Sobol designs as SLURM
-jobs of 2 ranks) and `gcpsmall-no-images.json` (a 16-case full factorial
-with one variable fixed, images off, no endpoint). The runner checks the
-endpoint and deletes it. Run with
-`python3 tools/tests/run-workflow-test.py <test.json>`.
+| Test | Runs |
+|---|---|
+| `tests/general/gcpsmall.json` | 6 Latin hypercube designs on the login node, images and page |
+| `tests/general/gcpsmall-slurm-mpi2.json` | 4 Sobol designs as SLURM jobs of 2 ranks |
+| `tests/general/gcpsmall-no-images.json` | a full factorial over 3 variables (8 designs), images off |
+| `tests/hsp/gcpsmall.json` | 9 one-at-a-time designs through the HSP form |
+| `tests/noaa/gcpsmall.json` | 4 random designs through the NOAA form |
+
+Run one with `python3 tools/tests/run-workflow-test.py <test.json>`.
 
 ## Files
 
 | `app/` | Role |
 |---|---|
-| `doe.py` | the sampler: variables and bounds → `cases/case_<j>/params.in`, `doe.csv`, `doe.env` |
-| `study.py` | the collector: every case directory → `results.csv`, `data.csv` (Design Explorer format), the counts; imported by the server |
-| `design-explorer.html` | the page: Design Explorer's parallel coordinates in a shell styled for the platform (sliders, axis toggles, selection tools, thumbnails, lightbox, live reload) |
-| `design-explorer-server.py` | serves the page, its libraries and the study (`/data/data.csv`, the images, `/results.csv`, `/status.json`, `/healthz`) |
-| `install-design-explorer.sh` | idempotent download of Design Explorer at a pinned commit (the page's libraries) |
+| `doe.py` | the sampler: bounds → `cases/case_<j>/params.in` and `doe.csv` |
+| `study.py` | the collector: case directories → `results.csv` and `data.csv` |
+| `design-explorer.html` | the page |
+| `design-explorer-server.py` | serves the page, its libraries, the images and the tables |
+| `install-design-explorer.sh` | downloads Design Explorer once, at a pinned commit |
 
-Checked out with it: `workflows/openfoam-naca/app` (the OpenFOAM and ParaView
-installers, for the environment checks) and `tools/utils`.
+Also checked out: `workflows/openfoam-naca/app`, for the environment checks, and
+`tools/utils`.

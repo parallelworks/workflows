@@ -81,7 +81,7 @@
     <text x="626" y="344">camber</text><text x="660" y="344">position</text><text x="694" y="344">thickness</text>
     <text x="728" y="344">alpha</text><text x="762" y="344">Cd</text><text x="796" y="344">Cl</text>
   </g>
-  <text x="616" y="366" font-size="10" fill="#52514e">brush an axis to filter; a design's images on hover</text>
+  <text x="616" y="366" font-size="10" fill="#52514e">brush an axis to filter; click a design for its images</text>
   <text x="606" y="400" font-size="11" fill="#52514e">keeps serving after the run, until</text>
   <text x="606" y="414" font-size="11" fill="#52514e">pw endpoints delete design-explorer-&lt;slug&gt;</text>
 

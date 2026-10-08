@@ -8,7 +8,7 @@
 >
 > "Step N" means SKILL.md's step N; "reference §N" means section N of
 > [activate-platform.md](activate-platform.md). Lessons about one piece of software
-> (OpenFOAM, Dakota, conda environments, Singularity/SIF images, MPI benchmarks, dask-jobqueue) live in
+> (OpenFOAM, Dakota, ParaView, conda environments, Singularity/SIF images, MPI benchmarks, dask-jobqueue) live in
 > [software/](software/), one file per tool — grep both when a symptom is unclear.
 
 ## Common pitfalls (learned from real runs)
@@ -403,3 +403,21 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
 - **A run can leave `~/.ssh/pwcli` on a cloud login node** (observed 2026-10-07, gcpsmall):
   the key was absent before the first app-testbed run and present after it, so a script
   that branches on the key's presence can take another branch on a node a run has used.
+- **A step-level `if:` on a boolean form input works, on `run:` and `uses:` steps alike**
+  (verified 2026-10-08, `workflows/doe-openfoam`): `if: ${{ inputs.postprocessing.generate_images
+  == true }}` skipped the four Design Explorer steps of preprocessing (the install, the detached
+  `pw endpoints run`, the liveness check and the `wait_for_endpoint` call) when the form said
+  `false`, and the steps after them ran. That is how a `uses:` step is made optional: a bash
+  guard cannot skip a subworkflow call.
+- **`strategy.max-parallel` takes a form input** (verified 2026-10-08, `workflows/doe-openfoam`):
+  `max-parallel: ${{ inputs.doe.max_parallel }}` with 4 ran four of six matrix workers at once
+  and the other two when slots freed. With it the login-node mode has a cap on concurrent
+  solvers, which `batch_size` alone does not give a sweep.
+- **A heredoc inside a Python patch script fed through a bash heredoc** ends the outer one at
+  the first line that matches its terminator (`EOF` inside `<< 'EOF'`): Python then fails to
+  parse and bash runs the rest of the file as commands. Write the patch to a file and run it, or
+  pick an outer terminator no inner script uses (`PYEOF`).
+- **pvpython backend selection and exit hangs** (ParaView 6.1.1 on gcpsmall, 2026-10-08) are in
+  [software/paraview.md](software/paraview.md): name the OSMesa window with
+  `VTK_DEFAULT_OPENGL_WINDOW`, end the script with `os._exit()`, bound the run with `timeout`
+  and judge completeness by a file written last.

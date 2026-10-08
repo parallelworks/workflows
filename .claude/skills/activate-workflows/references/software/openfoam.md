@@ -5,6 +5,7 @@
 > since 2026-10). That README holds the physics, the
 > mesh-fidelity table and the run instructions; this file holds the install and
 > parallel-run facts and the traps, with the symptom text you would grep for.
+> Rendering a solved case to images with pvpython: [paraview.md](paraview.md).
 
 ## Install without sudo
 

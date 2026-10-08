@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Design Explorer</title>
+  <meta name="description" content="Design Explorer over a design of experiments: parallel coordinates of the inputs and outputs, the rendered fields of every design." />
+  <script>
+    // served at the root of a subdomain endpoint or under /me/session/<user>/<name>/
+    // on a path-based one: every relative URL below resolves against the page's
+    // own directory either way (the same trick as the hpc_status pages)
+    (function () {
+      var path = window.location.pathname || "/";
+      if (!(path.endsWith("/") || path.indexOf("/index.html") > -1)) { path += "/"; }
+      var base = document.createElement("base");
+      base.href = window.location.origin + path;
+      document.head.appendChild(base);
+      try {
+        var saved = window.localStorage.getItem("doe-explorer-theme");
+        if (saved === "dark" || saved === "light") { document.documentElement.dataset.theme = saved; }
+      } catch (err) { /* private window, blocked storage: keep the default */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="pc_source_files/css/d3.parcoords.css" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+    /* the tokens of the hpc_status dashboard: tinted neutrals, teal accent */
+    :root {
+      color-scheme: light dark;
+      font-family: "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem; --space-6: 1.5rem; --space-8: 2rem;
+      --text-xs: 0.75rem; --text-sm: 0.875rem; --text-base: 1rem; --text-lg: 1.125rem; --text-2xl: 1.5rem;
+      --text-4xl: clamp(1.6rem, 3vw, 2.2rem);
+      --radius-sm: 0.375rem; --radius-md: 0.5rem; --radius-lg: 0.75rem; --radius-xl: 1rem; --radius-full: 999px;
+      --transition-speed: 0.2s; --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06); --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08); --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.1);
+      --low: #3670ba; --mid: #c3c7d3; --high: #b83d4a;
+    }
+    :root[data-theme="light"] {
+      --bg: #f2f3f8; --bg-secondary: #ffffff; --panel: #ffffff; --panel-alt: #eceef5;
+      --text: #111827; --muted: #5b6378; --border: #d4d8e4;
+      --accent: #1a8a8a; --accent-soft: rgba(26, 138, 138, 0.10); --accent-text: #1a8a8a;
+      --alert: #b07a1e; --success: #1e8a47; --danger: #b83d4a; --info: #3670ba;
+      --axis: #6b7387; --tick: #30374a;
+    }
+    :root[data-theme="dark"] {
+      --bg: #0f1117; --bg-secondary: #13161e; --panel: #181c26; --panel-alt: #1e2330;
+      --text: #e8eaf0; --muted: #8890a4; --border: #2a3044;
+      --accent: #2eaaaa; --accent-soft: rgba(46, 170, 170, 0.14); --accent-text: #3cc5c5;
+      --alert: #d4952f; --success: #34a85c; --danger: #d44e5c; --info: #4d8dda;
+      --axis: #8890a4; --tick: #c3c7d3;
+      --low: #4d8dda; --mid: #3a4157; --high: #d44e5c;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2); --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.25); --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+      font-size: var(--text-base); line-height: 1.5; -webkit-font-smoothing: antialiased;
+      transition: background var(--transition-speed) var(--ease-out), color var(--transition-speed) var(--ease-out);
+    }
+    button, select, input { font: inherit; color: inherit; }
+    *:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .page { max-width: 1680px; margin: 0 auto; padding: var(--space-4) var(--space-4) var(--space-8); }
+
+    .hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
+    .eyebrow { margin: 0 0 var(--space-1); color: var(--accent-text); font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: var(--text-4xl); font-weight: 700; line-height: 1.15; letter-spacing: -0.01em; }
+    .lede { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+    .hero-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-full); background: var(--panel-alt); color: var(--muted); font-size: var(--text-xs); font-weight: 600; }
+    .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--info); }
+    .chip.running .dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .chip.final .dot { background: var(--success); }
+    .chip.failed .dot { background: var(--danger); }
+
+    .btn, .btn-group button {
+      display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px;
+      border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel);
+      color: var(--text); font-size: var(--text-sm); font-weight: 500; cursor: pointer; box-shadow: var(--shadow-sm);
+      transition: background var(--transition-speed) var(--ease-out), border-color var(--transition-speed) var(--ease-out);
+    }
+    .btn:hover, .btn-group button:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .btn.ghost { background: transparent; box-shadow: none; }
+    .btn-group { display: inline-flex; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+    .btn-group button { border-radius: 0; box-shadow: none; margin-left: -1px; }
+    .btn-group button:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); margin-left: 0; }
+    .btn-group button:last-child { border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+    .btn-group button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    select {
+      padding: 5px 28px 5px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel);
+      appearance: none; -webkit-appearance: none; font-size: var(--text-sm);
+      background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+      background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+    }
+
+    .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+    @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-sm); }
+    .panel h3 { margin: 0 0 var(--space-3); font-size: var(--text-sm); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .sidebar { display: grid; gap: var(--space-3); position: sticky; top: var(--space-4); }
+    @media (max-width: 900px) { .sidebar { position: static; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); } }
+    .axes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    .axes label { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); cursor: pointer; }
+    .axes input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+    .axes .out { color: var(--accent-text); font-weight: 600; }
+    .axes .swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--muted); flex: none; }
+    .axes .swatch.out { background: var(--accent); }
+    .slider { margin-bottom: var(--space-3); }
+    .slider:last-child { margin-bottom: 0; }
+    .slider .name { display: flex; justify-content: space-between; font-size: var(--text-sm); margin-bottom: 2px; }
+    .slider .name b { font-weight: 600; }
+    .slider .name span { color: var(--muted); font-variant-numeric: tabular-nums; font-size: var(--text-xs); }
+    .range { position: relative; height: 26px; }
+    .range .track { position: absolute; left: 0; right: 0; top: 11px; height: 4px; border-radius: 2px; background: var(--panel-alt); }
+    .range .fill { position: absolute; top: 11px; height: 4px; border-radius: 2px; background: var(--accent); }
+    .range input[type=range] {
+      position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 26px; margin: 0;
+      background: none; -webkit-appearance: none; appearance: none; pointer-events: none;
+    }
+    .range input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 16px; height: 16px; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); cursor: pointer; box-shadow: var(--shadow-sm); }
+    .range input[type=range]::-moz-range-thumb { pointer-events: auto; width: 12px; height: 12px; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); cursor: pointer; box-shadow: var(--shadow-sm); }
+    .range input[type=range]::-moz-range-track { background: transparent; }
+
+    main { display: grid; gap: var(--space-3); min-width: 0; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center; justify-content: space-between; }
+    .toolbar .label { color: var(--muted); font-size: var(--text-sm); margin-right: 6px; }
+    .chart-panel { padding: var(--space-3) var(--space-3) var(--space-2); }
+    .parcoords { position: relative; width: 100%; height: 380px; }
+    .parcoords text { fill: var(--tick); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .parcoords text.label { font-size: 13px; font-weight: 600; fill: var(--text); cursor: grab; }
+    .parcoords text.label.out { fill: var(--accent-text); }
+    .parcoords .axis line, .parcoords .axis path { stroke: var(--axis); }
+    .parcoords rect.background:hover { fill: var(--accent-soft); }
+    .parcoords rect.extent { fill: var(--accent-soft); stroke: var(--accent); }
+    .parcoords .resize rect { fill: var(--accent-soft); }
+    .parcoords canvas.faded { opacity: 0.35; }
+    .parcoords canvas.hidden { opacity: 0; }
+    .hint { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--text-xs); }
+    .legend { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: var(--text-xs); }
+    .legend .bar { width: 90px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--low), var(--mid), var(--high)); }
+    .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); font-size: var(--text-sm); }
+    .row label { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+    .row .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    .thumbs { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(var(--thumb, 200px), 1fr)); }
+    .thumbs.size-L { --thumb: 300px; }
+    .thumbs.size-M { --thumb: 200px; }
+    .thumbs.size-S { --thumb: 140px; }
+    .card {
+      margin: 0; background: var(--panel); border: 4px solid var(--border); border-radius: var(--radius-xl);
+      overflow: hidden; cursor: pointer; box-shadow: var(--shadow-sm);
+      transition: transform var(--transition-speed) var(--ease-out), opacity var(--transition-speed) var(--ease-out), box-shadow var(--transition-speed) var(--ease-out);
+    }
+    .card:hover, .card:focus-visible { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+    .card.dim { opacity: 0.22; }
+    .card img { display: block; width: 100%; aspect-ratio: 1.6; object-fit: cover; background: #fff; }
+    .card figcaption { padding: 6px 10px; font-size: var(--text-xs); color: var(--muted); display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+    .card figcaption b { color: var(--text); font-weight: 600; }
+    .thumbs.size-S .card figcaption span { display: none; }
+    .empty { color: var(--muted); padding: var(--space-8) var(--space-4); text-align: center; }
+    .banner { margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--danger); border-radius: var(--radius-md); background: var(--panel); color: var(--danger); font-size: var(--text-sm); white-space: pre-wrap; }
+
+    .lightbox { position: fixed; inset: 0; z-index: 50; background: rgba(10, 12, 20, 0.72); display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
+    .lightbox .sheet { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); max-width: min(1400px, 100%); max-height: 100%; overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr) 280px; }
+    @media (max-width: 900px) { .lightbox .sheet { grid-template-columns: minmax(0, 1fr); } }
+    .lightbox img { display: block; width: 100%; height: auto; background: #fff; }
+    .lightbox .side { padding: var(--space-4); display: grid; gap: var(--space-3); align-content: start; border-left: 1px solid var(--border); }
+    .lightbox h2 { margin: 0; font-size: var(--text-lg); }
+    .lightbox table { border-collapse: collapse; width: 100%; font-size: var(--text-sm); }
+    .lightbox td { padding: 3px 0; border-bottom: 1px solid var(--border); }
+    .lightbox td:first-child { color: var(--muted); }
+    .lightbox td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+    .lightbox tr.out td:last-child { font-weight: 600; color: var(--accent-text); }
+    .lightbox .kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+    .lightbox .nav { display: flex; gap: 6px; justify-content: space-between; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Design of experiments</p>
+        <h1 id="title">Design Explorer</h1>
+        <p class="lede" id="lede">loading the study…</p>
+      </div>
+      <div class="hero-actions">
+        <span class="chip" id="chip"><span class="dot"></span><span id="chip-text">connecting</span></span>
+        <button class="btn ghost" id="refresh" title="Reload the cases from the server">↻ Refresh</button>
+        <button class="btn ghost" id="theme" title="Toggle color theme">🌙 Dark</button>
+      </div>
+    </header>
+
+    <div class="banner" id="error" hidden></div>
+    <div class="layout">
+      <aside class="sidebar">
+        <section class="panel">
+          <h3>Parametric variables</h3>
+          <ul class="axes" id="axes"></ul>
+        </section>
+        <section class="panel">
+          <h3>Cases</h3>
+          <div id="sliders"></div>
+        </section>
+        <section class="panel">
+          <h3>Color by</h3>
+          <select id="color-by" aria-label="Color the lines and thumbnails by"></select>
+          <div class="legend" style="margin-top: 8px"><span id="legend-lo">low</span><span class="bar"></span><span id="legend-hi">high</span></div>
+        </section>
+      </aside>
+
+      <main>
+        <div class="toolbar">
+          <div class="btn-group" role="group" aria-label="Selection">
+            <button id="reset" title="Clear the brushes, the exclusions and the sliders">Reset selection</button>
+            <button id="exclude" title="Remove the brushed cases from the view">Exclude selection</button>
+            <button id="zoom" title="Keep only the brushed cases">Zoom to selection</button>
+            <button id="save" title="Download the selected cases as CSV">Save selection to file</button>
+          </div>
+          <div>
+            <span class="label">Thumbnail size</span>
+            <div class="btn-group" role="group" aria-label="Thumbnail size">
+              <button data-size="L">L</button><button data-size="M" class="active">M</button><button data-size="S">S</button>
+            </div>
+          </div>
+        </div>
+
+        <section class="panel chart-panel">
+          <div id="pc" class="parcoords"></div>
+          <p class="hint">Drag along an axis to select a range (brush), drag a title to reorder the axes, double-click a title to flip it. Hover a thumbnail to trace its line.</p>
+        </section>
+
+        <div class="row">
+          <label>Sort by <select id="sort-by"></select></label>
+          <button class="btn" id="sort-dir" title="Ascending / descending">▲</button>
+          <label>Image <select id="image-kind"></select></label>
+          <span class="count" id="count"></span>
+        </div>
+        <div id="grid" class="thumbs size-M"></div>
+      </main>
+    </div>
+  </div>
+
+  <div class="lightbox" id="lightbox" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="Case detail">
+      <img id="lb-img" alt="" />
+      <div class="side">
+        <h2 id="lb-title"></h2>
+        <div class="kinds" id="lb-kinds"></div>
+        <table id="lb-table"></table>
+        <div class="nav">
+          <button class="btn" id="lb-prev">← Previous</button>
+          <button class="btn" id="lb-close">Close</button>
+          <button class="btn" id="lb-next">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="d3/d3.v3.min.js"></script>
+  <script src="pc_source_files/d3/d3.underscore.math.js"></script>
+  <script>
+    // Design Explorer's build of d3.parcoords names its axis groups through
+    // this helper, which only its own page defines
+    function string_as_unicode_escape(input) {
+      var output = "";
+      for (var i = 0, l = input.length; i < l; i++) { output += input.charCodeAt(i).toString(16); }
+      return output;
+    }
+  </script>
+  <script src="pc_source_files/d3/d3.parcoords.js"></script>
+  <script>
+  (function () {
+    "use strict";
+    var S = {
+      all: [], rows: [], inputs: [], outputs: [], images: [], meta: [], order: [],
+      hidden: {}, ranges: {}, colorBy: null, sortBy: null, sortAsc: true, image: null,
+      pc: null, brushed: null, extents: {}, status: null, timer: null, lbIndex: -1, excluded: {}
+    };
+    var $ = function (id) { return document.getElementById(id); };
+    // an error in the page's own code is shown on the page: the platform's
+    // session frame has no console at hand
+    function showError(where, err) {
+      var box = $("error");
+      box.hidden = false;
+      box.textContent = where + ": " + (err && err.message ? err.message : err) + (err && err.stack ? "\n" + err.stack.split("\n").slice(0, 4).join("\n") : "");
+      if (window.console) { console.error(where, err); }
+    }
+    function guarded(where, fn) {
+      return function () {
+        try { return fn.apply(this, arguments); } catch (err) { showError(where, err); }
+      };
+    }
+    var label = function (k) { return k.replace(/^(in|out|img):/, ""); };
+    var isOut = function (k) { return S.outputs.indexOf(k) >= 0; };
+    var fmt = function (v) {
+      if (typeof v !== "number" || isNaN(v)) { return "" + v; }
+      if (v === 0) { return "0"; }
+      var a = Math.abs(v);
+      return (a >= 1000 || a < 0.001) ? v.toExponential(3) : v.toPrecision(4);
+    };
+
+    // ---- data -------------------------------------------------------------
+    var DEMO = (/[?&]demo=([a-z]+)/.exec(window.location.search) || [])[1] || "";
+    function fetchCsv(cb) {
+      if (DEMO) {
+        // screenshots (?demo=...) want the page complete at the load event:
+        // a synchronous request, never used otherwise
+        var req = new XMLHttpRequest();
+        req.open("GET", "data/data.csv?t=" + Date.now(), false);
+        req.send();
+        cb(req.status === 200 ? d3.csv.parse(req.responseText) : []);
+        return;
+      }
+      d3.csv("data/data.csv?t=" + Date.now(), function (a, b) {
+        var rows = (b === undefined) ? a : b;   // d3 3.5 passes (error, rows); older (rows)
+        if (!rows) { rows = []; }
+        cb(rows);
+      });
+    }
+    function classify(rows) {
+      var keys = rows.length ? d3.keys(rows[0]) : [];
+      S.inputs = keys.filter(function (k) { return k.indexOf("in:") === 0; });
+      S.outputs = keys.filter(function (k) { return k.indexOf("out:") === 0; });
+      S.images = keys.filter(function (k) { return k.indexOf("img:") === 0; });
+      S.meta = keys.filter(function (k) { return !/^(in|out|img):/.test(k); });
+      rows.forEach(function (r, i) {
+        S.inputs.concat(S.outputs).forEach(function (k) { r[k] = +r[k]; });
+        r.__id = (S.meta.length ? r[S.meta[0]] : "") || ("row " + (i + 1));
+      });
+      if (!S.order.length || S.order.some(function (k) { return keys.indexOf(k) < 0; })) {
+        S.order = S.inputs.concat(S.outputs);
+      }
+      if (!S.colorBy || keys.indexOf(S.colorBy) < 0) { S.colorBy = S.outputs[0] || S.inputs[0]; }
+      if (!S.sortBy || keys.indexOf(S.sortBy) < 0) { S.sortBy = S.colorBy; }
+      if (!S.image || S.images.indexOf(S.image) < 0) { S.image = S.images[0] || null; }
+      S.inputs.forEach(function (k) {
+        var ext = d3.extent(rows, function (r) { return r[k]; });
+        var old = S.ranges[k];
+        // a slider at its full range follows the data; a narrowed one keeps its values
+        S.ranges[k] = {
+          min: ext[0], max: ext[1],
+          lo: (old && old.lo > old.min) ? Math.max(old.lo, ext[0]) : ext[0],
+          hi: (old && old.hi < old.max) ? Math.min(old.hi, ext[1]) : ext[1]
+        };
+      });
+    }
+    function applyFilters() {
+      S.rows = S.all.filter(function (r) {
+        if (S.excluded[r.__id]) { return false; }
+        return S.inputs.every(function (k) {
+          var g = S.ranges[k];
+          return r[k] >= g.lo - 1e-12 && r[k] <= g.hi + 1e-12;
+        });
+      });
+    }
+
+    // ---- color ------------------------------------------------------------
+    function colorScale() {
+      var k = S.colorBy;
+      var ext = d3.extent(S.all, function (r) { return r[k]; });
+      if (ext[0] === undefined) { ext = [0, 1]; }
+      if (ext[0] === ext[1]) { ext = [ext[0] - 1, ext[1] + 1]; }
+      var css = getComputedStyle(document.documentElement);
+      return d3.scale.linear().domain([ext[0], (ext[0] + ext[1]) / 2, ext[1]])
+        .range([css.getPropertyValue("--low").trim(), css.getPropertyValue("--mid").trim(), css.getPropertyValue("--high").trim()])
+        .interpolate(d3.interpolateLab);
+    }
+
+    // ---- the parallel coordinates (Design Explorer's d3.parcoords) ----------
+    function visibleAxes() { return S.order.filter(function (k) { return !S.hidden[k]; }); }
+    function buildChart() {
+      try { buildChartUnguarded(); } catch (err) { showError("building the chart", err); S.pc = null; }
+    }
+    function buildChartUnguarded() {
+      var el = $("pc");
+      el.innerHTML = "";
+      var axes = visibleAxes();
+      if (!S.rows.length || axes.length < 2) {
+        el.innerHTML = '<p class="empty">' + (S.all.length ? (axes.length < 2 ? "Show at least two variables." : "No case passes the sliders and exclusions. Reset the selection.") : "Waiting for the first solved case…") + "</p>";
+        S.pc = null;
+        return;
+      }
+      var scale = colorScale();
+      var dims = {};
+      axes.forEach(function (k) { dims[k] = {}; });
+      // options through the constructor: a setter such as margin() redraws at
+      // once, before the dimensions are known
+      var pc = d3.parcoords({
+        margin: { top: 36, left: 64, right: 64, bottom: 14 },
+        alpha: 0.7,
+        composite: "source-over",
+        color: function (r) { return scale(r[S.colorBy]); }
+      })("#pc");
+      pc.data(S.rows).dimensions(dims);
+      // the library rebuilds its dimension table from the keys alone, so the
+      // titles go on afterwards, through the state it exposes
+      axes.forEach(function (k) { var d = pc.state.dimensions[k]; d.title = label(k); d.type = "number"; d.ticks = 6; });
+      pc.render().createAxes().brushMode("1D-axes").reorderable();
+      pc.alphaOnBrushed(0.08);
+      d3.selectAll("#pc g.dimension").each(function (k) {
+        d3.select(this).select("text.label").classed("out", isOut(k));
+      });
+      pc.on("brush", onBrush).on("brushend", onBrush);
+      pc.on("axesreorder", function (keys) {
+        var hidden = S.order.filter(function (k) { return S.hidden[k]; });
+        S.order = keys.concat(hidden);
+      });
+      var extents = {};
+      axes.forEach(function (k) { if (S.extents[k]) { extents[k] = S.extents[k]; } });
+      if (d3.keys(extents).length) {
+        try { pc.brushExtents(extents); } catch (err) { /* the brush of an axis whose domain changed */ }
+      }
+      S.pc = pc;
+      S.brushed = pc.brushed ? pc.brushed() : null;
+    }
+    function onBrush(d) {
+      S.brushed = (d && d.length !== undefined) ? d : null;
+      try { S.extents = S.pc.brushExtents(); } catch (err) { S.extents = {}; }
+      renderGrid();
+    }
+    function selected() {
+      var b = S.brushed;
+      if (b === null || b === false || b === undefined) { return S.rows; }
+      if (!d3.keys(S.extents).length) { return S.rows; }
+      return b;
+    }
+
+    // ---- sidebar ----------------------------------------------------------
+    function buildSidebar() {
+      var ul = $("axes");
+      ul.innerHTML = "";
+      S.order.forEach(function (k) {
+        var li = document.createElement("li");
+        var lab = document.createElement("label");
+        var cb = document.createElement("input");
+        cb.type = "checkbox"; cb.checked = !S.hidden[k];
+        cb.addEventListener("change", function () { S.hidden[k] = !cb.checked; buildChart(); renderGrid(); });
+        var sw = document.createElement("span"); sw.className = "swatch" + (isOut(k) ? " out" : "");
+        var tx = document.createElement("span"); tx.textContent = label(k); tx.className = isOut(k) ? "out" : "";
+        lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(tx);
+        li.appendChild(lab); ul.appendChild(li);
+      });
+      var box = $("sliders");
+      box.innerHTML = "";
+      S.inputs.forEach(function (k) {
+        var g = S.ranges[k];
+        var wrap = document.createElement("div"); wrap.className = "slider";
+        var name = document.createElement("div"); name.className = "name";
+        var b = document.createElement("b"); b.textContent = label(k);
+        var val = document.createElement("span");
+        name.appendChild(b); name.appendChild(val);
+        var range = document.createElement("div"); range.className = "range";
+        var track = document.createElement("div"); track.className = "track";
+        var fill = document.createElement("div"); fill.className = "fill";
+        var lo = document.createElement("input"), hi = document.createElement("input");
+        var step = (g.max - g.min) / 200 || 1;
+        [lo, hi].forEach(function (inp) { inp.type = "range"; inp.min = g.min; inp.max = g.max; inp.step = step; });
+        lo.value = g.lo; hi.value = g.hi;
+        lo.setAttribute("aria-label", label(k) + " minimum"); hi.setAttribute("aria-label", label(k) + " maximum");
+        var paint = function () {
+          var a = +lo.value, z = +hi.value;
+          if (a > z) { if (this === lo) { z = a; hi.value = z; } else { a = z; lo.value = a; } }
+          var span = (g.max - g.min) || 1;
+          fill.style.left = ((a - g.min) / span * 100) + "%";
+          fill.style.width = ((z - a) / span * 100) + "%";
+          val.textContent = fmt(a) + " – " + fmt(z);
+          return [a, z];
+        };
+        var onInput = function () {
+          var az = paint.call(this);
+          S.ranges[k].lo = az[0]; S.ranges[k].hi = az[1];
+          scheduleRebuild();
+        };
+        lo.addEventListener("input", onInput); hi.addEventListener("input", onInput);
+        range.appendChild(track); range.appendChild(fill); range.appendChild(lo); range.appendChild(hi);
+        wrap.appendChild(name); wrap.appendChild(range); box.appendChild(wrap);
+        paint();
+      });
+      fillSelect($("color-by"), S.inputs.concat(S.outputs), S.colorBy);
+      fillSelect($("sort-by"), S.inputs.concat(S.outputs), S.sortBy);
+      fillSelect($("image-kind"), S.images, S.image);
+      $("image-kind").parentNode.hidden = !S.images.length;
+      var ext = d3.extent(S.all, function (r) { return r[S.colorBy]; });
+      $("legend-lo").textContent = fmt(ext[0]); $("legend-hi").textContent = fmt(ext[1]);
+    }
+    function fillSelect(sel, keys, current) {
+      sel.innerHTML = "";
+      keys.forEach(function (k) {
+        var o = document.createElement("option"); o.value = k; o.textContent = label(k); o.selected = (k === current);
+        sel.appendChild(o);
+      });
+    }
+    var rebuildPending = false;
+    function scheduleRebuild() {
+      if (rebuildPending) { return; }
+      rebuildPending = true;
+      window.requestAnimationFrame(function () {
+        rebuildPending = false;
+        applyFilters(); buildChart(); renderGrid();
+      });
+    }
+
+    // ---- thumbnails -------------------------------------------------------
+    function sortedRows() {
+      var k = S.sortBy, dir = S.sortAsc ? 1 : -1;
+      return S.rows.slice().sort(function (a, b) { return (a[k] - b[k]) * dir || d3.ascending(a.__id, b.__id); });
+    }
+    function renderGrid() {
+      var grid = $("grid");
+      grid.innerHTML = "";
+      var sel = selected(), inSel = {};
+      sel.forEach(function (r) { inSel[r.__id] = true; });
+      var rows = sortedRows();
+      $("count").textContent = sel.length + " of " + S.rows.length + " cases selected" + (S.all.length !== S.rows.length ? " (" + S.all.length + " solved)" : "");
+      if (!rows.length) {
+        grid.innerHTML = '<p class="empty">' + (S.all.length ? "No case in view." : "The thumbnails of the solved cases appear here.") + "</p>";
+        return;
+      }
+      var scale = colorScale();
+      rows.forEach(function (r, i) {
+        var fig = document.createElement("figure");
+        fig.className = "card" + (inSel[r.__id] ? "" : " dim");
+        fig.style.borderColor = scale(r[S.colorBy]);
+        fig.tabIndex = 0;
+        var img = document.createElement("img");
+        img.loading = DEMO ? "eager" : "lazy";
+        img.src = S.image && r[S.image] ? "data/" + r[S.image] : "data/no-image.png";
+        img.alt = r.__id + (S.image ? ", " + label(S.image) : "");
+        var cap = document.createElement("figcaption");
+        var b = document.createElement("b"); b.textContent = r.__id;
+        var span = document.createElement("span"); span.textContent = label(S.sortBy) + " " + fmt(r[S.sortBy]);
+        cap.appendChild(b); cap.appendChild(span);
+        fig.appendChild(img); fig.appendChild(cap);
+        fig.addEventListener("mouseenter", function () { if (S.pc) { S.pc.highlight([r]); } });
+        fig.addEventListener("mouseleave", function () { if (S.pc) { S.pc.unhighlight(); } });
+        fig.addEventListener("click", function () { openLightbox(i); });
+        fig.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openLightbox(i); } });
+        grid.appendChild(fig);
+      });
+    }
+
+    // ---- lightbox ---------------------------------------------------------
+    function openLightbox(i) {
+      var rows = sortedRows();
+      if (!rows.length) { return; }
+      S.lbIndex = (i + rows.length) % rows.length;
+      var r = rows[S.lbIndex];
+      $("lb-title").textContent = r.__id;
+      var kinds = $("lb-kinds"); kinds.innerHTML = "";
+      S.images.forEach(function (k) {
+        var b = document.createElement("button"); b.className = "btn" + (k === S.image ? " active" : "");
+        b.textContent = label(k);
+        b.style.background = (k === S.image) ? "var(--accent-soft)" : "";
+        b.addEventListener("click", function () { S.image = k; $("image-kind").value = k; openLightbox(S.lbIndex); renderGrid(); });
+        kinds.appendChild(b);
+      });
+      $("lb-img").src = S.image && r[S.image] ? "data/" + r[S.image] : "data/no-image.png";
+      $("lb-img").alt = r.__id + (S.image ? ", " + label(S.image) : "");
+      var t = $("lb-table"); t.innerHTML = "";
+      S.inputs.concat(S.outputs).forEach(function (k) {
+        var tr = document.createElement("tr"); tr.className = isOut(k) ? "out" : "";
+        var a = document.createElement("td"), b = document.createElement("td");
+        a.textContent = label(k); b.textContent = fmt(r[k]);
+        tr.appendChild(a); tr.appendChild(b); t.appendChild(tr);
+      });
+      $("lightbox").hidden = false;
+      if (S.pc) { S.pc.highlight([r]); }
+      $("lb-close").focus();
+    }
+    function closeLightbox() {
+      $("lightbox").hidden = true;
+      if (S.pc) { S.pc.unhighlight(); }
+    }
+
+    // ---- status and polling ----------------------------------------------
+    function setStatus(st) {
+      S.status = st;
+      var chip = $("chip"), text = $("chip-text");
+      var final = st && st.pending === 0 && st.total > 0;
+      chip.className = "chip " + (final ? (st.ok ? "final" : "failed") : "running");
+      text.textContent = !st ? "no answer from the server" : final ? "complete" : "running";
+      if (st && st.title) { $("title").textContent = st.title; document.title = st.title; }
+      if (st) {
+        var parts = [st.ok + " of " + st.total + " cases solved"];
+        if (st.failed) { parts.push(st.failed + " failed"); }
+        if (st.pending) { parts.push(st.pending + " pending"); }
+        parts.push("updated " + (st.updated || "").replace("T", " ").replace("Z", " UTC"));
+        $("lede").textContent = parts.join(" · ");
+      }
+      return final;
+    }
+    function poll() {
+      d3.json("status.json?t=" + Date.now(), function (a, b) {
+        var st = (b === undefined) ? a : b;
+        var final = setStatus(st);
+        var changed = st && S.status_ok !== st.ok;
+        S.status_ok = st ? st.ok : S.status_ok;
+        if (changed) { reload(); }
+        if (!final) { S.timer = window.setTimeout(poll, 10000); }
+        else if (S.timer) { window.clearTimeout(S.timer); S.timer = null; }
+      });
+    }
+    function reload() {
+      fetchCsv(function (rows) {
+        classify(rows);
+        S.all = rows;
+        applyFilters(); buildSidebar(); buildChart(); renderGrid();
+      });
+    }
+
+    // ---- controls ---------------------------------------------------------
+    $("reset").addEventListener("click", function () {
+      S.excluded = {};
+      S.inputs.forEach(function (k) { S.ranges[k].lo = S.ranges[k].min; S.ranges[k].hi = S.ranges[k].max; });
+      S.extents = {}; S.brushed = null;
+      applyFilters(); buildSidebar(); buildChart(); renderGrid();
+    });
+    $("exclude").addEventListener("click", function () {
+      var sel = selected(), ids = {};
+      sel.forEach(function (r) { ids[r.__id] = true; });
+      if (sel.length === S.rows.length) { return; }   // nothing brushed: excluding everything is never meant
+      S.all.forEach(function (r) { if (ids[r.__id]) { S.excluded[r.__id] = true; } });
+      S.extents = {}; S.brushed = null;
+      applyFilters(); buildChart(); renderGrid();
+    });
+    $("zoom").addEventListener("click", function () {
+      var sel = selected(), ids = {};
+      sel.forEach(function (r) { ids[r.__id] = true; });
+      S.all.forEach(function (r) { if (!ids[r.__id]) { S.excluded[r.__id] = true; } });
+      S.extents = {}; S.brushed = null;
+      applyFilters(); buildChart(); renderGrid();
+    });
+    $("save").addEventListener("click", function () {
+      var sel = sortedRows().filter(function (r) { return selected().indexOf(r) >= 0; });
+      var cols = S.meta.concat(S.inputs, S.outputs, S.images);
+      var lines = [cols.join(",")].concat(sel.map(function (r) { return cols.map(function (k) { return r[k]; }).join(","); }));
+      var blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = "selection.csv"; a.click();
+      window.setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-size]"), function (b) {
+      b.addEventListener("click", function () {
+        Array.prototype.forEach.call(document.querySelectorAll("[data-size]"), function (x) { x.classList.remove("active"); });
+        b.classList.add("active");
+        $("grid").className = "thumbs size-" + b.dataset.size;
+      });
+    });
+    $("color-by").addEventListener("change", function () { S.colorBy = this.value; buildSidebar(); buildChart(); renderGrid(); });
+    $("sort-by").addEventListener("change", function () { S.sortBy = this.value; renderGrid(); });
+    $("sort-dir").addEventListener("click", function () { S.sortAsc = !S.sortAsc; this.textContent = S.sortAsc ? "▲" : "▼"; renderGrid(); });
+    $("image-kind").addEventListener("change", function () { S.image = this.value; renderGrid(); });
+    $("refresh").addEventListener("click", function () { reload(); poll(); });
+    $("theme").addEventListener("click", function () {
+      var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      try { window.localStorage.setItem("doe-explorer-theme", next); } catch (err) { /* ignore */ }
+      paintTheme(); buildChart(); renderGrid();
+    });
+    function paintTheme() {
+      var dark = document.documentElement.dataset.theme === "dark";
+      $("theme").textContent = dark ? "☀️ Light" : "🌙 Dark";
+    }
+    $("lb-close").addEventListener("click", closeLightbox);
+    $("lb-prev").addEventListener("click", function () { openLightbox(S.lbIndex - 1); });
+    $("lb-next").addEventListener("click", function () { openLightbox(S.lbIndex + 1); });
+    $("lightbox").addEventListener("click", function (e) { if (e.target === this) { closeLightbox(); } });
+    document.addEventListener("keydown", function (e) {
+      if ($("lightbox").hidden) { return; }
+      if (e.key === "Escape") { closeLightbox(); }
+      if (e.key === "ArrowLeft") { openLightbox(S.lbIndex - 1); }
+      if (e.key === "ArrowRight") { openLightbox(S.lbIndex + 1); }
+    });
+    var resizeTimer = null;
+    window.addEventListener("resize", function () {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(function () { buildChart(); }, 150);
+    });
+
+    // a few states reachable from the URL, for screenshots without a mouse:
+    // ?demo=brush brushes the middle of the first output axis, ?demo=lightbox
+    // opens the first thumbnail, ?demo=dark switches the theme
+    function demo() {
+      if (!DEMO) { return; }
+      var m = [null, DEMO];
+      if (m[1] === "dark") { document.documentElement.dataset.theme = "dark"; paintTheme(); buildChart(); renderGrid(); }
+      if (m[1] === "brush" && S.pc && S.outputs.length) {
+        var k = S.outputs[0], ext = d3.extent(S.rows, function (r) { return r[k]; });
+        var e = {}; e[k] = [ext[0] + (ext[1] - ext[0]) * 0.3, ext[1]];
+        S.pc.brushExtents(e);
+        S.extents = e; S.brushed = S.pc.brushed(); renderGrid();
+      }
+      if (m[1] === "lightbox") { openLightbox(0); }
+    }
+
+    paintTheme();
+    fetchCsv(guarded("loading the study", function (rows) {
+      classify(rows); S.all = rows;
+      applyFilters(); buildSidebar(); buildChart(); renderGrid();
+      poll();
+      guarded("demo", demo)();
+    }));
+  })();
+  </script>
+</body>
+</html>

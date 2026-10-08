@@ -421,3 +421,37 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   [software/paraview.md](software/paraview.md): name the OSMesa window with
   `VTK_DEFAULT_OPENGL_WINDOW`, end the script with `os._exit()`, bound the run with `timeout`
   and judge completeness by a file written last.
+- **A matrix can be sized by a ternary over form inputs, but quote the whole value**
+  (verified 2026-10-08, `workflows/doe-openfoam`, run holy-worm): `job_id: "${{ [1, ..., 32]
+  get 0:(inputs.doe.method == 'csv' ? 32 : inputs.doe.n_cases) }}"` expanded to 32 slots
+  when the form said `csv` (5 ran, the rest skipped by the runtime guard). Unquoted, the
+  ternary's `: ` makes the line invalid YAML and the platform answers only `Invalid YAML`.
+- **An `editor` input keeps tabs**: a table pasted from a spreadsheet reached the run's
+  heredoc tab-separated (verified 2026-10-08, same run), so a parser can split on them.
+- **Publish step outputs from a file, not from a program's stdout**: `prog | tee -a
+  $OUTPUTS` also sends its `::notice::` lines there, and a `set -e` step without
+  `pipefail` hides the program's failure behind `tee`'s success. Write `KEY=value` lines
+  to a file and `cat` it into `$OUTPUTS` (`workflows/doe-openfoam`, Sample the Designs).
+- **Quotes inside `${var:+...}` in an unquoted heredoc are dropped**: a start step wrote
+  `${pareto_url:+--link "Pareto front=${pareto_url}"}` into a generated script and the
+  script got `--link Pareto front=https://...`, two arguments; the server exited with
+  `unrecognized arguments` and the liveness check failed the run (2026-10-08,
+  `workflows/dakota-openfoam`, run vocal-magpie). Build the argument before the heredoc
+  with `printf -v arg -- '--link %q' "Pareto front=${url}"` and write `${arg}`.
+- **`range` and `fromJSON` are not on activate.parallel.works yet** (checked 2026-10-08, CLI
+  v7.105.0): core PR #20674, merged into core's canary, adds `range` (`${{ 1 range inputs.n + 1 }}`
+  gives 1..n) and `fromJSON`, which would size a matrix straight from a form input. On
+  activate.parallel.works a dry-run of `range inputs.count` fails with `Expression Parser Error:
+  max recursion exceeded`; a run renders `${{ range(inputs.count) }}` as the text `range3` and
+  `${{ fromJSON(inputs.json) }}` as ``fromJSON`[1, 2, 4]` `` (the keyword glued to its argument,
+  the old parser), and a matrix over `fromJSON` fails with `Could not expand matrix jobs`. Keep
+  the sliced literal list (`[1, ..., N] get 0:(inputs.n)`) until a run renders
+  `${{ range(3) }}` as `[0,1,2]`; then `job_id: ${{ 1 range inputs.n + 1 }}` replaces it in
+  `workflows/doe-openfoam` and `workflows/dakota-openfoam/yamls/iteration-naca*.yaml`, and
+  the n_cases and batch_size caps can go.
+- **A subworkflow's own `if: ${{ !completed }}` handler runs when the top-level run is
+  canceled** (verified 2026-10-08, run included-corgi): canceling a doe-openfoam run while its
+  nested `workflows/design-explorer` call had started its server showed that subworkflow's
+  `preprocessing` canceled and its `stop_server_if_unhealthy` completed, which deleted the
+  half-registered endpoint; no process was left. So a reusable workflow that starts something
+  detached can own its cleanup, and its callers need no handler of their own for it.

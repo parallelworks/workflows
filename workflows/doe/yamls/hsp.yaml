@@ -1,0 +1,161 @@
+# A design of experiments: a sampling method (Latin hypercube, Sobol, Monte
+# Carlo, full factorial, one at a time) spreads designs over the bounds of the
+# design variables, or the user pastes them as a table, and every design becomes
+# a case directory holding a Dakota-style params.in (one "<value> <name>" line
+# per variable). It knows nothing about the evaluator, so any workflow can call
+# it as a subworkflow and run its own evaluator on the cases (workflows/doe-openfoam,
+# for example, solves every case with workflows/openfoam-naca); by hand, any
+# script that reads params.in will do. doe.csv lists the designs and the outputs
+# say how many there are (N_CASES) and where (CASES_DIR).
+#
+# The sampler is seconds of work on the login node, so there is no scheduler
+# section: the resource is only where the cases are written.
+#
+# The HSP (activate.hpc.mil) variant of general.yaml: the resource is the form's
+# top-level input, as in every HSP form here. The step itself is unchanged.
+permissions:
+  - '*'
+
+jobs:
+  sample:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout the DOE App
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/doe/app
+      # only doe.env becomes outputs: the sampler's notices go to the log
+      - name: Sample the Designs
+        run: |
+          set -e -o pipefail
+          cases_dir="${{ inputs.doe.cases_dir }}"
+          case "${cases_dir}" in
+            ''|undefined) cases_dir="${PW_PARENT_JOB_DIR}/cases" ;;
+          esac
+          cat > variables.txt << 'PW_VARS_EOF'
+          ${{ inputs.doe.variables }}
+          PW_VARS_EOF
+          method="${{ inputs.doe.method }}"
+          if [ "${method}" = csv ]; then
+            cat > cases-input.csv << 'PW_CSV_EOF'
+          ${{ inputs.doe.cases_csv }}
+          PW_CSV_EOF
+            python3 workflows/doe/app/doe.py --method csv --cases-csv cases-input.csv \
+              --variables-file variables.txt --out-dir "${cases_dir}"
+          else
+            python3 workflows/doe/app/doe.py --method "${method}" \
+              --n-cases "${{ inputs.doe.n_cases }}" --seed "${{ inputs.doe.seed }}" \
+              --variables-file variables.txt --out-dir "${cases_dir}"
+          fi
+          cat "${cases_dir}/doe.env" >> $OUTPUTS
+          n=$(awk -F= '$1 == "N_CASES" {print $2}' "${cases_dir}/doe.env")
+          echo "--- ${cases_dir}/doe.csv (${n} cases, ${method})"
+          column -t -s, "${cases_dir}/doe.csv" 2>/dev/null || cat "${cases_dir}/doe.csv"
+          echo "::notice::${n} designs sampled with ${method} into ${cases_dir}: case_<j>/params.in each, doe.csv lists them"
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: Resource whose filesystem holds the cases. The sampler runs on its login node, in seconds.
+      doe:
+        type: group
+        label: Design of Experiments
+        items:
+          method:
+            type: dropdown
+            label: Sampling method
+            default: lhs
+            tooltip: |
+              How the designs are spread over the variable bounds. Latin hypercube
+              and Sobol cover the box evenly at any number of cases (the usual
+              choices for a surrogate or a sensitivity study); random is plain
+              Monte Carlo; full factorial is a regular grid of L levels per
+              variable, the largest L with L^d cases at most (d = variables with
+              different bounds); one at a time varies each variable alone across
+              its range with the others at the center of the box (a sensitivity
+              screening). The structured designs may produce fewer cases than
+              asked; the log says how many. Your own cases takes the designs of
+              a table you paste below, one row per case.
+            options:
+              - label: Latin hypercube
+                value: lhs
+              - label: Sobol sequence
+                value: sobol
+              - label: Random (Monte Carlo)
+                value: random
+              - label: Full factorial
+                value: full_factorial
+              - label: One at a time
+                value: one_at_a_time
+              - label: Your own cases (CSV)
+                value: csv
+          cases_csv:
+            type: editor
+            label: Cases (CSV)
+            hidden: ${{ inputs.doe.method != 'csv' }}
+            default: |
+              max_camber,camber_position,thickness,angle_of_attack
+              0.00,0.40,0.12,4
+              0.02,0.40,0.12,4
+              0.04,0.40,0.12,4
+              0.02,0.40,0.09,4
+              0.02,0.40,0.15,4
+            tooltip: |
+              One row per case under a header naming the variables. Paste from a
+              spreadsheet (tabs) or type it with commas, semicolons or spaces. A
+              variable without a column is held at the middle of its bounds in
+              Design variables; a value outside the bounds is kept, with a
+              warning. Columns a study table also carries (case, generation,
+              status, the coefficients, Design Explorer's in:/out:/img: columns)
+              are skipped, so a previous doe.csv, results.csv or data.csv pastes
+              as it is; any other unknown column stops the run.
+          n_cases:
+            type: number
+            label: Number of cases
+            default: 8
+            min: 1
+            max: 1000
+            hidden: ${{ inputs.doe.method == 'csv' }}
+            tooltip: |
+              Designs to sample. A full factorial or one-at-a-time design rounds
+              down to its own size.
+          seed:
+            type: number
+            label: Random seed
+            default: 4242
+            min: 1
+            hidden: ${{ inputs.doe.method == 'csv' || inputs.doe.method == 'full_factorial' || inputs.doe.method == 'one_at_a_time' }}
+            tooltip: |
+              Seed of the Latin hypercube, random and Sobol (shift) samples; the
+              same seed and bounds give the same designs again.
+          variables:
+            type: editor
+            label: Design variables and bounds
+            default: |
+              max_camber       0.0   0.06
+              camber_position  0.3   0.6
+              thickness        0.08  0.18
+              angle_of_attack  0     10
+            tooltip: |
+              One line per variable: <name> <lower> <upper>. The names are the
+              labels of the params.in files the evaluator reads. The default,
+              the NACA 4-digit airfoil box of workflows/openfoam-naca, is an
+              example: any problem fits. Equal bounds hold a variable fixed (it then takes no
+              sampling dimension). With your own cases, a variable the table has
+              no column for is held at the middle of its bounds.
+          cases_dir:
+            type: string
+            label: Cases directory
+            optional: true
+            tooltip: |
+              Absolute path on the resource where case_<j>/params.in and doe.csv
+              are written. It must not hold case directories already. Leave
+              empty for cases/ under this run's job directory (shown in the log).

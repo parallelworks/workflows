@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""Design Explorer over a design of experiments directory, as a pw endpoint.
+"""Design Explorer over a study of case directories, as a pw endpoint.
 
-    design-explorer-server.py --cases-dir CASES --design-explorer DIR --port P [--title TEXT]
+    design-explorer-server.py --cases-dir CASES --design-explorer DIR --port P
+                              [--title TEXT] [--link LABEL=URL ...]
+
+CASES holds one directory per evaluation (params.in, results.out, images/*.png):
+case_<j>/ as workflows/doe writes them, or iter_<N>/case_<j>/ as a Dakota study
+proposes them; study.py reads either. doe-openfoam's cases/ and dakota-openfoam's
+state/ are examples. --link adds a button to the page's header (dakota-openfoam
+links its Pareto front page).
 
 Serves the page design-explorer.html next to this script: the parallel
 coordinates engine of Design Explorer (https://tt-acm.github.io/DesignExplorer/,
@@ -10,7 +17,7 @@ in a shell laid out and styled for the ACTIVATE platform (the hpc_status
 tokens): axis toggles and input sliders at the side, the brush tools above the
 plot, the thumbnails of the designs below it, each one opening its images.
 The study is served under data/: data.csv with the solved cases (in: columns
-for the design variables, out: columns for the coefficients, img: columns
+for the design variables, out: columns for the outputs, img: columns
 pointing at the images each case rendered, the format Design Explorer itself
 reads) and data/<case>/images/<name>.png. Nothing is cached server side:
 data.csv is rebuilt from the case directories on every request (study.py),
@@ -30,6 +37,7 @@ import mimetypes
 import os
 import struct
 import sys
+import tempfile
 import time
 import zlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -41,6 +49,7 @@ import study  # noqa: E402
 CASES_DIR = ""
 DE_DIR = ""
 TITLE = "Design of experiments"
+LINKS = []
 STARTED = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "design-explorer.html")
 
@@ -74,12 +83,15 @@ def data_csv():
 
 def results_csv():
     rows = study.collect(CASES_DIR)
-    tmp = os.path.join(CASES_DIR, ".results.csv.%d" % os.getpid())
-    study.write_results_csv(rows, tmp)
-    with open(tmp) as fh:
-        text = fh.read()
-    os.remove(tmp)
-    return text
+    fd, tmp = tempfile.mkstemp(suffix=".csv")
+    os.close(fd)
+    try:
+        study.write_results_csv(rows, tmp)
+        with open(tmp) as fh:
+            return fh.read()
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
 
 
 def safe_join(root, rel):
@@ -132,8 +144,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/healthz":
                 self.send(200, "ok\n", "text/plain")
             elif path == "/status.json":
-                s = study.summary(study.collect(CASES_DIR))
-                s.update({"title": TITLE, "started": STARTED,
+                s = study.summary(study.collect(CASES_DIR), CASES_DIR)
+                s.update({"title": TITLE, "started": STARTED, "links": LINKS,
                           "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
                 self.send(200, json.dumps(s), "application/json")
             elif path == "/data/data.csv":
@@ -159,13 +171,21 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global CASES_DIR, DE_DIR, TITLE
+    global CASES_DIR, DE_DIR, TITLE, LINKS
     ap = argparse.ArgumentParser()
     ap.add_argument("--cases-dir", required=True)
     ap.add_argument("--design-explorer", required=True, help="directory holding Design Explorer's index.html")
     ap.add_argument("--port", type=int, required=True)
     ap.add_argument("--title", default=TITLE)
+    ap.add_argument("--link", action="append", default=[], metavar="LABEL=URL",
+                    help="a button in the page header; repeatable")
     args = ap.parse_args()
+    for link in args.link:
+        label, sep, url = link.partition("=")
+        if sep and label.strip() and url.strip().startswith(("https://", "http://", "/")):
+            LINKS.append({"label": label.strip(), "url": url.strip()})
+        else:
+            print("design-explorer-server: ignoring --link %r (expected LABEL=URL)" % link, flush=True)
     CASES_DIR = os.path.abspath(args.cases_dir)
     DE_DIR = os.path.abspath(args.design_explorer)
     TITLE = args.title

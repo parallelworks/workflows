@@ -16,12 +16,12 @@
   <text x="40" y="94" font-size="13" fill="#0b0b0b">preprocessing</text>
   <text x="40" y="112" font-size="11" fill="#52514e">checks the OpenFOAM and ParaView environments</text>
   <rect x="40" y="122" width="256" height="34" rx="6" fill="#eef4fc" stroke="#2a78d6" stroke-width="1.5"/>
-  <text x="50" y="137" font-size="12" fill="#2a78d6">doe.py: sample n designs (lhs, sobol, ...)</text>
+  <text x="50" y="137" font-size="12" fill="#2a78d6">uses: workflows/doe  (sample n designs)</text>
   <text x="50" y="151" font-size="11" fill="#52514e">cases/case_j/params.in, doe.csv &#8594; N_CASES</text>
   <rect x="40" y="164" width="256" height="54" rx="6" fill="#fff3ec" stroke="#eb6834"/>
-  <text x="50" y="180" font-size="12" fill="#0b0b0b">start the server, wait for its endpoint</text>
-  <text x="50" y="195" font-size="11" fill="#52514e">setsid pw endpoints run -- design-explorer-server.py &amp;</text>
-  <text x="50" y="209" font-size="11" fill="#52514e">uses: wait_for_endpoint (listed, /healthz answers)</text>
+  <text x="50" y="180" font-size="12" fill="#0b0b0b">uses: workflows/design-explorer  (images on)</text>
+  <text x="50" y="195" font-size="11" fill="#52514e">starts the server detached on the login node,</text>
+  <text x="50" y="209" font-size="11" fill="#52514e">waits for /healthz, cleans up a dead server</text>
 
   <rect x="30" y="246" width="276" height="120" rx="6" fill="#edf7f0" stroke="#1a9850" stroke-width="1.5"/>
   <text x="40" y="264" font-size="13" fill="#0b0b0b">workers  <tspan font-size="11" fill="#52514e">matrix job_id 1..n_cases</tspan></text>

@@ -5,6 +5,32 @@
 > [Design Explorer](https://github.com/tt-acm/DesignExplorer) (d3 v3.5 and its
 > build of `d3.parcoords`), downloaded once per cluster at a pinned commit by
 > `app/install-design-explorer.sh` and served by `app/design-explorer-server.py`.
+> Since 2026-10-08 the page is its own workflow, `workflows/design-explorer` (the
+> `app/` paths below are its own), which `doe-openfoam` and `dakota-openfoam` call
+> as a subworkflow with the study directory; it serves any such directory standalone.
+
+## One server, two study layouts
+
+- Nothing in the reader is specific to the airfoil: every `results.out` value is
+  an `out:` axis, every `images/*.png` an image kind, and the Pareto flag uses the
+  `results.out` values as minimized objectives (Dakota's convention).
+  openfoam-naca's `drag_coefficient` and `neg_lift_coefficient` are the one special
+  case, shown as Cd, Cl and Cl/Cd; its six images come first in its order.
+
+- `app/study.py` reads `DIR/case_<j>/` (a DOE's `cases/`) and `DIR/iter_<N>/case_<j>/`
+  (a Dakota `state/`) with one glob; a case id is its path relative to DIR, so
+  image paths and the server's `/data/<id>/images/...` route work for both.
+- A Dakota study adds `in:generation` (an input, so it gets a slider) and
+  `out:pareto_front` (computed from the solved cases, so it is current before
+  Dakota ingests them); the page colors and sorts by generation by default.
+- **"Final" differs**: a DOE is final when no case is pending; between two Dakota
+  generations no case is pending either, so an optimization is final only when
+  `state/status` says CONVERGED or FAILED. `status.json` carries `final` and
+  `state`, and the page polls until `final`.
+- Read cases from the directories, not from Dakota's `evaluations.csv`: the
+  optimizer appends to it only at the next generation's ingest, a generation late.
+- A variable that never changes (the loop's angle of attack) is a flat axis: the
+  page hides it until the user shows it, decided again on every reload.
 
 ## Why a shell of our own
 

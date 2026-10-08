@@ -1,0 +1,21 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "endpoint": true,
+    "setup": "d=\"${HOME}/pw/tests/design-explorer/generic-study\"; mkdir -p \"$d\"; echo CONVERGED > \"$d/status\"; k=0; for g in 1 2; do for j in 1 2 3 4; do k=$((k+1)); c=\"$d/iter_$g/case_$j\"; mkdir -p \"$c/images\"; awk -v k=$k 'BEGIN {x1=(k*0.37)%1; x2=(k*0.61)%1; printf \"%g x1\\n%g x2\\n\", x1, x2 > \"/dev/stderr\"; printf \"%g f1\\n%g f2\\n\", x1*x1+0.1*x2, (1-x1)*(1-x1)+0.1*x2}' 2> \"$c/params.in\" > \"$c/results.out\"; echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg== | base64 -d > \"$c/images/contour.png\"; done; done",
+    "warm_marker": [
+      "${HOME}/pw/software/design-explorer/DesignExplorer-215d17ee12de/index.html"
+    ],
+    "leftover_patterns": [
+      "pw endpoints",
+      "design-explorer-server.py"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall"
+  },
+  "study": {
+    "cases_dir": "${HOME}/pw/tests/design-explorer/generic-study",
+    "title": "Generic study"
+  }
+}

@@ -13,6 +13,12 @@
 # after the run completes until `pw endpoints delete` removes it. The server
 # only ever runs on the login node, so it is started detached from a plain step
 # (tutorials/endpoint-workflows Stage 3) rather than through script_submitter.
+# With postprocessing.generate_images, every case also renders its fields with
+# ParaView and preprocessing calls workflows/design-explorer, which serves a
+# second page over the same study as design-explorer-<run slug>: the
+# generation, the design variables, the coefficients and the Pareto front as
+# brushable axes, the images of every design as thumbnails, and a link to the
+# Pareto front page.
 #
 # The HSP (activate.hpc.mil) variant of general-naca.yaml: the same loop over
 # iteration-naca-hsp.yaml, which calls the hsp variants of the two workflows, with
@@ -63,10 +69,10 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      # this workflow has no app of its own: the optimizer and the evaluator check
-      # out theirs inside their subworkflows. Checked out here: the Pareto front
-      # page (the Dakota app's viewer of the study directory) and the two
-      # installers, for the environment check below
+      # this workflow has no app of its own: the optimizer, the evaluator and
+      # Design Explorer check out theirs inside their subworkflows. Checked out
+      # here: the Pareto front page (the Dakota app's viewer of the study
+      # directory) and the installers, for the environment check below
       - name: Checkout the Pareto Front Server and the Installers
         uses: parallelworks/checkout
         with:
@@ -124,6 +130,12 @@ jobs:
             workflows/dakota/app/install-dakota.sh dakota << 'PW_LOAD_EOF'
           ${{ inputs.software.dakota_load }}
           PW_LOAD_EOF
+          if [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
+            bash tools/utils/prepare-env.sh paraview "${PWD}/paraview-env.sh" \
+              workflows/openfoam-naca/app/install-paraview.sh pvpython << 'PW_LOAD_EOF'
+          ${{ inputs.software.paraview_load }}
+          PW_LOAD_EOF
+          fi
       # the server is a login-node process for the life of the study and beyond:
       # start it in its own session so the end of this step, of this job and of
       # the run never reaches it (tutorials/endpoint-workflows Stage 3). The only
@@ -172,11 +184,37 @@ jobs:
           host: ${{ inputs.resource.ip }}
           path: /healthz
           budget: 120
+      # with images on, the second page: Design Explorer over the same study
+      # directory, served by its own workflow, which reads state/iter_<N>/case_<j>/
+      # directly (a case shows as soon as it solved), waits until its endpoint
+      # answers and removes a server that never did. It links to the Pareto
+      # front page, whose URL is looked up first
+      - name: Find the Pareto Front Page
+        if: ${{ inputs.postprocessing.generate_images == true }}
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="pareto-${PW_RUN_SLUG}" '$1 == name {print $3}')
+          echo "PARETO_URL=${url}" | tee -a $OUTPUTS
+      - name: Design Explorer (Serve the Study)
+        if: ${{ inputs.postprocessing.generate_images == true }}
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/design-explorer/yamls/hsp.yaml
+          resource: ${{ inputs.resource }}
+          study:
+            cases_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
+            title: NACA airfoil optimization
+            links: Pareto front=${{ needs.preprocessing.outputs.PARETO_URL }}
 
-  # a server whose endpoint never became healthy is killed here (!completed:
-  # preprocessing failed, at the health check or before, or the run was canceled
-  # before it passed); a healthy one is never touched by the workflow again.
-  # Fixed paths, not job outputs: a canceled preprocessing publishes none.
+  # wait_for_endpoint only checks: it fails the job when the endpoint never
+  # answers and tears nothing down, and the Pareto front server is started
+  # detached from a plain step, with no submitter behind it, so this job is its
+  # cleanup. It runs when preprocessing did not complete (the health check
+  # failed, a step before it, or the run was canceled first): it deletes an
+  # endpoint that registered and kills a server whose endpoint never did (`pw
+  # endpoints delete` cannot reach that one). A run that passed preprocessing
+  # never touches it again; the Design Explorer workflow cleans up its own
+  # server. Fixed paths, not job outputs: a canceled preprocessing publishes none.
   stop_server_if_unhealthy:
     needs: [preprocessing]
     if: ${{ !completed }}
@@ -252,6 +290,8 @@ jobs:
           seed: ${{ inputs.problem.seed }}
           openfoam_load: ${{ inputs.software.openfoam_load }}
           dakota_load: ${{ inputs.software.dakota_load }}
+          generate_images: ${{ inputs.postprocessing.generate_images }}
+          paraview_load: ${{ inputs.software.paraview_load }}
           state_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
       # if: always — the run's verdict comes from the state files, not from how the
       # Iterate step ended: CONVERGED is the only success, whether the loop stopped
@@ -266,6 +306,12 @@ jobs:
             echo "::notice::the Pareto front page keeps serving at ${url} (every evaluation, hover for the design); remove it with: pw endpoints delete pareto-${PW_RUN_SLUG}"
           else
             echo "::warning::the Pareto front endpoint pareto-${PW_RUN_SLUG} is no longer listed; the front is still in ${state}/pareto.csv and ${state}/pareto.svg"
+          fi
+          if [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
+            de_url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="design-explorer-${PW_RUN_SLUG}" '$1 == name {print $3}')
+            if [ -n "${de_url}" ]; then
+              echo "::notice::Design Explorer keeps serving the study at ${de_url} (every solved design with its images); remove it with: pw endpoints delete design-explorer-${PW_RUN_SLUG}"
+            fi
           fi
           status=$(cat "${state}/status" 2>/dev/null || echo MISSING)
           case "${status}" in
@@ -537,6 +583,25 @@ jobs:
             default: 4242
             min: 1
             tooltip: Fixed for the run (Dakota's restart replay requires a deterministic method); change it to get a different search.
+      postprocessing:
+        type: group
+        label: Postprocessing
+        items:
+          generate_images:
+            type: boolean
+            label: Generate images and serve Design Explorer?
+            default: false
+            tooltip: |
+              Yes → every OpenFOAM case renders its fields with ParaView (pressure,
+              velocity, streamlines, eddy viscosity, wake, mesh), and a second
+              page, design-explorer-<run slug>, serves the study next to the
+              Pareto front: the generation, the design variables, the
+              coefficients and the front as brushable axes, the images of every
+              design as thumbnails. ParaView comes from the commands in Software
+              Environment or, left empty, from the official binaries the
+              workflow downloads once (no sudo, ~830 MB); rendering adds about
+              5 s per case.
+              No → the Pareto front page only.
       software:
         type: group
         label: Software Environment
@@ -569,3 +634,16 @@ jobs:
               ${service_parent_install_dir:-$HOME/pw/software}/dakota, which only
               works where the login node reaches the internet (Nautilus does, and
               has no Dakota module; not every HPCMP system does).
+          paraview_load:
+            type: editor
+            label: ParaView environment commands
+            optional: true
+            hidden: ${{ inputs.postprocessing.generate_images == false }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Shell commands that put pvpython on PATH, one per line, e.g.
+              `module load paraview/5.13`. Leave empty to download the official
+              ParaView 6.1.1 Linux binaries (x86_64, no sudo, ~830 MB once, 2.7 GB
+              on disk) under
+              ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca/paraview;
+              they render without a display. Needs ParaView 5.10 or newer.

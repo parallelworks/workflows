@@ -1,0 +1,4 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-08T14:11:18Z,cold,pass,ok,4529bef,74bcc3d,0b74bc0,78e05dd,78e05dd,design-explorer,alvaro,frank-bird,35,
+2026-10-08T14:15:55Z,warm,pass,ok,a6a3e47,74bcc3d,0b74bc0,397bb20,397bb20,design-explorer,alvaro,growing-scorpion,35,
+2026-10-08T14:56:03Z,warm,pass,ok,b6b32e3,74bcc3d,0b74bc0,0c9b3ee,0c9b3ee,design-explorer,alvaro,warm-buck,35,

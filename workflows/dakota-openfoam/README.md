@@ -6,9 +6,10 @@ NACA airfoil shape optimization as a loop of two standalone workflows:
 |---|---|---|
 | propose designs or stop | [`workflows/dakota`](../dakota/README.md) | the `optimize` job of `iteration-naca.yaml` |
 | solve one design | [`workflows/openfoam-naca`](../openfoam-naca/README.md) | the `workers` matrix of `iteration-naca.yaml`, once per design |
+| explore the designs (optional) | [`workflows/design-explorer`](../design-explorer/README.md) | `preprocessing`, with images on |
 
-Their READMEs describe the optimizer, the evaluator and their inputs; this one
-covers only the loop, the live front and the tests. The loop mechanics come from
+Their READMEs describe the optimizer, the evaluator, the page and their inputs;
+this one covers only the loop and the live pages. The loop mechanics come from
 [`tutorials/optimization`](../../tutorials/optimization/README.md).
 
 ## How the pieces connect
@@ -19,8 +20,9 @@ covers only the loop, the live front and the tests. The loop mechanics come from
 general-naca.yaml
  ├─ preprocessing       state/ (the study); checks that the OpenFOAM and Dakota environments deliver
  │                      their tools; starts pareto-server.py detached under pw endpoints run, then waits
- │                      until the endpoint is listed and /healthz answers through the platform
- ├─ stop_server_if_unhealthy   if: !completed — kills a server whose endpoint never came up
+ │                      until the endpoint is listed and /healthz answers through the platform; with
+ │                      images on, calls design-explorer for the second page
+ ├─ stop_server_if_unhealthy   if: !completed — removes the Pareto server if its endpoint never came up
  └─ optimization_loop   needs the endpoint, then:
      ├─ Iterate         retried step; each attempt runs iteration-naca.yaml once:
      │                    optimize ──▶ workers-1..batch_size ──▶ decide
@@ -90,6 +92,28 @@ never became healthy (it is not listed, so it cannot be deleted):
 `stop_server_if_unhealthy` kills it by pid. A cancel mid-generation kills the
 running cases and SLURM jobs and leaves only the endpoint.
 
+## Design Explorer (optional)
+
+Turn on **Generate images and serve Design Explorer?** (off by default) and every
+case renders its flow fields with ParaView, and a second endpoint,
+`design-explorer-<run slug>`, serves the study next to the Pareto front:
+
+![Design Explorer over a three-generation optimization: generation, design variables, coefficients and the Pareto-front flag as axes, the flag brushed so 8 of 11 designs stay selected and the dominated ones fade, lines and thumbnails colored by generation](thumbnails/design-explorer.png)
+
+- One axis per design variable and coefficient, plus **generation** and
+  **pareto_front** (1 for the designs no other design beats on both drag and
+  lift). Brush `pareto_front` to see the front's designs and their images.
+- Lines and thumbnails are colored by generation, so the search's progress
+  shows at a glance. The angle of attack is fixed, so its axis starts hidden.
+- A case appears as soon as it solved; the page follows the study until
+  Dakota's status is final. **Pareto front ↗** opens the other page.
+
+[`workflows/design-explorer`](../design-explorer/README.md) serves the page, and
+its README describes it. ParaView comes from **ParaView environment commands**
+or, left empty, from the official binaries downloaded once; rendering adds
+about 5 s per case. The endpoint outlives the run like the Pareto one, and the
+design-explorer workflow removes its server when the endpoint never answers.
+
 ## Running it
 
 Pick the resource, set `max_iterations`, `batch_size`, `stall_generations` and
@@ -127,12 +151,3 @@ defaults to `mesh_scale` 2, the floor at which 16 ranks are all used; not every
 login node reaches the internet),
 the shared install directory on NOAA, and how each submitter receives the
 case's core request.
-
-## Tests
-
-`tests/general-naca/` (the variant is the YAML's basename): `gcpsmall.json`
-(login node, 4 × 4), `gcpsmall-slurm-mpi2.json` (SLURM, 2 ranks) and
-`gcpsmall-mesh3-slurm-4ranks.json` (the saved configuration); `tests/hsp-naca/`
-and `tests/noaa-naca/` repeat the first two for the variants. The runner
-checks the endpoint and deletes it. Run with
-`python3 tools/tests/run-workflow-test.py <test.json>`.

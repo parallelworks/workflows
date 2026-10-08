@@ -1,0 +1,20 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "endpoint": true,
+    "setup": "d=\"${HOME}/pw/tests/design-explorer/study\"; for j in 1 2 3 4 5 6; do mkdir -p \"$d/case_$j\"; awk -v j=$j 'BEGIN {printf \"%g max_camber\\n%g camber_position\\n%g thickness\\n%g angle_of_attack\\n\", 0.01*(j-1), 0.3+0.05*(j-1), 0.08+0.02*(j-1), 2*j}' > \"$d/case_$j/params.in\"; if [ $j -lt 6 ]; then awk -v j=$j 'BEGIN {printf \"%g drag_coefficient\\n%g neg_lift_coefficient\\n\", 0.01+0.002*j, -(0.2+0.1*j)}' > \"$d/case_$j/results.out\"; else echo 1 > \"$d/case_$j/exit_code\"; fi; done",
+    "warm_marker": [
+      "${HOME}/pw/software/design-explorer/DesignExplorer-215d17ee12de/index.html"
+    ],
+    "leftover_patterns": [
+      "pw endpoints",
+      "design-explorer-server.py"
+    ]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "study": {
+    "cases_dir": "${HOME}/pw/tests/design-explorer/study",
+    "title": "Design Explorer test",
+    "links": "Design Explorer=https://tt-acm.github.io/DesignExplorer/"
+  }
+}

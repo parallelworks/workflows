@@ -99,8 +99,11 @@ jobs:
             case_dir: ${{ needs.optimize.outputs.ITER_DIR }}/case_${{ matrix.job_id }}
             angle_of_attack: ${{ inputs.angle_of_attack }}
             mesh_scale: ${{ inputs.mesh_scale }}
+          postprocessing:
+            generate_images: ${{ inputs.generate_images }}
           software:
             openfoam_load: ${{ inputs.openfoam_load }}
+            paraview_load: ${{ inputs.paraview_load }}
 
   # if: always — this job must reach its verdict even when optimize crashed or a
   # worker failed: any non-CONVERGED/FAILED state exits 1, which fails this run and
@@ -241,3 +244,11 @@ jobs:
       state_dir:
         type: string
         label: Absolute path of the optimizer state directory
+      generate_images:
+        type: boolean
+        label: Render each case's fields with ParaView (images/ in the case directory)
+        default: false
+      paraview_load:
+        type: editor
+        label: ParaView environment commands (empty = the official binaries)
+        optional: true

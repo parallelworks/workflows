@@ -1,0 +1,17 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "endpoint": false,
+    "expect": "error",
+    "leftover_patterns": [
+      "pw endpoints",
+      "design-explorer-server.py"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall"
+  },
+  "study": {
+    "cases_dir": "pw/tests/design-explorer/study"
+  }
+}

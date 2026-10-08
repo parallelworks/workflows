@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Design Explorer</title>
-  <meta name="description" content="Design Explorer over a design of experiments: parallel coordinates of the inputs and outputs, the rendered fields of every design." />
+  <meta name="description" content="Design Explorer over a design study: parallel coordinates of the inputs and outputs, the images of every design." />
   <script>
     // served at the root of a subdomain endpoint or under /me/session/<user>/<name>/
     // on a path-based one: every relative URL below resolves against the page's
@@ -113,6 +113,8 @@
     .slider .name { display: flex; justify-content: space-between; font-size: var(--text-sm); margin-bottom: 2px; }
     .slider .name b { font-weight: 600; }
     .slider .name span { color: var(--muted); font-variant-numeric: tabular-nums; font-size: var(--text-xs); }
+    .slider .fixed { color: var(--muted); font-size: var(--text-xs); }
+    a.btn { text-decoration: none; }
     .range { position: relative; height: 26px; }
     .range .track { position: absolute; left: 0; right: 0; top: 11px; height: 4px; border-radius: 2px; background: var(--panel-alt); }
     .range .fill { position: absolute; top: 11px; height: 4px; border-radius: 2px; background: var(--accent); }
@@ -130,7 +132,7 @@
     .chart-panel { padding: var(--space-3) var(--space-3) var(--space-2); }
     .parcoords { position: relative; width: 100%; height: 380px; }
     .parcoords text { fill: var(--tick); font-size: 12px; font-variant-numeric: tabular-nums; }
-    .parcoords text.label { font-size: 13px; font-weight: 600; fill: var(--text); cursor: grab; }
+    .parcoords text.label { font-size: 13px; font-weight: 600; fill: var(--text); cursor: grab; transform: translate(0px, -14px); }
     .parcoords text.label.out { fill: var(--accent-text); }
     .parcoords .axis line, .parcoords .axis path { stroke: var(--axis); }
     .parcoords rect.background:hover { fill: var(--accent-soft); }
@@ -182,11 +184,12 @@
   <div class="page">
     <header class="hero">
       <div>
-        <p class="eyebrow">Design of experiments</p>
+        <p class="eyebrow" id="eyebrow">Design of experiments</p>
         <h1 id="title">Design Explorer</h1>
         <p class="lede" id="lede">loading the study…</p>
       </div>
       <div class="hero-actions">
+        <span id="links" class="hero-actions"></span>
         <span class="chip" id="chip"><span class="dot"></span><span id="chip-text">connecting</span></span>
         <button class="btn ghost" id="refresh" title="Reload the cases from the server">↻ Refresh</button>
         <button class="btn ghost" id="theme" title="Toggle color theme">🌙 Dark</button>
@@ -277,7 +280,8 @@
     var S = {
       all: [], rows: [], inputs: [], outputs: [], images: [], meta: [], order: [],
       hidden: {}, ranges: {}, colorBy: null, sortBy: null, sortAsc: true, image: null,
-      pc: null, brushed: null, extents: {}, status: null, timer: null, lbIndex: -1, excluded: {}
+      pc: null, brushed: null, extents: {}, status: null, timer: null, lbIndex: -1, excluded: {},
+      toggled: {}
     };
     var $ = function (id) { return document.getElementById(id); };
     // an error in the page's own code is shown on the page: the platform's
@@ -295,9 +299,14 @@
     }
     var label = function (k) { return k.replace(/^(in|out|img):/, ""); };
     var isOut = function (k) { return S.outputs.indexOf(k) >= 0; };
+    // iter_3/case_2 (a Dakota study) reads as "gen 3 · case 2", case_2 as "case 2"
+    var caseName = function (id) {
+      return String(id).replace(/^iter_(\d+)\/case_(\d+)$/, "gen $1 · case $2").replace(/^case_(\d+)$/, "case $1");
+    };
     var fmt = function (v) {
       if (typeof v !== "number" || isNaN(v)) { return "" + v; }
       if (v === 0) { return "0"; }
+      if (Math.round(v) === v && Math.abs(v) < 1e6) { return String(v); }
       var a = Math.abs(v);
       return (a >= 1000 || a < 0.001) ? v.toExponential(3) : v.toPrecision(4);
     };
@@ -333,7 +342,11 @@
       if (!S.order.length || S.order.some(function (k) { return keys.indexOf(k) < 0; })) {
         S.order = S.inputs.concat(S.outputs);
       }
-      if (!S.colorBy || keys.indexOf(S.colorBy) < 0) { S.colorBy = S.outputs[0] || S.inputs[0]; }
+      if (!S.colorBy || keys.indexOf(S.colorBy) < 0) {
+        // an optimization reads best by generation: the lines and thumbnails
+        // then show the search converging
+        S.colorBy = keys.indexOf("in:generation") >= 0 ? "in:generation" : (S.outputs[0] || S.inputs[0]);
+      }
       if (!S.sortBy || keys.indexOf(S.sortBy) < 0) { S.sortBy = S.colorBy; }
       if (!S.image || S.images.indexOf(S.image) < 0) { S.image = S.images[0] || null; }
       S.inputs.forEach(function (k) {
@@ -345,6 +358,10 @@
           lo: (old && old.lo > old.min) ? Math.max(old.lo, ext[0]) : ext[0],
           hi: (old && old.hi < old.max) ? Math.min(old.hi, ext[1]) : ext[1]
         };
+        // a variable that never changes (the angle of a Dakota study, a column a
+        // CSV holds fixed) is a flat axis: hidden until the user shows it, and
+        // decided again on every reload unless the user toggled it
+        if (!S.toggled[k]) { S.hidden[k] = rows.length > 1 && ext[0] === ext[1]; }
       });
     }
     function applyFilters() {
@@ -389,7 +406,7 @@
       // options through the constructor: a setter such as margin() redraws at
       // once, before the dimensions are known
       var pc = d3.parcoords({
-        margin: { top: 36, left: 64, right: 64, bottom: 14 },
+        margin: { top: 60, left: 64, right: 64, bottom: 14 },
         alpha: 0.7,
         composite: "source-over",
         color: function (r) { return scale(r[S.colorBy]); }
@@ -397,7 +414,16 @@
       pc.data(S.rows).dimensions(dims);
       // the library rebuilds its dimension table from the keys alone, so the
       // titles go on afterwards, through the state it exposes
-      axes.forEach(function (k) { var d = pc.state.dimensions[k]; d.title = label(k); d.type = "number"; d.ticks = 6; });
+      axes.forEach(function (k) {
+        var d = pc.state.dimensions[k];
+        d.title = label(k); d.type = "number"; d.ticks = 6;
+        // generation, the front flag: whole numbers, so ticks at the values only
+        var vals = d3.set(S.rows.map(function (r) { return r[k]; })).values().map(Number);
+        if (vals.length <= 12 && vals.every(function (v) { return Math.round(v) === v; })) {
+          d.tickValues = vals.sort(d3.ascending);
+          d.tickFormat = d3.format("d");
+        }
+      });
       pc.render().createAxes().brushMode("1D-axes").reorderable();
       pc.alphaOnBrushed(0.08);
       d3.selectAll("#pc g.dimension").each(function (k) {
@@ -407,7 +433,9 @@
       pc.on("axesreorder", function (keys) {
         var hidden = S.order.filter(function (k) { return S.hidden[k]; });
         S.order = keys.concat(hidden);
+        staggerTitles(pc);
       });
+      staggerTitles(pc);
       var extents = {};
       axes.forEach(function (k) { if (S.extents[k]) { extents[k] = S.extents[k]; } });
       if (d3.keys(extents).length) {
@@ -415,6 +443,22 @@
       }
       S.pc = pc;
       S.brushed = pc.brushed ? pc.brushed() : null;
+    }
+    // titles wider than the space between two axes (many axes, a narrow
+    // window, long names) alternate between two rows instead of overlapping
+    function staggerTitles(pc) {
+      var keys = pc.getOrderedDimensionKeys();
+      var width = $("pc").clientWidth - 128;
+      var spacing = keys.length > 1 ? width / (keys.length - 1) : width;
+      var widest = 0;
+      d3.selectAll("#pc g.dimension text.label").each(function () {
+        try { widest = Math.max(widest, this.getComputedTextLength()); } catch (err) { /* not rendered yet */ }
+      });
+      var crowded = widest + 8 > spacing;
+      d3.selectAll("#pc g.dimension").each(function (k) {
+        var up = crowded && keys.indexOf(k) % 2 === 1;
+        d3.select(this).select("text.label").style("transform", "translate(0px, " + (up ? -30 : -14) + "px)");
+      });
     }
     function onBrush(d) {
       S.brushed = (d && d.length !== undefined) ? d : null;
@@ -437,7 +481,7 @@
         var lab = document.createElement("label");
         var cb = document.createElement("input");
         cb.type = "checkbox"; cb.checked = !S.hidden[k];
-        cb.addEventListener("change", function () { S.hidden[k] = !cb.checked; buildChart(); renderGrid(); });
+        cb.addEventListener("change", function () { S.hidden[k] = !cb.checked; S.toggled[k] = true; buildChart(); renderGrid(); });
         var sw = document.createElement("span"); sw.className = "swatch" + (isOut(k) ? " out" : "");
         var tx = document.createElement("span"); tx.textContent = label(k); tx.className = isOut(k) ? "out" : "";
         lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(tx);
@@ -452,6 +496,13 @@
         var b = document.createElement("b"); b.textContent = label(k);
         var val = document.createElement("span");
         name.appendChild(b); name.appendChild(val);
+        if (g.min === g.max) {
+          var fixed = document.createElement("div"); fixed.className = "fixed";
+          fixed.textContent = "fixed at " + fmt(g.min);
+          val.textContent = "";
+          wrap.appendChild(name); wrap.appendChild(fixed); box.appendChild(wrap);
+          return;
+        }
         var range = document.createElement("div"); range.className = "range";
         var track = document.createElement("div"); track.className = "track";
         var fill = document.createElement("div"); fill.className = "fill";
@@ -528,9 +579,9 @@
         var img = document.createElement("img");
         img.loading = DEMO ? "eager" : "lazy";
         img.src = S.image && r[S.image] ? "data/" + r[S.image] : "data/no-image.png";
-        img.alt = r.__id + (S.image ? ", " + label(S.image) : "");
+        img.alt = caseName(r.__id) + (S.image ? ", " + label(S.image) : "");
         var cap = document.createElement("figcaption");
-        var b = document.createElement("b"); b.textContent = r.__id;
+        var b = document.createElement("b"); b.textContent = caseName(r.__id);
         var span = document.createElement("span"); span.textContent = label(S.sortBy) + " " + fmt(r[S.sortBy]);
         cap.appendChild(b); cap.appendChild(span);
         fig.appendChild(img); fig.appendChild(cap);
@@ -548,7 +599,7 @@
       if (!rows.length) { return; }
       S.lbIndex = (i + rows.length) % rows.length;
       var r = rows[S.lbIndex];
-      $("lb-title").textContent = r.__id;
+      $("lb-title").textContent = caseName(r.__id);
       var kinds = $("lb-kinds"); kinds.innerHTML = "";
       S.images.forEach(function (k) {
         var b = document.createElement("button"); b.className = "btn" + (k === S.image ? " active" : "");
@@ -558,7 +609,7 @@
         kinds.appendChild(b);
       });
       $("lb-img").src = S.image && r[S.image] ? "data/" + r[S.image] : "data/no-image.png";
-      $("lb-img").alt = r.__id + (S.image ? ", " + label(S.image) : "");
+      $("lb-img").alt = caseName(r.__id) + (S.image ? ", " + label(S.image) : "");
       var t = $("lb-table"); t.innerHTML = "";
       S.inputs.concat(S.outputs).forEach(function (k) {
         var tr = document.createElement("tr"); tr.className = isOut(k) ? "out" : "";
@@ -579,18 +630,43 @@
     function setStatus(st) {
       S.status = st;
       var chip = $("chip"), text = $("chip-text");
-      var final = st && st.pending === 0 && st.total > 0;
-      chip.className = "chip " + (final ? (st.ok ? "final" : "failed") : "running");
-      text.textContent = !st ? "no answer from the server" : final ? "complete" : "running";
-      if (st && st.title) { $("title").textContent = st.title; document.title = st.title; }
-      if (st) {
-        var parts = [st.ok + " of " + st.total + " cases solved"];
-        if (st.failed) { parts.push(st.failed + " failed"); }
-        if (st.pending) { parts.push(st.pending + " pending"); }
-        parts.push("updated " + (st.updated || "").replace("T", " ").replace("Z", " UTC"));
-        $("lede").textContent = parts.join(" · ");
+      if (!st) {
+        chip.className = "chip failed"; text.textContent = "no answer from the server";
+        return false;
       }
+      var final = st.final !== undefined ? st.final : (st.pending === 0 && st.total > 0);
+      var state = st.state || (final ? (st.ok ? "complete" : "failed") : "running");
+      chip.className = "chip " + (state === "complete" ? "final" : state);
+      text.textContent = state;
+      if (st.title) { $("title").textContent = st.title; document.title = st.title; }
+      var optimization = st.layout === "optimization";
+      $("eyebrow").textContent = optimization ? "Optimization study" : "Design of experiments";
+      var parts = [];
+      if (optimization) {
+        parts.push(st.generation ? "generation " + st.generation : "waiting for the first generation");
+        parts.push(st.ok + " designs solved");
+      } else {
+        parts.push(st.ok + " of " + st.total + " cases solved");
+      }
+      if (st.failed) { parts.push(st.failed + " failed"); }
+      if (st.pending) { parts.push(st.pending + " running"); }
+      if (optimization && st.study_status && st.study_status !== "CONTINUE") { parts.push(st.study_status.toLowerCase()); }
+      parts.push("updated " + (st.updated || "").replace("T", " ").replace("Z", " UTC"));
+      $("lede").textContent = parts.join(" · ");
+      renderLinks(st.links || []);
       return final;
+    }
+    function renderLinks(links) {
+      var box = $("links");
+      if (box.dataset.count === String(links.length)) { return; }
+      box.innerHTML = "";
+      links.forEach(function (l) {
+        var a = document.createElement("a");
+        a.className = "btn"; a.href = l.url; a.target = "_blank"; a.rel = "noopener";
+        a.textContent = l.label + " ↗";
+        box.appendChild(a);
+      });
+      box.dataset.count = String(links.length);
     }
     function poll() {
       d3.json("status.json?t=" + Date.now(), function (a, b) {
@@ -681,8 +757,9 @@
     });
 
     // a few states reachable from the URL, for screenshots without a mouse:
-    // ?demo=brush brushes the middle of the first output axis, ?demo=lightbox
-    // opens the first thumbnail, ?demo=dark switches the theme
+    // ?demo=brush brushes the middle of the first output axis, ?demo=front the
+    // Pareto designs of an optimization, ?demo=lightbox opens the first
+    // thumbnail, ?demo=dark switches the theme
     function demo() {
       if (!DEMO) { return; }
       var m = [null, DEMO];
@@ -692,6 +769,11 @@
         var e = {}; e[k] = [ext[0] + (ext[1] - ext[0]) * 0.3, ext[1]];
         S.pc.brushExtents(e);
         S.extents = e; S.brushed = S.pc.brushed(); renderGrid();
+      }
+      if (m[1] === "front" && S.pc && S.outputs.indexOf("out:pareto_front") >= 0) {
+        var f = { "out:pareto_front": [0.5, 1] };
+        S.pc.brushExtents(f);
+        S.extents = f; S.brushed = S.pc.brushed(); renderGrid();
       }
       if (m[1] === "lightbox") { openLightbox(0); }
     }

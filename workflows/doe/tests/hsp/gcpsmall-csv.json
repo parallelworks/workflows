@@ -1,0 +1,14 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "endpoint": false,
+    "leftover_patterns": [
+      "doe.py"
+    ]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "doe": {
+    "method": "csv",
+    "cases_csv": "case;max_camber;thickness;angle_of_attack\ncase_1;0,00;0,12;4\ncase_2;0,02;0,12;4\ncase_3;0,04;0,15;8\n"
+  }
+}

@@ -134,20 +134,3 @@ case under `state/iter_<N>/case_<j>/`, the history on the page and in
 attempt; each worker's log is three jobs deep (`workers-<k>` → `preprocessing`,
 `run_case`, `results`). `iteration_timeout` (default 2d) caps one generation
 because the platform's default retry timeout is 30 s per attempt.
-
-## Variants
-
-`yamls/hsp-naca.yaml` with `yamls/iteration-naca-hsp.yaml` is the HSP
-(`activate.hpc.mil`) loop, `yamls/noaa-naca.yaml` with
-`yamls/iteration-naca-noaa.yaml` the NOAA (`noaa.parallel.works`) one: the same
-loop and server, with the platform's form (the resource as the top-level input;
-SLURM account, QoS and, on HSP, node type for on-prem `existing` resources; the
-PBS account on HSP) passed through an iteration that calls the matching variants
-of the two workflows. What those variants change is in their READMEs: the module
-hint for HPCMP systems (DSRC OpenFOAM modules only set `foamDotFile`, so the HSP
-forms save a `nautilus_modules` configuration with the module load and the
-`source $foamDotFile` it asks for, plus `mesh_scale` 4 for the loop; every form
-defaults to `mesh_scale` 2, the floor at which 16 ranks are all used; not every
-login node reaches the internet),
-the shared install directory on NOAA, and how each submitter receives the
-case's core request.

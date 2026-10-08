@@ -91,16 +91,9 @@ through the submitter. The run completes once the endpoint is listed and its
 `/healthz` answers, and the endpoint keeps serving after the run until
 `pw endpoints delete design-explorer-<run slug>`. A server whose endpoint never
 answered is removed by the run's `stop_server_if_unhealthy` job. Design
-Explorer's libraries are downloaded once, at a pinned commit, under
-`~/pw/software/design-explorer/`.
-
-## Platforms
-
-`yamls/general.yaml` is the only form: the server runs on the login node and
-uses no scheduler, so nothing differs between platforms. On HSP and NOAA, a
-caller passes its top-level resource as `cluster.resource`. On NOAA clusters the
-libraries go to the shared software tree when the account can write there, and
-an HPCMP login node must reach GitHub for the one-time download.
+Explorer's libraries are downloaded from GitHub once, at a pinned commit, under
+`~/pw/software/design-explorer/`, so the login node needs internet access the
+first time.
 
 ## Files
 

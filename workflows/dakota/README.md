@@ -134,18 +134,6 @@ the front highlighted, and each design's variables and objectives on hover,
 refreshed every 10 s until the status is final.
 [`dakota-openfoam`](../dakota-openfoam/) serves it as a `pw` endpoint.
 
-## Variants
-
-`yamls/hsp.yaml` (HSP, `activate.hpc.mil`) and `yamls/noaa.yaml` (NOAA,
-`noaa.parallel.works`) run the same step. They differ in the form, where the
-resource is the top-level input as in every HSP and NOAA form here, and in where
-Dakota comes from: where an HPCMP login node has no internet access, `dakota_load`
-should carry the site's module command (Nautilus reaches conda-forge and has no
-Dakota module, so the install is the way there), and on NOAA the conda-forge install
-goes to the cluster's shared software tree (`/contrib/pw` on Hera, Mercury and
-Ursa, `/usw/rdhpcs/software/pw` on Gaea) when the account can write there, because
-home directories are small. `tests/hsp/` and `tests/noaa/` repeat the toy study.
-
 ## Files
 
 `app/optimizer.py` (the step), `app/driver.py` (Dakota's analysis driver:

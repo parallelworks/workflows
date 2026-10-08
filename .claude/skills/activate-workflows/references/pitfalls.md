@@ -455,3 +455,10 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   `preprocessing` canceled and its `stop_server_if_unhealthy` completed, which deleted the
   half-registered endpoint; no process was left. So a reusable workflow that starts something
   detached can own its cleanup, and its callers need no handler of their own for it.
+- **A hand-made SVG figure must fit its labels in the viewer's font, not in the local
+  render** (2026-10-08, `workflows/doe-openfoam/thumbnails/doe-wiring.svg`): headless Firefox
+  on gcpsmall drew `font-family="Helvetica, Arial, sans-serif"` narrower than a browser
+  showing the README, where a results line ran 51 px past its box. Measure each `<text>`
+  with the font's advance widths (fontTools in a scratch venv; Liberation Sans has
+  Helvetica's metrics, DejaVu Sans is the wide fallback) and keep it inside its `<rect>`
+  with a few px to spare, wrapping or widening where it does not fit.

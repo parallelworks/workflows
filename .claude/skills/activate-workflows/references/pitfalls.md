@@ -449,3 +449,9 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   `${{ range(3) }}` as `[0,1,2]`; then `job_id: ${{ 1 range inputs.n + 1 }}` replaces it in
   `workflows/doe-openfoam` and `workflows/dakota-openfoam/yamls/iteration-naca*.yaml`, and
   the n_cases and batch_size caps can go.
+- **A subworkflow's own `if: ${{ !completed }}` handler runs when the top-level run is
+  canceled** (verified 2026-10-08, run included-corgi): canceling a doe-openfoam run while its
+  nested `workflows/design-explorer` call had started its server showed that subworkflow's
+  `preprocessing` canceled and its `stop_server_if_unhealthy` completed, which deleted the
+  half-registered endpoint; no process was left. So a reusable workflow that starts something
+  detached can own its cleanup, and its callers need no handler of their own for it.

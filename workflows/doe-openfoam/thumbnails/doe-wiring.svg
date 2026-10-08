@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="470" viewBox="0 0 860 470" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2a78d6"/></marker>
+    <marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1a9850"/></marker>
+    <marker id="aK" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52514e"/></marker>
+    <marker id="aO" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#eb6834"/></marker>
+  </defs>
+  <rect width="860" height="470" rx="10" fill="#fcfcfb" stroke="#d8d5cf"/>
+
+  <!-- general.yaml -->
+  <rect x="18" y="18" width="300" height="434" rx="8" fill="#f4f3ef" stroke="#c3c2b7"/>
+  <text x="30" y="42" font-size="15" font-weight="bold" fill="#0b0b0b">general.yaml</text>
+  <text x="30" y="60" font-size="12" fill="#52514e">the run</text>
+
+  <rect x="30" y="76" width="276" height="150" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="40" y="94" font-size="13" fill="#0b0b0b">preprocessing</text>
+  <text x="40" y="112" font-size="11" fill="#52514e">checks the OpenFOAM and ParaView environments</text>
+  <rect x="40" y="122" width="256" height="34" rx="6" fill="#eef4fc" stroke="#2a78d6" stroke-width="1.5"/>
+  <text x="50" y="137" font-size="12" fill="#2a78d6">doe.py: sample n designs (lhs, sobol, ...)</text>
+  <text x="50" y="151" font-size="11" fill="#52514e">cases/case_j/params.in, doe.csv &#8594; N_CASES</text>
+  <rect x="40" y="164" width="256" height="54" rx="6" fill="#fff3ec" stroke="#eb6834"/>
+  <text x="50" y="180" font-size="12" fill="#0b0b0b">start the server, wait for its endpoint</text>
+  <text x="50" y="195" font-size="11" fill="#52514e">setsid pw endpoints run -- design-explorer-server.py &amp;</text>
+  <text x="50" y="209" font-size="11" fill="#52514e">uses: wait_for_endpoint (listed, /healthz answers)</text>
+
+  <rect x="30" y="246" width="276" height="120" rx="6" fill="#edf7f0" stroke="#1a9850" stroke-width="1.5"/>
+  <text x="40" y="264" font-size="13" fill="#0b0b0b">workers  <tspan font-size="11" fill="#52514e">matrix job_id 1..n_cases</tspan></text>
+  <text x="40" y="280" font-size="11" fill="#52514e">if: job_id &#8804; N_CASES, max-parallel = cases at a time</text>
+  <text x="40" y="300" font-size="12" fill="#1a9850">uses: workflows/openfoam-naca  (general.yaml)</text>
+  <text x="40" y="316" font-size="11" fill="#52514e">params_file + case_dir = cases/case_j</text>
+  <text x="40" y="330" font-size="11" fill="#52514e">generate_images = the form's switch</text>
+  <text x="40" y="350" font-size="11" fill="#52514e">one OpenFOAM case per design, its images next to it</text>
+
+  <rect x="30" y="384" width="276" height="56" rx="6" fill="#ffffff" stroke="#898781"/>
+  <text x="40" y="402" font-size="13" fill="#0b0b0b">results  <tspan font-size="11" fill="#52514e">if: always</tspan></text>
+  <text x="40" y="418" font-size="11" fill="#52514e">study.py: every case_j &#8594; results.csv (OK / FAILED / PENDING)</text>
+  <text x="40" y="432" font-size="11" fill="#52514e">fails only when no case solved</text>
+
+  <!-- the cases directory -->
+  <rect x="356" y="76" width="200" height="364" rx="8" fill="#f4f3ef" stroke="#c3c2b7"/>
+  <text x="368" y="100" font-size="15" font-weight="bold" fill="#0b0b0b">cases/</text>
+  <text x="368" y="118" font-size="12" fill="#52514e">in the run's job directory</text>
+  <text x="368" y="144" font-size="12" fill="#0b0b0b">doe.csv</text>
+  <text x="380" y="160" font-size="11" fill="#52514e">the designs as a table</text>
+  <text x="368" y="186" font-size="12" fill="#0b0b0b">case_1/ ... case_n/</text>
+  <text x="380" y="204" font-size="11" fill="#2a78d6">params.in</text>
+  <text x="380" y="220" font-size="11" fill="#1a9850">results.out  or  exit_code</text>
+  <text x="380" y="236" font-size="11" fill="#1a9850">case/case.foam</text>
+  <text x="380" y="252" font-size="11" fill="#1a9850">images/pressure.png, velocity.png,</text>
+  <text x="380" y="266" font-size="11" fill="#1a9850">streamlines, turbulence, wake, mesh</text>
+  <text x="368" y="296" font-size="12" fill="#0b0b0b">results.csv</text>
+  <text x="380" y="312" font-size="11" fill="#52514e">every case, its status,</text>
+  <text x="380" y="326" font-size="11" fill="#52514e">inputs and coefficients</text>
+  <text x="368" y="356" font-size="12" fill="#0b0b0b">data.csv</text>
+  <text x="380" y="372" font-size="11" fill="#52514e">the solved cases in</text>
+  <text x="380" y="386" font-size="11" fill="#52514e">Design Explorer's format</text>
+  <text x="380" y="400" font-size="11" fill="#52514e">(in:, out:, img: columns)</text>
+
+  <!-- the page -->
+  <rect x="594" y="76" width="248" height="364" rx="8" fill="#fff3ec" stroke="#eb6834"/>
+  <text x="606" y="100" font-size="15" font-weight="bold" fill="#0b0b0b">design-explorer-&lt;run slug&gt;</text>
+  <text x="606" y="118" font-size="12" fill="#52514e">the pw endpoint, login node</text>
+  <text x="606" y="144" font-size="12" fill="#0b0b0b">design-explorer-server.py</text>
+  <text x="606" y="162" font-size="11" fill="#52514e">serves Design Explorer (static page,</text>
+  <text x="606" y="176" font-size="11" fill="#52514e">downloaded once, pinned commit)</text>
+  <text x="606" y="196" font-size="11" fill="#52514e">/data/data.csv rebuilt from cases/</text>
+  <text x="606" y="210" font-size="11" fill="#52514e">on every request; /data/case_j/images/*</text>
+  <!-- a sketch of the parallel coordinates -->
+  <rect x="606" y="226" width="224" height="150" rx="6" fill="#ffffff" stroke="#898781"/>
+  <g stroke="#c3c2b7" stroke-width="1">
+    <line x1="626" y1="240" x2="626" y2="330"/><line x1="660" y1="240" x2="660" y2="330"/><line x1="694" y1="240" x2="694" y2="330"/>
+    <line x1="728" y1="240" x2="728" y2="330"/><line x1="762" y1="240" x2="762" y2="330"/><line x1="796" y1="240" x2="796" y2="330"/>
+  </g>
+  <g fill="none" stroke-width="1.3" opacity="0.85">
+    <polyline points="626,300 660,262 694,316 728,250 762,290 796,270" stroke="#2a78d6"/>
+    <polyline points="626,252 660,322 694,268 728,300 762,258 796,318" stroke="#2a78d6"/>
+    <polyline points="626,276 660,284 694,246 728,326 762,310 796,246" stroke="#2a78d6"/>
+    <polyline points="626,318 660,248 694,296 728,276 762,266 796,296" stroke="#eb6834" stroke-width="2"/>
+  </g>
+  <g font-size="8" fill="#52514e" text-anchor="middle">
+    <text x="626" y="344">camber</text><text x="660" y="344">position</text><text x="694" y="344">thickness</text>
+    <text x="728" y="344">alpha</text><text x="762" y="344">Cd</text><text x="796" y="344">Cl</text>
+  </g>
+  <text x="616" y="366" font-size="10" fill="#52514e">brush an axis to filter; a design's images on hover</text>
+  <text x="606" y="400" font-size="11" fill="#52514e">keeps serving after the run, until</text>
+  <text x="606" y="414" font-size="11" fill="#52514e">pw endpoints delete design-explorer-&lt;slug&gt;</text>
+
+  <!-- arrows -->
+  <line x1="296" y1="139" x2="356" y2="150" stroke="#2a78d6" stroke-width="1.5" marker-end="url(#aB)"/>
+  <line x1="306" y1="306" x2="356" y2="306" stroke="#1a9850" stroke-width="1.5" marker-end="url(#aG)"/>
+  <line x1="356" y1="236" x2="306" y2="252" stroke="#1a9850" stroke-width="1.5" marker-end="url(#aG)"/>
+  <line x1="306" y1="412" x2="356" y2="400" stroke="#52514e" stroke-width="1.5" marker-end="url(#aK)"/>
+  <line x1="306" y1="191" x2="594" y2="150" stroke="#eb6834" stroke-width="1.5" marker-end="url(#aO)"/>
+  <line x1="556" y1="260" x2="594" y2="200" stroke="#eb6834" stroke-width="1.5" marker-end="url(#aO)"/>
+</svg>

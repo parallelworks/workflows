@@ -4,11 +4,14 @@ One OpenFOAM case of a NACA 4-digit airfoil: the workflow meshes the shape you
 give it (camber, camber position, thickness) with a structured C-grid, solves the
 turbulent flow at the chosen angle of attack (`potentialFoam` + `simpleFoam`,
 Spalart-Allmaras, Re = 10⁶), reports the lift and drag coefficients, and leaves
-the case ready to open in ParaView.
+the case ready to open in ParaView. Ask for images and it also renders the
+fields with ParaView, on the cluster, without a display.
 
 It runs on its own from the platform, and it is the evaluator of
 [`workflows/dakota-openfoam`](../dakota-openfoam/), which calls this same YAML
-once per design the optimizer proposes.
+once per design the optimizer proposes, and of
+[`workflows/doe-openfoam`](../doe-openfoam/), which calls it once per sampled
+design and shows the images in Design Explorer.
 
 ![From the form or from a loop's params file to params.in and case.sh, then blockMesh, potentialFoam and simpleFoam under the submitter, leaving results.out, exit_code and case.foam in the case directory](thumbnails/case-pipeline.svg)
 
@@ -22,7 +25,9 @@ once per design the optimizer proposes.
 | | `mesh_scale` 1–6 | multiplies every cell count; cost grows roughly with the cube (table below) |
 | | `case_dir` | where to build and solve; empty = `case/` under the run's job directory |
 | | `params_file` | a Dakota-style params file (`<value> <name>` per line): **its values override the form fields of the same name**, fields it does not list keep the form's values |
+| `postprocessing` | `generate_images` | off by default; on, the solved case is rendered to PNG images with ParaView ([below](#images-of-the-results)) |
 | `software` | `openfoam_load` | commands that put OpenFOAM on PATH (`module load openfoam/2412`, `source .../etc/bashrc`); empty installs v2412 from conda-forge under `${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca` (~5 min once) |
+| | `paraview_load` | shown with images on: commands that put `pvpython` on PATH (`module load paraview/5.13`); empty downloads the official ParaView 6.1.1 binaries under `.../openfoam-naca/paraview` (x86_64, ~830 MB once, 2.7 GB on disk) |
 
 ## What a run leaves
 
@@ -34,12 +39,54 @@ results.out      "<Cd> drag_coefficient" and "<-Cl> neg_lift_coefficient"
 exit_code        the simulator's exit status, written even when it failed
 run.<job>.out    the streamed log: every OpenFOAM step, one solver progress line per 50 iterations
 case/            the OpenFOAM case, final time step included; case/case.foam opens it in ParaView
+images/          with images on: pressure, velocity, streamlines, turbulence, wake, mesh (PNG),
+                 manifest.json and render.log (the full pvpython output)
 ```
 
-The `results` job publishes `DRAG_COEFFICIENT`, `LIFT_COEFFICIENT` and
-`PARAVIEW_FILE` as outputs and fails the run when there is no `results.out`
-(a diverged solver), printing the log tails. Reference: NACA 2412 at 5°,
-`mesh_scale` 1 gives Cd ≈ 0.0222, Cl ≈ 0.722.
+The `results` job publishes `DRAG_COEFFICIENT`, `LIFT_COEFFICIENT`,
+`PARAVIEW_FILE` and, with images on, `IMAGES_DIR` as outputs and fails the run
+when there is no `results.out` (a diverged solver), printing the log tails.
+Reference: NACA 2412 at 5°, `mesh_scale` 1 gives Cd ≈ 0.0222, Cl ≈ 0.722.
+
+### Images of the results
+
+With **Generate images** on, the case ends by rendering its fields to
+`images/` with ParaView's `pvpython` (`app/render-images.sh` runs
+`app/render-case.py` on `case/case.foam`), on the node that solved it. Six
+plan views of the last time step, each labeled with the design and its
+coefficients:
+
+![Pressure field around the NACA 2412 at 5 degrees: the suction peak over the leading edge in blue, the stagnation point in red, the airfoil outline in black, a color bar below](thumbnails/pressure.png)
+
+![Streamlines seeded upstream and colored by velocity magnitude, bending over the airfoil and leaving a wake behind the trailing edge](thumbnails/streamlines.png)
+
+| Image | Shows |
+|---|---|
+| `pressure.png` | kinematic pressure `p` around the airfoil (diverging map, range from the near field) |
+| `velocity.png` | velocity magnitude around the airfoil |
+| `streamlines.png` | streamlines seeded upstream, colored by velocity magnitude |
+| `turbulence.png` | the Spalart-Allmaras eddy viscosity `nut` on a log scale: the boundary layer and the wake |
+| `wake.png` | velocity magnitude over the wake, four chords downstream |
+| `mesh.png` | the C-grid cells around the airfoil |
+
+Where ParaView comes from: the **ParaView environment commands** of the form
+(a site module; any build from 5.10 on), or, left empty, the official 6.1.1
+Linux binaries that `app/install-paraview.sh` downloads once per cluster
+without root. Those render without a display or any system GL library (the
+single Linux build of ParaView 6 falls back to its bundled OSMesa; the
+separate 5.13 "osmesa" build needed a system `libglapi.so.0` that minimal
+cloud images lack). The renderer names the OSMesa window outright
+(`VTK_DEFAULT_OPENGL_WINDOW=vtkOSOpenGLRenderWindow`: VTK's own choice tried
+EGL on a node with NVIDIA libraries and no GPU and crashed), falls back to the
+build's default backend, then to `xvfb-run` for a build that needs an X
+server, and leaves `pvpython` without the interpreter's teardown once the
+images are written (its exit hung in the software renderer's threads once);
+a render is complete when `manifest.json` exists, whatever the exit status,
+and `RENDER_TIMEOUT` (default 900 s) bounds it. The installer renders a test
+image the first time, so a node where offscreen rendering cannot work fails
+in preprocessing, not in every case. A case whose images fail to render is
+still a solved case: the coefficients are on disk first, and the `results`
+job prints the renderer's log as a warning. Six images take about 5 s.
 
 ### Opening the case in ParaView
 
@@ -106,11 +153,13 @@ user-set `MPIRUN` carries its own rank count and is only warned about.
       case_dir: <iter dir>/case_<j>                  # solve it there
       angle_of_attack: 5
       mesh_scale: 1
-    software: { openfoam_load: ... }
+    postprocessing: { generate_images: true }       # images/ next to results.out
+    software: { openfoam_load: ..., paraview_load: ... }
 ```
 
 The call leaves `results.out` in `case_dir`, or `exit_code` without it when the
-solver failed, which is what an optimizer step reads next. Each call checks out
+solver failed, which is what an optimizer step reads next, and `images/` when
+asked (what `doe-openfoam` shows in Design Explorer). Each call checks out
 this app and prepares its environment itself; the installer takes a lock, so
 concurrent calls on a cold cluster install once. Worked example:
 [`dakota-openfoam/yamls/iteration-naca.yaml`](../dakota-openfoam/yamls/iteration-naca.yaml).
@@ -146,8 +195,12 @@ for the three; on a cloud cluster the variants behave alike, which is how
 | `naca_blockmesh.py` | NACA 4-digit parameters → structured C-grid `blockMeshDict` |
 | `openfoam-case/` | the case template: boundary conditions, schemes, solver settings |
 | `simulator.sh` | `params.in` → case → `blockMesh` (+ `decomposePar`) → `potentialFoam` → `simpleFoam` → `results.out` → `reconstructPar` + `case.foam`; env contract `MESH_SCALE`, `CORES_PER_CASE`, `MIN_CELLS_PER_RANK`, `OPENFOAM_ENV`, `MPIRUN` |
+| `install-paraview.sh` | idempotent download of the official ParaView binaries (`PARAVIEW_VERSION`, `PARAVIEW_URL`), with an offscreen render check, and the activation file for `tools/utils/prepare-env.sh` |
+| `render-images.sh` | `pvpython` wrapper: the ParaView environment (`PARAVIEW_ENV`), the backend fallbacks, the timeout, `render.log` |
+| `render-case.py` | the pvpython script: `case.foam` (reconstructed or decomposed) → the six images + `manifest.json` |
 
 Shared: `tools/utils/miniforge.sh`, `tools/utils/prepare-env.sh`. Tests:
-`tests/general/gcpsmall.json` (login node, serial) and
-`tests/general/gcpsmall-slurm-mpi2.json` (one SLURM job, 2 ranks), repeated under
-`tests/hsp/` and `tests/noaa/` for the variants.
+`tests/general/gcpsmall.json` (login node, serial),
+`tests/general/gcpsmall-slurm-mpi2.json` (one SLURM job, 2 ranks) and
+`tests/general/gcpsmall-images.json` (login node, images on), the first two
+repeated under `tests/hsp/` and `tests/noaa/` for the variants.

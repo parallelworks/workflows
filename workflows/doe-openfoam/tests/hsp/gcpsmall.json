@@ -1,0 +1,22 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "endpoint": true,
+    "warm_marker": [
+      "${HOME}/pw/software/openfoam-naca/miniforge/envs/openfoam",
+      "${HOME}/pw/software/openfoam-naca/paraview/ParaView-6.1.1/.render-checked",
+      "${HOME}/pw/software/doe-openfoam/DesignExplorer-215d17ee12de/index.html"
+    ],
+    "leftover_patterns": ["pw endpoints", "design-explorer-server.py", "simpleFoam", "blockMesh", "pvpython"]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cluster": {
+    "scheduler": false
+  },
+  "doe": {
+    "method": "one_at_a_time",
+    "n_cases": 9,
+    "max_parallel": 4,
+    "mesh_scale": 1
+  }
+}

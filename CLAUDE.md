@@ -41,6 +41,8 @@ workflows/script_submitter/v3.6/  # shared subworkflow: SLURM/PBS/SSH script sub
 workflows/wait_for_endpoint/      # shared subworkflow: wait for the endpoint, probe its URL, release the submitter
 workflows/dakota-openfoam/        # a loop composed of two standalone workflows (dakota, openfoam-naca)
                                   # called as subworkflows; the single-app original in backup-no-subworkflow/
+workflows/doe-openfoam/           # a design of experiments: its sampler, then openfoam-naca once per design
+                                  # as a matrix, with Design Explorer served over the cases as an endpoint
 workflows/probe/                  # PROBE: runs a platform's workflow tests (definitions in a tests repository,
                                   # parallelworks/probe-tests-activate-parallel-works for activate.parallel.works) and serves
                                   # the results dashboards; app/ holds its Python code
@@ -66,15 +68,17 @@ docs/                        # developer + AI docs
 Every workflow here but the batch ones — `activate-batch` (runs a command script to
 completion and fails when it fails), `3dcs` (fans a 3DCS simulation out over SLURM
 workers), `benchmarks` (one MPI or file system benchmark as a SLURM/PBS job),
-`openfoam-naca` (one OpenFOAM case), `dakota` (one optimizer step) and
+`openfoam-naca` (one OpenFOAM case, optionally rendered to images with ParaView),
+`dakota` (one optimizer step) and
 `probe`'s `general_run_tests.yaml` (one run of a platform's PROBE tests) —
 serves through a **`pw` endpoint** (`pw endpoints list`) named
 `<service>-${PW_RUN_SLUG}`. `dakota-openfoam` is both: a batch optimization loop that
 joins those last two as subworkflows and serves its live Pareto front as an endpoint;
 its server only ever runs on the login node, so it starts
 `pw endpoints run` detached from a plain step (`tutorials/endpoint-workflows` Stage 3)
-instead of through the submitter below; `app-testbed` does the same, at a fixed endpoint
-name (`apptest`) that a re-run reuses. On a compute cluster,
+instead of through the submitter below; `doe-openfoam` (a design of experiments over
+`openfoam-naca`, Design Explorer served over the cases) and `app-testbed` do the same,
+the latter at a fixed endpoint name (`apptest`) that a re-run reuses. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through

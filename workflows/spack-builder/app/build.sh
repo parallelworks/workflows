@@ -233,14 +233,18 @@ spack config --scope site add config:install_tree:padded_length:128
 if [ -z "$(gcc_built_prefix)" ]; then
   log "Installing stack compiler $GCC_SPEC (long; cached after the first run)"
   spack install --no-check-signature -j"$JOBS" "$GCC_SPEC"
-  # --allow-missing: the push walks the whole DAG, and when gcc itself came from
-  # the build cache its build-only dependencies were never installed. Without the
-  # flag that prints a 27-line "Error: ... PackageNotInstalledError" block for a
-  # push that did exactly what it should.
-  spack buildcache push --unsigned --update-index --private --allow-missing "$MIRROR_NAME" "$GCC_SPEC" || true
 else
   log "Stack compiler $GCC_SPEC already installed"
 fi
+# Pushed on every run, not only after installing: a run that installed gcc and
+# then failed left it out of the cache for good, since the next run found it
+# installed and skipped the push (gce runs cute-cockatoo -> ideal-flea). Entries
+# already in the cache are skipped, so this is cheap when warm.
+# --allow-missing: the push walks the whole DAG, and when gcc itself came from
+# the build cache its build-only dependencies were never installed. Without the
+# flag that prints a 27-line "Error: ... PackageNotInstalledError" block for a
+# push that did exactly what it should.
+spack buildcache push --unsigned --update-index --private --allow-missing "$MIRROR_NAME" "$GCC_SPEC" || true
 
 GCC_PREFIX="$(gcc_built_prefix)"
 [ -n "$GCC_PREFIX" ] || { echo "::error title=Error::$GCC_SPEC not present under $SPACK_ROOT/opt after install" >&2; exit 1; }

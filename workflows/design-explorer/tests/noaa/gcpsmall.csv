@@ -1,2 +1,0 @@
-date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
-2026-10-08T14:13:00Z,warm,pass,ok,4529bef,74bcc3d,0b74bc0,78e05dd,78e05dd,design-explorer,alvaro,saving-bream,35,

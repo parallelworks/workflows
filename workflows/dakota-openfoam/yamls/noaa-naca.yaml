@@ -200,8 +200,9 @@ jobs:
         if: ${{ inputs.postprocessing.generate_images == true }}
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: workflows/design-explorer/yamls/noaa.yaml
-          resource: ${{ inputs.resource }}
+          $yaml: workflows/design-explorer/yamls/general.yaml
+          cluster:
+            resource: ${{ inputs.resource }}
           study:
             cases_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
             title: NACA airfoil optimization

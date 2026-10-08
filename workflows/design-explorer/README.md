@@ -22,29 +22,48 @@ studies with it; the figure shows a doe-openfoam study.
   images each case has, such as openfoam-naca's pressure, velocity and mesh.
 - The page follows the study: it refreshes while cases are still running.
 
-## What it reads
+## The study directory
 
-**Study directory** holds one directory per evaluation:
+**Study directory** is the absolute path of the study on the resource. Design
+Explorer only reads it: the workflow that runs the study creates it and passes
+the same path to its evaluator and to this workflow. For example,
+[`doe-openfoam`](../doe-openfoam/README.md) passes `<job dir>/cases` and
+[`dakota-openfoam`](../dakota-openfoam/README.md) passes `<job dir>/state`.
+
+Inside it, a case is a folder in one of exactly two places:
+
+| Layout | Case ID | For example | Extra axes |
+|---|---|---|---|
+| `case_<j>/` | `case_3` | the cases [`doe`](../doe/README.md) writes | none |
+| `iter_<N>/case_<j>/` | `iter_2/case_3` | a [`dakota`](../dakota/README.md) state directory | **generation** (`N`) and **pareto_front**: 1 for the designs no other beats on every `results.out` value, all minimized as Dakota minimizes them |
+
+**Folders anywhere else are ignored without a warning.** `run_1/`,
+`gen_1/case_1/` or a case nested deeper never show, and the page waits as if
+the study had not started. A study counts as a Dakota one when it has an
+`iter_*` folder or Dakota's `status`, `state.json` or `problem.json`.
+
+Each case folder holds:
 
 ```
 case_<j>/
 ├── params.in      the design, one <value> <name> line per variable: the in: axes
-├── results.out    the outputs in the same format: the out: axes
-│                  (exit_code alone when the evaluation failed)
-└── images/*.png   optional, one thumbnail kind per file name
+├── results.out    the outputs, same format: the out: axes; values = solved
+├── exit_code      without results.out: the evaluation failed
+└── images/*.png   optional: one thumbnail kind per file name
 ```
 
-| Layout | For example | Extra axes |
-|---|---|---|
-| `case_<j>/` | a design of experiments from [`doe`](../doe/README.md) | none |
-| `iter_<N>/case_<j>/` | a [`dakota`](../dakota/README.md) state directory | **generation**, and **pareto_front**: 1 for the designs no other beats on every `results.out` value, all minimized as Dakota minimizes them |
+A case with neither `results.out` nor `exit_code` is still running. The page
+links an image as `<case ID>/images/<name>.png`, the same in both layouts.
+[`openfoam-naca`](../openfoam-naca/README.md)'s outputs, `drag_coefficient` and
+`neg_lift_coefficient`, show as the drag and lift coefficients and their ratio.
 
-The server reads the directory on every request, so it can be served before the
-first case exists. [`openfoam-naca`](../openfoam-naca/README.md)'s outputs,
-`drag_coefficient` and `neg_lift_coefficient`, show as the drag and lift
-coefficients and their ratio. A variable that never changes starts hidden.
-**Links** adds buttons to the header, one `<label>=<URL>` per line;
-dakota-openfoam links its Pareto front page this way.
+The server reads the directory again on every request, so it can start before
+the first case exists and shows each case as it lands. A `case_<j>/` study is
+finished when no case is running. A Dakota study is finished only when its
+`status` says CONVERGED or FAILED, because between two generations no case runs
+but more are coming. A variable that never changes starts hidden. **Links** adds
+buttons to the header, one `<label>=<URL>` per line; dakota-openfoam links its
+Pareto front page this way.
 
 ## Running it
 
@@ -75,12 +94,13 @@ answered is removed by the run's `stop_server_if_unhealthy` job. Design
 Explorer's libraries are downloaded once, at a pinned commit, under
 `~/pw/software/design-explorer/`.
 
-## Variants
+## Platforms
 
-`yamls/hsp.yaml` (HSP, `activate.hpc.mil`) and `yamls/noaa.yaml` (NOAA,
-`noaa.parallel.works`) take the resource as the form's top-level input. On NOAA
-the libraries go to the cluster's shared software tree when the account can
-write there.
+`yamls/general.yaml` is the only form: the server runs on the login node and
+uses no scheduler, so nothing differs between platforms. On HSP and NOAA, a
+caller passes its top-level resource as `cluster.resource`. On NOAA clusters the
+libraries go to the shared software tree when the account can write there, and
+an HPCMP login node must reach GitHub for the one-time download.
 
 ## Files
 

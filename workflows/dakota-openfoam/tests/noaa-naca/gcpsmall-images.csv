@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-08T12:34:33Z,warm,pass,ok,614dc4b,74bcc3d,0b74bc0,0e30e94,0e30e94,design-explorer,alvaro,maximum-marmoset,246,
 2026-10-08T14:32:34Z,warm,pass,ok,abaadba,74bcc3d,0b74bc0,397bb20,397bb20,design-explorer,alvaro,eminent-alien,246,
+2026-10-08T16:03:08Z,warm,pass,ok,b87e270,74bcc3d,0b74bc0,ca4fe9f-dirty,3793a52,general-only-subworkflows,alvaro,driving-sheepdog,246,

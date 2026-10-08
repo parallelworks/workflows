@@ -159,6 +159,10 @@ To convert an older workflow to this pattern, follow
   (`container_runtime`, `service.container_runtime`, `service.name`): the input
   **values must match the impl subdirectory names** under `workflows/<name>/`.
 - Support both SLURM and PBS (`scheduler: true` submits; `false` runs on the login node).
+- A workflow that only runs on the login node and submits no scheduler job keeps a single
+  `general.yaml` (`wait_for_endpoint`, `doe`, `design-explorer`): nothing differs between
+  platforms, so an HSP or NOAA caller passes its top-level resource as `cluster.resource`.
+  Variants exist for what does differ: the submitter, the SLURM/PBS fields, install paths.
 
 ### Comments
 - Default to no comments. Only add one when the WHY is non-obvious: a hidden

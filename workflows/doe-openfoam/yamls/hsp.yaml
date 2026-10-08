@@ -125,8 +125,9 @@ jobs:
       - name: DOE (Sample the Designs)
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: workflows/doe/yamls/hsp.yaml
-          resource: ${{ inputs.resource }}
+          $yaml: workflows/doe/yamls/general.yaml
+          cluster:
+            resource: ${{ inputs.resource }}
           doe:
             method: ${{ inputs.doe.method }}
             cases_csv: ${{ inputs.doe.cases_csv }}
@@ -160,8 +161,9 @@ jobs:
         if: ${{ inputs.postprocessing.generate_images == true }}
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: workflows/design-explorer/yamls/hsp.yaml
-          resource: ${{ inputs.resource }}
+          $yaml: workflows/design-explorer/yamls/general.yaml
+          cluster:
+            resource: ${{ inputs.resource }}
           study:
             cases_dir: ${{ needs.preprocessing.outputs.CASES_DIR }}
             title: NACA airfoil DOE (${{ inputs.doe.method }})

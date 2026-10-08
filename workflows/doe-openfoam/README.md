@@ -88,11 +88,12 @@ cases/
 
 `yamls/hsp.yaml` (HSP, `activate.hpc.mil`) and `yamls/noaa.yaml` (NOAA,
 `noaa.parallel.works`) run the same study with the platform's form and the
-matching doe, openfoam-naca and design-explorer variants: the resource as the
-top-level input, the SLURM account and QoS, and on HSP the node type and the PBS
-account. The HSP form saves a `nautilus_modules` configuration with Nautilus's
-OpenFOAM module. On NOAA the installs go to the cluster's shared software tree
-when the account can write there.
+matching openfoam-naca variant (doe and design-explorer have one form for every
+platform): the resource as the top-level input, the SLURM account and QoS, and
+on HSP the node type and the PBS account. The HSP form saves a
+`nautilus_modules` configuration with Nautilus's OpenFOAM module. On NOAA the
+installs go to the cluster's shared software tree when the account can write
+there.
 
 ## Files
 

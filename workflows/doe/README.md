@@ -86,10 +86,10 @@ is how [`workflows/doe-openfoam`](../doe-openfoam/README.md) calls it:
   run: tee -a $OUTPUTS < "${{ needs.preprocessing.outputs.CASES_DIR }}/doe.env"
 ```
 
-## Variants
+## Platforms
 
-`yamls/hsp.yaml` (HSP, `activate.hpc.mil`) and `yamls/noaa.yaml` (NOAA,
-`noaa.parallel.works`) are the same step with the resource as the form's
-top-level input.
+`yamls/general.yaml` is the only form: the sampler runs for seconds on the login
+node and uses no scheduler, so nothing differs between platforms. On HSP and
+NOAA, a caller passes its top-level resource as `cluster.resource`.
 
 The sampler is `app/doe.py`, standard library only.

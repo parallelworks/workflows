@@ -16,6 +16,12 @@
 # script_submitter, and the wait_for_endpoint subworkflow checks that the
 # endpoint is listed and /healthz answers before the run completes. The endpoint
 # outlives the run until `pw endpoints delete` removes it.
+#
+# One form for every platform: nothing here depends on the scheduler, so there
+# is no HSP or NOAA variant, and callers on those platforms pass their resource
+# as cluster.resource. Design Explorer's libraries are downloaded from GitHub
+# once, which needs a login node that reaches the internet (not every HPCMP
+# system does); on NOAA clusters they go to the shared software tree.
 permissions:
   - '*'
 
@@ -36,6 +42,22 @@ jobs:
       - name: Install Design Explorer
         run: |
           set -e
+          # NOAA home directories are small: there the install goes to the
+          # cluster's shared software tree if this account can write there (a
+          # no-op on any other login node). Probe by creating the directory
+          # rather than reading mode bits: the trees are group- or ACL-writable
+          # and list as root-owned.
+          case "${{ inputs.cluster.resource.ip }}" in
+            hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
+            mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
+            ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
+            gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
+            *) shared="" ;;                                                    # PPAN, other platforms, cloud clusters
+          esac
+          if [ -n "${shared}" ] && mkdir -p "${shared}/design-explorer" 2>/dev/null; then
+            export service_parent_install_dir="${shared}"
+            echo "::notice::installing under the shared software directory ${shared}"
+          fi
           bash workflows/design-explorer/app/install-design-explorer.sh "${PWD}/design-explorer-dir.txt"
       # started in its own session so the end of this step, of this job and of
       # the run never reaches it; the only off switch is `pw endpoints delete`,

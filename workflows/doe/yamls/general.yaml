@@ -9,7 +9,9 @@
 # say how many there are (N_CASES) and where (CASES_DIR).
 #
 # The sampler is seconds of work on the login node, so there is no scheduler
-# section: the resource is only where the cases are written.
+# section: the resource is only where the cases are written. For the same reason
+# one form serves every platform: there is no HSP or NOAA variant, and callers on
+# those platforms pass their resource as cluster.resource.
 permissions:
   - '*'
 

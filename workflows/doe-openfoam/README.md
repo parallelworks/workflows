@@ -79,8 +79,10 @@ study:
 
 The server (`app/design-explorer-server.py`, standard library) rebuilds
 `data.csv` from the case directories on every request, so **reloading the
-page** shows the cases that finished meanwhile; it only lists solved cases (a
-row without numbers would break the axes). `results.csv` on the same endpoint
+page** shows the cases that finished meanwhile: a case appears as soon as its
+coefficients are on disk and its images a few seconds later (a gray
+placeholder stands in until then). Only solved cases are listed (a row
+without numbers would break the axes). `results.csv` on the same endpoint
 is every case with its status, and `status.json` the counts. The page is
 opened with `?ID=<base64 of "data/">`, which is how Design Explorer is told
 where its folder is; the endpoint's root redirects there.

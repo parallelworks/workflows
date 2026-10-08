@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Design Explorer over a study of NACA airfoil cases, as a pw endpoint.
+"""Design Explorer over a study of case directories, as a pw endpoint.
 
     design-explorer-server.py --cases-dir CASES --design-explorer DIR --port P
                               [--title TEXT] [--link LABEL=URL ...]
 
-CASES is a design of experiments' cases/ (doe-openfoam) or a Dakota study's
-state/ (dakota-openfoam); study.py reads either. --link adds a button to the
-page's header (dakota-openfoam links its Pareto front page).
+CASES holds one directory per evaluation (params.in, results.out, images/*.png):
+case_<j>/ as workflows/doe writes them, or iter_<N>/case_<j>/ as a Dakota study
+proposes them; study.py reads either. doe-openfoam's cases/ and dakota-openfoam's
+state/ are examples. --link adds a button to the page's header (dakota-openfoam
+links its Pareto front page).
 
 Serves the page design-explorer.html next to this script: the parallel
 coordinates engine of Design Explorer (https://tt-acm.github.io/DesignExplorer/,
@@ -15,7 +17,7 @@ in a shell laid out and styled for the ACTIVATE platform (the hpc_status
 tokens): axis toggles and input sliders at the side, the brush tools above the
 plot, the thumbnails of the designs below it, each one opening its images.
 The study is served under data/: data.csv with the solved cases (in: columns
-for the design variables, out: columns for the coefficients, img: columns
+for the design variables, out: columns for the outputs, img: columns
 pointing at the images each case rendered, the format Design Explorer itself
 reads) and data/<case>/images/<name>.png. Nothing is cached server side:
 data.csv is rebuilt from the case directories on every request (study.py),

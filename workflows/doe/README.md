@@ -2,10 +2,11 @@
 
 Spreads designs over the bounds of the design variables, or takes them from a
 table you paste, and writes one case directory per design. Each holds a
-`params.in` with one `<value> <name>` line per variable, the file
-[`workflows/openfoam-naca`](../openfoam-naca/README.md) reads. The workflow knows
-nothing about the evaluator: [`workflows/doe-openfoam`](../doe-openfoam/README.md)
-calls it as a subworkflow and solves every case with OpenFOAM.
+Dakota-style `params.in`, one `<value> <name>` line per variable. The workflow
+knows nothing about the evaluator, so any workflow can call it as a subworkflow
+and run its own evaluator on the cases. For example,
+[`workflows/doe-openfoam`](../doe-openfoam/README.md) solves every case with
+[`workflows/openfoam-naca`](../openfoam-naca/README.md), which reads that file.
 
 ![Five panels of 16 designs over max camber and thickness: Latin hypercube with its 16 by 16 strata grid, each row and column used once; Sobol, evenly spread; random, with clusters and gaps; full factorial, a 4 by 4 grid; one at a time, a cross through the center with 13 cases](thumbnails/sampling-methods.svg)
 
@@ -13,7 +14,8 @@ calls it as a subworkflow and solves every case with OpenFOAM.
 
 **Sampling method** spreads **Number of cases** designs over the bounds in
 **Design variables**, one `<name> <lower> <upper>` per line. Equal bounds hold a
-variable fixed.
+variable fixed. The form's default is the NACA airfoil box of openfoam-naca, as
+an example; the names are whatever your evaluator reads.
 
 | Method | How it spreads the designs | Cases |
 |---|---|---|
@@ -42,9 +44,10 @@ max_camber,camber_position,thickness,angle_of_attack
   values.
 - A variable without a column is held at the middle of its bounds in **Design
   variables**. A value outside the bounds is kept, with a warning.
-- Case, status and coefficient columns are skipped, so a previous run's
-  `doe.csv`, `results.csv` or Design Explorer's `data.csv` pastes as it is. Any
-  other unknown column stops the run, so a typo cannot fix a variable by accident.
+- Case and status columns and Design Explorer's `out:` and `img:` columns are
+  skipped, so a previous run's `doe.csv` or Design Explorer's `data.csv` pastes
+  as it is; so does doe-openfoam's `results.csv`. Any other unknown column stops
+  the run, so a typo cannot fix a variable by accident.
 
 ## What a run writes
 
@@ -63,8 +66,9 @@ The same three values are the run's outputs.
 
 ## As a subworkflow
 
-A parent passes the form's groups through `with:` and reads the count back from
-`doe.env`, as [`workflows/doe-openfoam`](../doe-openfoam/README.md) does:
+A parent workflow passes the form's groups through `with:`, reads the count
+back from `doe.env`, and sizes its evaluation matrix with it. For example, this
+is how [`workflows/doe-openfoam`](../doe-openfoam/README.md) calls it:
 
 ```yaml
 - name: DOE (Sample the Designs)

@@ -2,10 +2,11 @@
 # Carlo, full factorial, one at a time) spreads designs over the bounds of the
 # design variables, or the user pastes them as a table, and every design becomes
 # a case directory holding a Dakota-style params.in (one "<value> <name>" line
-# per variable). It knows nothing about the evaluator: workflows/doe-openfoam
-# solves every case with workflows/openfoam-naca; by hand, any script that reads
-# params.in will do. doe.csv lists the designs and the outputs say how many
-# there are (N_CASES) and where (CASES_DIR).
+# per variable). It knows nothing about the evaluator, so any workflow can call
+# it as a subworkflow and run its own evaluator on the cases (workflows/doe-openfoam,
+# for example, solves every case with workflows/openfoam-naca); by hand, any
+# script that reads params.in will do. doe.csv lists the designs and the outputs
+# say how many there are (N_CASES) and where (CASES_DIR).
 #
 # The sampler is seconds of work on the login node, so there is no scheduler
 # section: the resource is only where the cases are written.
@@ -145,9 +146,9 @@ jobs:
               angle_of_attack  0     10
             tooltip: |
               One line per variable: <name> <lower> <upper>. The names are the
-              labels of the params.in files the evaluator reads; the default is
-              the NACA 4-digit airfoil box of workflows/openfoam-naca, but any
-              problem fits. Equal bounds hold a variable fixed (it then takes no
+              labels of the params.in files the evaluator reads. The default,
+              the NACA 4-digit airfoil box of workflows/openfoam-naca, is an
+              example: any problem fits. Equal bounds hold a variable fixed (it then takes no
               sampling dimension). With your own cases, a variable the table has
               no column for is held at the middle of its bounds.
           cases_dir:

@@ -43,8 +43,9 @@ workflows/dakota-openfoam/        # a loop composed of two standalone workflows 
                                   # called as subworkflows; the single-app original in backup-no-subworkflow/
 workflows/doe-openfoam/           # a design of experiments composed of three standalone workflows: doe (the
                                   # sampler), openfoam-naca once per design as a matrix, design-explorer (the page)
-workflows/doe/, workflows/design-explorer/  # the DOE sampler (batch) and Design Explorer over a study (endpoint),
-                                  # standalone and called as subworkflows by doe-openfoam and dakota-openfoam
+workflows/doe/, workflows/design-explorer/  # the DOE sampler (batch) and Design Explorer over a study (endpoint):
+                                  # reusable, evaluator-agnostic subworkflows (callers today: doe-openfoam,
+                                  # dakota-openfoam)
 workflows/probe/                  # PROBE: runs a platform's workflow tests (definitions in a tests repository,
                                   # parallelworks/probe-tests-activate-parallel-works for activate.parallel.works) and serves
                                   # the results dashboards; app/ holds its Python code
@@ -79,9 +80,10 @@ joins those last two as subworkflows and serves its live Pareto front as an endp
 (and, with images on, calls `design-explorer` for a second one); its server only ever
 runs on the login node, so it starts
 `pw endpoints run` detached from a plain step (`tutorials/endpoint-workflows` Stage 3)
-instead of through the submitter below; `design-explorer` (Design Explorer over a study,
-called by `doe-openfoam` and `dakota-openfoam`) and `app-testbed` do the same,
-the latter at a fixed endpoint name (`apptest`) that a re-run reuses. On a compute cluster,
+instead of through the submitter below; `design-explorer` (Design Explorer over any study
+of case directories, a subworkflow of `doe-openfoam` and `dakota-openfoam`) and
+`app-testbed` do the same, the latter at a fixed endpoint name (`apptest`) that a re-run
+reuses. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through

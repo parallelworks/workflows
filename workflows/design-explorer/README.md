@@ -1,10 +1,13 @@
 # Design Explorer
 
 [Design Explorer](https://tt-acm.github.io/DesignExplorer/)'s parallel coordinates
-over a study of NACA airfoil cases, served as the endpoint
-`design-explorer-<run slug>`: the design variables and the coefficients as axes,
-the flow images of every design as thumbnails, in a page styled for the
-platform, light or dark.
+over a design study, served as the endpoint `design-explorer-<run slug>`: the
+design variables and the outputs as axes, the images of every design as
+thumbnails, in a page styled for the platform, light or dark. Any workflow that
+evaluates designs in case directories can call it as a subworkflow. For example,
+[`doe-openfoam`](../doe-openfoam/README.md) and
+[`dakota-openfoam`](../dakota-openfoam/README.md) serve their OpenFOAM airfoil
+studies with it; the figure shows a doe-openfoam study.
 
 ![The page: axis toggles and input sliders at the left, the selection tools above the parallel coordinates of the four inputs and the three outputs, the thumbnails of the solved designs below, bordered in the color of their drag coefficient](thumbnails/design-explorer.png)
 
@@ -15,32 +18,41 @@ platform, light or dark.
 - **Exclude selection** and **Zoom to selection** act on the brushed designs;
   **Save selection to file** downloads them as CSV.
 - Thumbnails outside the selection fade. Hover one to trace its line, click it
-  for the full image and the design's values. **Image** switches between
-  pressure, velocity, streamlines, turbulence, wake and mesh.
+  for the full image and the design's values. **Image** switches between the
+  images each case has, such as openfoam-naca's pressure, velocity and mesh.
 - The page follows the study: it refreshes while cases are still running.
 
 ## What it reads
 
-**Study directory** is a directory of
-[`openfoam-naca`](../openfoam-naca/README.md) case directories, each with
-`params.in`, `results.out` (or `exit_code` when the solver failed) and `images/`.
-The server reads it on every request, so it can be served before the first case
-exists.
+**Study directory** holds one directory per evaluation:
 
-| Study | Layout | Extra axes |
+```
+case_<j>/
+├── params.in      the design, one <value> <name> line per variable: the in: axes
+├── results.out    the outputs in the same format: the out: axes
+│                  (exit_code alone when the evaluation failed)
+└── images/*.png   optional, one thumbnail kind per file name
+```
+
+| Layout | For example | Extra axes |
 |---|---|---|
-| [`doe-openfoam`](../doe-openfoam/README.md)'s `cases/` | `case_<j>/` | none |
-| [`dakota-openfoam`](../dakota-openfoam/README.md)'s `state/` | `iter_<N>/case_<j>/` | **generation**, and **pareto_front** (1 for the designs no other beats on both drag and lift); lines colored by generation |
+| `case_<j>/` | a design of experiments from [`doe`](../doe/README.md) | none |
+| `iter_<N>/case_<j>/` | a [`dakota`](../dakota/README.md) state directory | **generation**, and **pareto_front**: 1 for the designs no other beats on every `results.out` value, all minimized as Dakota minimizes them |
 
-A variable that never changes, such as a fixed angle of attack, starts hidden.
+The server reads the directory on every request, so it can be served before the
+first case exists. [`openfoam-naca`](../openfoam-naca/README.md)'s outputs,
+`drag_coefficient` and `neg_lift_coefficient`, show as the drag and lift
+coefficients and their ratio. A variable that never changes starts hidden.
 **Links** adds buttons to the header, one `<label>=<URL>` per line;
 dakota-openfoam links its Pareto front page this way.
 
 ## Running it
 
 Run it by itself to explore a study that already ran: pick the resource and give
-the absolute path of its `cases/` or `state/`, under the run's job directory
-(`~/pw/jobs/<run>/`). Both workflows above call it as a subworkflow instead:
+the study's absolute path, for example a doe-openfoam run's `cases/` under its
+job directory (`~/pw/jobs/<run>/`). A workflow that runs the study calls it as a
+subworkflow before its evaluations start, so the page follows them. This is how
+doe-openfoam does it:
 
 ```yaml
 - name: Design Explorer (Serve the Study)

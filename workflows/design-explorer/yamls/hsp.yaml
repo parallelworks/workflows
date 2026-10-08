@@ -1,13 +1,15 @@
-# Design Explorer (https://tt-acm.github.io/DesignExplorer/) over a study of NACA
-# airfoil cases, served as the pw endpoint design-explorer-<run slug>: the design
-# variables and the coefficients (drag, lift, lift-to-drag) as brushable
-# parallel coordinates, the images each case rendered as thumbnails. A study is
-# a directory of workflows/openfoam-naca case directories (case_<j>/ with
-# params.in, results.out and images/): the cases/ of workflows/doe-openfoam or
-# the state/ of workflows/dakota-openfoam, where the generation and the Pareto
-# front become axes too. Both call this workflow as a subworkflow. The server
-# reads the directory on every request, so the page follows a study that is
-# still running and can be served before its first case exists.
+# Design Explorer (https://tt-acm.github.io/DesignExplorer/) over a study, served
+# as the pw endpoint design-explorer-<run slug>: the design variables and the
+# outputs as brushable parallel coordinates, the images each case rendered as
+# thumbnails. A study is a directory of case directories, each one evaluation
+# with params.in (the design), results.out (its outputs) and images/*.png: the
+# case_<j>/ that workflows/doe writes, or the iter_<N>/case_<j>/ of a
+# workflows/dakota state directory, where the generation and the Pareto front
+# become axes too. Any workflow that evaluates such cases can call it as a
+# subworkflow; workflows/doe-openfoam and workflows/dakota-openfoam, for example,
+# serve their openfoam-naca studies with it. The server reads the directory on
+# every request, so the page follows a study that is still running and can be
+# served before its first case exists.
 #
 # The server only ever runs on the login node, so it is started detached from a
 # plain step (tutorials/endpoint-workflows Stage 3) rather than through
@@ -164,16 +166,16 @@ jobs:
             type: string
             label: Study directory
             tooltip: |
-              Absolute path of the study on the resource: a directory of
-              openfoam-naca case directories (case_<j>/ with params.in,
-              results.out and images/), such as the cases/ of a doe-openfoam run
-              or the state/ of a dakota-openfoam run, both in the run's job
-              directory. The page follows the directory as cases are added, so
-              it can be served before the first one exists.
+              Absolute path of the study on the resource: a directory of case
+              directories, case_<j>/ or iter_<N>/case_<j>/, each with params.in,
+              results.out and optionally images/*.png. For example the cases/ of
+              a doe-openfoam run or the state/ of a dakota-openfoam run, both in
+              the run's job directory. The page follows the directory as cases
+              are added, so it can be served before the first one exists.
           title:
             type: string
             label: Page title
-            default: NACA airfoil study
+            default: Design study
             tooltip: The title in the page's header; the run slug is added to it.
           links:
             type: editor

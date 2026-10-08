@@ -11,6 +11,12 @@
 
 ## One server, two study layouts
 
+- Nothing in the reader is specific to the airfoil: every `results.out` value is
+  an `out:` axis, every `images/*.png` an image kind, and the Pareto flag uses the
+  `results.out` values as minimized objectives (Dakota's convention).
+  openfoam-naca's `drag_coefficient` and `neg_lift_coefficient` are the one special
+  case, shown as Cd, Cl and Cl/Cd; its six images come first in its order.
+
 - `app/study.py` reads `DIR/case_<j>/` (a DOE's `cases/`) and `DIR/iter_<N>/case_<j>/`
   (a Dakota `state/`) with one glob; a case id is its path relative to DIR, so
   image paths and the server's `/data/<id>/images/...` route work for both.

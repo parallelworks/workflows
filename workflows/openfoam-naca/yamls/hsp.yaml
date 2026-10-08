@@ -22,6 +22,14 @@
 # set foamDotFile: software.openfoam_load there is the module load plus `source
 # $foamDotFile`; not every HPCMP login node reaches the internet for the
 # conda-forge install (Nautilus does).
+#
+# With postprocessing.generate_images, the case ends by rendering its fields to
+# PNG images with ParaView's pvpython (render-images.sh + render-case.py in the
+# app): pressure, velocity, streamlines, eddy viscosity, the wake and the mesh,
+# labeled with the design and its coefficients. ParaView comes from the form's
+# load commands or, when none are given, from the official binaries the app's
+# installer downloads once; a case whose images fail to render is still a solved
+# case (the coefficients are on disk first).
 permissions:
   - '*'
 
@@ -45,13 +53,14 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: design-explorer
           sparse_checkout:
             - workflows/openfoam-naca/app
             - tools/utils
       # the environment is one file every later step and the case source; the heredoc
-      # carries the form's load commands verbatim (empty -> conda-forge install)
-      - name: Prepare the OpenFOAM Environment
+      # carries the form's load commands verbatim (empty -> conda-forge install).
+      # The same for ParaView when images are wanted (empty -> the official binaries)
+      - name: Prepare the OpenFOAM and ParaView Environments
         run: |
           set -e
           cores="${{ inputs.cluster.cores_per_case }}"
@@ -67,6 +76,12 @@ jobs:
             workflows/openfoam-naca/app/install-openfoam.sh ${required} << 'PW_LOAD_EOF'
           ${{ inputs.software.openfoam_load }}
           PW_LOAD_EOF
+          if [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
+            bash tools/utils/prepare-env.sh paraview "${PWD}/paraview-env.sh" \
+              workflows/openfoam-naca/app/install-paraview.sh pvpython << 'PW_LOAD_EOF'
+          ${{ inputs.software.paraview_load }}
+          PW_LOAD_EOF
+          fi
       # the case directory gets the design (params.in) and the script the submitter
       # runs there; a stale verdict from an earlier run of the same directory is
       # removed so a missing results.out always means this run's solver failed
@@ -113,6 +128,10 @@ jobs:
             bash "${PWD}/workflows/openfoam-naca/app/simulator.sh"
           rc=\$?
           echo "\${rc}" > exit_code
+          if [ "\${rc}" -eq 0 ] && [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
+            PARAVIEW_ENV="${PWD}/paraview-env.sh" \\
+              bash "${PWD}/workflows/openfoam-naca/app/render-images.sh" case images params.in results.out
+          fi
           exit "\${rc}"
           PW_CASE_EOF
           echo "--- ${case_dir}/params.in"
@@ -186,6 +205,18 @@ jobs:
           echo "LIFT_COEFFICIENT=${cl}" | tee -a $OUTPUTS
           echo "RESULTS_FILE=${case_dir}/results.out" | tee -a $OUTPUTS
           echo "PARAVIEW_FILE=${case_dir}/case/case.foam" | tee -a $OUTPUTS
+          # the images are a courtesy of a solved case: missing ones are a warning
+          # with the renderer's log, never a failed case
+          if [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
+            n=$(ls "${case_dir}"/images/*.png 2>/dev/null | wc -l)
+            if [ "${n}" -gt 0 ]; then
+              echo "IMAGES_DIR=${case_dir}/images" | tee -a $OUTPUTS
+              echo "::notice::${n} images of the fields in ${case_dir}/images: $(cd "${case_dir}/images" && ls *.png | tr '\n' ' ')"
+            else
+              echo "::warning::no images were rendered for the solved case; the renderer's log follows (${case_dir}/images/render.log)"
+              tail -n 20 "${case_dir}/images/render.log" 2>/dev/null
+            fi
+          fi
           echo "::notice::Cd = ${cd_}, Cl = ${cl} for the design in ${case_dir}/params.in (mesh_scale ${{ inputs.case.mesh_scale }}); open ${case_dir}/case/case.foam in ParaView to see the fields"
 
 'on':
@@ -412,6 +443,22 @@ jobs:
               field the file does not list keeps the form's value, so the file
               need not carry them all. An optimization loop passes the file of
               the design it proposed here.
+      postprocessing:
+        type: group
+        label: Postprocessing
+        items:
+          generate_images:
+            type: boolean
+            label: Generate images of the results?
+            default: false
+            tooltip: |
+              Yes → once the solver has converged, ParaView renders the fields of
+              the case to PNG images in <case directory>/images: pressure, velocity
+              magnitude, streamlines, eddy viscosity, the wake and the mesh, each
+              labeled with the design and its coefficients. ParaView comes from
+              the commands in Software Environment or, left empty, from the
+              official binaries the workflow downloads once (no sudo, ~830 MB).
+              A case whose images fail to render still reports its coefficients.
       software:
         type: group
         label: Software Environment
@@ -434,3 +481,17 @@ jobs:
               not every HPCMP system does).
               The case sources these commands; `export MPIRUN="srun --mpi=pmix"`
               here replaces the default launcher `mpirun --bind-to none -np N`.
+          paraview_load:
+            type: editor
+            label: ParaView environment commands
+            optional: true
+            hidden: ${{ inputs.postprocessing.generate_images == false }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Shell commands that put pvpython on PATH, one per line, e.g.
+              `module load paraview/5.13`. Leave empty to download the official
+              ParaView 6.1.1 Linux binaries (x86_64, no sudo, ~830 MB once, 2.7 GB
+              on disk) under
+              ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca/paraview;
+              they render without a display. A site build that needs an X server
+              is run under xvfb-run where that exists. Needs ParaView 5.10 or newer.

@@ -219,6 +219,10 @@ log "Stack compiler (from spack.yaml): $GCC_SPEC"
 gcc_built_prefix() {
   spack find --format '{prefix}' "$GCC_SPEC" 2>/dev/null | grep "^${SPACK_ROOT}/opt/" | head -1
 }
+gcc_built_hash() {
+  spack find --format '{hash} {prefix}' "$GCC_SPEC" 2>/dev/null \
+    | awk -v r="${SPACK_ROOT}/opt/" 'index($2, r) == 1 {print $1; exit}'
+}
 
 # The padding in templates/spack.yaml.in only reaches commands run IN the
 # environment, and the gcc install, find and push below run outside it.
@@ -244,7 +248,11 @@ fi
 # the build cache its build-only dependencies were never installed. Without the
 # flag that prints a 27-line "Error: ... PackageNotInstalledError" block for a
 # push that did exactly what it should.
-spack buildcache push --unsigned --update-index --private --allow-missing "$MIRROR_NAME" "$GCC_SPEC" || true
+# By hash, for the same reason as gcc_built_prefix(): once an earlier run has
+# registered the external, "$GCC_SPEC" matches two packages and the push fails
+# (gce run ample-trout).
+GCC_HASH="$(gcc_built_hash)"
+spack buildcache push --unsigned --update-index --private --allow-missing "$MIRROR_NAME" "/$GCC_HASH" || true
 
 GCC_PREFIX="$(gcc_built_prefix)"
 [ -n "$GCC_PREFIX" ] || { echo "::error title=Error::$GCC_SPEC not present under $SPACK_ROOT/opt after install" >&2; exit 1; }

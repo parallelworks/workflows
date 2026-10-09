@@ -216,13 +216,3 @@ pw workflows runs logs <slug> --job simulate
 pw workflows runs logs <slug> --job session_runner
 pw workflows runs errors <slug>
 ```
-
-## Provenance
-
-Moved from the standalone `parallelworks/monte-carlo-pricing` repository (`main` @
-`47d2df6`), which shared its skeleton with `burst-render-demo` and is migrated the same
-way. Its `scripts/` became `app/`; the install half of `start_dashboard.sh` became
-`controller.sh`, the launch half `start-template.sh`; `setup.sh` became
-`setup_site.sh` on remote sites; the `sessions:` block and the `update_session` /
-`wait_for_dashboard` jobs became the `script_submitter` + `wait_for_endpoint` jobs.
-Details and test results: `MIGRATION.md`.

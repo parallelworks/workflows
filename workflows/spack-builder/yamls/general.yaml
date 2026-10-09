@@ -231,22 +231,23 @@ permissions: ['*']
               is actually given.
           concretize_only:
             type: boolean
-            label: Stop after concretizing (dry run)
+            label: Dry run
             default: false
             tooltip: >-
-              Bootstrap Spack, set up the build cache, inspect the hardware, render and
-              concretize the environment, then stop before the long compile. Use this to
-              validate a cluster or a spec change in minutes.
+              Build workflow stops after concretizing. Bootstrap Spack, set up the build 
+              cache, inspect the hardware, render and concretize the environment, then 
+              stop before the long compile. Use this to validate a cluster or a spec 
+              change in minutes.
           use_public_buildcache:
             type: boolean
-            label: Also use Spack's public binary cache
+            label: Use public Spack binaries
             default: false
             tooltip: >-
               Experimental. Can skip large builds when hashes match, but fabric-specific
               variants usually prevent that, so it is off by default.
           build_gpu:
             type: boolean
-            label: Build the GPU path (CUDA-aware OpenMPI + GROMACS+cuda)
+            label: Build the GPU path
             default: false
             tooltip: >-
               Opt-in. Adds a CUDA-aware OpenMPI and a GROMACS+cuda built against it.
@@ -258,12 +259,12 @@ permissions: ['*']
             size: 14
           use_overrides:
             type: boolean
-            label: Skip hardware inspection and set the profile manually
+            label: Skip hardware inspection
             default: false
             tooltip: >-
-              When on, you MUST set target, fabric and cuda-arch below; mixing some
-              overrides with inspection is rejected. With all three set, no worker node
-              is allocated at all.
+              When on, you MUST set the whole profile manually including the target, 
+              fabric and cuda-arch below; mixing some overrides with inspection is 
+              rejected. With all three set, no worker node is allocated at all.
           override_target:
             type: string
             label: Spack microarch target
@@ -287,7 +288,7 @@ permissions: ['*']
                 value: generic
           override_cuda_arch:
             type: string
-            label: CUDA arch (or 'none' for CPU-only)
+            label: CUDA arch (or 'none')
             placeholder: '90'
             hidden: ${{ !inputs.service.use_overrides }}
             tooltip: >-

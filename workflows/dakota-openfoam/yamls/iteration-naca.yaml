@@ -75,7 +75,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: OpenFOAM (Evaluate the Design)
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@param-names-contract
         with:
           $yaml: workflows/openfoam-naca/yamls/general.yaml
           cluster:

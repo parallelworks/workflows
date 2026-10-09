@@ -1,0 +1,6 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-09T13:04:31Z,cold,fail,ok,2cc102a,74bcc3d,381d2b2,0bbbc0f,0bbbc0f,postgres,alvaro,cheerful-kingfish,23,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"
+2026-10-09T13:05:56Z,cold,pass,ok,8a4ee53,74bcc3d,381d2b2,5e35c80,5e35c80,postgres,alvaro,winning-baboon,37,
+2026-10-09T13:07:22Z,warm,pass,kept,8a4ee53,74bcc3d,381d2b2,5e35c80,5e35c80,postgres,alvaro,open-guppy,37,
+2026-10-09T13:26:27Z,cold,pass,ok,d3a6e3f,74bcc3d,381d2b2,7ef1f2e,7ef1f2e,postgres,alvaro,refined-stallion,37,
+2026-10-09T13:51:56Z,warm,pass,ok,509c9d7,74bcc3d,381d2b2,1faef44,1faef44,postgres,alvaro,whole-glowworm,37,

@@ -1266,6 +1266,90 @@ Not exercised: a PBS or SSH-mode remote site, a site without numpy access (the p
 Python fallback ran only in a local test), a dashboard host older than Python 3.9, and a
 site whose login shell is tcsh.
 
+## postgres (2026-10-09, from interactive_session's legacy generation)
+
+`workflows/postgres/` is the endpoint-pattern port of `interactive_session`'s
+`workflow/yamls/postgres/general_k8s.yaml` (hybrid: `targetType` dropdown, compute cluster
+or Kubernetes) and `postgres/start-template-v3.sh`, on the metabase shapes: `general.yaml`
+plus the hybrid `general_k8s.yaml`. A `pw` endpoint carries HTTP only, so the endpoint
+`postgres-<run-slug>` serves the [pgweb](https://github.com/sosedoff/pgweb) SQL client and
+the database is reached over TCP: at `<node>:<port>` from the cluster, through `pw forward`
+from a laptop (the run prints both), and through a ClusterIP Service or `kubectl
+port-forward` on Kubernetes.
+
+| interactive_session | here |
+|---|---|
+| `postgres/start-template-v3.sh`: `sudo docker run -d --rm` of `${service_image}` with the form's Docker Flags (default `--network=host`, which discards the `-p ${service_port}:5432` mapping, so the server took the node's 5432), data in a root-created `/postgres-data` that every run on the node shared, `POSTGRES_PASSWORD` on the `docker run` command line; `postgres/kill-template.sh`, appended to the cancel script, had its `docker stop` commented out, so a cancel left the container running | `app/start-template.sh`: one Docker Compose project per run. PostgreSQL runs as the workflow user on **Data Directory** (`pgdata/`), published on **Database Port**; the password comes from mode-600 files written in preprocessing (compose `secrets`, pgweb's `--passfile`). Before the endpoint registers, the script takes a lock on the data directory, checks the port, and checks the login (creating a missing database); then pgweb runs on the node's loopback behind `pw endpoints run`. `cancel.sh` is `compose down`. `app/controller.sh` creates the data directory |
+| compute path: `create_session` found the port and hostname, but its `update-session` step was commented out, so the session pointed nowhere | the pgweb endpoint, probed on `/api/connection` (200 only while pgweb holds a database connection); a `Connection Details` step prints the connection string and the `pw forward` command |
+| k8s: a Deployment with the password in plaintext in `app.yaml`, a `chmod 777` init container, `containerPort: 80` and a `-lb` Service on 80 (PostgreSQL listens on 5432, so neither reached it), `parallelworks/update-session` on that Service; `${{ inputs.service_k8s.db}` (a stray `}`) in the database test | a Deployment (`strategy: Recreate`) of postgres (`PGDATA` on the PVC, the password from a Secret, `pg_isready` readiness), pgweb (loopback, `--open-retry`) and the `pw-endpoint` sidecar; a ClusterIP Service on 5432 for in-cluster clients; a login check once the pod is ready; no init container (the entrypoint owns `PGDATA`) |
+| form: `targetType`, `pwrl_host`, `service` (`image` `postgres:latest`, Docker Flags, user, password, db), `k8s` (with GPU limits), `service_k8s` (`image`, an unused Docker mount field, user, password, db) | `resource`/`cluster`/`service` (`user`, `password`, `db`, `port`, `data_dir`, `image` `postgres:18`, hidden `pgweb_image` `sosedoff/pgweb:0.17.0`) and `k8s` (without the GPU fields)/`service_k8s` |
+| `workflow/readmes/postgres/general_k8s.md`, `workflow/thumbnails/postgres.png` | `README.md` (rewritten), `thumbnails/postgres.png` |
+
+**Judgment calls:**
+
+1. pgweb is the endpoint: a database has no web page, and the pattern needs an HTTP
+   service to probe and to tear the server down with. pgweb has no login of its own, so it
+   listens on the loopback only; the endpoint's platform login is its access control.
+2. The default image is the major tag `postgres:18`, not a patch tag: minor releases open
+   the same data directory, majors do not (the tooltip says so).
+3. Docker only, as in the source, so there are no `hsp`/`noaa` variants; an Apptainer
+   implementation would add them.
+4. The password is required and never reaches `inputs.sh`, a script or a command line
+   (mode-600 files, a Secret). New clusters ask for it on every TCP connection
+   (`POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256`): the image's initdb trusts the
+   loopback, where `kubectl port-forward` arrives, and before this change a `wrong`
+   password logged in that way (run lenient-crane).
+5. One run per data directory, enforced with a lock: two containers on one data directory
+   both start, because each server is PID 1 and takes the other's `postmaster.pid` for a
+   stale lock of its own (reproduced on gcpsmall: crash recovery on the live files). The
+   start script fails with the name of the run that holds the directory.
+6. The login check connects to the container's own address, not `127.0.0.1`, because a
+   data directory initialized without `--auth-host` trusts the loopback. The first
+   wrong-password test checked through `127.0.0.1`, got through, and only failed when the
+   probe budget ran out (run cute-ray, 333 s); now it fails in seconds with the cause.
+7. The GPU fields left the Kubernetes form; the server gets `shm_size: 256m` (a memory
+   `emptyDir` on Kubernetes) and two minutes to shut down cleanly.
+
+**Tests (2026-10-09, `pw://alvaro/gcpsmall` and `k3sgpu`, branch `postgres`; rows in
+`workflows/postgres/tests/*/*.csv`).** The test password (`POSTGRES_TEST_PASSWORD`) holds
+`@ : $ " \ ' #`, so the password files, the pgpass escaping and the Secret are exercised
+on every run.
+
+| Test | Result |
+|---|---|
+| `general/gcp-controller` (login node) | FAIL `cheerful-kingfish`: the submitter runs the start script in its own directory, where the password files were not (now `${PW_PARENT_JOB_DIR}/...`; pitfalls.md). Then PASS `winning-baboon` (cold, 37 s), `open-guppy` (warm, kept), `refined-stallion` (cold, final auth settings), `whole-glowworm` (final commit), all `cleanup=ok` |
+| `general/gcp-compute` (SLURM job, `compute` partition) | PASS `sacred-ram` (68 s, `cleanup=ok`). On the final settings PASS `decent-vervet` and `brave-shepherd`, whose `leftover` marks are another session's workflows on the same cluster, started during the tests (`monte-carlo-montecarlopricing`, `tensorboard-fun-rattler` and its SLURM job). `brave-shepherd` shared its compute node with that job's image pull (containerd at 84% CPU), and its `compose down` took five minutes, but job 30 then ended and its containers and network were gone |
+| `general_k8s/gcp-controller` (the hybrid's compute lane) | PASS `apt-narwhal`, `charmed-wren`, `polite-foal` |
+| `general/gcp-wrong-password` (`_test.expect: error`) | PASS `cute-ray` (for the wrong reason, judgment call 6), then `classic-mackerel`, `natural-lemming` and `relieved-lab`, failing in about 30 s with `Cannot log in to PostgreSQL as postgres ...` and nothing left |
+| `general_k8s/k3sgpu` (namespace `alvarok8s`) | PASS `handy-cattle`, `welcomed-gator` (33 s to the endpoint answering; cancel removed Deployment, Service, Secrets and PVC) |
+
+By hand, on the kept instances: `pw forward -L 15432:<login node>:5432 pw://alvaro/gcpsmall`
+and a psycopg client from the laptop created a table that pgweb's `/api/query` then
+returned; the port answered from a compute node (`srun`); pgweb did not answer on the
+node's address; a second run on the same data directory (`viable-teal`, `supreme-chamois`)
+and one on a taken port (`pretty-serval`, `artistic-zebra`) failed in 12 s with those
+causes, leaving the running instance alone; a run with a database the data directory did
+not have (`enough-newt`, `analytics`) created it and opened pgweb on it; a cancel while
+PostgreSQL was starting (`liked-bass`) removed the container and network through
+`cancel.sh`; on Kubernetes (`sensible-gorilla`) `kubectl port-forward` accepted the right
+password and refused `wrong`, and a pod in the namespace reached
+`<deployment>.alvarok8s.svc.cluster.local:5432`. Not exercised: PBS, a host without
+`sudo` for Docker, and the pgvector/PostGIS images. The checkout points at `canary` for
+the merge.
+
+**Kubernetes, existing PVC (2026-10-09, k3sgpu).** `general_k8s/k3sgpu-persist` keeps its
+volume as `postgres-test-data` and `general_k8s/k3sgpu-existing` opens it. PASS
+`current-bluejay`, `endless-ghoul` (initialized the volume), `prime-turkey` (`Skipping
+initialization`, pgweb connected). A wrong password against the kept volume (`strong-gopher`,
+by hand: the k8s lane has no `expect: error`) then exposed an ordering bug. pgweb exits on
+a failed login instead of retrying, so its container crash-looped and the pod never turned
+Ready, the run waited out the Deployment's 600 s and ended in a generic timeout, and the
+login check, which ran after that wait, never reported the cause. The job now waits for the
+PostgreSQL container alone, checks the login, and only then waits for the Deployment. Then
+`delicate-skink` failed in 10 s with `Cannot log in to PostgreSQL as postgres ...` and only
+the kept PVC was left. PASS `relaxed-chimp`, `current-pelican` (fresh init),
+`fun-racer` (reuse) on the new order; the test PVC was deleted afterwards.
+
 ## physicsnemo (2026-10-09, from parallelworks/activate-physicsnemo)
 
 `workflows/physicsnemo/` is the port of `parallelworks/activate-physicsnemo@main` (4318e27):

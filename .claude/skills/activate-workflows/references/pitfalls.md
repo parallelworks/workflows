@@ -466,6 +466,14 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   with the font's advance widths (fontTools in a scratch venv; Liberation Sans has
   Helvetica's metrics, DejaVu Sans is the wide fallback) and keep it inside its `<rect>`
   with a few px to spare, wrapping or widening where it does not fit.
+- **The submitter runs the start script in its own directory, not the run's job dir**
+  (verified 2026-10-09, `workflows/postgres`, run cheerful-kingfish): with `rundir` left
+  blank, `script_submitter` executes in `<job dir>/subworkflows/session_runner/step_0/`,
+  where `cancel.sh` and whatever the start script writes land. A file preprocessing wrote
+  into the job dir (there, the mode-600 password files) is not beside it; reach it as
+  `${PW_PARENT_JOB_DIR}/<file>`. `inputs.sh` carries `PW_PARENT_JOB_DIR` (it is written
+  from `env | grep '^PW_'`), so the path also resolves in a SLURM job on a compute node
+  (run sacred-ram), and a later step in the job dir reads what the start script writes there.
 - **`nvidia-smi` says `Driver/library version mismatch` and every GPU job fails** (a30gpuserver,
   2026-10-09): unattended-upgrades replaced the NVIDIA userspace (580.173 → 580.178) under the
   running kernel module. A reboot or a module reload fixes it, an admin action on a shared box:

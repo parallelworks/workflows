@@ -1,0 +1,3 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-09T14:28:12Z,,pass,ok,2c80ccf,74bcc3d,381d2b2,046428f,046428f,postgres,alvaro,prime-turkey,33,
+2026-10-09T14:43:02Z,,pass,ok,2c80ccf,74bcc3d,381d2b2,046428f-dirty,046428f,postgres,alvaro,fun-racer,18,

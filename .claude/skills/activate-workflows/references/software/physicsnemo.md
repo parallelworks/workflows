@@ -75,3 +75,19 @@
   "0.0.0.0", "--port", p, "--load_fast", "false"]); tb.main()` serves it from your own
   process, so one process can feed the event files and serve them under
   `pw endpoints run`.
+
+## Hardened hosts (awsgpu, Rocky 9.8, 2026-10-09)
+
+- **squashfs disabled** (`/etc/modprobe.d/squashfs.conf`: `install squashfs /bin/false`):
+  setuid singularity-ce 4.4.2 fails with `squashfs filesystem seems not enabled and/or
+  supported by your kernel`. `singularity exec --userns` mounts the same SIF with its
+  bundled `squashfuse_ll` over `/dev/fuse` ("Mounting image with FUSE"), and `--nv` still
+  gives PyTorch the GPU. `train.sh` probes `exec <sif> true`, then `--userns`.
+- **FIPS mode** (`/proc/sys/crypto/fips_enabled` = 1, visible inside every container):
+  the image's Ubuntu OpenSSL 3.0.13 then enables FIPS, has only `legacy.so` in
+  `ossl-modules`, and `ssl.create_default_context()` raises `[CRYPTO] unknown error`,
+  so `import physicsnemo` fails. `OPENSSL_FORCE_FIPS_MODE=0` fixes it (`OPENSSL_FIPS=0`
+  and `OPENSSL_CONF=/dev/null` do not); binding a file with `0` over
+  `/proc/sys/crypto/fips_enabled` works too. Applies to Docker as well.
+- `/var` is a 15 GB partition: Docker cannot hold the image (see above).
+- A10G: 120 s per darcy_fno pseudo-epoch at the defaults (A30: 80 s).

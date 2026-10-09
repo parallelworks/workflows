@@ -1435,5 +1435,37 @@ ran `max_pseudo_epochs=4`) ended the job, removed the container (`docker ps -a` 
 node, GPU memory freed) and left TensorBoard serving until `pw endpoints delete`, after which
 no process remained; cancelling during preprocessing (`intimate-chamois`) ran
 `stop_server_if_unhealthy`, which deleted the half-registered endpoint and killed the
-server. Not exercised: PBS, a SLURM GRES allocation (`SLURM_JOB_GPUS`), Singularity on a
-compute node, a multi-GPU node with `gpu_index` > 0. The checkout points at `canary` for the merge.
+server. Not exercised: PBS, a SLURM GRES allocation (`SLURM_JOB_GPUS`), a multi-GPU node
+with `gpu_index` > 0. The checkout points at `canary` for the merge.
+
+**Follow-up after the merge (2026-10-09, awsgpu, branch `physicsnemo-docker-space`).** The
+first registered run on `pw://alvaro/awsgpu` (`physicsnemo-00001`, Docker on the login
+node's A10G) downloaded for minutes and failed with `no space left on device`, three times:
+Docker 29 keeps images in `/var/lib/containerd`, a 15 GB `/var` partition there (13 GB
+free), and the 25.06 image needs ~48 GB in that store. Three fixes in `train.sh`:
+
+- **Docker space check before the pull**: the free space of the image store (containerd's
+  when `docker info` shows `io.containerd.snapshotter`, else `DockerRootDir`) against 50 GB
+  (35 GB for the classic store) for the NGC PhysicsNeMo images; below it the job fails at
+  once and names Singularity and the install directory's free space. A pull that still runs
+  out of space is not retried. The pull log keeps one `Pull complete` line per layer
+  instead of several hundred progress lines.
+- **Singularity in a user namespace where squashfs is disabled**: awsgpu's login node
+  blacklists the module (`install squashfs /bin/false`), so setuid singularity-ce cannot
+  mount the SIF; the job probes it and runs it with `--userns` (FUSE) there.
+- **FIPS hosts**: the login node runs in FIPS mode, and the image's Ubuntu OpenSSL then
+  fails every SSL context (`import physicsnemo` dies); the container gets
+  `OPENSSL_FORCE_FIPS_MODE=0` when `/proc/sys/crypto/fips_enabled` is 1.
+
+awsgpu's compute nodes (g5.2xlarge, `gpu` partition) need neither workaround, which is why
+both are probed on the node that trains.
+
+| Test | Result |
+|---|---|
+| `aws-controller-docker-no-space` (`_test.expect: error`) | PASS `genuine-chimp` (55 s, refused before downloading) |
+| `aws-controller-singularity-gpu` (login node A10G) | FAIL `ace-terrier` (squashfs; the 13 GB SIF built in 17 min), fixed; PASS `central-gar` (`--userns` and the FIPS override in the log; 120 s per pseudo-epoch) |
+| `aws-compute-singularity-gpu` (SLURM `gpu` partition, `gpus: 0`) | PASS `enhanced-chow` (the first node start raced a stop and SLURM requeued the job after its 20 min ResumeTimeout; then 4 min boot, plain SIF mount) |
+
+The new pull pipeline (status of `docker pull`, not of the filter) was checked by hand on
+gcpsmall's login node with a small image and a missing tag; `a30-docker-gpu` (`magnetic-quail`) and
+`a30-singularity-gpu` (`kind-goblin`) passed again on the new `train.sh`.

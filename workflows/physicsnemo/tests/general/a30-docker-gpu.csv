@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-09T13:38:11Z,cold,pass,ok,a17d238,74bcc3d,381d2b2,66bbc71,66bbc71,physicsnemo,alvaro,exciting-vervet,427,
 2026-10-09T14:56:16Z,warm,pass,ok,4700ee4,74bcc3d,381d2b2,ec6d29d,ec6d29d,physicsnemo,alvaro,vocal-marmot,418,
+2026-10-09T17:03:54Z,warm,pass,ok,ac4e137,74bcc3d,381d2b2,3ddf488,3ddf488,physicsnemo-docker-space,alvaro,magnetic-quail,411,

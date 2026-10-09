@@ -93,8 +93,15 @@ GPUs: a few minutes on 8 cores.
   job fails at once saying so, before downloading anything; use Singularity there.
 - **Singularity / Apptainer**: for clusters without Docker. The login node builds the
   SIF from the same image once (7 minutes on a 20-core server, about 70 GB free needed in the install
-  directory while building, 13 GB afterwards); the compute nodes read it from the
-  shared filesystem. Or give the path of a SIF built elsewhere.
+  directory while building, 13 GB afterwards; 17 minutes on awsgpu); the compute nodes
+  read it from the shared filesystem. Or give the path of a SIF built elsewhere. Where
+  the kernel cannot mount the SIF (hardened images disable squashfs: awsgpu), the job
+  runs it in a user namespace instead (`--userns`), mounted with FUSE; the log says so.
+
+On a FIPS host (`/proc/sys/crypto/fips_enabled` = 1, awsgpu) the image's OpenSSL sees
+the kernel's FIPS flag, finds no FIPS provider and fails every SSL context, which breaks
+`import physicsnemo`; the job runs the container with `OPENSSL_FORCE_FIPS_MODE=0` there
+and says so. The image is not FIPS-validated either way.
 
 GPU: Docker gets `--gpus device=<n>`, Singularity `--nv`. On a scheduled job the GPU
 is the allocation's (`SLURM_JOB_GPUS` for Docker, `CUDA_VISIBLE_DEVICES` otherwise);

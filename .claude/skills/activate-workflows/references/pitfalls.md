@@ -481,3 +481,11 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   nodes; grep `/proc/*/fd` for `nvidia` instead (there: a host `dcgm-exporter` container, gdm,
   and the GPU Operator's device plugin, paused with `nvidia.com/gpu.deploy.<operand>=false`
   node labels). `workflows/physicsnemo` checks `nvidia-smi -L` first and fails with its message.
+- **Ubuntu-based containers fail every TLS call on a FIPS host** (awsgpu, 2026-10-09):
+  `/proc/sys/crypto/fips_enabled` is not namespaced, so Ubuntu's OpenSSL 3 inside the NGC
+  image switches to FIPS, finds no FIPS provider and `ssl.create_default_context()` raises
+  `[CRYPTO] unknown error`; Python packages that touch `ssl` at import die with it. Pass
+  `OPENSSL_FORCE_FIPS_MODE=0` into the container when the host's flag is 1
+  (`workflows/physicsnemo/app/train-template.sh`). Hardened images like this one also
+  disable squashfs: run SIFs with `--userns` (FUSE mount) there
+  ([software/physicsnemo.md](software/physicsnemo.md)).

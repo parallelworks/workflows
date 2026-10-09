@@ -80,7 +80,7 @@ class Feeder(threading.Thread):
             for name, value in values.items():
                 self.add("%s/%s" % (namespace, name), step, wall, simple_value=value)
 
-    def scan_images(self):
+    def scan_images(self, final=False):
         for root, dirs, files in os.walk(self.logdir):
             if os.path.realpath(root).startswith(self.events_dir):
                 dirs[:] = []
@@ -95,8 +95,11 @@ class Feeder(threading.Thread):
                 except OSError:
                     continue
                 key = (stat.st_mtime, stat.st_size)
-                # a figure still being written is picked up on the next pass
-                if self.images.get(path) == key or time.time() - stat.st_mtime < POLL_S or stat.st_size > MAX_IMAGE_BYTES:
+                if self.images.get(path) == key or stat.st_size > MAX_IMAGE_BYTES:
+                    continue
+                # a figure still being written is picked up on the next pass; after the
+                # training there is no next pass, and nothing is being written any more
+                if not final and time.time() - stat.st_mtime < POLL_S:
                     continue
                 with open(path, "rb") as f:
                     data = f.read()
@@ -118,7 +121,7 @@ class Feeder(threading.Thread):
             finished = os.path.exists(self.done)
             try:
                 self.read_log()
-                self.scan_images()
+                self.scan_images(final=finished)
                 self.writer.flush()
             except Exception as e:  # keep serving what is there
                 print("tensorboard-server: %s" % e, flush=True)

@@ -67,6 +67,7 @@ echo "Started     : $(date)"
 # physical indices Docker needs; CUDA_VISIBLE_DEVICES is already set for the rest),
 # else the form's GPU index on this node
 gpu=""
+scheduler_gpus=""
 if [ "${physicsnemo_device}" = gpu ]; then
     if ! command -v nvidia-smi > /dev/null 2>&1; then
         echo "::error::No GPU on $(hostname): nvidia-smi is not installed. Choose a GPU node (partition, gres) or set the device to CPU."
@@ -76,19 +77,22 @@ if [ "${physicsnemo_device}" = gpu ]; then
         echo "::error::No usable GPU on $(hostname): nvidia-smi -L says: $(head -n 1 <<< "${smi}")"
         exit 1
     fi
-    if [ -n "${SLURM_JOB_GPUS:-}" ]; then
-        gpu="${SLURM_JOB_GPUS%%,*}"
-    elif [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
-        gpu="${CUDA_VISIBLE_DEVICES%%,*}"
+    if [ -n "${SLURM_JOB_ID:-}${PBS_JOBID:-}" ] && [ -n "${SLURM_JOB_GPUS:-}${CUDA_VISIBLE_DEVICES:-}" ]; then
+        scheduler_gpus="${CUDA_VISIBLE_DEVICES:-}"
+        gpu="${SLURM_JOB_GPUS:-${CUDA_VISIBLE_DEVICES}}"
+        gpu="${gpu%%,*}"
+        # where the scheduler confines the job to its GPUs, nvidia-smi may number them
+        # from 0, so the allocation is reported rather than looked up by index
+        echo "GPU         : ${gpu} allocated by the scheduler; visible: $(nvidia-smi --query-gpu=index,name --format=csv,noheader | paste -sd ';' -)"
     else
         gpu="${physicsnemo_gpu_index:-0}"
+        if ! info=$(nvidia-smi -i "${gpu}" --query-gpu=index,name,memory.used,memory.total --format=csv,noheader 2>&1); then
+            echo "::error::GPU ${gpu} does not exist on $(hostname): ${info}"
+            echo "${smi}"
+            exit 1
+        fi
+        echo "GPU         : ${info}"
     fi
-    if ! info=$(nvidia-smi -i "${gpu}" --query-gpu=index,name,memory.used,memory.total --format=csv,noheader 2>&1); then
-        echo "::error::GPU ${gpu} does not exist on $(hostname): ${info}"
-        echo "${smi}"
-        exit 1
-    fi
-    echo "GPU         : ${info}"
 fi
 echo
 
@@ -182,7 +186,7 @@ case "${physicsnemo_runtime}" in
         done
         if [ -n "${gpu}" ]; then
             # a scheduler's CUDA_VISIBLE_DEVICES already names the allocation
-            cmd+=(--nv --env "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-${gpu}}")
+            cmd+=(--nv --env "CUDA_VISIBLE_DEVICES=${scheduler_gpus:-${gpu}}")
         else
             cmd+=(--env CUDA_VISIBLE_DEVICES=)
         fi

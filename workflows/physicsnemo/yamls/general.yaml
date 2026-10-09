@@ -38,7 +38,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: physicsnemo
           sparse_checkout:
             - workflows/physicsnemo/app
             - tools/utils
@@ -111,6 +111,9 @@ jobs:
             cat > custom.sh << 'PW_CUSTOM_EOF'
           ${{ inputs.service.custom_script }}
           PW_CUSTOM_EOF
+            if ! grep -q '[^[:space:]]' custom.sh || grep -qx '[[:space:]]*undefined[[:space:]]*' custom.sh; then
+              f_fail "The custom script is empty"
+            fi
           fi
           cat inputs.sh
       - name: Get the PhysicsNeMo Examples

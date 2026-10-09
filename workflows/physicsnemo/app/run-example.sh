@@ -75,7 +75,6 @@ EOF
 case "${example}" in
     darcy_fno|darcy_transolver)
         script=train_fno_darcy.py
-        # Darcy2D generates the training data on the GPU unless told otherwise
         if [ "${example}" = darcy_transolver ]; then
             script=train_transolver_darcy.py
             # the NGC image has no MLflow, which this example logs to: console and
@@ -84,6 +83,7 @@ case "${example}" in
                 "from physicsnemo.launch.logging.mlflow import initialize_mlflow" "initialize_mlflow = lambda **kwargs: None" \
                 "LaunchLogger.initialize(use_mlflow=True)" "LaunchLogger.initialize()"
         fi
+        # Darcy2D generates the training data on the GPU unless told otherwise
         f_patch "${script}" "dataloader = Darcy2D(" "dataloader = Darcy2D(device=dist.device, "
         # 0: about half an hour on one A30 (80 s per FNO pseudo-epoch, 350 s per Transolver one)
         epochs="${PHYSICSNEMO_EPOCHS:-0}"

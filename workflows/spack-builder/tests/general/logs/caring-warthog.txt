@@ -1,0 +1,17 @@
+Run caring-warthog: error (24m56s)
+
+Error annotations:
+
+  Error: build.sh exited 1 -- see the last === [build] === section above for the step that failed
+    in build > stream_output → Stream Output
+  Error: Build failed (status '1'). See run.*.out in /home/pwdemo.stefan/pw/jobs/caring-warthog/build
+    in verify → Confirm the build succeeded
+
+Failed jobs/steps:
+
+  verify > Confirm the build succeeded (error, 0s)
+    Error: Build failed (status '1'). See run.*.out in /home/pwdemo.stefan/pw/jobs/caring-warthog/build
+    build.sh exit status: 1
+    ✗ Error: Build failed (status '1'). See run.*.out in /home/pwdemo.stefan/pw/jobs/caring-warthog/build
+
+Summary: 1 job(s) failed, 1 step(s) failed

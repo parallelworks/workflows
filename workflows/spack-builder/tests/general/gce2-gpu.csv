@@ -1,0 +1,9 @@
+date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-09-17T18:20:47Z,partial,fail,ok,,03efc99,436820d,e9e6033,b461053,b461053,add-spack-builder,pwdemo.stefan,thorough-oryx,93,"run error: verify > Confirm the build succeeded (error, 0s)"
+2026-09-17T18:30:22Z,warm,fail,ok,,a0b00de,436820d,e9e6033,b9cfb8e,b9cfb8e,add-spack-builder,pwdemo.stefan,loving-firefly,47,"run error: verify > Confirm the build succeeded (error, 0s)"
+2026-09-17T19:52:55Z,warm,fail,ok,,12d9625,436820d,e9e6033,0d1f5db,0d1f5db,add-spack-builder,pwdemo.stefan,moral-ghost,63,"run error: verify > Confirm the build succeeded (error, 0s)"
+2026-09-17T19:58:10Z,warm,fail,ok,,3b52f0c,436820d,e9e6033,1f76f44,1f76f44,add-spack-builder,pwdemo.stefan,funky-pigeon,5303,"run error: verify > Confirm the build succeeded (error, 0s)"
+2026-09-17T23:51:04Z,warm,fail,ok,,ad9b3c0,436820d,e9e6033,865580b,865580b,add-spack-builder,pwdemo.stefan,hopeful-haddock,1652,"run error: verify > Confirm the build succeeded (error, 0s)"
+2026-09-18T01:23:44Z,warm,fail,ok,,d7f8f02,436820d,e9e6033,98ca593,98ca593,add-spack-builder,pwdemo.stefan,many-mako,291,"run error: verify > Confirm the build succeeded (error, 0s)"
+2026-09-18T01:37:37Z,warm,fail,ok,,45c6166,436820d,e9e6033,56a921d,56a921d,add-spack-builder,pwdemo.stefan,caring-warthog,1511,"run error: verify > Confirm the build succeeded (error, 0s)"
+2026-09-18T02:18:54Z,warm,pass,ok,307,4bf539e,436820d,e9e6033,5e21c99,5e21c99,add-spack-builder,pwdemo.stefan,welcome-deer,397,

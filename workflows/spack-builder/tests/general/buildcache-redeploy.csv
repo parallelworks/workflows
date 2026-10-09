@@ -1,0 +1,5 @@
+date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-09-17T16:10:34Z,partial,pass,ok,307,958c0c6,436820d,e9e6033,74c283c,74c283c,add-spack-builder,pwdemo.stefan,charming-mongoose,459,
+2026-09-18T00:01:55Z,warm,pass,ok,307,ad9b3c0,436820d,e9e6033,865580b,865580b,add-spack-builder,pwdemo.stefan,suited-condor,1042,
+2026-09-18T16:15:49Z,warm,pass,ok,307,b44e142,436820d,e9e6033,6a294ee,6a294ee,add-spack-builder,pwdemo.stefan,powerful-jaguar,184,
+2026-09-18T17:38:23Z,warm,pass,ok,307,7152e91,436820d,e9e6033,758b3d3,758b3d3,add-spack-builder,pwdemo.stefan,sure-civet,154,

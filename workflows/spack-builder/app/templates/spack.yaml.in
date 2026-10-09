@@ -1,0 +1,108 @@
+spack:
+  # unify:false lets three different MPI providers coexist in one environment.
+  concretizer:
+    unify: false
+    reuse: true
+
+  config:
+    install_tree:
+      # Pad the install root to a fixed width so cached binaries stay
+      # RELOCATABLE. Without it Spack can only move a package into a prefix no
+      # longer than the one it was built in, and refuses otherwise:
+      #   CannotGrowString: ... because the new prefix is longer. To fix this,
+      #   compile with more padding (config:install_tree:padded_length)
+      # That makes a build cache tied to the exact install root that produced it,
+      # which defeats archiving one and redeploying it on another cluster.
+      # 128 is Spack's conventional value and leaves headroom for any target root
+      # up to 128 characters.
+      #
+      # This was briefly removed after gmake@4.4.1 failed a padded build, but
+      # that was a misattribution: gmake, ncurses, openssl and libiconv all build
+      # cleanly at 128 with ~195-character install paths. The original failure
+      # ("config.status: could not create lib/Makefile" after mv of a temp file)
+      # is far more consistent with a stale stage directory from the preceding
+      # run than with path length.
+      padded_length: 128
+
+  packages:
+    all:
+      target: [__TARGET__]
+      providers:
+        mpi: [openmpi, mpich, intel-oneapi-mpi]
+    # Spack v1 makes compilers dependencies rather than a separate compilers.yaml,
+    # and a bare `all: require: "%gcc@..."` applies a dependency constraint to
+    # every package -- Spack warns about exactly that and then fails to
+    # concretize. The supported form is a requirement on each language virtual.
+    #
+    # THIS IS THE SINGLE SOURCE OF TRUTH FOR THE STACK COMPILER: build.sh parses
+    # the version out of the `c:` requirement below, installs it with the system
+    # compiler, and registers it before this environment is concretized.
+    c:
+      require: ["gcc@14.2.0"]
+    cxx:
+      require: ["gcc@14.2.0"]
+    fortran:
+      require: ["gcc@14.2.0"]
+    # MPI versions are pinned HERE, once, rather than in each spec. The gromacs
+    # and osu specs depend on `^openmpi` / `^mpich` / `^intel-oneapi-mpi` without
+    # a version, and under `unify: false` that concretized to the LATEST of each
+    # while the standalone MPI specs used their pins -- so the environment built
+    # two copies of every MPI and the modules disagreed with what gromacs was
+    # actually linked against (module load mpich/4.2.2 vs gromacs on mpich@5.0.1).
+    openmpi:
+      require: ["@5.0.10"]
+    mpich:
+      require: ["@4.2.2"]
+    intel-oneapi-mpi:
+      require: ["@2021.13.0"]
+    # --- fabric-specific package settings injected below ---
+__FABRIC_PACKAGES__
+
+  specs:
+    # --- MPIs (fabric-specific, injected) ---
+__MPI_SPECS__
+    # --- CUDA-aware MPI (GPU builds only; empty when BUILD_GPU is unset) ---
+__CUDA_AWARE_MPI_SPECS__
+    # --- GROMACS CPU, one build per MPI (fabric-specific, injected) ---
+__GROMACS_SPECS__
+    # --- GROMACS GPU (only when BUILD_GPU=1; empty otherwise) ---
+__GROMACS_GPU_SPECS__
+    # --- validation tool. One spec per MPI: under unify:false a bare
+    #     `osu-micro-benchmarks` concretizes against a single provider, so
+    #     asking for it once silently built it for openmpi alone.
+    - "osu-micro-benchmarks ^openmpi"
+    - "osu-micro-benchmarks ^mpich"
+    - "osu-micro-benchmarks ^intel-oneapi-mpi"
+
+  view: false
+
+  modules:
+    default:
+      enable: [tcl]
+      roots:
+        tcl: __MODULE_ROOT__
+      tcl:
+        hash_length: 0
+        projections:
+          all: '{name}/{version}-{compiler.name}-{compiler.version}'
+          ^mpi: '{name}/{version}-{^mpi.name}-{^mpi.version}'
+        all:
+          autoload: direct
+        # `exclude:` is filled in by build.sh from the concretized environment's
+        # actual externals (see external-modules.py). It cannot be hardcoded:
+        # which packages are external depends on what `spack external find` turns
+        # up on each image, and leaving one in makes `module load` fail outright.
+        #
+        # `include:` WINS over `exclude:` (modules/common.py: `not include_matches
+        # and (exclude_matches or excluded_as_implicit)`), and `gcc` is the entry
+        # that does the work here: the stack compiler is an external, so build.sh
+        # excludes it with all the others, and this line is the only reason it
+        # gets a modulefile at all. Drop it and the stack can be RUN but nothing
+        # can be COMPILED against it. Spack files that modulefile under the
+        # external's generic target, i.e. a different tree from the stack's.
+        include:
+          - gcc
+          - openmpi
+          - mpich
+          - intel-oneapi-mpi
+          - gromacs

@@ -1,0 +1,50 @@
+# fabric-oracle.yaml — Oracle OCI RDMA cluster network via UCX over verbs.
+# OCI HPC/GPU shapes expose Mellanox verbs (often via OFED). Same UCX path as Azure.
+#
+# Why these pins, and why they live in `packages:` requirements rather than in the
+# spec strings (all three were learned by BUILDING -- every one of them
+# concretizes cleanly and then fails, so a green DAG proves nothing here):
+#
+#   openmpi@5.0.10 : 5.0.5 will not build against libfabric 2.x. Its OFI MTL uses
+#     container_of(), which libfabric 2.0 removed from its public headers ->
+#     "implicit declaration of function 'container_of'". Spack only constrains
+#     libfabric@1 for openmpi@:4.0, so the solver pairs 5.0.5 with a site
+#     libfabric 2.4.0 quite happily and the break appears only at compile time.
+#
+#   mpich without +slurm : `--with-slurm` needs Slurm headers, and slurm-devel is
+#     absent on images shipping only the Slurm runtime -> "configure: error:
+#     --with-slurm is given but not found". pmi=pmi2 delivers the integration
+#     that matters (srun --mpi=pmi2) without needing any headers.
+#
+#   variants as requirements : gromacs and osu depend on a bare `^openmpi` /
+#     `^mpich`. Under `unify: false` that concretized to a DIFFERENT node than the
+#     standalone MPI spec -- latest version, default variants -- so the
+#     environment built two copies of every MPI and gromacs ended up linked
+#     against an openmpi with no Slurm support, while the module tree advertised
+#     the other one. Stating version and variants as package requirements makes
+#     every consumer resolve to the same instance.
+fabric:
+  packages:
+    ucx:
+      variants: +rdmacm +verbs +rc +ud +dc +mlx5-dv +ib-hw-tm
+      require:
+      - '@1.19.1'
+    openmpi:
+      require:
+      - schedulers=slurm fabrics=ucx
+    mpich:
+      require:
+      - device=ch4 netmod=ucx pmi=pmi2
+  mpi_specs:
+  - openmpi
+  - mpich
+  - intel-oneapi-mpi
+  gromacs_specs:
+  - gromacs@2025.4 +mpi +openmp ~cuda ^openmpi ^fftw+openmp
+  - gromacs@2025.4 +mpi +openmp ~cuda ^mpich ^fftw+openmp
+  - gromacs@2025.4 +mpi +openmp ~cuda ^intel-oneapi-mpi ^fftw+openmp
+  cuda_aware_mpi_specs:
+  - openmpi +cuda schedulers=slurm fabrics=ucx ^ucx@1.19.1 +verbs +rdmacm +dc +cuda +gdrcopy ^rdma-core
+    ^cuda
+  gromacs_gpu_specs:
+  - gromacs@2025.4 +mpi +openmp +cuda cuda_arch=__CUDA_ARCH__ ^openmpi+cuda ^cuda ^fftw+openmp

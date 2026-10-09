@@ -1,0 +1,84 @@
+# fabric-gcp.yaml — GCP H3/C3 Titanium via libfabric/OFI; RoCE instances via verbs.
+# When Google's HPC image ships a libfabric with the appropriate provider, register
+# it external below (adjust prefix to the image's install path). Otherwise Spack
+# builds libfabric with verbs+tcp and OpenMPI/MPICH use it over RoCE.
+#
+# Why these pins, and why they live in `packages:` requirements rather than in the
+# spec strings (all three were learned by BUILDING -- every one of them
+# concretizes cleanly and then fails, so a green DAG proves nothing here):
+#
+#   openmpi@5.0.10 : 5.0.5 will not build against libfabric 2.x. Its OFI MTL uses
+#     container_of(), which libfabric 2.0 removed from its public headers ->
+#     "implicit declaration of function 'container_of'". Spack only constrains
+#     libfabric@1 for openmpi@:4.0, so the solver pairs 5.0.5 with a site
+#     libfabric 2.4.0 quite happily and the break appears only at compile time.
+#
+#   mpich without +slurm : `--with-slurm` needs Slurm headers, and slurm-devel is
+#     absent on images shipping only the Slurm runtime -> "configure: error:
+#     --with-slurm is given but not found". pmi=pmi2 delivers the integration
+#     that matters (srun --mpi=pmi2) without needing any headers.
+#
+#   variants as requirements : gromacs and osu depend on a bare `^openmpi` /
+#     `^mpich`. Under `unify: false` that concretized to a DIFFERENT node than the
+#     standalone MPI spec -- latest version, default variants -- so the
+#     environment built two copies of every MPI and gromacs ended up linked
+#     against an openmpi with no Slurm support, while the module tree advertised
+#     the other one. Stating version and variants as package requirements makes
+#     every consumer resolve to the same instance.
+#
+# OFI-only, deliberately. This fragment previously configured UCX with
+# "+rdmacm +verbs" while its own rationale said GCP exposes OFI WITHOUT a classic
+# verbs device -- and that contradiction is not theoretical: on a GCE cluster
+# detection reports HAS_VERBS=0, the image ships neither
+# /usr/include/rdma/rdma_cma.h nor infiniband/verbs.h, and ucx@1.19.1 failed with
+#   configure: error: RDMACM requested but required file (rdma/rdma_cma.h)
+#   could not be found in /usr
+# The registered rdma-core external supplies runtime libraries only, not headers
+# (the same shape as the missing slurm-devel that forced mpich off +slurm).
+#
+# A GCP cluster that really does have InfiniBand/RoCE wants UCX over verbs, which
+# is what the azure/oracle fragments describe; select one with the manual
+# overrides rather than widening this one.
+fabric:
+  packages:
+    libfabric:
+      variants: fabrics=tcp,shm,rxm,rxd,sockets,udp
+    openmpi:
+      require:
+      - schedulers=slurm fabrics=ofi
+    mpich:
+      require:
+      - device=ch4 netmod=ofi pmi=pmi2
+  mpi_specs:
+  - openmpi
+  - mpich
+  - intel-oneapi-mpi
+  gromacs_specs:
+  - gromacs@2025.4 +mpi +openmp ~cuda ^openmpi ^fftw+openmp
+  - gromacs@2025.4 +mpi +openmp ~cuda ^mpich ^fftw+openmp
+  - gromacs@2025.4 +mpi +openmp ~cuda ^intel-oneapi-mpi ^fftw+openmp
+  # UCX WITHOUT verbs/rdmacm/dc, unlike azure and oracle. This spec used to carry
+  # "+verbs +rdmacm +dc", contradicting this fragment's own rationale above, and
+  # it fails for exactly the reason that rationale gives -- verified on gce2 run
+  # hopeful-haddock:
+  #   checking for /usr/include/rdma/rdma_cma.h... no
+  #   configure: error: RDMACM requested but required file (rdma/rdma_cma.h)
+  #   could not be found in /usr
+  # The registered rdma-core external ships runtime libraries without headers, so
+  # nothing on this image can satisfy +rdmacm. What is kept is what a GPU node
+  # actually uses here: +cuda and +gdrcopy give UCX its cuda_copy, cuda_ipc and
+  # gdr_copy transports, which is what matters on a node with several GPUs and no
+  # RDMA fabric. Inter-node falls back to tcp.
+  #
+  # fabrics= is repeated on the gromacs spec below ON PURPOSE. Under
+  # `unify: false` a bare `^openmpi+cuda` concretizes to a DIFFERENT node than
+  # this one -- in that same run gromacs+cuda linked against openmpi/i2ldbp3
+  # while this spec built openmpi/3s5drde -- which is the same two-copies-of-every-MPI
+  # trap the header describes for the CPU path, reappearing on the GPU path
+  # because only the versions were lifted into `packages:`, not the variants.
+  cuda_aware_mpi_specs:
+  - openmpi +cuda schedulers=slurm fabrics=ofi,ucx ^libfabric ^ucx@1.19.1 ~verbs ~rdmacm ~dc +cuda +gdrcopy
+    ^cuda
+  gromacs_gpu_specs:
+  - gromacs@2025.4 +mpi +openmp +cuda cuda_arch=__CUDA_ARCH__ ^openmpi+cuda schedulers=slurm fabrics=ofi,ucx
+    ^ucx@1.19.1 ~verbs ~rdmacm ~dc +cuda +gdrcopy ^cuda ^fftw+openmp

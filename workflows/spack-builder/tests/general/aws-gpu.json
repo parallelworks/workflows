@@ -1,0 +1,29 @@
+{
+  "_test": {
+    "timeout_s": 21600,
+    "warm_marker": [
+      "${HOME}/spack/bin/spack",
+      "${HOME}/spack-buildcache/v3"
+    ],
+    "leftover_patterns": ["pw endpoints", "spack install", "http.server"]
+  },
+  "cluster": {
+    "resource": "aws",
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "gpu",
+      "time": "00:30:00",
+      "gpus": 0
+    }
+  },
+  "service": {
+    "spack_version": "v1.2.2",
+    "install_prefix": "${HOME}/spack",
+    "buildcache_path": "${HOME}/spack-buildcache",
+    "build_jobs": 8,
+    "concretize_only": false,
+    "build_gpu": true,
+    "use_overrides": false
+  }
+}

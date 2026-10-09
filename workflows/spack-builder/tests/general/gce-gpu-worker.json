@@ -1,0 +1,35 @@
+{
+  "_test": {
+    "timeout_s": 36000,
+    "warm_marker": [
+      "${HOME}/spack-gpu-on-worker-long-path-name/bin/spack",
+      "${HOME}/spack-buildcache/v3"
+    ],
+    "leftover_patterns": [
+      "pw endpoints",
+      "spack install",
+      "http.server"
+    ]
+  },
+  "cluster": {
+    "resource": "gce",
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "gpu",
+      "time": "00:30:00",
+      "build_time": "08:00:00",
+      "gpus": 0
+    },
+    "build_on": "compute"
+  },
+  "service": {
+    "spack_version": "v1.2.2",
+    "install_prefix": "${HOME}/spack-gpu-on-worker-long-path-name",
+    "buildcache_path": "${HOME}/spack-buildcache",
+    "build_jobs": 13,
+    "concretize_only": false,
+    "build_gpu": true,
+    "use_overrides": false
+  }
+}

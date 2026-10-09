@@ -1,0 +1,2 @@
+date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-09-17T16:10:16Z,partial,fail,ok,,958c0c6,436820d,e9e6033,74c283c,74c283c,add-spack-builder,pwdemo.stefan,creative-rat,5903,run canceled: Run creative-rat: canceled (1h38m)

@@ -1,0 +1,15 @@
+# packages.yaml — site-scope baseline, copied into $SPACK_ROOT/etc/spack by
+# controller.sh and then merged with the output of `spack external find`.
+#
+# This file carries POLICY, not versions. Pinning versions here was the previous
+# approach and it was wrong on the first image it met: the entries claimed
+# slurm@23.11.0 +pmix, pmix@4.2.6 and rdma-core@46.0, while the cluster actually
+# had slurm@23.11.9 with no pmix package at all and rdma-core@61.0. Let
+# `external find` report what is really installed; state here only what must
+# never be built from source.
+#
+# slurm: building it would give the MPIs a launcher that is not the one running
+# the cluster, so PMI handshakes fail at runtime rather than at build time.
+packages:
+  slurm:
+    buildable: false

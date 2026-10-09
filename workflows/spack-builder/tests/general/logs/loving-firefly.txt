@@ -1,0 +1,17 @@
+Run loving-firefly: error (40s)
+
+Error annotations:
+
+  Error: build.sh exited 127 -- see the last === [build] === section above for the step that failed
+    in build > stream_output → Stream Output
+  Error: Build failed (status '127'). See run.*.out in /home/pwdemo.stefan/pw/jobs/loving-firefly/build
+    in verify → Confirm the build succeeded
+
+Failed jobs/steps:
+
+  verify > Confirm the build succeeded (error, 0s)
+    Error: Build failed (status '127'). See run.*.out in /home/pwdemo.stefan/pw/jobs/loving-firefly/build
+    build.sh exit status: 127
+    ✗ Error: Build failed (status '127'). See run.*.out in /home/pwdemo.stefan/pw/jobs/loving-firefly/build
+
+Summary: 1 job(s) failed, 1 step(s) failed

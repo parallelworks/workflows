@@ -49,22 +49,6 @@ checkout and environment check (lock-serialized install), its own submitter job,
 and a `case/case.foam` that opens in ParaView, for every design of every
 generation.
 
-### Compared with the single-app version
-
-The loop, batching, convergence and failure handling are unchanged. What moved:
-`optimizer.py`, `driver.py` and `install-dakota.sh` to `workflows/dakota/app`
-(problem-agnostic now), the OpenFOAM files to `workflows/openfoam-naca/app`,
-`prepare-env.sh` and the Miniforge bootstrap to `tools/utils/`. The OpenFOAM
-workflow writes the `case.sh` that records `exit_code`, where the driver used
-to. Each worker is a three-job subworkflow instead of one submitter call,
-roughly 10 s more per case on the login node. The installs are separate
-prefixes (`openfoam-naca/miniforge`, `dakota/miniforge`). This directory has
-no `app/`: preprocessing checks out `workflows/dakota/app` for the server, plus
-`workflows/openfoam-naca/app` and `tools/utils` to make both environment checks
-once before the loop starts. Environment commands that do not deliver the tools
-(a site module that only sets a variable) fail the run there, with the tools'
-own output; left to the workers, the loop re-proposed the generation once and
-ended `FAILED` with nothing but "no case ran" at the top level.
 
 ## The live Pareto front
 

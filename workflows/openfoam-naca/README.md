@@ -56,8 +56,9 @@ params file**, it builds it from the file and the form:
   stops the run instead of solving at the default camber.
 
 So a workflow that calls this one only has to write these names into
-`params.in`. For example, doe-openfoam and dakota-openfoam write the names of
-their **Design variables**.
+`params.in`. For example, [`doe-openfoam`](../doe-openfoam/README.md) and
+[`dakota-openfoam`](../dakota-openfoam/README.md) write the names of their
+**Design variables**.
 
 ## What a run leaves
 

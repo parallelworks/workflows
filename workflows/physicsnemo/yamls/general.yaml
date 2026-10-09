@@ -38,7 +38,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: physicsnemo-docker-space
           sparse_checkout:
             - workflows/physicsnemo/app
             - tools/utils
@@ -536,9 +536,10 @@ jobs:
                 label: Singularity / Apptainer
             tooltip: |
               Docker: the image is pulled on the node that trains (sudo docker when the user
-              is not in the docker group). Singularity: the image is built once into a SIF in
-              the install directory on the login node (13 GB, needs ~70 GB free while
-              building), for clusters without Docker.
+              is not in the docker group) into Docker's own storage under /var/lib, which needs
+              about 50 GB free; the job fails at once when it has less. Singularity: the image is
+              built once into a SIF in the install directory on the login node (13 GB, needs
+              ~70 GB free while building), for clusters without Docker or with a small /var.
           image:
             type: string
             label: Container image

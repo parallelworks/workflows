@@ -1,0 +1,36 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "endpoint": true,
+    "warm_marker": [
+      "${HOME}/pw/software/physicsnemo/src/physicsnemo-v1.1.0/.complete",
+      "${HOME}/pw/software/physicsnemo/miniforge/envs/tensorboard/bin/python",
+      "${HOME}/pw/software/physicsnemo/containers/physicsnemo-25.06.sif"
+    ],
+    "leftover_patterns": [
+      "pw endpoints",
+      "tensorboard-server.py",
+      "run-example.sh"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/awsgpu",
+    "scheduler": true,
+    "gpus": 0,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "gpu",
+      "time": "01:00:00"
+    }
+  },
+  "service": {
+    "mode": "example",
+    "example": "darcy_fno",
+    "epochs": 2,
+    "device": "gpu",
+    "tensorboard": true
+  },
+  "software": {
+    "runtime": "singularity"
+  }
+}

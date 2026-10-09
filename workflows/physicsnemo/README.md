@@ -86,7 +86,11 @@ GPUs: a few minutes on 8 cores.
   the job pulls it every time). `sudo docker` is used when the user is not in the
   `docker` group. The container runs as the workflow user, so everything it writes in
   the job directory is the user's, and it is named `physicsnemo-<run slug>`;
-  cancelling the run removes it.
+  cancelling the run removes it. **Docker stores images under `/var/lib`, not in the
+  install directory**: about 50 GB for this image with Docker's containerd image store
+  (the default since Docker 29, which keeps the layers and the unpacked image), 35 GB
+  with the classic one. Where `/var` is a small partition of its own (awsgpu: 15 GB) the
+  job fails at once saying so, before downloading anything; use Singularity there.
 - **Singularity / Apptainer**: for clusters without Docker. The login node builds the
   SIF from the same image once (7 minutes on a 20-core server, about 70 GB free needed in the install
   directory while building, 13 GB afterwards); the compute nodes read it from the

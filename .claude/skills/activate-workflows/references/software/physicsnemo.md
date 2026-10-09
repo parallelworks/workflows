@@ -57,6 +57,13 @@
 - Docker 29 with the containerd image store (gcpsmall's compute nodes) keeps the
   compressed layers and the unpacked image: ~48 GB of disk for 25.06, and the pull
   took ~29 min on a fresh node (2026-10-09).
+- **That store is `/var/lib/containerd`, whatever the install directory says.** awsgpu's
+  login node has `/var` as a 15 GB partition (13 GB free) beside a 160 GB `/home`: the
+  pull downloaded for minutes, failed with `no space left on device` in
+  `.../io.containerd.content.v1.content/ingest/`, and a plain retry loop repeated it twice
+  (2026-10-09). `train.sh` now checks the store's free space first (the containerd store
+  when `docker info` shows `io.containerd.snapshotter`, else `DockerRootDir`) and refuses,
+  pointing at Singularity, whose SIF goes to the install directory.
 
 ## TensorBoard from conda-forge
 

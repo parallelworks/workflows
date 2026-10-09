@@ -48,8 +48,9 @@ A pasted table's header uses the same names.
 
 - Leave a variable out of **Design variables**, and every case uses
   openfoam-naca's default for it, such as 5° for the angle.
-- Keep a variable but leave its column out of the table, and it is held at the
-  middle of its bounds.
+- With **Your own cases (CSV)**, a variable that is in **Design variables** but
+  has no column in the table gets the middle of its bounds in every case. With
+  `thickness 0.08 0.18` and no `thickness` column, every case uses 0.13.
 - A name misspelled in **Design variables** is ignored by the solver, and every
   case uses the default, with no warning. A table column that matches no
   variable stops the run instead.

@@ -47,8 +47,10 @@ max_camber,camber_position,thickness,angle_of_attack
 
 - Commas, tabs (a paste from a spreadsheet), semicolons or spaces separate the
   values.
-- A variable without a column is held at the middle of its bounds in **Design
-  variables**. A value outside the bounds is kept, with a warning.
+- A variable that is in **Design variables** but has no column in the table
+  gets the middle of its bounds in every case. With `thickness 0.08 0.18` and no
+  `thickness` column, every case uses 0.13.
+- A value outside its bounds is kept, with a warning.
 - Case and status columns and Design Explorer's `out:` and `img:` columns are
   skipped, so a previous run's `doe.csv` or Design Explorer's `data.csv` pastes
   as it is; so does doe-openfoam's `results.csv`. Any other unknown column stops

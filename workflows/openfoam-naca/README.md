@@ -41,8 +41,11 @@ form, and the same names are the lines of a `params.in`:
 | `thickness` | Thickness | 0.12 | last two NACA digits / 100 |
 | `angle_of_attack` | Angle of attack | 5 | degrees |
 
-With **Design from a params file**, the case's `params.in` is built from the file
-and the form:
+The other `case` fields, `mesh_scale`, `case_dir` and `params_file`, are run
+settings, not design names: a `mesh_scale` line in `params.in` is ignored.
+
+The **Create the Case** step writes the case's `params.in`. With **Design from a
+params file**, it builds it from the file and the form:
 
 - A name the file lists overrides the form field of that name.
 - A name the file leaves out keeps the form's value.

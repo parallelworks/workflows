@@ -14,8 +14,13 @@ and run its own evaluator on the cases. For example,
 
 **Sampling method** spreads **Number of cases** designs over the bounds in
 **Design variables**, one `<name> <lower> <upper>` per line. Equal bounds hold a
-variable fixed. The form's default is the NACA airfoil box of openfoam-naca, as
-an example; the names are whatever your evaluator reads.
+variable fixed.
+
+**The names are the contract with the evaluator.** Each name becomes a line of
+every `params.in`, written exactly as you typed it, and a pasted table's header
+uses the same names. So use the names your evaluator reads. For example, the
+form's default box uses the four names
+[`openfoam-naca`](../openfoam-naca/README.md#design-names) reads.
 
 | Method | How it spreads the designs | Cases |
 |---|---|---|

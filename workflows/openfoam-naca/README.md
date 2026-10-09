@@ -24,10 +24,35 @@ design and shows the images in Design Explorer.
 | | `angle_of_attack` | incidence in degrees (default 5) |
 | | `mesh_scale` 1–6 | multiplies every cell count; cost grows roughly with the cube (table below) |
 | | `case_dir` | where to build and solve; empty = `case/` under the run's job directory |
-| | `params_file` | a Dakota-style params file (`<value> <name>` per line): **its values override the form fields of the same name**, fields it does not list keep the form's values |
+| | `params_file` | a Dakota-style params file (`<value> <name>` per line): **its values override the form fields of the same name**, fields it does not list keep the form's values ([Design names](#design-names)) |
 | `postprocessing` | `generate_images` | off by default; on, the solved case is rendered to PNG images with ParaView ([below](#images-of-the-results)) |
 | `software` | `openfoam_load` | commands that put OpenFOAM on PATH (`module load openfoam/2412`, `source .../etc/bashrc`); empty installs v2412 from conda-forge under `${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca` (~5 min once) |
 | | `paraview_load` | shown with images on: commands that put `pvpython` on PATH (`module load paraview/5.13`); empty downloads the official ParaView 6.1.1 binaries under `.../openfoam-naca/paraview` (x86_64, ~830 MB once, 2.7 GB on disk) |
+
+## Design names
+
+The case reads its design by name. The four names are the `case` fields of the
+form, and the same names are the lines of a `params.in`:
+
+| Name | Form field | Default | Meaning |
+|---|---|---|---|
+| `max_camber` | Maximum camber | 0.02 | first NACA digit / 100 |
+| `camber_position` | Camber position | 0.4 | second NACA digit / 10 |
+| `thickness` | Thickness | 0.12 | last two NACA digits / 100 |
+| `angle_of_attack` | Angle of attack | 5 | degrees |
+
+With **Design from a params file**, the case's `params.in` is built from the file
+and the form:
+
+- A name the file lists overrides the form field of that name.
+- A name the file leaves out keeps the form's value.
+- Any other name stays in `params.in`, and the solver ignores it. A misspelled
+  name such as `max_cambr` is ignored too: the case uses the form's value, with
+  no warning.
+
+So a workflow that calls this one only has to write these names into
+`params.in`. For example, doe-openfoam and dakota-openfoam write the names of
+their **Design variables**.
 
 ## What a run leaves
 

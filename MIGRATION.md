@@ -628,6 +628,12 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   `README.md` and `thumbnails/pydio-cells.png` here. Its form changed (`cluster`/`service`
   groups), so saved inputs of the old item do not carry over.
 
+- The marketplace item `physicsnemo` ("PhysicsNemo Training", v1.0.0, featured) pins
+  `parallelworks/activate-physicsnemo@main`'s `workflow.yaml`, `README.md` and
+  `thumbnail.png` → `workflows/physicsnemo/yamls/general.yaml`, `README.md` and
+  `thumbnails/physicsnemo.png` here. Its form changed (`cluster`/`service`/`software` groups,
+  three examples instead of five), so saved inputs of the old item do not carry over.
+
 ## Test results (2026-08-31, repo public, canary pushed)
 
 Method: `pw workflows run <abs path to yamls/general.yaml> -i …` from this repo;
@@ -1164,3 +1170,84 @@ the endpoint (the proxy forwards `Authorization`, which the web client sets itse
 signed in; scripted requests can only authenticate to the platform with that header),
 PBS, a path-based endpoint, a host without `sudo`. The checkout points at `canary` for
 the merge.
+
+## physicsnemo (2026-10-09, from parallelworks/activate-physicsnemo)
+
+`workflows/physicsnemo/` is the port of `parallelworks/activate-physicsnemo@main` (4318e27):
+NVIDIA PhysicsNeMo examples trained in the NGC container, with TensorBoard. The source
+cloned its own repository into a fixed run directory (`~/pw/activate-physicsnemo`, shared
+by every run), ran `marketplace/job_runner/v4.0`, and served TensorBoard through a platform
+session (`sessions:` block, `parallelworks/update-session`, a fixed port 6006, a `<base>`
+injecting proxy for the `/me/session/...` prefix) from a `sudo docker` container on the
+login node, kept alive by a polling step until 60 s after the training. Here it is the
+repository's batch shape (`benchmarks`): preprocessing → `script_submitter` → a results
+job, with TensorBoard started detached on the login node as an endpoint
+(`dakota-openfoam`'s Pareto page).
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `setup`, `preflight`, `pull_container`, `run_example`, `tensorboard_session`; inputs `resource`, `submit_to_scheduler`, `example`, `training`, `tensorboard`, `container`, `slurm`, `pbs`, `advanced_settings`) | `yamls/general.yaml` (`preprocessing`, `training` = `script_submitter/v3.6/general.yaml`, `results`, `stop_server_if_unhealthy`; groups `cluster`, `service`, `software`; saved inputs `cpu_smoke_test`) |
+| `start_service.sh`, `lib/functions.sh`, `clean.sh` | `app/train-template.sh` (GPU check, Docker or Singularity launch as the user, `cancel.sh`, `train.exit`) |
+| `scripts/run_example.sh`, `examples/*.sh` (one per example, each cloning PhysicsNeMo inside the container) | `app/run-example.sh` (copies the example from the tree `app/install-examples.sh` fetched once on the login node, patches it, trains) |
+| `scripts/tb_metrics_writer.py` (in the container, torch's SummaryWriter), `scripts/tb_proxy.py` | `app/tensorboard-server.py` + `app/metrics.py` (login node, scalars and figures from the log, TensorBoard in-process), `app/install-tensorboard.sh` |
+| — | `app/install-container.sh` (Singularity: the SIF built once), `app/summarize.py` (`results/metrics.csv`, outputs) |
+| `README.md`, `thumbnail.png` | `README.md` rewritten, `thumbnails/physicsnemo.png` |
+
+Changes beyond the paths:
+
+- **The examples.** Of the five, only `darcy_fno` ran as written: `ldc_pinns` died on its
+  Hydra overrides whenever epochs or batch size were set (`training.max_steps`,
+  `batch_size` are not in its config); `gray_scott_rnn` and `darcy_physics_informed` called
+  `train.py`/`train_fno_darcy.py`, which those examples do not have, and need a 22 GB Zenodo
+  dataset and a Google Drive one; `vortex_shedding_mesh_reduced` needs a 1.7 GB NGC dataset
+  and a second training stage. The curated set is now the three that need no data:
+  `darcy_fno`, `darcy_transolver` (new; patched to log without MLflow, absent from the
+  image) and `ldc_pinns` (patched to take an iteration count and report every 1 %). Anything
+  else runs as **My own script**, with the examples tree in `${PHYSICSNEMO_SRC}`.
+- **No internet on the training node**: the examples (`examples/` of the `v1.1.0` tag) are
+  fetched once on the login node into `<install dir>/physicsnemo/src/`; the source cloned the
+  whole repository inside the container on every run.
+- **Per-run directories**: everything lives in the run's job directory (`work/`, `results/`);
+  the source's shared run directory let two runs clobber each other, and its preflight and
+  `clean.sh` removed every container named `physicsnemo*` on the host, other users' included.
+  The container is `physicsnemo-<run slug>`, runs as the workflow user (the source's
+  `sudo docker` left root-owned files in the user's directory) and is removed on a cancel.
+- **Singularity/Apptainer** joins Docker, for clusters without it; the source's rootless
+  Docker mode was dropped. **CPU** joins GPU (Darcy2D is given the training device, it
+  defaulted to `cuda`); `device: gpu` fails the job at once with `nvidia-smi`'s message.
+  Scheduled jobs request `--gres=gpu:N` / `select=1:ngpus=N` ahead of the form's directives.
+- **TensorBoard** runs from a conda-forge env on the login node, not from the 31 GB image
+  (which the login node of a cluster may not have), on a subdomain endpoint (no base-path
+  proxy), and outlives the run until `pw endpoints delete`. The source's TensorBoard step
+  read `inputs.container.image`, an input its form does not define (`container.docker_image`).
+- **Exit status**: `train.exit` and the results job fail the run when the training fails;
+  the source never checked the training's exit status. Outputs: the last value of each metric.
+- **Length**: `epochs: 0` trains about half an hour on an A30 (20 pseudo-epochs for the
+  FNO, 4 for the Transolver, measured at 80 s and 350 s each); the LDC default stays at the
+  example's 10000 iterations (~12 min).
+
+`general` only (Docker is absent on the HPCMP and NOAA systems; their Singularity would need
+a staged SIF, which the form already accepts).
+
+**Tests (2026-10-09, branch `physicsnemo`; rows in `workflows/physicsnemo/tests/general/*.csv`).**
+Before testing, a30gpuserver's GPU was unusable (`Driver/library version mismatch` after an
+unattended NVIDIA upgrade); the module was reloaded with the owner's approval (pitfalls.md).
+
+| Test | Result |
+|---|---|
+| `a30-docker-gpu` (FNO, 4 pseudo-epochs, A30, Docker) | PASS `exciting-vervet` (cold: examples and TensorBoard installed; 427 s; validation figure, checkpoints, `train/loss` live in TensorBoard during the run) |
+| `a30-docker-transolver` (2 pseudo-epochs) | FAIL `alive-shepherd` (`No module named 'mlflow'`), fixed; PASS `elegant-moth` (803 s) |
+| `a30-docker-ldc-pinns` (1000 iterations) | PASS `cute-mackerel` (162 s, 11 flow-field figures) |
+| `a30-docker-custom` (the form's default script) | PASS `neat-bee` (427 s) |
+| `a30-singularity-gpu` (FNO, 2 pseudo-epochs, SIF built by the run) | PASS `supreme-leopard` (693 s; the 13 GB SIF built in 7 min) |
+| `gcp-compute-docker-cpu` (SLURM `compute` partition, CPU, `cpu_smoke_test` sizes) | FAIL `intent-crawdad` (TensorBoard needs `setuptools<81`), fixed; PASS `fun-rattler` (2051 s: node boot, then a 29 min image pull on the fresh node; 40 s per pseudo-epoch) |
+| `gcp-controller-no-gpu` (`device: gpu` on a login node without one, `_test.expect: error`) | PASS `mutual-piglet` (22 s, the job failed at the GPU check, nothing pulled) |
+
+Manual: cancelling mid-training on gcpsmall (`assuring-meerkat`, SLURM) and on a30
+(`sound-crayfish`, Docker on the login node, a Transolver with the default length, which
+ran `max_pseudo_epochs=4`) ended the job, removed the container (`docker ps -a` empty on the
+node, GPU memory freed) and left TensorBoard serving until `pw endpoints delete`, after which
+no process remained; cancelling during preprocessing (`intimate-chamois`) ran
+`stop_server_if_unhealthy`, which deleted the half-registered endpoint and killed the
+server. Not exercised: PBS, a scheduled job on a GPU partition, Singularity on a compute
+node, a multi-GPU node with `gpu_index` > 0. The checkout points at `canary` for the merge.

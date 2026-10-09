@@ -38,7 +38,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: physicsnemo
+          branch: canary
           sparse_checkout:
             - workflows/physicsnemo/app
             - tools/utils
@@ -534,7 +534,7 @@ jobs:
             tooltip: |
               Docker: the image is pulled on the node that trains (sudo docker when the user
               is not in the docker group). Singularity: the image is built once into a SIF in
-              the install directory on the login node (about 17 GB, needs ~70 GB free while
+              the install directory on the login node (13 GB, needs ~70 GB free while
               building), for clusters without Docker.
           image:
             type: string

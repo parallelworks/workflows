@@ -88,8 +88,8 @@ GPUs: a few minutes on 8 cores.
   the job directory is the user's, and it is named `physicsnemo-<run slug>`;
   cancelling the run removes it.
 - **Singularity / Apptainer**: for clusters without Docker. The login node builds the
-  SIF from the same image once (20–40 minutes, about 70 GB free needed in the install
-  directory while building, 17 GB afterwards); the compute nodes read it from the
+  SIF from the same image once (7 minutes on a 20-core server, about 70 GB free needed in the install
+  directory while building, 13 GB afterwards); the compute nodes read it from the
   shared filesystem. Or give the path of a SIF built elsewhere.
 
 GPU: Docker gets `--gpus device=<n>`, Singularity `--nv`. On a scheduled job the GPU

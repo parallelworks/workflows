@@ -62,7 +62,7 @@ else
     export SINGULARITY_TMPDIR="${scratch}/tmp" APPTAINER_TMPDIR="${scratch}/tmp"
     export SINGULARITY_CACHEDIR="${scratch}/cache" APPTAINER_CACHEDIR="${scratch}/cache"
     mkdir -p "${SINGULARITY_TMPDIR}" "${SINGULARITY_CACHEDIR}"
-    echo "::notice::Building ${sif} from docker://${image} with ${runtime} (once; the 25.06 image takes 20-40 minutes)"
+    echo "::notice::Building ${sif} from docker://${image} with ${runtime} (once; 7 minutes for the 25.06 image on a 20-core server with a fast link)"
     start=$(date +%s)
     if ! "${runtime}" build --force "${sif}.partial" "docker://${image}"; then
         rm -rf "${scratch}" "${sif}.partial"

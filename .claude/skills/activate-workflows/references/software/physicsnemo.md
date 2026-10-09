@@ -15,7 +15,9 @@
   of github.com/NVIDIA/physicsnemo. A sparse checkout of `examples/` is ~10 MB (the
   repository ~250 MB).
 - A SIF needs the layers, the unpacked tree and the squashfs at once: ~65-70 GB free
-  while building. gcpsmall's login node (56 GB free on the 100 GB disk that also holds
+  while building, 13 GB afterwards; `singularity build` from `docker://` took 7 minutes
+  on a30gpuserver (Apptainer 1.3.4 as `singularity`, 20 cores) and the SIF runs the examples with `--nv`
+  as the user, unchanged. gcpsmall's login node (56 GB free on the 100 GB disk that also holds
   `/home`) cannot build it; there Docker on the compute nodes works (67 GB free each),
   pulling the image on every fresh cloud node.
 - Run the container as the user (`docker run --user $(id -u):$(id -g)` with

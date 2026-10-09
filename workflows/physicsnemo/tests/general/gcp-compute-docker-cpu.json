@@ -1,0 +1,36 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "endpoint": true,
+    "warm_marker": [
+      "${HOME}/pw/software/physicsnemo/src/physicsnemo-v1.1.0/.complete",
+      "${HOME}/pw/software/physicsnemo/miniforge/envs/tensorboard/bin/python"
+    ],
+    "leftover_patterns": [
+      "pw endpoints",
+      "tensorboard-server.py",
+      "run-example.sh"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "01:00:00"
+    }
+  },
+  "service": {
+    "mode": "example",
+    "example": "darcy_fno",
+    "epochs": 2,
+    "batch_size": 8,
+    "overrides": "training.resolution=64 training.pseudo_epoch_sample_size=64 validation.sample_size=8",
+    "device": "cpu",
+    "tensorboard": true
+  },
+  "software": {
+    "runtime": "docker"
+  }
+}

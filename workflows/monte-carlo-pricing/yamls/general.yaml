@@ -1,0 +1,465 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: monte-carlo-pricing
+          sparse_checkout:
+            - workflows/monte-carlo-pricing/app
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_parent_install_dir="${{ inputs.simulation_settings.parent_install_dir }}"
+          service_name="${{ inputs.simulation_settings.name }}"
+          pw_endpoints_args="--name ${service_name:-monte-carlo}-${PW_RUN_SLUG}"
+          EOF
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh # remove var=""
+          # Add export= to all lines
+          sed -i 's/^/export /' inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/monte-carlo-pricing/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f SESSION_PORT
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/monte-carlo-pricing/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          service_name="${{ inputs.simulation_settings.name }}"
+          echo "ENDPOINT_NAME=${service_name:-monte-carlo}-${PW_RUN_SLUG}" | tee -a $OUTPUTS
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  session_runner:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.head.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: false
+          # The dashboard always runs on the login node: the sites' reverse tunnels
+          # terminate on the host that dispatches them
+          scheduler: false
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: false
+          pbs:
+            is_enabled: false
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::The dashboard exited before its endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ needs.preprocessing.outputs.ENDPOINT_NAME }}
+          host: ${{ inputs.head.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
+  simulate:
+    needs:
+      - preprocessing
+      - wait_for_endpoint
+    ssh:
+      remoteHost: ${{ inputs.head.resource.ip }}
+    steps:
+      - name: Configure Simulation
+        run: |
+          set -e
+          port=$(cat "${PW_PARENT_JOB_DIR}/SESSION_PORT")
+          total_simulations=${{ inputs.simulation_settings.total_simulations }}
+          batch_size=${{ inputs.simulation_settings.batch_size }}
+          total_batches=$(( (total_simulations + batch_size - 1) / batch_size ))
+          curl -sf -X POST "http://localhost:${port}/api/config" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"option_type\": \"${{ inputs.simulation_settings.option_type }}\",
+              \"total_simulations\": ${total_simulations},
+              \"batch_size\": ${batch_size},
+              \"total_batches\": ${total_batches},
+              \"spot_price\": ${{ inputs.simulation_settings.spot_price }},
+              \"strike_price\": ${{ inputs.simulation_settings.strike_price }},
+              \"volatility\": ${{ inputs.simulation_settings.volatility }},
+              \"risk_free_rate\": ${{ inputs.simulation_settings.risk_free_rate }},
+              \"time_to_expiry\": ${{ inputs.simulation_settings.time_to_expiry }},
+              \"barrier_level\": ${{ inputs.simulation_settings.barrier_level }},
+              \"monitoring_points\": ${{ inputs.simulation_settings.monitoring_points }}
+            }"
+          echo
+          echo "::notice::Simulation configured: ${{ inputs.simulation_settings.option_type }}, ${total_simulations} paths in ${total_batches} batches of ${batch_size}"
+      - name: Dispatch Simulations
+        run: |
+          set -e
+          export DASHBOARD_PORT=$(cat "${PW_PARENT_JOB_DIR}/SESSION_PORT")
+          install_parent="${{ inputs.simulation_settings.parent_install_dir }}"
+          export LOCAL_PYTHON="${install_parent:-${HOME}/pw/software}/monte-carlo-pricing/venv/bin/python"
+          total_simulations=${{ inputs.simulation_settings.total_simulations }}
+          export BATCH_SIZE="${{ inputs.simulation_settings.batch_size }}"
+          export TOTAL_BATCHES=$(( (total_simulations + BATCH_SIZE - 1) / BATCH_SIZE ))
+          export OPTION_TYPE="${{ inputs.simulation_settings.option_type }}"
+          export SPOT_PRICE="${{ inputs.simulation_settings.spot_price }}"
+          export STRIKE_PRICE="${{ inputs.simulation_settings.strike_price }}"
+          export VOLATILITY="${{ inputs.simulation_settings.volatility }}"
+          export RISK_FREE_RATE="${{ inputs.simulation_settings.risk_free_rate }}"
+          export TIME_TO_EXPIRY="${{ inputs.simulation_settings.time_to_expiry }}"
+          export BARRIER_LEVEL="${{ inputs.simulation_settings.barrier_level }}"
+          export MONITORING_POINTS="${{ inputs.simulation_settings.monitoring_points }}"
+          export PARALLELISM="${{ inputs.simulation_settings.parallelism }}"
+          export TARGETS_JSON='${{ inputs.targets }}'
+          export HEAD_RESOURCE_NAME='${{ inputs.head.resource.name }}'
+          # Own process group, so a cancel takes down the ssh sessions, srun and local
+          # simulations with the dispatcher
+          set -m
+          bash workflows/monte-carlo-pricing/app/dispatch_simulations.sh &
+          pid=$!
+          set +m
+          echo ${pid} > dispatch.pid
+          wait ${pid}
+        cleanup: |
+          pgid=$(cat dispatch.pid 2>/dev/null) || exit 0
+          kill -- -${pgid} 2>/dev/null || true
+      - name: Summary
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          endpoint_name="${{ needs.preprocessing.outputs.ENDPOINT_NAME }}"
+          url=$(pw endpoints list | awk -F'\t' -v name="${endpoint_name}" '$1 == name {print $3}')
+          port=$(cat "${PW_PARENT_JOB_DIR}/SESSION_PORT")
+          echo "=========================================="
+          echo "Multi-Site Monte Carlo Pricing Complete!"
+          echo "=========================================="
+          curl -sf "http://localhost:${port}/api/state" > pricing-state.json || {
+            echo "::error title=Error::The dashboard did not return its state"
+            exit 1
+          }
+          python3 - pricing-state.json <<'PY'
+          import json, sys
+
+          s = json.load(open(sys.argv[1]))
+          cfg = s.get("config") or {}
+          print("  Option type: {}".format(cfg.get("option_type")))
+          print("  Paths: {:,} of {:,}".format(s["total_paths"], s["planned_paths"]))
+          print("  Batches: {} of {}".format(s["total_batches"], s["planned_batches"]))
+          for site_id, st in sorted(s["site_stats"].items()):
+              print("    {} ({}, {}): {} batches".format(site_id, st.get("cluster_name"), st.get("scheduler_type"), st.get("count")))
+          print("  Price: {:.4f} +/- {:.4f} (95% CI {:.4f} .. {:.4f})".format(
+              s["current_mean"], s["std_err"], s["ci_low"], s["ci_high"]))
+          if s.get("bs_price") is not None and s["std_err"] > 0:
+              diff = s["current_mean"] - s["bs_price"]
+              print("  Black-Scholes: {:.4f} (Monte Carlo is {:+.4f}, {:.1f} standard errors off)".format(
+                  s["bs_price"], diff, abs(diff) / s["std_err"]))
+          if s["total_batches"] != s["planned_batches"]:
+              print("::error title=Error::The dashboard holds {} batches; {} were planned".format(
+                  s["total_batches"], s["planned_batches"]))
+              sys.exit(1)
+          PY
+          echo ""
+          echo "  Dashboard: ${url:-endpoint ${endpoint_name} (see pw endpoints list)}"
+          echo "  The dashboard keeps serving the result until its endpoint is deleted:"
+          echo "    pw endpoints delete ${endpoint_name}"
+          echo "=========================================="
+          echo "::notice::Dashboard: ${url:-endpoint ${endpoint_name}}"
+
+'on':
+  execute:
+    inputs:
+      head:
+        type: group
+        label: Dashboard Host
+        items:
+          resource:
+            label: Resource
+            type: compute-clusters
+            include-workspace: true
+            autoselect: true
+            tooltip: |
+              Runs the live dashboard on its login node. No simulation happens here.
+              Select a login node, cloud VM, or the user workspace. A cloud cluster's
+              login node can only dispatch simulations to itself; the user workspace or
+              an on-prem resource can dispatch to any site.
+
+      targets:
+        type: list
+        label: Compute Sites
+        min: 1
+        tooltip: Add one or more compute sites. Each site simulates its share of the batches in parallel and streams the results to the dashboard.
+        template:
+          resource:
+            label: Resource
+            type: compute-clusters
+            include-workspace: false
+            tooltip: Select a compute resource for simulation.
+
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Job?
+            hidden: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes - Batches run on compute nodes allocated with srun.
+              No  - Batches run on the login/controller node.
+
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' || inputs.targets.[index].scheduler == false }}
+            ignore: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' || inputs.targets.[index].scheduler == false }}
+            collapsed: true
+            items:
+              partition:
+                type: slurm-partitions
+                label: Partition
+                optional: true
+                resource: ${{ inputs.targets.[index].resource }}
+                tooltip: Select a SLURM partition
+
+              nodes:
+                label: Nodes
+                type: dropdown
+                default: "1"
+                tooltip: Number of compute nodes to request. Each node simulates a portion of the site's batches.
+                options:
+                  - value: "1"
+                    label: "1 node"
+                  - value: "2"
+                    label: "2 nodes"
+                  - value: "4"
+                    label: "4 nodes"
+
+              time:
+                label: Walltime
+                type: string
+                default: "00:05:00"
+                tooltip: '--time= limit of the srun allocation'
+
+              scheduler_directives:
+                type: editor
+                label: Additional Directives
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix; they are
+                  passed to srun as options. For example:
+                  #SBATCH --account=<account>
+                  #SBATCH --qos=<qos>
+                  #SBATCH --exclusive
+
+      simulation_settings:
+        type: group
+        label: Option & Simulation Parameters
+        items:
+          name:
+            type: string
+            hidden: true
+            default: monte-carlo
+            tooltip: Endpoint name prefix; an empty value falls back to monte-carlo
+          parent_install_dir:
+            label: Parent Install Directory
+            type: string
+            hidden: true
+            default: ${HOME}/pw/software
+            tooltip: The dashboard's Python environment is installed under this directory on the dashboard host
+
+          option_type:
+            type: dropdown
+            label: Option Type
+            tooltip: Type of exotic option to price
+            default: asian_call
+            options:
+              - value: asian_call
+                label: Asian Call (arithmetic average)
+              - value: asian_put
+                label: Asian Put (arithmetic average)
+              - value: european_call
+                label: European Call (Black-Scholes benchmark)
+              - value: european_put
+                label: European Put (Black-Scholes benchmark)
+              - value: barrier_up_and_out_call
+                label: Barrier Up-and-Out Call
+
+          spot_price:
+            type: number
+            label: Spot Price (S0)
+            tooltip: Current price of the underlying asset
+            default: 100
+            min: 1
+            max: 500
+            step: 1
+            slider: true
+
+          strike_price:
+            type: number
+            label: Strike Price (K)
+            tooltip: Option strike price
+            default: 100
+            min: 1
+            max: 500
+            step: 1
+            slider: true
+
+          volatility:
+            type: number
+            label: Volatility (sigma)
+            tooltip: Annualized volatility (e.g., 0.2 = 20%)
+            default: 0.2
+            min: 0.01
+            max: 2.0
+            step: 0.01
+            slider: true
+
+          risk_free_rate:
+            type: number
+            label: Risk-Free Rate (r)
+            tooltip: Annualized risk-free interest rate (e.g., 0.05 = 5%)
+            default: 0.05
+            min: 0
+            max: 0.5
+            step: 0.01
+            slider: true
+
+          time_to_expiry:
+            type: number
+            label: Time to Expiry (T)
+            tooltip: Time to option expiry in years
+            default: 1.0
+            min: 0.1
+            max: 5.0
+            step: 0.1
+            slider: true
+
+          barrier_level:
+            type: number
+            label: Barrier Level
+            tooltip: Barrier price level — the option is knocked out if the underlying crosses this level
+            default: 150
+            min: 1
+            max: 500
+            step: 1
+            slider: true
+            hidden: ${{ inputs.simulation_settings.option_type != 'barrier_up_and_out_call' }}
+
+          monitoring_points:
+            type: number
+            label: Monitoring Points
+            tooltip: Number of time steps for path simulation (252 = daily for 1 year)
+            default: 252
+            min: 10
+            max: 1000
+            step: 1
+            slider: true
+
+          total_simulations:
+            type: dropdown
+            label: Total Simulations
+            tooltip: Total number of Monte Carlo paths to simulate across all sites
+            default: "500000"
+            options:
+              - value: "100000"
+                label: "100K paths (quick test)"
+              - value: "500000"
+                label: "500K paths (default)"
+              - value: "1000000"
+                label: "1M paths (accurate)"
+              - value: "5000000"
+                label: "5M paths (high accuracy)"
+              - value: "10000000"
+                label: "10M paths (research grade)"
+
+          batch_size:
+            type: dropdown
+            label: Batch Size
+            tooltip: Number of paths per batch (smaller = more frequent dashboard updates)
+            default: "10000"
+            options:
+              - value: "5000"
+                label: "5K paths/batch (frequent updates)"
+              - value: "10000"
+                label: "10K paths/batch (default)"
+              - value: "25000"
+                label: "25K paths/batch (fewer updates)"
+              - value: "50000"
+                label: "50K paths/batch (large batches)"
+
+          parallelism:
+            type: dropdown
+            label: Worker Threads
+            tooltip: Number of parallel simulation processes per node. Auto uses all available CPU cores.
+            default: "auto"
+            options:
+              - value: "auto"
+                label: "Auto (all cores)"
+              - value: "1"
+                label: "Single-threaded"
+              - value: "4"
+                label: "4 workers"
+              - value: "8"
+                label: "8 workers"

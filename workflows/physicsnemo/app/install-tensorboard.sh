@@ -22,8 +22,10 @@ TENSORBOARD_VERSION="${TENSORBOARD_VERSION:-2.20.0}"
 prefix=$(miniforge_prefix physicsnemo)
 python="${prefix}/envs/tensorboard/bin/python"
 
+# tensorboard.program, not just the package: it imports pkg_resources, which
+# setuptools 81 removed, so an env resolved with a newer setuptools does not start
 f_ok() {
-    [ -x "${python}" ] && "${python}" -c "import tensorboard, sys; sys.exit(tensorboard.__version__ != '${TENSORBOARD_VERSION}')" > /dev/null 2>&1
+    [ -x "${python}" ] && "${python}" -c "import tensorboard, tensorboard.program, sys; sys.exit(tensorboard.__version__ != '${TENSORBOARD_VERSION}')" > /dev/null 2>&1
 }
 
 miniforge_lock "${prefix}" || exit 1
@@ -32,7 +34,7 @@ if f_ok; then
 else
     miniforge_bootstrap "${prefix}" || exit 1
     echo "::notice::Installing TensorBoard ${TENSORBOARD_VERSION} into ${prefix}/envs/tensorboard"
-    "${prefix}/bin/conda" create -y -q -n tensorboard -c conda-forge "python=3.12" "tensorboard=${TENSORBOARD_VERSION}" || {
+    "${prefix}/bin/conda" create -y -q -n tensorboard -c conda-forge "python=3.12" "tensorboard=${TENSORBOARD_VERSION}" "setuptools<81" || {
         echo "::error::Could not create the TensorBoard environment in ${prefix}"
         exit 1
     }

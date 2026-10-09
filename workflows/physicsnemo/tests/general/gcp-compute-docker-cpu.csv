@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-09T13:27:39Z,partial,fail,ok,14034ac,74bcc3d,381d2b2,b1d077f,b1d077f,physicsnemo,alvaro,intent-crawdad,54,"run error, expected completed: preprocessing > Check TensorBoard Is Alive (error, 0s)"

@@ -43,7 +43,8 @@ names. They are also the `case` fields of the form and the lines of a
 | `angle_of_attack` | Angle of attack | 5 | degrees |
 
 The other `case` fields, `mesh_scale`, `case_dir` and `params_file`, are run
-settings, not design names: a `mesh_scale` line in `params.in` is ignored.
+settings, not design names. They come from the form only: a params file with a
+`mesh_scale` line fails the case, like any other name not in the list.
 
 The **Create the Case** step writes the case's `params.in`. With **Design from a
 params file**, it builds it from the file and the form:

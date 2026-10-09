@@ -35,7 +35,8 @@ A runner's **design parameters** are fields of its form, and the same names are
 the lines of `params.in`. openfoam-naca has four, under `inputs.case`:
 `max_camber`, `camber_position`, `thickness`, `angle_of_attack`. The other `case`
 fields (`mesh_scale`, `case_dir`, `params_file`) are run settings; the solver gets
-`mesh_scale` as the environment variable `MESH_SCALE`, never from `params.in`.
+`mesh_scale` as the environment variable `MESH_SCALE`, never from `params.in`, and
+a params file with a `mesh_scale` line fails the check like any other unlisted name.
 
 openfoam-naca's **Create the Case** step builds the case's `params.in` from the
 file, then the four form values, keeping the first line of each name

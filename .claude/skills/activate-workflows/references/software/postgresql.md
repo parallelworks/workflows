@@ -46,9 +46,13 @@
   `readinessProbe` running the same command.
 - **pgweb** (`/usr/bin/pgweb --bind=0.0.0.0 --listen=8081` entrypoint, uid 1000):
   `--passfile=<pgpass>` keeps the password off its command line (pgpass escapes `\` and
-  `:`); `--open-retry=N --open-retry-delay=S` waits for a server that is still starting;
-  without retries it exits on a failed first connection (`Error: authentication
-  failed`). `GET /api/connection` answers 200 only while it holds a connection (400 with
+  `:`); `--open-retry=N --open-retry-delay=S` waits for a server that is still starting,
+  but only a refused connection is retried: a failed login (`Error: authentication
+  failed`) or a missing database exits at once. In a pod that crash-loops the container,
+  the pod never turns Ready, and a `kubectl wait` on the Deployment times out after 600 s
+  with no cause (k3sgpu, run strong-gopher). Wait for the database container alone
+  (`containerStatuses[?(@.name=="postgres")].ready`), check the login, then wait for the
+  Deployment. `GET /api/connection` answers 200 only while it holds a connection (400 with
   the driver error otherwise), so it is the health route for the whole chain. pgweb has
   no login: publish it on `127.0.0.1` only (compose `ports: "127.0.0.1:${PORT}:8081"`,
   `--bind=127.0.0.1` in a pod), where the endpoint reaches it.

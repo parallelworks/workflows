@@ -66,8 +66,9 @@ directory that the node can lock and write.
 The workflow creates a Deployment with three containers: PostgreSQL, pgweb, and a `pw`
 client sidecar that publishes pgweb as the endpoint. It also creates a ClusterIP Service
 named after the Deployment that exposes port 5432 inside the cluster. The workflow waits
-for the database, checks the login and creates the database if it is missing, waits for
-`/api/connection`, then streams the pod logs for the life of the deployment. The database
+for the database container, checks the login and creates the database if it is missing
+(a wrong password stops the run there, with the cause), waits for the rest of the pod and
+for `/api/connection`, then streams the pod logs for the life of the deployment. The database
 cluster lives on the PersistentVolumeClaim (new or existing, mounted at `/mnt` by
 default, in `pgdata/`). With an existing PVC, the user and password are those of the run
 that created it. Connections through `kubectl port-forward` arrive on the pod's loopback,
@@ -95,4 +96,5 @@ each.
 (`python3 tools/tests/run-workflow-test.py <test.json>`, with the password in
 `POSTGRES_TEST_PASSWORD`): login node and SLURM job on `pw://alvaro/gcpsmall`, a wrong
 password on an existing data directory (the run must fail and leave nothing behind), and
-the Kubernetes lane on `k3sgpu`.
+the Kubernetes lane on `k3sgpu`. `k3sgpu-existing` opens the PVC `postgres-test-data` that
+`k3sgpu-persist` keeps, so run them in that order and delete the PVC afterwards.

@@ -1153,6 +1153,19 @@ not have (`enough-newt`, `analytics`) created it and opened pgweb on it; a cance
 PostgreSQL was starting (`liked-bass`) removed the container and network through
 `cancel.sh`; on Kubernetes (`sensible-gorilla`) `kubectl port-forward` accepted the right
 password and refused `wrong`, and a pod in the namespace reached
-`<deployment>.alvarok8s.svc.cluster.local:5432`. Not exercised: PBS, an existing PVC, a
-host without `sudo` for Docker, and the pgvector/PostGIS images. The checkout points at
-`canary` for the merge.
+`<deployment>.alvarok8s.svc.cluster.local:5432`. Not exercised: PBS, a host without
+`sudo` for Docker, and the pgvector/PostGIS images. The checkout points at `canary` for
+the merge.
+
+**Kubernetes, existing PVC (2026-10-09, k3sgpu).** `general_k8s/k3sgpu-persist` keeps its
+volume as `postgres-test-data` and `general_k8s/k3sgpu-existing` opens it. PASS
+`current-bluejay`, `endless-ghoul` (initialized the volume), `prime-turkey` (`Skipping
+initialization`, pgweb connected). A wrong password against the kept volume (`strong-gopher`,
+by hand: the k8s lane has no `expect: error`) then exposed an ordering bug. pgweb exits on
+a failed login instead of retrying, so its container crash-looped and the pod never turned
+Ready, the run waited out the Deployment's 600 s and ended in a generic timeout, and the
+login check, which ran after that wait, never reported the cause. The job now waits for the
+PostgreSQL container alone, checks the login, and only then waits for the Deployment. Then
+`delicate-skink` failed in 10 s with `Cannot log in to PostgreSQL as postgres ...` and only
+the kept PVC was left. PASS `relaxed-chimp`, `current-pelican` (fresh init),
+`fun-racer` (reuse) on the new order; the test PVC was deleted afterwards.

@@ -491,6 +491,46 @@ jobs:
               ((ATTEMPT++))
             fi
           done
+      - name: Wait for PostgreSQL to be Ready
+        early-cancel: any-job-failed
+        env:
+          app_name: ${{ needs.apply_k8s_deployment.outputs.app_name }}
+          namespace: ${{ inputs.k8s.namespace }}
+        run: |
+          # pgweb exits on a failed login instead of retrying, so a wrong password
+          # keeps the pod from ever being Ready: the login check runs as soon as
+          # the database container is ready, before the deployment is waited for
+          query='{.items[0].status.containerStatuses[?(@.name=="postgres")].ready}'
+          for i in $(seq 1 200); do
+            if [ "$(kubectl get pods -l app=${app_name} -n ${namespace} -o jsonpath="${query}" 2>/dev/null)" == "true" ]; then
+              pod=$(kubectl get pods -l app=${app_name} -n ${namespace} -o jsonpath='{.items[0].metadata.name}')
+              echo "pod=${pod}" | tee -a $OUTPUTS | tee -a OUTPUTS
+              exit 0
+            fi
+            if (( i % 10 == 0 )); then
+              kubectl get pods -l app=${app_name} -n ${namespace} -o wide
+            fi
+            sleep 3
+          done
+          echo "::error title=Error::PostgreSQL was not ready within 10 minutes"
+          kubectl describe pods -l app=${app_name} -n ${namespace} | tail -30
+          exit 1
+      - name: Check Login and Database
+        early-cancel: any-job-failed
+        run: |
+          # The image applies the user and password only when it initializes an
+          # empty volume, so an existing PVC keeps those of the run that created it.
+          # The check connects to the pod's own address: a volume initialized
+          # without --auth-host trusts the loopback and would accept any password.
+          if ! kubectl exec -i -n ${{ inputs.k8s.namespace }} ${{ needs.apply_k8s_deployment.outputs.pod }} -c postgres -- sh -c \
+              'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -h "$(hostname -i | cut -d" " -f1)" -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -v db="$POSTGRES_DB" -q' <<'SQL'
+          SELECT format('CREATE DATABASE %I', :'db')
+          WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db')\gexec
+          SQL
+          then
+            echo "::error title=Error::Cannot log in to PostgreSQL as ${{ inputs.service_k8s.user }} with the password given. The volume keeps the user and password of the run that created it: use those, or a new PVC."
+            exit 1
+          fi
       - name: Wait for Deployment to be Ready
         early-cancel: any-job-failed
         env:
@@ -537,22 +577,6 @@ jobs:
           kubectl wait --for=condition=Ready pod -l app=${app_name} -n ${namespace} --timeout=600s
           pod=$(kubectl get pods -n ${namespace} -l app=${app_name} --field-selector=status.phase=Running -o jsonpath="{.items[0].metadata.name}")
           echo "pod=$pod" | tee -a $OUTPUTS | tee -a OUTPUTS
-      - name: Check Login and Database
-        early-cancel: any-job-failed
-        run: |
-          # The image applies the user and password only when it initializes an
-          # empty volume, so an existing PVC keeps those of the run that created it.
-          # The check connects to the pod's own address: a volume initialized
-          # without --auth-host trusts the loopback and would accept any password.
-          if ! kubectl exec -i -n ${{ inputs.k8s.namespace }} ${{ needs.apply_k8s_deployment.outputs.pod }} -c postgres -- sh -c \
-              'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -h "$(hostname -i | cut -d" " -f1)" -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -v db="$POSTGRES_DB" -q' <<'SQL'
-          SELECT format('CREATE DATABASE %I', :'db')
-          WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db')\gexec
-          SQL
-          then
-            echo "::error title=Error::Cannot log in to PostgreSQL as ${{ inputs.service_k8s.user }} with the password given. The volume keeps the user and password of the run that created it: use those, or a new PVC."
-            exit 1
-          fi
           touch pod.running
       - name: Stream Logs
         early-cancel: any-job-failed

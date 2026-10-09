@@ -13,7 +13,7 @@
 #   - postgres_db: optional, database to connect to (default: postgres_user)
 #   - postgres_port: optional, host port the database listens on (default: 5432)
 #   - postgres_data_dir: holds the database cluster in pgdata/
-# Required files (written by preprocessing, mode 600):
+# Required files in PW_PARENT_JOB_DIR (written by preprocessing, mode 600):
 #   - postgres-password: the superuser password
 #   - pgpass: the same password in pgpass format, for pgweb
 ################################################################################
@@ -29,7 +29,7 @@ for name in "${postgres_user}" "${postgres_db}"; do
         exit 1
     fi
 done
-if ! [ -s postgres-password ]; then
+if ! [ -s "${PW_PARENT_JOB_DIR}/postgres-password" ]; then
     echo "::error title=Error::A password is required"
     exit 1
 fi
@@ -125,7 +125,7 @@ services:
       start_period: 10m
 secrets:
   postgres_password:
-    file: ./postgres-password
+    file: ${PW_PARENT_JOB_DIR}/postgres-password
 EOF
 
 if ! ${docker_cmd} compose -p "${project_name}" up -d --wait postgres; then
@@ -147,7 +147,7 @@ then
 fi
 
 postgres_host="$(hostname)"
-cat > postgres-connection.env <<EOF
+cat > "${PW_PARENT_JOB_DIR}/postgres-connection.env" <<EOF
 postgres_host=${postgres_host}
 postgres_port=${postgres_port}
 postgres_user=${postgres_user}
@@ -187,7 +187,7 @@ services:
       - "127.0.0.1:${PORT}:8081"
 secrets:
   pgpass:
-    file: ./pgpass
+    file: ${PW_PARENT_JOB_DIR}/pgpass
 COMPOSEEOF
 
 compose="${docker_cmd} compose -p ${project_name} -f docker-compose.yml -f docker-compose.pgweb.yml"

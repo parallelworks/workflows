@@ -320,7 +320,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: add-spack-builder
+          branch: canary
           sparse_checkout:
             - workflows/spack-builder/app
             - tools/utils
@@ -402,9 +402,7 @@ jobs:
           # script_submitter streams its script's output to run.${PW_JOB_ID}.out
           # in its rundir, and all three submissions of a run carry the same
           # PW_JOB_ID -- so a shared directory means the endpoint job truncates
-          # the build log that explains the build. (Observed on aws run
-          # charming-mongoose: the whole install was gone from the node, and the
-          # only surviving copy was the platform-side log.) The scripts
+          # the build log that explains the build. The scripts
           # themselves are unaffected: every path they use -- inputs.sh,
           # fabric.env, spack-env, app/ -- is absolute and still points here.
           mkdir -p "${PWD}/detect" "${PWD}/build" "${PWD}/endpoint" "${PWD}/exec"
@@ -467,7 +465,7 @@ jobs:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:
       - name: Inspect compute node
-        uses: github/parallelworks/workflows@add-spack-builder
+        uses: github/parallelworks/workflows@canary
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
@@ -566,7 +564,7 @@ jobs:
       - size_build
     steps:
       - name: Build the stack
-        uses: github/parallelworks/workflows@add-spack-builder
+        uses: github/parallelworks/workflows@canary
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
@@ -605,9 +603,8 @@ jobs:
   # 4. Turn a failed build into a failed RUN.
   #    script_submitter's unscheduled path detaches the script with setsid and
   #    then polls `kill -0`, so it observes that the process ended but never its
-  #    exit status. Without this job a build that dies half way -- as the first
-  #    gce2 run did, on ucx -- is still reported as completed, and a user would
-  #    believe a stack exists that does not.
+  #    exit status. Without this job a build that dies half way is still 
+  #    reported as completed.
   # -------------------------------------------------------------------------
   verify:
     needs:
@@ -649,7 +646,7 @@ jobs:
       - verify
     steps:
       - name: Run the built binaries on a compute node
-        uses: github/parallelworks/workflows@add-spack-builder
+        uses: github/parallelworks/workflows@canary
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
@@ -716,7 +713,7 @@ jobs:
       - exec_verify
     steps:
       - name: Serve the placeholder endpoint
-        uses: github/parallelworks/workflows@add-spack-builder
+        uses: github/parallelworks/workflows@canary
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml

@@ -111,13 +111,7 @@ decision explicit:
 **Requesting the target is not enough — reuse has to be constrained too.**
 `packages: all: target:` is a preference, and `reuse: true` outranks a
 preference: an installed spec built for a different microarchitecture still
-satisfies the request, so Spack takes it rather than building. On aws run
-`fair-mastodon` the resolver correctly chose `x86_64_v3` for a `zen2` worker and
-the environment *still* came out holding 45 `skylake_avx512` specs — `fftw`,
-`gcc-runtime`, `curl` and all three CPU GROMACS builds — reused from the Intel
-login node's earlier CPU stack. Those carry AVX-512 and cannot execute on zen2.
-The run passed: it completed, the endpoint answered, and nothing in the pass
-criteria can see a wrong-ISA binary.
+satisfies the request, so Spack takes it rather than building.
 
 The environment therefore pins reuse to the chosen target:
 
@@ -131,20 +125,6 @@ concretizer:
 Reuse still does its job in the normal redeploy case, where everything cached is
 already at the right target, and is refused for everything else — from the local
 install tree and the build cache alike.
-
-The third case is not hypothetical and is the one that bites. On `aws` the login
-node is a `c5n.9xlarge` (Intel `skylake_avx512`) while the GPU partitions are
-`g6`/`g5` — AMD EPYC, `zen3`. AVX-512 is not a *subset* of zen3, it is **absent**
-from it, so a `skylake_avx512` build would SIGILL on those nodes. Checked with
-archspec on the login node: `zen3 <= skylake_avx512` and `skylake_avx512 <= zen3`
-are **both** false. The resolver now picks `x86_64_v3` for that pair — the most
-capable target both machines implement — and `zen4`/`skylake_avx512` resolves to
-`x86_64_v4`.
-
-Both cases have been seen on the same `aws` cluster across rebuilds: login node
-`skylake_avx512` with `cascadelake` workers (the fallback), and — after the
-cluster was rebuilt with `c5n.9xlarge` in the `cpu` partition — login and workers
-both `skylake_avx512` (the exact case, run `charming-mongoose`).
 
 ## Fabric handling
 
@@ -182,9 +162,9 @@ install from it. Notes:
   failed outright. 128 leaves headroom for any target root up to 128 characters.
   The stack compiler is installed outside the environment, so `build.sh` also
   sets the same padding in the Spack root's site scope
-  (`config:install_tree:padded_length:128`), which every command then shares. Before that, gcc and its dependencies
-  were cached unpadded and a run into a longer root failed on them
-  (`quality-colt`); caches from before the fix need those entries removed once.
+  (`config:install_tree:padded_length:128`), which every command then shares. 
+  Before that, gcc and its dependencies were cached unpadded and a run into a 
+  longer root failed on them.
 
 ### Archiving and redeploying the build cache
 
@@ -287,29 +267,6 @@ while the external compiler carries a generic one (`linux-rocky9-x86_64`), so th
 `gcc` modulefile is filed apart from everything built with it. Both belong on
 `MODULEPATH` — see "After the build".
 
-Three things were wrong here and are now fixed:
-
-- **`module tcl refresh --delete-tree` wiped other stacks.** `--delete-tree`
-  deletes the whole tree and regenerates only the current environment's specs, so
-  building a CPU stack removed the GPU stack's modules from the same root while
-  leaving its installs in place — run `powerful-jaguar` erased the modules
-  `moral-silkworm` had written that morning. The refresh no longer passes it.
-- **The "DONE" banner printed the wrong `MODULEPATH`.** It was built from
-  `spack arch`, which reports the *login node*, while modules are written under
-  the *spec's* architecture. On a cross-architecture cluster — the case this
-  workflow exists for — those differ: `moral-silkworm` built `x86_64_v3` and told
-  users to add the `skylake_avx512` directory, which held none of its modules. It
-  is now composed from the resolved target.
-- **The banner offered no compiler, and said there was none to offer.** It
-  printed the stack tree alone and a note claiming no `gcc` module exists or can
-  exist — which was never true: `include:` overrides `exclude`, so the external
-  compiler does get a modulefile, in the generic-target tree the banner never
-  mentioned. Users could load and run the stack but had no `gcc` on `PATH` to
-  build against it. The banner now locates that tree with `spack module tcl find
-  --full-path gcc` (the generic target is not derivable from `$TARGET`), prints
-  both directories and a `module load gcc` line, and warns against pointing
-  `MODULEPATH` at their parent.
-
 ## Module names in a GPU build
 
 A GPU environment holds a `~cuda` and a `+cuda` build of the same
@@ -338,7 +295,7 @@ gromacs/2025.4-openmpi-5.0.10-<hash>          CPU build
   +cuda          → 7izjiju                           (the package itself)
   ```
 
-  Run `moral-silkworm` consequently labelled its `mpich~cuda` and
+  A previous run consequently labelled its `mpich~cuda` and
   `intel-oneapi-mpi` GROMACS builds `-cuda`, though neither they nor their MPI
   had any CUDA — three of four builds mismarked, the opposite of the point.
   Constrain the concrete provider, or the package, and matching behaves.
@@ -475,15 +432,7 @@ tests/general/            recorded end-to-end test
 
 ## Known gaps and deferred work
 
-- **The whole GPU stack builds.** Verified on gce2 run `caring-warthog`: UCX
-  1.19.1, `gdrcopy`, the CUDA-aware `openmpi@5.0.10 +cuda`, `fftw` against it and
-  `gromacs@2025.4 +cuda cuda_arch=90` all installed and pushed to the cache. What
-  is still unverified is *running* those binaries on a GPU.
-- **GROMACS is 2025.4 because 2024.3 does not link against CUDA 13.** Verified on
-  gce2 run `funky-pigeon`: GROMACS compiled with the right architecture
-  (`compute_90`/`sm_90`) and then failed at link with a single unresolved symbol,
-  its own `__global__` function template instantiation —
-  `undefined reference to void nbnxn_kernel_prune_cuda<false>(...)` plus
+- `undefined reference to void nbnxn_kernel_prune_cuda<false>(...)` plus
   `relocation R_X86_64_PC32 against undefined hidden symbol`. No library was
   missing; nvcc 13.2 emits such instantiations as hidden stubs the host
   translation unit cannot reference. Spack cannot warn about this: the package
@@ -501,48 +450,11 @@ tests/general/            recorded end-to-end test
   differ from the same specs built by a CPU-only run and the two cannot share
   cache entries. CPU-only runs are untouched — the key is only added when the GPU
   path is active.
-- **The GPU path still has not completed a run**, now because of UCX rather than
-  GROMACS. Two distinct UCX failures, one after the other:
-  1. `hopeful-haddock`: `^ucx@1.17.0 +verbs +rdmacm +dc` could not configure
-     against an image whose rdma-core external has no headers — the identical
-     failure the gcp fragment's own header documents for the CPU path, which its
-     GPU spec then asked for anyway. Fixed to `~verbs ~rdmacm ~dc +cuda +gdrcopy`.
-  2. `many-mako`: with the RDMA transports gone UCX configured and reached the
-     compile, then failed on CUDA 13:
-     `cuda_copy_md.c:405:5: error: unknown type name 'PFN_cuMemGetHandleForAddressRange';
-     did you mean 'PFN_cuMemGetHandleForAddressRange_v11070'?` — CUDA 13 dropped
-     the unsuffixed typedef and UCX 1.17.0 predates it. **UCX is now 1.19.1**,
-     across all five fragments, the same reasoning that moved GROMACS to 2025.4.
-     Note that bump touches the azure and oracle fragments, whose UCX-over-verbs
-     paths remain untested on real InfiniBand; leaving them on a pin known to be
-     incompatible with CUDA 13 seemed the worse of the two risks.
-- **GPU detection works; the GPU build has still not been run end to end.**
-  Verified on gce2 (run `loving-firefly`): the inspection job reports
-  `2x NVIDIA H100 80GB HBM3`, `cuda_arch=90`, driver `595.45.04`, driver CUDA
-  `13.2`, toolkit `nvcc 13.2`. What is still unverified is everything after that
-  — whether `openmpi+cuda` and `gromacs +cuda` build against **CUDA 13.2**. Note also that the aws `gpu` partition advertises `Gres=(null)`, so a
-  `--gpus=` request there has nothing to bind to; gce2 does advertise its GPUs.
-  Run `moral-ghost` was the first to reach the CUDA registration and found a
-  second latent bug there: `spack config add "packages:cuda:externals:[{spec: …}]"`
-  cannot work, because `config add` splits its argument on `:` and the colons
-  inside the inline mapping become path components. The external is now written
-  as a YAML file and merged with `spack config add -f`, which was verified
-  against Spack 1.2.2 before being committed.
 - **A GPU build now fails when no usable GPU is reported**, instead of quietly
   producing the CPU stack. If inspection lands on a GPU-less node, or the node's
   GPUs are hidden from a job that requested none, the run stops in the first
   minutes with an actionable message rather than after two hours with the wrong
   artefact.
-- **The `common` target branch is unit-tested, not run.** Every branch of
-  `resolve-target.py` was exercised against archspec on the aws login node
-  (`zen3`→`x86_64_v3`, `zen4`→`x86_64_v4`, `cascadelake`→fallback,
-  `skylake`→exact, `neoverse_v1`→error), but no build has yet been produced
-  through it, because that needs an AMD compute node.
-- **The gce2 redeploy is recorded as a failure, not a verdict on the workflow.**
-  Run `creative-rat` never got a compute node (1h38m in `CF`) and was cancelled.
-  What it did establish, from the controller log alone, is that the gce2 build
-  cache is *intact but incomplete*: 35 specs, 872 MiB, all blobs present and the
-  right size, containing `gcc` and its build closure and nothing above it.
 - The PBS path is untested.
 - Heterogeneous clusters need one run per node type; the design assumes one
   representative worker.
@@ -558,9 +470,7 @@ tests/general/            recorded end-to-end test
 A build exiting 0 and an endpoint answering HTTP say nothing about whether the
 binaries can execute. By default the build happens on the **login node**, so a
 stack compiled for the login node's ISA runs there perfectly and every recorded
-criterion passes. Run `fair-mastodon` did exactly that: it passed while 45 specs
-in the environment -- three GROMACS builds among them -- carried `skylake_avx512`
-AVX-512 instructions that its `zen2` worker could not execute.
+criterion passes.
 
 So the workflow runs the binaries on a compute node, in its own job
 (`exec_check` + `exec_verify`). It has to be a separate submitted job: a check
@@ -574,12 +484,10 @@ and separates two verdicts, which mean different things:
 Running the bare binary path is not representative and produces false failures.
 `intel-oneapi-mpi` needs `FI_PROVIDER_PATH` to locate the libfabric providers it
 ships; without it `MPI_Init` aborts with `OFI fi_getinfo() failed ... No data
-available` on a binary that is completely sound -- run `powerful-jaguar` reported
-exactly that, and setting the variable made the same binary run. `spack load --sh`
+available` on a binary that is completely sound. `spack load --sh`
 is used rather than `module load` deliberately: it produces the same environment
 without touching the TCL module tree, whose name clashes in a GPU build are the
 reason modules are avoided here at all.
-
 
 - **SIGILL (exit 132)** -- the binary cannot execute on this CPU. This is the
   fault the job exists to catch, and it fails the run.
@@ -592,8 +500,7 @@ reason modules are avoided here at all.
 
 A non-SIGILL failure is retried once under the binary's own launcher, resolved
 from the MPI it actually links against (`ldd`) rather than whatever `mpiexec` is
-on `PATH`. If *every* binary fails, the job fails regardless: nothing was proven
-to run, which is the same as having no check at all.
+on `PATH`.
 
 ### Why it does not use `srun`
 

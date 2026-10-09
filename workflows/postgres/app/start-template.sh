@@ -99,7 +99,9 @@ echo "::endgroup::"
 echo "::group::Starting PostgreSQL"
 # PGDATA is set explicitly so every major version finds the cluster at the
 # same path: from 18 the image defaults to /var/lib/postgresql/<major>/docker
-# and refuses to start on data at the older path
+# and refuses to start on data at the older path. --auth-host makes a new
+# cluster ask for the password on the container's loopback too, which the
+# image's initdb leaves trusted.
 cat > docker-compose.yml <<EOF
 services:
   postgres:
@@ -111,6 +113,7 @@ services:
       POSTGRES_USER: "${postgres_user}"
       POSTGRES_DB: "${postgres_db}"
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
     secrets:
       - postgres_password
     volumes:
@@ -135,9 +138,9 @@ if ! ${docker_cmd} compose -p "${project_name}" up -d --wait postgres; then
 fi
 
 # The image applies the user and password only when it initializes an empty
-# data directory, so a reused one keeps those of the run that created it. Its
-# pg_hba.conf trusts the container's loopback, so the check connects to the
-# container's own address, where the password is required.
+# data directory, so a reused one keeps those of the run that created it. The
+# check connects to the container's own address: a data directory initialized
+# without --auth-host trusts the loopback and would accept any password there.
 if ! ${docker_cmd} compose -p "${project_name}" exec -T postgres sh -c \
     'PGPASSWORD="$(cat /run/secrets/postgres_password)" exec psql -h "$(hostname -i | cut -d" " -f1)" -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -v db="$POSTGRES_DB" -q' <<'SQL'
 SELECT format('CREATE DATABASE %I', :'db')

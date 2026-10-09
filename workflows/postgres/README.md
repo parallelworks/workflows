@@ -42,7 +42,8 @@ in the data directory.
 Form options:
 
 - **User**, **Password**, **Database** (default `postgres`): the superuser and database
-  created with a new data directory. **A data directory keeps the user and password it
+  created with a new data directory. Every TCP connection asks for the password,
+  including one from inside the container. **A data directory keeps the user and password it
   was created with**: a later run must use the same ones, or it stops with an error before
   the endpoint registers. A database that does not exist yet is created.
 - **Database Port** (default 5432): the run stops with an error if the port is taken on
@@ -69,7 +70,8 @@ for the database, checks the login and creates the database if it is missing, wa
 `/api/connection`, then streams the pod logs for the life of the deployment. The database
 cluster lives on the PersistentVolumeClaim (new or existing, mounted at `/mnt` by
 default, in `pgdata/`). With an existing PVC, the user and password are those of the run
-that created it.
+that created it. Connections through `kubectl port-forward` arrive on the pod's loopback,
+which asks for the password too on a volume this workflow initialized.
 
 - **From pods in the cluster:**
   `postgresql://<user>@<deployment>.<namespace>.svc.cluster.local:5432/<database>`.

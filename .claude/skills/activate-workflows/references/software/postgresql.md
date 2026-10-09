@@ -33,10 +33,13 @@
 - **The image trusts the loopback.** initdb's `pg_hba.conf` keeps `trust` for `127.0.0.1`
   and `::1` and the entrypoint only appends `host all all all scram-sha-256`, so a
   password check through `psql -h 127.0.0.1` inside the container passes with any
-  password (a wrong-password test ran on, run cute-ray). Check against the container's
-  own address, `psql -h "$(hostname -i | cut -d" " -f1)"` (pod IP on Kubernetes). A
-  client in the same pod reaching `127.0.0.1` (pgweb on Kubernetes) needs no password;
-  one on the compose network or the host's published port does.
+  password (a wrong-password test ran on, run cute-ray), and so does every connection
+  through `kubectl port-forward`, which arrives on the pod's loopback (verified with
+  `wrong` on k3sgpu, run lenient-crane). `POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256`
+  makes a new cluster ask for the password there too (only the in-container Unix socket
+  stays `trust`; `pg_isready` still works). A data directory initialized without it
+  keeps the trust lines, so check the login against the container's own address,
+  `psql -h "$(hostname -i | cut -d" " -f1)"` (the pod IP on Kubernetes).
 - **Readiness: `pg_isready -h 127.0.0.1`.** During first initialization the entrypoint
   runs a temporary server on the Unix socket only, so a TCP check only passes for the
   final server. Compose: `healthcheck` with `start_period` and `up --wait`; Kubernetes: a

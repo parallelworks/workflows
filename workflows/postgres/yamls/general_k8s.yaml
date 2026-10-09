@@ -254,9 +254,11 @@ jobs:
           fi
 
           # Recreate: a rolling update would start a second server on the same
-          # volume before stopping the first. pgweb has no login of its own, so
-          # it only listens on the pod's loopback, where the sidecar reaches it;
-          # the Service publishes the database alone, inside the cluster.
+          # volume before stopping the first. --auth-host makes a new cluster ask
+          # for the password on the pod's loopback too, where kubectl port-forward
+          # arrives and which the image's initdb leaves trusted. pgweb has no login
+          # of its own, so it only listens on the loopback, where the sidecar
+          # reaches it; the Service publishes the database alone, inside the cluster.
           cat <<EOF > app.yaml
 
           apiVersion: apps/v1
@@ -293,6 +295,8 @@ jobs:
                           secretKeyRef:
                             name: ${{ needs.prepare_k8s_deployment.outputs.app_name }}-postgres
                             key: password
+                      - name: POSTGRES_INITDB_ARGS
+                        value: "--auth-host=scram-sha-256"
                     readinessProbe:
                       exec:
                         command: ["pg_isready", "-h", "127.0.0.1", "-U", "${{ inputs.service_k8s.user }}", "-d", "postgres"]
@@ -538,8 +542,8 @@ jobs:
         run: |
           # The image applies the user and password only when it initializes an
           # empty volume, so an existing PVC keeps those of the run that created it.
-          # Its pg_hba.conf trusts the loopback, so the check connects to the pod's
-          # own address, where the password is required.
+          # The check connects to the pod's own address: a volume initialized
+          # without --auth-host trusts the loopback and would accept any password.
           if ! kubectl exec -i -n ${{ inputs.k8s.namespace }} ${{ needs.apply_k8s_deployment.outputs.pod }} -c postgres -- sh -c \
               'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -h "$(hostname -i | cut -d" " -f1)" -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -v db="$POSTGRES_DB" -q' <<'SQL'
           SELECT format('CREATE DATABASE %I', :'db')

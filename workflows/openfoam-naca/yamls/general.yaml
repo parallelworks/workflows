@@ -83,6 +83,12 @@ jobs:
               fi
               ;;
           esac
+          # the file may only name this runner's design parameters, the ones
+          # app/design-parameters.txt publishes: a misspelled name would
+          # otherwise be dropped silently and the case solved with the form's value
+          if [ -n "${params_file}" ]; then
+            bash tools/utils/check-params.sh workflows/openfoam-naca/app/design-parameters.txt "${params_file}"
+          fi
           # the file's lines win over the form's values of the same name, and the
           # form fills in whatever the file does not list (first occurrence wins)
           {
@@ -347,7 +353,8 @@ jobs:
               line per entry. Its values override the form fields of the same
               name (max_camber, camber_position, thickness, angle_of_attack); a
               field the file does not list keeps the form's value, so the file
-              need not carry them all. An optimization loop passes the file of
+              need not carry them all. Any other name, or a value that is not a
+              number, fails the case. An optimization loop passes the file of
               the design it proposed here.
       postprocessing:
         type: group

@@ -105,8 +105,19 @@ Pick the resource, set `max_iterations`, `batch_size`, `stall_generations` and
 (the solver caps the ranks at one per 1,000 cells, so 16 cores need `mesh_scale`
 2 or more; preprocessing warns when a request exceeds that, and the openfoam-naca
 README has the measurements).
-The **Design Problem** group holds the angle of attack, the variable bounds
-(keep the three names) and the Dakota seed. The form's defaults are the demo:
+The **Design Problem** group holds the angle of attack, the variable bounds and
+the Dakota seed.
+
+**The names connect the pieces.** Dakota writes each name of **Design
+variables** into every proposed `params.in`, and openfoam-naca reads them by
+name ([its design names](../openfoam-naca/README.md#design-names)). So keep the
+three names `max_camber`, `camber_position` and `thickness`. **Angle of attack**
+is not a design variable: every case gets it as openfoam-naca's
+`angle_of_attack` field. A misspelled name fails every case of the first
+generation with an error that lists openfoam-naca's four names, and the loop
+ends FAILED.
+
+The form's defaults are the demo:
 login node, `mesh_scale` 2, 4 × 10, about 20 min. **Load saved inputs →
 `mesh3_slurm_4ranks`** is the converged-mesh study: SLURM, 4 ranks per case,
 `mesh_scale` 3, 8 × 10, 31 min on gcpsmall.

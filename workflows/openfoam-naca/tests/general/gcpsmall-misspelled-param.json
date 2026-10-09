@@ -1,0 +1,22 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "endpoint": false,
+    "expect": "error",
+    "setup": "mkdir -p \"${HOME}/pw/tests/openfoam-naca\" && printf '0.02 max_cambr\\n0.4 camber_position\\n0.12 thickness\\n' > \"${HOME}/pw/tests/openfoam-naca/misspelled-params.in\"",
+    "warm_marker": "${HOME}/pw/software/openfoam-naca/miniforge/envs/openfoam",
+    "leftover_patterns": [
+      "simpleFoam",
+      "potentialFoam",
+      "blockMesh"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": false
+  },
+  "case": {
+    "params_file": "${HOME}/pw/tests/openfoam-naca/misspelled-params.in",
+    "mesh_scale": 1
+  }
+}

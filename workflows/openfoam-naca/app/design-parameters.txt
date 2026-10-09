@@ -1,0 +1,9 @@
+# The design parameters of openfoam-naca: the names it reads from params.in, one
+# per line (the first word; the rest is a note). Each is also a field of the
+# form's `case` group, which fills in any name params.in leaves out. The Create
+# the Case step fails a case whose params.in has a name not listed here
+# (tools/utils/check-params.sh).
+max_camber         first NACA digit / 100, chord fraction
+camber_position    second NACA digit / 10, chord fraction
+thickness          last two NACA digits / 100, chord fraction
+angle_of_attack    degrees

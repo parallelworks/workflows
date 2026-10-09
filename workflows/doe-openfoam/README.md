@@ -40,6 +40,21 @@ variables** go to [`workflows/doe`](../doe/README.md), whose README has the
 methods and the rules for pasting your own cases. A pasted table runs up to 32
 cases, the width of the workers matrix.
 
+**The names connect the pieces.** Each line of **Design variables** names one of
+openfoam-naca's case fields: `max_camber`, `camber_position`, `thickness` or
+`angle_of_attack`. The sampler writes those names into every `params.in`, and
+openfoam-naca reads them by name ([its design names](../openfoam-naca/README.md#design-names)).
+A pasted table's header uses the same names.
+
+- Leave a variable out of **Design variables**, and every case uses
+  openfoam-naca's default for it, such as 5° for the angle.
+- With **Your own cases (CSV)**, a variable that is in **Design variables** but
+  has no column in the table gets the middle of its bounds in every case. With
+  `thickness 0.08 0.18` and no `thickness` column, every case uses 0.13.
+- A name misspelled in **Design variables** fails every case with an error that
+  lists openfoam-naca's four names. A table column that matches no variable
+  stops the run earlier, in the sampler.
+
 ![16 designs of each sampling method over max camber and thickness](../doe/thumbnails/sampling-methods.svg)
 
 ## The Design Explorer page

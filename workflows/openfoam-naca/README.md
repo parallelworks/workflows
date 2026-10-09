@@ -24,10 +24,41 @@ design and shows the images in Design Explorer.
 | | `angle_of_attack` | incidence in degrees (default 5) |
 | | `mesh_scale` 1–6 | multiplies every cell count; cost grows roughly with the cube (table below) |
 | | `case_dir` | where to build and solve; empty = `case/` under the run's job directory |
-| | `params_file` | a Dakota-style params file (`<value> <name>` per line): **its values override the form fields of the same name**, fields it does not list keep the form's values |
+| | `params_file` | a Dakota-style params file (`<value> <name>` per line): **its values override the form fields of the same name**, fields it does not list keep the form's values ([Design names](#design-names)) |
 | `postprocessing` | `generate_images` | off by default; on, the solved case is rendered to PNG images with ParaView ([below](#images-of-the-results)) |
 | `software` | `openfoam_load` | commands that put OpenFOAM on PATH (`module load openfoam/2412`, `source .../etc/bashrc`); empty installs v2412 from conda-forge under `${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca` (~5 min once) |
 | | `paraview_load` | shown with images on: commands that put `pvpython` on PATH (`module load paraview/5.13`); empty downloads the official ParaView 6.1.1 binaries under `.../openfoam-naca/paraview` (x86_64, ~830 MB once, 2.7 GB on disk) |
+
+## Design names
+
+The case reads its design by name. `app/design-parameters.txt` lists the four
+names. They are also the `case` fields of the form and the lines of a
+`params.in`:
+
+| Name | Form field | Default | Meaning |
+|---|---|---|---|
+| `max_camber` | Maximum camber | 0.02 | first NACA digit / 100 |
+| `camber_position` | Camber position | 0.4 | second NACA digit / 10 |
+| `thickness` | Thickness | 0.12 | last two NACA digits / 100 |
+| `angle_of_attack` | Angle of attack | 5 | degrees |
+
+The other `case` fields, `mesh_scale`, `case_dir` and `params_file`, are run
+settings, not design names. They come from the form only: a params file with a
+`mesh_scale` line fails the case, like any other name not in the list.
+
+The **Create the Case** step writes the case's `params.in`. With **Design from a
+params file**, it builds it from the file and the form:
+
+- A name the file lists overrides the form field of that name.
+- A name the file leaves out keeps the form's value.
+- Any other name, or a value that is not a number, fails the case before
+  anything runs. The error lists the four names, so a misspelled `max_cambr`
+  stops the run instead of solving at the default camber.
+
+So a workflow that calls this one only has to write these names into
+`params.in`. For example, [`doe-openfoam`](../doe-openfoam/README.md) and
+[`dakota-openfoam`](../dakota-openfoam/README.md) write the names of their
+**Design variables**.
 
 ## What a run leaves
 
@@ -168,6 +199,7 @@ concurrent calls on a cold cluster install once. Worked example:
 
 | `app/` | Role |
 |---|---|
+| `design-parameters.txt` | the four design names this runner reads from `params.in`; Create the Case checks a params file against it |
 | `install-openfoam.sh` | idempotent conda-forge install, the `lib/sys-mpich` link that makes `-parallel` runs load the MPI Pstream, the activation file for `tools/utils/prepare-env.sh` |
 | `naca_blockmesh.py` | NACA 4-digit parameters → structured C-grid `blockMeshDict` |
 | `openfoam-case/` | the case template: boundary conditions, schemes, solver settings |
@@ -176,4 +208,6 @@ concurrent calls on a cold cluster install once. Worked example:
 | `render-images.sh` | `pvpython` wrapper: the ParaView environment (`PARAVIEW_ENV`), the backend fallbacks, the timeout, `render.log` |
 | `render-case.py` | the pvpython script: `case.foam` (reconstructed or decomposed) → the six images + `manifest.json` |
 
-Shared: `tools/utils/miniforge.sh`, `tools/utils/prepare-env.sh`.
+Shared: `tools/utils/miniforge.sh`, `tools/utils/prepare-env.sh`,
+`tools/utils/check-params.sh` (checks a params file against
+`design-parameters.txt`).

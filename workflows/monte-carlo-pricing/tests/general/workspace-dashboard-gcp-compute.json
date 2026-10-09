@@ -1,0 +1,35 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "leftover_patterns": [
+      "pw endpoints run",
+      "monte_carlo_remote",
+      "run_simulation.sh",
+      "simulator.py"
+    ]
+  },
+  "head": {
+    "resource": "workspace"
+  },
+  "targets": [
+    {
+      "resource": "pw://alvaro/gcpsmall",
+      "scheduler": true,
+      "slurm": {
+        "partition": "compute",
+        "nodes": "1",
+        "time": "00:10:00",
+        "scheduler_directives": ""
+      }
+    }
+  ],
+  "simulation_settings": {
+    "option_type": "barrier_up_and_out_call",
+    "barrier_level": 130,
+    "total_simulations": "100000",
+    "batch_size": "10000",
+    "parallelism": "4"
+  }
+}

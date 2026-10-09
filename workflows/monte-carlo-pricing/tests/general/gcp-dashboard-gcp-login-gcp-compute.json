@@ -1,0 +1,40 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "warm_marker": "${HOME}/pw/software/monte-carlo-pricing/venv/bin/python",
+    "leftover_patterns": [
+      "uvicorn dashboard:app",
+      "pw endpoints run",
+      "dispatch_simulations.sh",
+      "run_simulation.sh",
+      "simulator.py"
+    ]
+  },
+  "head": {
+    "resource": "pw://alvaro/gcpsmall"
+  },
+  "targets": [
+    {
+      "resource": "pw://alvaro/gcpsmall",
+      "scheduler": false
+    },
+    {
+      "resource": "pw://alvaro/gcpsmall",
+      "scheduler": true,
+      "slurm": {
+        "partition": "compute",
+        "nodes": "2",
+        "time": "00:10:00",
+        "scheduler_directives": "##SBATCH --exclusive\n#SBATCH --comment=monte-carlo-regression\n"
+      }
+    }
+  ],
+  "simulation_settings": {
+    "option_type": "european_call",
+    "total_simulations": "100000",
+    "batch_size": "5000",
+    "parallelism": "auto"
+  }
+}

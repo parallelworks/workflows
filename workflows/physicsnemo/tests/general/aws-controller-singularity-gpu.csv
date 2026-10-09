@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-09T16:00:36Z,partial,fail,ok,f097c91,74bcc3d,381d2b2,0ea3f25,0ea3f25,physicsnemo-docker-space,alvaro,ace-terrier,1133,"run error, expected completed: results > Check the Exit Status (error, 0s)"

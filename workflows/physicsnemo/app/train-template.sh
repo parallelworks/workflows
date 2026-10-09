@@ -116,6 +116,13 @@ envs=(
     PHYSICSNEMO_SRC=/opt/physicsnemo-src
     PYTHONUNBUFFERED=1
 )
+# /proc is not namespaced: on a FIPS host (awsgpu) the image's Ubuntu OpenSSL sees the
+# kernel's FIPS flag, has no FIPS provider to load, and every SSL context fails, which
+# breaks `import physicsnemo`. The image is not FIPS-validated either way
+if [ "$(cat /proc/sys/crypto/fips_enabled 2> /dev/null)" = 1 ]; then
+    echo "FIPS        : $(hostname) runs in FIPS mode; the container's OpenSSL, which has no FIPS provider, runs without it (OPENSSL_FORCE_FIPS_MODE=0)"
+    envs+=(OPENSSL_FORCE_FIPS_MODE=0)
+fi
 
 case "${physicsnemo_runtime}" in
     docker)
@@ -208,7 +215,20 @@ case "${physicsnemo_runtime}" in
             echo "::error::The Singularity image ${physicsnemo_sif} is not readable from $(hostname)"
             exit 1
         fi
-        cmd=("${runtime}" exec --cleanenv --pwd /workspace
+        # A setuid installation mounts the SIF with the kernel's squashfs, which hardened
+        # images disable (awsgpu: `install squashfs /bin/false`); in a user namespace it
+        # mounts it with squashfuse instead. Probed here, on the node that trains
+        mount_args=()
+        if ! "${runtime}" exec "${physicsnemo_sif}" true > /dev/null 2>&1; then
+            if probe=$("${runtime}" exec --userns "${physicsnemo_sif}" true 2>&1); then
+                echo "Mount       : the kernel cannot mount ${physicsnemo_sif} on $(hostname) (no squashfs); running it in a user namespace (--userns), mounted with FUSE"
+                mount_args=(--userns)
+            else
+                echo "::error::${runtime} cannot mount ${physicsnemo_sif} on $(hostname), neither with the kernel's squashfs nor with FUSE in a user namespace: ${probe}"
+                exit 1
+            fi
+        fi
+        cmd=("${runtime}" exec "${mount_args[@]}" --cleanenv --pwd /workspace
             -B "${work_dir}:/workspace" -B "${app_dir}:/opt/physicsnemo-workflow:ro"
             -B "${physicsnemo_src}:/opt/physicsnemo-src:ro")
         for e in "${envs[@]}"; do

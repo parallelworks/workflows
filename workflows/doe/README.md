@@ -18,7 +18,8 @@ variable fixed.
 
 **The names are the contract with the evaluator.** Each name becomes a line of
 every `params.in`, written exactly as you typed it, and a pasted table's header
-uses the same names. So use the names your evaluator reads. For example, the
+uses the same names. So use the names your evaluator reads; a runner lists
+them in its `app/design-parameters.txt` and rejects any other. For example, the
 form's default box uses the four names
 [`openfoam-naca`](../openfoam-naca/README.md#design-names) reads.
 

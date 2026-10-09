@@ -113,8 +113,9 @@ variables** into every proposed `params.in`, and openfoam-naca reads them by
 name ([its design names](../openfoam-naca/README.md#design-names)). So keep the
 three names `max_camber`, `camber_position` and `thickness`. **Angle of attack**
 is not a design variable: every case gets it as openfoam-naca's
-`angle_of_attack` field. A misspelled name is ignored by the solver, and every
-case uses openfoam-naca's default for it, with no warning.
+`angle_of_attack` field. A misspelled name fails every case of the first
+generation with an error that lists openfoam-naca's four names, and the loop
+ends FAILED.
 
 The form's defaults are the demo:
 login node, `mesh_scale` 2, 4 × 10, about 20 min. **Load saved inputs →

@@ -31,8 +31,9 @@ design and shows the images in Design Explorer.
 
 ## Design names
 
-The case reads its design by name. The four names are the `case` fields of the
-form, and the same names are the lines of a `params.in`:
+The case reads its design by name. `app/design-parameters.txt` lists the four
+names. They are also the `case` fields of the form and the lines of a
+`params.in`:
 
 | Name | Form field | Default | Meaning |
 |---|---|---|---|
@@ -49,9 +50,9 @@ params file**, it builds it from the file and the form:
 
 - A name the file lists overrides the form field of that name.
 - A name the file leaves out keeps the form's value.
-- Any other name stays in `params.in`, and the solver ignores it. A misspelled
-  name such as `max_cambr` is ignored too: the case uses the form's value, with
-  no warning.
+- Any other name, or a value that is not a number, fails the case before
+  anything runs. The error lists the four names, so a misspelled `max_cambr`
+  stops the run instead of solving at the default camber.
 
 So a workflow that calls this one only has to write these names into
 `params.in`. For example, doe-openfoam and dakota-openfoam write the names of
@@ -196,6 +197,7 @@ concurrent calls on a cold cluster install once. Worked example:
 
 | `app/` | Role |
 |---|---|
+| `design-parameters.txt` | the four design names this runner reads from `params.in`; Create the Case checks a params file against it |
 | `install-openfoam.sh` | idempotent conda-forge install, the `lib/sys-mpich` link that makes `-parallel` runs load the MPI Pstream, the activation file for `tools/utils/prepare-env.sh` |
 | `naca_blockmesh.py` | NACA 4-digit parameters → structured C-grid `blockMeshDict` |
 | `openfoam-case/` | the case template: boundary conditions, schemes, solver settings |
@@ -204,4 +206,6 @@ concurrent calls on a cold cluster install once. Worked example:
 | `render-images.sh` | `pvpython` wrapper: the ParaView environment (`PARAVIEW_ENV`), the backend fallbacks, the timeout, `render.log` |
 | `render-case.py` | the pvpython script: `case.foam` (reconstructed or decomposed) → the six images + `manifest.json` |
 
-Shared: `tools/utils/miniforge.sh`, `tools/utils/prepare-env.sh`.
+Shared: `tools/utils/miniforge.sh`, `tools/utils/prepare-env.sh`,
+`tools/utils/check-params.sh` (checks a params file against
+`design-parameters.txt`).

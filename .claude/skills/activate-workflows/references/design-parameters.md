@@ -43,14 +43,44 @@ file, then the four form values, keeping the first line of each name
 
 - a name in the file overrides the form field of that name;
 - a name the file leaves out keeps the form's value (the form default, unless the
-  caller passes that field, as dakota-openfoam does with `angle_of_attack`);
-- any other name stays in the file and the solver ignores it.
+  caller passes that field, as dakota-openfoam does with `angle_of_attack`).
 
 So a driver only has to know the runner's names. The user types them in the
 driver's **Design variables** (`<name> <lower> <upper>`), the driver writes them
-into `params.in` unchanged, and the runner matches them. Nothing checks them:
-`max_cambr` runs every case at the default camber, and Design Explorer still shows
-a `max_cambr` axis, because it reads every `params.in` name as an input.
+into `params.in` unchanged, and the runner matches them.
+
+## Publishing and checking the names
+
+**The runner publishes its design parameters** in `app/design-parameters.txt`,
+one name per line (the first word; the rest of the line is a note, `#` starts a
+comment). openfoam-naca's:
+
+```
+max_camber         first NACA digit / 100, chord fraction
+camber_position    second NACA digit / 10, chord fraction
+thickness          last two NACA digits / 100, chord fraction
+angle_of_attack    degrees
+```
+
+**The runner checks the params file against it**, in the step that builds the
+case and before anything is submitted:
+
+```bash
+if [ -n "${params_file}" ]; then
+  bash tools/utils/check-params.sh workflows/<runner>/app/design-parameters.txt "${params_file}"
+fi
+```
+
+`tools/utils/check-params.sh` fails, with one `::error::` line per problem, when a
+line names a parameter the list does not have, when a value is not a number, or
+when a line is not `<value> <name>`. The unknown-name message lists the names the
+runner does read. It checks the caller's file, not the merged `params.in`: the
+merge drops lines without a name, and the form's own values are always valid.
+
+**Callers do not check.** The list lives with the runner, so the runner is the
+one place that enforces it, for every caller, a hand-run with a params file
+included. The cost is where the error shows: in each worker's Create the Case
+log, not in the caller's preprocessing.
 
 ## Outputs
 
@@ -62,13 +92,11 @@ value as an output and turns that pair into Cd, Cl and Cl/Cd.
 
 ## Building a new runner or driver
 
-- **Runner:** put each design parameter in the form; take `params_file` and
-  `case_dir`; merge as above; write `results.out` atomically with labels and always
-  write `exit_code`; list the names in the README (openfoam-naca's "Design names"
-  table is the model).
-- **Driver:** write `params.in` with the runner's names, one case directory per
-  design, in one of Design Explorer's two layouts; read `results.out` by label.
-- **Check the names**, which openfoam-naca does not do yet: a runner should fail
-  the case when `params.in` has a name it does not read, and a composed workflow
-  should compare its **Design variables** with the runner's names in preprocessing,
-  before any case is spent.
+- **Runner:** put each design parameter in the form; list the same names in
+  `app/design-parameters.txt`; take `params_file` and `case_dir`; check the params
+  file with `tools/utils/check-params.sh`, then merge as above; write
+  `results.out` atomically with labels and always write `exit_code`; show the
+  names in the README (openfoam-naca's "Design names" table is the model).
+- **Driver:** write `params.in` with the runner's names, as the user typed them,
+  one case directory per design, in one of Design Explorer's two layouts; read
+  `results.out` by label. Do not check the names: the runner does.

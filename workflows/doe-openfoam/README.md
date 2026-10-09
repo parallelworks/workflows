@@ -51,9 +51,9 @@ A pasted table's header uses the same names.
 - With **Your own cases (CSV)**, a variable that is in **Design variables** but
   has no column in the table gets the middle of its bounds in every case. With
   `thickness 0.08 0.18` and no `thickness` column, every case uses 0.13.
-- A name misspelled in **Design variables** is ignored by the solver, and every
-  case uses the default, with no warning. A table column that matches no
-  variable stops the run instead.
+- A name misspelled in **Design variables** fails every case with an error that
+  lists openfoam-naca's four names. A table column that matches no variable
+  stops the run earlier, in the sampler.
 
 ![16 designs of each sampling method over max camber and thickness](../doe/thumbnails/sampling-methods.svg)
 

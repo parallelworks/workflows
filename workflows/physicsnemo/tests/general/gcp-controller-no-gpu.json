@@ -1,0 +1,25 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "endpoint": false,
+    "expect": "error",
+    "leftover_patterns": [
+      "pw endpoints",
+      "run-example.sh"
+    ]
+  },
+  "cluster": {
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": false
+  },
+  "service": {
+    "mode": "example",
+    "example": "darcy_fno",
+    "epochs": 1,
+    "device": "gpu",
+    "tensorboard": false
+  },
+  "software": {
+    "runtime": "docker"
+  }
+}

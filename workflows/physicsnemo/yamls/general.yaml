@@ -1,0 +1,562 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+# NVIDIA PhysicsNeMo training on a cluster: one of three curated examples that need
+# no dataset (Darcy flow with a Fourier neural operator or a Transolver, both on data
+# generated during training, and a physics-informed network for the lid-driven
+# cavity), or your own script, run in the NGC PhysicsNeMo container with Docker or
+# Singularity/Apptainer, on a GPU or the CPU. Preprocessing, on the login node, gets
+# the PhysicsNeMo examples of the image's release, builds the Singularity image
+# once, writes the job script, and starts TensorBoard as the pw endpoint
+# tensorboard-<run slug>: a small server turns the training log into TensorBoard
+# scalars and the run's figures into images while the job runs. The submitter runs
+# the job on the login node or as a SLURM/PBS job and streams its output; the
+# results job writes the metrics as CSV, publishes the last values as outputs and
+# fails the run when the training failed. TensorBoard only ever runs on the login
+# node, so it is started detached from a plain step (tutorials/endpoint-workflows
+# Stage 3) and keeps serving after the run until `pw endpoints delete` removes it.
+permissions:
+  - '*'
+
+# Saved inputs, offered under "Load saved inputs" on the Execute page: a Darcy FNO
+# small enough for a CPU node (a few minutes on 8 cores), for clusters without GPUs
+configurations:
+  cpu_smoke_test:
+    inputs:
+      service:
+        mode: example
+        example: darcy_fno
+        epochs: 2
+        batch_size: 8
+        overrides: training.resolution=64 training.pseudo_epoch_sample_size=64 validation.sample_size=8
+        device: cpu
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: physicsnemo
+          sparse_checkout:
+            - workflows/physicsnemo/app
+            - tools/utils
+      - name: Create Inputs
+        run: |
+          set -e
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          cat <<'EOF' >> inputs.sh
+          service_parent_install_dir="${{ inputs.software.install_dir }}"
+          physicsnemo_mode="${{ inputs.service.mode }}"
+          physicsnemo_example="${{ inputs.service.example }}"
+          physicsnemo_epochs="${{ inputs.service.epochs }}"
+          physicsnemo_iterations="${{ inputs.service.iterations }}"
+          physicsnemo_batch_size="${{ inputs.service.batch_size }}"
+          physicsnemo_device="${{ inputs.service.device }}"
+          physicsnemo_gpu_index="${{ inputs.service.gpu_index }}"
+          physicsnemo_runtime="${{ inputs.software.runtime }}"
+          physicsnemo_image="${{ inputs.software.image }}"
+          physicsnemo_ref="${{ inputs.software.examples_ref }}"
+          EOF
+          # a hidden or empty input renders as nothing or undefined: drop those lines
+          sed -i '/=\s*$\|=undefined\s*$\|=""\s*$\|="undefined"\s*$/d' inputs.sh
+          sed -i 's/^/export /' inputs.sh
+          source inputs.sh
+          f_fail() {
+            echo "::error::$1"
+            exit 1
+          }
+          f_integer() {
+            if ! [[ "$2" =~ ^[0-9]+$ ]] || [ "$2" -lt "$3" ]; then
+              f_fail "$1 must be an integer of at least $3, got '$2'"
+            fi
+          }
+          case "${physicsnemo_mode:-}" in
+            example)
+              case "${physicsnemo_example:-}" in
+                darcy_fno|darcy_transolver)
+                  f_integer Epochs "${physicsnemo_epochs:-}" 1
+                  f_integer "Batch size" "${physicsnemo_batch_size:-0}" 0
+                  ;;
+                ldc_pinns)
+                  f_integer Iterations "${physicsnemo_iterations:-}" 1
+                  ;;
+                *) f_fail "Unknown example '${physicsnemo_example:-}': darcy_fno, darcy_transolver or ldc_pinns" ;;
+              esac
+              ;;
+            custom) ;;
+            *) f_fail "Unknown mode '${physicsnemo_mode:-}': example or custom" ;;
+          esac
+          case "${physicsnemo_device:-}" in
+            gpu) f_integer "GPU index" "${physicsnemo_gpu_index:-0}" 0 ;;
+            cpu) ;;
+            *) f_fail "Unknown device '${physicsnemo_device:-}': gpu or cpu" ;;
+          esac
+          case "${physicsnemo_runtime:-}" in
+            docker|singularity) ;;
+            *) f_fail "Unknown container runtime '${physicsnemo_runtime:-}': docker or singularity" ;;
+          esac
+          if [ -z "${physicsnemo_image:-}" ]; then
+            f_fail "The container image is empty"
+          fi
+          # files rather than inputs.sh lines, so that quotes in them cannot break it
+          cat > overrides.txt << 'PW_OVERRIDES_EOF'
+          ${{ inputs.service.overrides }}
+          PW_OVERRIDES_EOF
+          sed -i '/^\s*$/d; /^\s*undefined\s*$/d' overrides.txt
+          rm -f custom.sh
+          if [ "${physicsnemo_mode}" = custom ]; then
+            cat > custom.sh << 'PW_CUSTOM_EOF'
+          ${{ inputs.service.custom_script }}
+          PW_CUSTOM_EOF
+          fi
+          cat inputs.sh
+      - name: Get the PhysicsNeMo Examples
+        run: |
+          set -e
+          source inputs.sh
+          bash workflows/physicsnemo/app/install-examples.sh "${physicsnemo_ref}" "${PWD}/physicsnemo-src.txt"
+      - name: Build the Singularity Image
+        if: ${{ inputs.software.runtime == 'singularity' }}
+        run: |
+          set -e
+          source inputs.sh
+          sif="${{ inputs.software.sif }}"
+          case "${sif}" in undefined) sif="" ;; esac
+          bash workflows/physicsnemo/app/install-container.sh "${physicsnemo_image}" "${PWD}/physicsnemo-sif.txt" "${sif}"
+      - name: Create the Training Script
+        run: |
+          set -e
+          rm -rf train.exit train.pid results
+          # not named run.sh: the submitter writes its assembled job script under that name here
+          {
+            cat inputs.sh
+            echo "export physicsnemo_src=\"$(cat physicsnemo-src.txt)\""
+            if [ -f physicsnemo-sif.txt ]; then
+              echo "export physicsnemo_sif=\"$(cat physicsnemo-sif.txt)\""
+            fi
+            cat workflows/physicsnemo/app/train-template.sh
+          } > train.sh
+          # a cancel before the script starts must find the cleanup script
+          echo '#!/bin/bash' > cancel.sh
+          chmod +x cancel.sh
+          # the GPU request goes ahead of the form's directives, so a directive typed
+          # there wins: sbatch and qsub keep the last value of a repeated option
+          gpus="${{ inputs.cluster.gpus }}"
+          slurm_gpus=""
+          pbs_gpus=""
+          if [ "${{ inputs.service.device }}" = gpu ] && [ "${{ inputs.cluster.scheduler }}" = true ] \
+              && [[ "${gpus}" =~ ^[0-9]+$ ]] && [ "${gpus}" -gt 0 ]; then
+            slurm_gpus="#SBATCH --gres=gpu:${gpus}"
+            pbs_gpus="#PBS -l select=1:ngpus=${gpus}"
+          fi
+          echo "SLURM_GPU_DIRECTIVE=${slurm_gpus}" | tee -a $OUTPUTS
+          echo "PBS_GPU_DIRECTIVE=${pbs_gpus}" | tee -a $OUTPUTS
+          echo "JOB_DIR=${PWD}" | tee -a $OUTPUTS
+      - name: Install TensorBoard
+        if: ${{ inputs.service.tensorboard == true }}
+        run: |
+          set -e
+          source inputs.sh
+          bash workflows/physicsnemo/app/install-tensorboard.sh "${PWD}/tensorboard-python.txt"
+      # TensorBoard is a login-node process for the life of the training and beyond:
+      # started in its own session so the end of this step, of this job and of the
+      # run never reaches it. The only off switch is `pw endpoints delete`, which
+      # kills pw endpoints run and the server under it; stop_server_if_unhealthy
+      # covers a server that never registered
+      - name: Start TensorBoard
+        if: ${{ inputs.service.tensorboard == true }}
+        run: |
+          set -e
+          source inputs.sh
+          mkdir -p work
+          run_name="${physicsnemo_example:-custom}"
+          if [ "${physicsnemo_mode}" = custom ]; then
+            run_name=custom
+          fi
+          cat <<EOF > start-tensorboard.sh
+          #!/bin/bash
+          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
+          # {port} is replaced by pw endpoints run with the local port it forwards to
+          exec pw endpoints run --name "tensorboard-${PW_RUN_SLUG}" -- \
+              "$(cat tensorboard-python.txt)" "${PWD}/workflows/physicsnemo/app/tensorboard-server.py" \
+              --logdir "${PWD}/work" --log "${PWD}/work/train.log" --done "${PWD}/train.exit" \
+              --run-name "${run_name}" --port {port}
+          EOF
+          chmod +x start-tensorboard.sh
+          if command -v setsid >/dev/null 2>&1; then
+            setsid ./start-tensorboard.sh > tensorboard.out 2>&1 < /dev/null &
+          else
+            nohup ./start-tensorboard.sh > tensorboard.out 2>&1 < /dev/null &
+          fi
+          echo $! > tensorboard.pid
+          echo "::notice::TensorBoard started (pid $(cat tensorboard.pid)); its output is ${PWD}/tensorboard.out"
+      # the wait below has no budget while the endpoint is not listed, so a server
+      # that dies on start must fail the run here, with its output, rather than
+      # leave it polling for ever
+      - name: Check TensorBoard Is Alive
+        if: ${{ inputs.service.tensorboard == true }}
+        run: |
+          sleep 10
+          if ! kill -0 "$(cat tensorboard.pid)" 2>/dev/null; then
+            echo "::error::TensorBoard exited within 10 s of starting; its output follows"
+            cat tensorboard.out
+            exit 1
+          fi
+          echo "::notice::TensorBoard alive after 10 s; $(tail -n 1 tensorboard.out)"
+      # the health check of the endpoint pattern: the training, which needs this
+      # job, only starts once the endpoint is listed and TensorBoard answers
+      # through the platform
+      - name: Wait for TensorBoard
+        if: ${{ inputs.service.tensorboard == true }}
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: tensorboard-${PW_RUN_SLUG}
+          host: ${{ inputs.cluster.resource.ip }}
+          budget: 120
+      - name: Publish the TensorBoard Page
+        if: ${{ inputs.service.tensorboard == true }}
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="tensorboard-${PW_RUN_SLUG}" '$1 == name {print $3}')
+          echo "::notice::TensorBoard is serving the training at ${url}: the curves and figures appear as the job writes them"
+
+  # wait_for_endpoint only checks: it fails the job when the endpoint never
+  # answers and tears nothing down, and TensorBoard is started detached from a
+  # plain step, with no submitter behind it, so this job is its cleanup. It runs
+  # when preprocessing did not complete (the health check failed, a step before
+  # it failed, or the run was canceled first): it deletes an endpoint that
+  # registered and kills a server whose endpoint never did (`pw endpoints delete`
+  # cannot reach that one). A healthy server is never touched again. The pid file
+  # and the endpoint name, not job outputs: a canceled preprocessing publishes none.
+  stop_server_if_unhealthy:
+    needs: [preprocessing]
+    if: ${{ !completed }}
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Kill the TensorBoard Server
+        run: |
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          name="tensorboard-${PW_RUN_SLUG}"
+          if pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${name}"; then
+            echo "::warning::the endpoint ${name} registered but the run ended before its health check passed; deleting it"
+            pw endpoints delete "${name}" 2>/dev/null || true
+          fi
+          pid=$(cat "${PW_PARENT_JOB_DIR}/tensorboard.pid" 2>/dev/null || true)
+          if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+            echo "::warning::killing the TensorBoard server (pid ${pid})"
+            kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
+          fi
+          # without the pid file, the same process group found by its endpoint name
+          for pid in $(pgrep -f "[p]w endpoints run --name ${name}( |$)" 2>/dev/null); do
+            kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
+          done
+
+  training:
+    needs: [preprocessing]
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Train
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.cluster.resource }}
+          shebang: '#!/bin/bash'
+          # the submitter cds into the run's job directory, where train.sh and work/ are
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}
+          use_existing_script: true
+          script_path: ./train.sh
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: |
+              ${{ needs.preprocessing.outputs.SLURM_GPU_DIRECTIVE }}
+              ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: |
+              ${{ needs.preprocessing.outputs.PBS_GPU_DIRECTIVE }}
+              ${{ inputs.cluster.pbs.scheduler_directives }}
+
+  # the submitter never forwards the script's exit status: train.sh records it, and
+  # the training log is what the summary reads
+  results:
+    needs: [preprocessing, training]
+    ssh:
+      remoteHost: ${{ inputs.cluster.resource.ip }}
+    steps:
+      - name: Summarize the Training
+        run: |
+          set -e
+          cd "${{ needs.preprocessing.outputs.JOB_DIR }}"
+          mkdir -p results
+          python3 workflows/physicsnemo/app/summarize.py "${PWD}/work" "${PWD}/results" "${PWD}/results/outputs.txt"
+          cat results/outputs.txt >> $OUTPUTS
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="tensorboard-${PW_RUN_SLUG}" '$1 == name {print $3}')
+          if [ -n "${url}" ]; then
+            echo "::notice::TensorBoard keeps serving the run at ${url}; remove it with: pw endpoints delete tensorboard-${PW_RUN_SLUG}"
+          fi
+      - name: Check the Exit Status
+        run: |
+          cd "${{ needs.preprocessing.outputs.JOB_DIR }}"
+          if [ ! -f train.exit ]; then
+            echo "::error title=Error::No exit status in ${PWD}/train.exit: the training script did not run to its end (killed, walltime exceeded, node failure); the tail of its output follows"
+            tail -n 40 run.*.out 2>/dev/null
+            exit 1
+          fi
+          status=$(cat train.exit)
+          if [ "${status}" != "0" ]; then
+            echo "::error title=Error::The training exited with status ${status}; the tail of its output follows"
+            tail -n 40 run.*.out 2>/dev/null
+            exit 1
+          fi
+          echo "::notice::The training completed: checkpoints, figures and logs in ${PWD}/work, the metrics in ${PWD}/results/metrics.csv"
+
+'on':
+  execute:
+    inputs:
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          resource:
+            type: compute-clusters
+            label: Compute resource
+            include-workspace: false
+            tooltip: Resource where the training runs; TensorBoard runs on its login node
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Job?
+            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes → The training is submitted to the scheduler using sbatch or qsub (GPU compute nodes)
+              No  → It runs on the controller or login node (a single GPU server)
+          gpus:
+            type: number
+            label: GPUs per job
+            default: 1
+            min: 0
+            max: 8
+            hidden: ${{ inputs.cluster.resource.schedulerType == '' || inputs.cluster.scheduler == false || inputs.service.device != 'gpu' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Requested as --gres=gpu:N (PBS: -l select=1:ngpus=N) ahead of the directives
+              below, which can override it. The examples train on one GPU. 0 requests none,
+              for a partition whose nodes all have GPUs but no GRES configured.
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.cluster.resource }}
+                tooltip: Select a partition with GPU nodes from the drop down menu.
+              time:
+                label: Walltime
+                type: string
+                default: '02:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --cpus-per-task=8
+                  #SBATCH --mem=32G
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l walltime=02:00:00
+                  #PBS -l select=1:ncpus=8:ngpus=1
+      service:
+        type: group
+        label: PhysicsNeMo Training
+        items:
+          mode:
+            type: dropdown
+            label: Run
+            default: example
+            options:
+              - value: example
+                label: A curated example
+              - value: custom
+                label: My own script
+          example:
+            type: dropdown
+            label: Example
+            default: darcy_fno
+            hidden: ${{ inputs.service.mode != 'example' }}
+            ignore: ${{ .hidden }}
+            options:
+              - value: darcy_fno
+                label: 'Darcy flow, Fourier neural operator (FNO): training data generated on the fly'
+              - value: darcy_transolver
+                label: 'Darcy flow, Transolver (transformer neural operator): training data generated on the fly'
+              - value: ldc_pinns
+                label: 'Lid-driven cavity, physics-informed neural network (PINN): physics only, no data'
+            tooltip: |
+              The examples of the PhysicsNeMo release below (examples/cfd/<name>); none
+              downloads a dataset. Darcy: permeability fields in, pressure out, solved by
+              PhysicsNeMo's Darcy2D data pipe during training. LDC: the Navier-Stokes
+              residuals and the wall conditions are the loss (needs PhysicsNeMo-Sym, in the image).
+          epochs:
+            type: number
+            label: Pseudo-epochs
+            default: 20
+            min: 1
+            hidden: ${{ inputs.service.mode != 'example' || inputs.service.example == 'ldc_pinns' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              training.max_pseudo_epochs: each pseudo-epoch is 2048 newly generated samples.
+              The examples' own default, 256, takes hours; 20 is about 30 minutes for the FNO
+              on one A30. Validation (with a figure) runs every 4.
+          iterations:
+            type: number
+            label: Iterations
+            default: 10000
+            min: 1
+            hidden: ${{ inputs.service.mode != 'example' || inputs.service.example != 'ldc_pinns' }}
+            ignore: ${{ .hidden }}
+            tooltip: Training iterations (the example's own count is 10000); the metrics are logged every 1% and the flow field is plotted every 10%.
+          batch_size:
+            type: number
+            label: Batch size
+            default: 0
+            min: 0
+            hidden: ${{ inputs.service.mode != 'example' || inputs.service.example == 'ldc_pinns' }}
+            ignore: ${{ .hidden }}
+            tooltip: training.batch_size; 0 keeps the example's (64 for the FNO, 8 for the Transolver)
+          overrides:
+            type: string
+            label: Hydra overrides
+            optional: true
+            hidden: ${{ inputs.service.mode != 'example' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Extra settings for the example's config.yaml, space-separated, for example
+              training.resolution=128 scheduler.initial_lr=5e-4. They come last and win.
+          custom_script:
+            type: editor
+            label: Script
+            hidden: ${{ inputs.service.mode != 'custom' }}
+            ignore: ${{ .hidden }}
+            default: |
+              # Runs with bash inside the PhysicsNeMo container, in /workspace (work/ in the
+              # job directory). The PhysicsNeMo examples are in ${PHYSICSNEMO_SRC}/examples.
+              # Console lines "Epoch <N> Metrics: <name> = <value>, ..." (PhysicsNeMo's
+              # LaunchLogger) become TensorBoard scalars, PNG files under /workspace images.
+              cp -r "${PHYSICSNEMO_SRC}/examples/cfd/darcy_fno" .
+              cd darcy_fno
+              # Darcy2D generates its data on the GPU unless given the training device
+              sed -i 's/dataloader = Darcy2D(/dataloader = Darcy2D(device=dist.device, /' train_fno_darcy.py
+              python -u train_fno_darcy.py training.max_pseudo_epochs=4
+            tooltip: A bash script run inside the container in /workspace; the run fails when it exits non-zero.
+          device:
+            type: dropdown
+            label: Device
+            default: gpu
+            options:
+              - value: gpu
+                label: GPU
+              - value: cpu
+                label: CPU (slow; small settings only)
+            tooltip: |
+              GPU: the job fails at once when the node has no working GPU (nvidia-smi).
+              CPU: no GPU is used even when there is one; shrink the example (see the
+              cpu_smoke_test saved inputs).
+          gpu_index:
+            type: number
+            label: GPU index
+            default: 0
+            min: 0
+            hidden: ${{ inputs.service.device != 'gpu' || inputs.cluster.scheduler == true }}
+            ignore: ${{ .hidden }}
+            tooltip: Which GPU of the node to train on (nvidia-smi numbering). A scheduled job uses the GPU it was allocated.
+          tensorboard:
+            type: boolean
+            label: TensorBoard
+            default: true
+            tooltip: |
+              Serve TensorBoard over the run as the endpoint tensorboard-<run slug>, live during
+              the training and afterwards until you delete the endpoint.
+      software:
+        type: group
+        label: Software
+        collapsed: true
+        items:
+          runtime:
+            type: dropdown
+            label: Container runtime
+            default: docker
+            options:
+              - value: docker
+                label: Docker
+              - value: singularity
+                label: Singularity / Apptainer
+            tooltip: |
+              Docker: the image is pulled on the node that trains (sudo docker when the user
+              is not in the docker group). Singularity: the image is built once into a SIF in
+              the install directory on the login node (about 17 GB, needs ~70 GB free while
+              building), for clusters without Docker.
+          image:
+            type: string
+            label: Container image
+            default: nvcr.io/nvidia/physicsnemo/physicsnemo:25.06
+            tooltip: The NGC PhysicsNeMo image; 25.06 ships PhysicsNeMo 1.1.0, which the examples version below must match.
+          sif:
+            type: string
+            label: Singularity image file
+            optional: true
+            hidden: ${{ inputs.software.runtime != 'singularity' }}
+            ignore: ${{ .hidden }}
+            tooltip: The path of a SIF built elsewhere from the image above; empty builds it once in the install directory.
+          examples_ref:
+            type: string
+            label: PhysicsNeMo examples version
+            default: v1.1.0
+            tooltip: The git tag of github.com/NVIDIA/physicsnemo the examples come from; v<the image's PhysicsNeMo version>.
+          install_dir:
+            type: string
+            label: Install directory
+            default: ${HOME}/pw/software
+            tooltip: |
+              The examples (physicsnemo/src), the Singularity image (physicsnemo/containers)
+              and TensorBoard (physicsnemo/miniforge) go under <install directory>/physicsnemo/
+              once and are reused by later runs.

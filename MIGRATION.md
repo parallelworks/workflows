@@ -1337,6 +1337,13 @@ unattended NVIDIA upgrade); the module was reloaded with the owner's approval (p
 | `a30-singularity-gpu` (FNO, 2 pseudo-epochs, SIF built by the run) | PASS `supreme-leopard` (693 s; the 13 GB SIF built in 7 min) |
 | `gcp-compute-docker-cpu` (SLURM `compute` partition, CPU, `cpu_smoke_test` sizes) | FAIL `intent-crawdad` (TensorBoard needs `setuptools<81`), fixed; PASS `fun-rattler` (2051 s: node boot, then a 29 min image pull on the fresh node; 40 s per pseudo-epoch) |
 | `gcp-controller-no-gpu` (`device: gpu` on a login node without one, `_test.expect: error`) | PASS `mutual-piglet` (22 s, the job failed at the GPU check, nothing pulled) |
+| `a30-slurm-docker-gpu` (a SLURM job on a30's `debug` partition, no GRES there, so `gpus: 0`) | PASS `rapid-ant` (SLURM job 30 on node `gpu`, the A30 through Docker) |
+
+After the pre-merge review (a scheduler's GPU allocation is reported, not looked up by
+`nvidia-smi -i`; TensorBoard picks up figures written in the training's last seconds; an
+empty custom script fails), `a30-docker-ldc-pinns` (`cute-worm`), `a30-docker-gpu`
+(`vocal-marmot`), `a30-slurm-docker-gpu` and `gcp-controller-no-gpu` (`powerful-baboon`)
+passed again.
 
 Manual: cancelling mid-training on gcpsmall (`assuring-meerkat`, SLURM) and on a30
 (`sound-crayfish`, Docker on the login node, a Transolver with the default length, which
@@ -1344,5 +1351,5 @@ ran `max_pseudo_epochs=4`) ended the job, removed the container (`docker ps -a` 
 node, GPU memory freed) and left TensorBoard serving until `pw endpoints delete`, after which
 no process remained; cancelling during preprocessing (`intimate-chamois`) ran
 `stop_server_if_unhealthy`, which deleted the half-registered endpoint and killed the
-server. Not exercised: PBS, a scheduled job on a GPU partition, Singularity on a compute
-node, a multi-GPU node with `gpu_index` > 0. The checkout points at `canary` for the merge.
+server. Not exercised: PBS, a SLURM GRES allocation (`SLURM_JOB_GPUS`), Singularity on a
+compute node, a multi-GPU node with `gpu_index` > 0. The checkout points at `canary` for the merge.

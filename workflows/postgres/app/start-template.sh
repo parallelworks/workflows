@@ -108,6 +108,9 @@ services:
     image: ${postgres_image}
     user: "${container_uid}:${container_gid}"
     shm_size: 256m
+    # The shutdown checkpoint can outlast Docker's 10 s on a busy node, and a
+    # killed server runs crash recovery on its next start
+    stop_grace_period: 2m
     environment:
       PGDATA: /var/lib/postgresql/data/pgdata
       POSTGRES_USER: "${postgres_user}"

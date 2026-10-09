@@ -42,6 +42,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [marimo](workflows/marimo/) | marimo notebooks (edit or run mode) | general, hsp, noaa |
 | [metabase](workflows/metabase/) | Metabase BI server (Docker) on a compute cluster or Kubernetes | general, general_k8s |
 | [mlflow](workflows/mlflow/) | MLflow tracking server (UI + REST API) on a compute cluster or Kubernetes | general, hsp, noaa, k8s, general_k8s |
+| [monte-carlo-pricing](workflows/monte-carlo-pricing/) | Multi-site Monte Carlo option pricing (Asian, European, barrier): batches of paths simulated on N sites in parallel, the price converging live in a dashboard | general |
 | [n8n](workflows/n8n/) | n8n automation (Docker/Singularity) | general, emed, hsp, noaa |
 | [ollama](workflows/ollama/) | Ollama GGUF model server (native/container) | general, hsp, noaa |
 | [ollama-openwebui](workflows/ollama-openwebui/) | Ollama + OpenWebUI on Kubernetes | k8s |

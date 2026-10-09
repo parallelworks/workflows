@@ -537,9 +537,11 @@ jobs:
         early-cancel: any-job-failed
         run: |
           # The image applies the user and password only when it initializes an
-          # empty volume, so an existing PVC keeps those of the run that created it
+          # empty volume, so an existing PVC keeps those of the run that created it.
+          # Its pg_hba.conf trusts the loopback, so the check connects to the pod's
+          # own address, where the password is required.
           if ! kubectl exec -i -n ${{ inputs.k8s.namespace }} ${{ needs.apply_k8s_deployment.outputs.pod }} -c postgres -- sh -c \
-              'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -h 127.0.0.1 -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -v db="$POSTGRES_DB" -q' <<'SQL'
+              'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -h "$(hostname -i | cut -d" " -f1)" -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -v db="$POSTGRES_DB" -q' <<'SQL'
           SELECT format('CREATE DATABASE %I', :'db')
           WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db')\gexec
           SQL

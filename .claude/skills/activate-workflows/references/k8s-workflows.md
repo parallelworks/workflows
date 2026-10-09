@@ -10,7 +10,7 @@
 | layout | files | use it when |
 |---|---|---|
 | Standalone, k8s-only | `workflows/{jupyterlab,kasmvnc,openvscode,mlflow,ollama-openwebui}/yamls/k8s.yaml` | the service only runs on Kubernetes; `mlflow` is the smallest complete example to copy |
-| Hybrid | `workflows/{jupyterlab,kasmvnc,openvscode,mlflow,metabase}/yamls/general_k8s.yaml` | one form for compute clusters and Kubernetes; every k8s job carries `if: ${{ inputs.resource.type == 'kubernetes' }}` and every script_submitter job the negation |
+| Hybrid | `workflows/{jupyterlab,kasmvnc,openvscode,mlflow,metabase,postgres}/yamls/general_k8s.yaml` | one form for compute clusters and Kubernetes; every k8s job carries `if: ${{ inputs.resource.type == 'kubernetes' }}` and every script_submitter job the negation |
 
 Both keep the repo's one rule: the app is served as a **`pw` endpoint** named
 `<service_k8s.name>-${PW_RUN_SLUG}`. The standalone files stay in the repo as k8s-only
@@ -67,7 +67,8 @@ where `pw` and `kubectl` are installed.
    `localhost:<image_port>`: no Service, no ingress (the CLI's env-var auth and the
    distroless image: [activate-platform.md §12](activate-platform.md), "Env-var auth for
    containers/sidecars"). `ollama-openwebui` keeps one Service, for Open WebUI to reach
-   Ollama in-cluster.
+   Ollama in-cluster; `postgres` keeps one for the database's TCP port, which an endpoint
+   cannot carry.
 4. **`apply_k8s_deployment`** — applies the PVC; creates the Secret from the run's key
    (`kubectl create secret generic <app>-pw-api-key --from-literal=PW_API_KEY="${PW_API_KEY}"
    --dry-run=client -o yaml | kubectl apply -f -`: idempotent, and the key never lands

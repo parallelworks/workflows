@@ -97,9 +97,9 @@ fi
 echo "::endgroup::"
 
 echo "::group::Starting PostgreSQL"
-# PGDATA is set explicitly: from version 18 the image's default lives under
-# /var/lib/postgresql/<major>/docker, which would tie the data directory to
-# one major version's layout
+# PGDATA is set explicitly so every major version finds the cluster at the
+# same path: from 18 the image defaults to /var/lib/postgresql/<major>/docker
+# and refuses to start on data at the older path
 cat > docker-compose.yml <<EOF
 services:
   postgres:
@@ -135,9 +135,11 @@ if ! ${docker_cmd} compose -p "${project_name}" up -d --wait postgres; then
 fi
 
 # The image applies the user and password only when it initializes an empty
-# data directory, so a reused one keeps those of the run that created it
+# data directory, so a reused one keeps those of the run that created it. Its
+# pg_hba.conf trusts the container's loopback, so the check connects to the
+# container's own address, where the password is required.
 if ! ${docker_cmd} compose -p "${project_name}" exec -T postgres sh -c \
-    'PGPASSWORD="$(cat /run/secrets/postgres_password)" exec psql -h 127.0.0.1 -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -v db="$POSTGRES_DB" -q' <<'SQL'
+    'PGPASSWORD="$(cat /run/secrets/postgres_password)" exec psql -h "$(hostname -i | cut -d" " -f1)" -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -v db="$POSTGRES_DB" -q' <<'SQL'
 SELECT format('CREATE DATABASE %I', :'db')
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db')\gexec
 SQL

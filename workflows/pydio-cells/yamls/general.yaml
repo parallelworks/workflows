@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: activate-pydio-cells
+          branch: canary
           sparse_checkout:
             - workflows/pydio-cells/app
       - name: Create Inputs

@@ -21,8 +21,8 @@ until `pw endpoints delete pydio-cells-<run-slug>`. Sign in as `admin` with the 
 - **Data Directory** (default `${HOME}/pydio-cells/files`): the files of the *Data
   Directory* workspace, readable and writable by every Cells user. Cells indexes it and
   keeps a hidden `.pydio` file in each folder; a change made on the host while Cells runs
-  appears after a restart or a re-sync of the `userfiles` datasource (Cells Console →
-  Storage → Datasources). It may be `${HOME}`, but must not contain the Run Directory.
+  appears after a restart or a re-sync of the `userfiles` datasource in the Cells
+  Console. It may be `${HOME}`, but must not contain the Run Directory.
 - **Run Directory** (default `${HOME}/pydio-cells`): `mysql_data/`, `cells_data/`
   (configuration, Common/Personal Files, versions, thumbnails). Reuse it to keep users,
   shares and settings; delete it to start over.

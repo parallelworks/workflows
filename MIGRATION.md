@@ -623,6 +623,11 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   `workflows/app-testbed/yamls/general.yaml`, `README.md` and `thumbnails/app-testbed.png`
   here (one variant for every platform).
 
+- The marketplace item `pydio-cells` (v1.0.0) pins `parallelworks/activate-pydio-cells@main`'s
+  `workflow.yaml`, `README.md` and `thumbnail.png` → `workflows/pydio-cells/yamls/general.yaml`,
+  `README.md` and `thumbnails/pydio-cells.png` here. Its form changed (`cluster`/`service`
+  groups), so saved inputs of the old item do not carry over.
+
 ## Test results (2026-08-31, repo public, canary pushed)
 
 Method: `pw workflows run <abs path to yamls/general.yaml> -i …` from this repo;
@@ -1085,3 +1090,77 @@ skipped `start_server` and `wait_for_endpoint` and found the worker connected. N
 exercised: PBS, `pw-forward`/`ssh` set explicitly, key adoption from the server host, a
 scheduled worker on the server host's own cluster (the placeholder binds loopback), and
 the launcher scripts. The tunnels the tests left were removed by hand.
+
+## pydio-cells (2026-10-09, from parallelworks/activate-pydio-cells)
+
+`workflows/pydio-cells/` is the endpoint-pattern port of `parallelworks/activate-pydio-cells@main`
+(b99edfe): [Pydio Cells](https://pydio.com/en/cells-overview) with MySQL in Docker Compose.
+The source served it through a platform session (`sessions:` block, `pw agent open-port`,
+`parallelworks/update-session`, the run alive on `docker compose up`) behind an nginx
+container whose `sub_filter` rules rewrote Cells' HTML and JSON for the
+`/me/session/<user>/<name>/` prefix.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `prep`, `pydio_cells`, `create_session`; inputs `resource`, `rundir`, `admin_password`, `data_dir`) | `yamls/general.yaml` (preprocessing → `script_submitter` → `wait_for_endpoint`; `filebrowser`'s `cluster`/`service` groups) |
+| install config, nginx config and compose file inline in the YAML; `docker compose up` | `app/controller.sh` (Run Directory must not be inside the Data Directory), `app/start-template.sh` (Docker detection and pulls as `open-notebook`, one-shot install, compose stack behind `pw endpoints run`, Data Directory workspace, `cancel.sh` = `compose down`) |
+| `README.md` | rewritten |
+| `thumbnail.png` | `thumbnails/pydio-cells.png` |
+
+Changes beyond the paths:
+
+- **No nginx.** A subdomain endpoint serves at the root, and every URL Cells' web client
+  builds is relative to it (`<base href="/">`, `/a`, `/io`, `/ws/event`), so the proxy and
+  its rewrites went. `CELLS_SITE_EXTERNAL` is `PW_ENDPOINT_URL` (share links), not
+  `http://localhost:8080`. Path-based endpoints would need the rewrites back.
+- **Pinned images**: `pydio/cells:5.1.0` and `mysql:8.4` as form inputs. The source's
+  `latest` had moved from 4.x to 5.1.0 since it was written; `mysql:8` resolves to 8.4.
+- **Both containers run as the workflow user**, so `mysql_data/`, `cells_data/` and the
+  files Cells writes into the Data Directory are the user's (the source ran Cells as root
+  and MySQL as uid 999). That needs the nested mount point
+  `cells_data/data/user_files` created first, or Docker makes `cells_data/data` root's
+  and the install fails. Run Directories of the source are refused with a `chown` hint.
+- **One-shot install** (`compose run` of the image's `cells configure`, which exits when
+  done) instead of `restart: unless-stopped`, which crash-looped on a failed install and
+  restarts the container without its database after a reboot. `compose logs -f cells`
+  is the liveness process: a Cells that stops ends the endpoint. The install config
+  holding the admin password exists only during the install.
+- **The Data Directory works.** The source mounted it at `/var/cells/data/user_files`, but
+  the installer only creates flat datasources over its own folders, so the files never
+  appeared. The launcher now creates a structured datasource (`userfiles`) and a
+  *Data Directory* workspace, read-write for all users, over REST once per Run Directory
+  (`cells_data/.data-workspace-created`). Its default moved from `$HOME` to
+  `${HOME}/pydio-cells/files`: structured storage writes a `.pydio` file into every folder
+  it indexes, and a Run Directory inside the Data Directory is now refused.
+- **Random database password** in `<rundir>/.mysql.env` (mode 600) and a random MySQL root
+  password, instead of `cells_db_pw`/`cells_root_pw`: the MySQL container answers on its
+  bridge address to every user on the host. Cells listens on `127.0.0.1` only.
+
+`general` only, as `filebrowser` and `open-notebook` (no Docker on the HPCMP and NOAA
+systems).
+
+**Tests (2026-10-09, `pw://alvaro/gcpsmall`, branch `activate-pydio-cells`; rows in
+`workflows/pydio-cells/tests/general/*.csv`):**
+
+| Test | Result |
+|---|---|
+| `gcp-controller` (login node, a file seeded into the Data Directory) | PASS `top-mongrel` (cold, 57 s: install, workspace created, the seeded file indexed; kept for the manual checks), `capital-boxer` (warm, 41 s, `cleanup=ok`) |
+| `gcp-controller-rundir-in-data-dir` (`data_dir: ${HOME}`, `_test.expect: error`) | PASS `relieved-hedgehog` (22 s): the controller refused the Run Directory, nothing started |
+| `gcp-compute` (SLURM job, `compute` partition) | PASS `quiet-pigeon` (289 s, node powering up; healthy 21 s after the endpoint registered) |
+
+Manual on `top-mongrel`: anonymous GET → `307`; with the platform token `/` → `200` with
+`<base href="/"/>`, the `/ws/event` upgrade → `101`; every file in the Run and Data
+Directories owned by the workflow user. `pw endpoints delete` removed both containers and
+the network, no process left. Cancel during the install (`liberal-stork`, cold Run
+Directory, MySQL just healthy): run `canceled`, endpoint deleted by the submitter's
+cleanup, containers (the install's one-off included) and network removed, no install
+config left; a new run on that Run Directory (`valued-dory`) redid the install and came
+up in 10 s. Earlier, on the same stack started by hand on gcpsmall: admin login over
+`/a/frontend/session`, the workspace listing a host file to the admin, a folder created
+through `/a/tree/create` landing in the Data Directory as the workflow user, and
+host-side changes appearing after a restart or `cells admin datasource resync -d
+userfiles`. Not exercised: a browser session through
+the endpoint (the proxy forwards `Authorization`, which the web client sets itself once
+signed in; scripted requests can only authenticate to the platform with that header),
+PBS, a path-based endpoint, a host without `sudo`. The checkout points at `canary` for
+the merge.

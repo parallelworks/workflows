@@ -38,7 +38,11 @@ after the run until you delete it.
    job, and streams its output. The script checks the GPU (`nvidia-smi`), pulls the
    image with Docker on that node if it is not there yet (or uses the SIF), and runs
    `app/run-example.sh` in the container: it copies the example into `work/example`,
-   applies the workflow's settings and trains. The output goes to `work/train.log`
+   applies the workflow's settings and trains. The copy is edited where the example
+   would not run as is: Darcy2D is given the training device (it defaults to `cuda`,
+   which fails on a CPU), the Transolver logs to the console instead of MLflow (absent
+   from the image), and the LDC loop takes the iteration count and reports its loss
+   every 1 %. Each edit must match the upstream text exactly once, or the job fails. The output goes to `work/train.log`
    and the exit status to `train.exit`.
 3. **results** writes `results/metrics.csv` and `results/summary.txt`, publishes the
    last value of every metric as an output, and fails the run when the training did
@@ -116,8 +120,7 @@ In the run's job directory (`~/pw/jobs/<run-slug>/` for CLI runs,
 run.<slug>.out           the streamed job output: the host, the GPU, the container command, the training
 train.exit               the training's exit status
 work/train.log           the training output
-work/example/            the example as run: checkpoints/, outputs/ (Hydra), figures (validation_step_*.png),
-                         mlruns/ for the Transolver (it logs to MLflow offline)
+work/example/            the example as run: checkpoints/, outputs/ (Hydra), figures (validation_step_*.png)
 work/tensorboard/        the TensorBoard events the server wrote
 results/metrics.csv      every metric: namespace, step, metric, value
 results/summary.txt      the last value of each metric, the checkpoints and figures

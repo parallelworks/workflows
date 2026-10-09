@@ -117,6 +117,7 @@ services:
       mysql:
         condition: service_healthy
     environment:
+      HOME: /var/cells
       CELLS_NO_TLS: "1"
       CELLS_SITE_BIND: "0.0.0.0:8080"
       CELLS_SITE_EXTERNAL: "${PW_ENDPOINT_URL%/}"

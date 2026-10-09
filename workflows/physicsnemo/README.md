@@ -61,8 +61,8 @@ after the run until you delete it.
 | | `slurm`, `pbs` | partition, walltime (default 2 h) and extra directives (`--cpus-per-task`, `--mem`, …) |
 | `service` | `mode` | `example` or `custom` |
 | | `example` | `darcy_fno`, `darcy_transolver` or `ldc_pinns` |
-| | `epochs` | Darcy: pseudo-epochs of 2048 generated samples (default 20, about 30 minutes for the FNO on an A30; the examples' own 256 take hours). Validation, with a figure, runs every 4, and at the end of a shorter run |
-| | `iterations` | LDC: training iterations (default 10000, the example's own); metrics every 1 %, a flow-field figure every 10 % |
+| | `epochs` | Darcy: pseudo-epochs of 2048 generated samples, 80 s each for the FNO and 350 s for the Transolver on an A30. `0` (default) trains about half an hour: 20 for the FNO, 4 for the Transolver (the examples' own 256 take hours). Validation, with a figure, runs every 4, and at the end of a shorter run |
+| | `iterations` | LDC: training iterations (default 10000, the example's own, about 12 minutes on an A30); metrics every 1 %, a flow-field figure every 10 % |
 | | `batch_size` | Darcy: `training.batch_size`, `0` keeps the example's (64 FNO, 8 Transolver) |
 | | `overrides` | extra Hydra overrides for the example's `config.yaml`, space-separated, e.g. `training.resolution=128 scheduler.initial_lr=5e-4`; they come last and win |
 | | `custom_script` | with `custom`: bash run in the container in `/workspace`; `${PHYSICSNEMO_SRC}/examples` holds the examples |

@@ -83,7 +83,9 @@ runs on the login node, so it starts
 instead of through the submitter below; `design-explorer` (Design Explorer over any study
 of case directories, a subworkflow of `doe-openfoam` and `dakota-openfoam`) and
 `app-testbed` do the same, the latter at a fixed endpoint name (`apptest`) that a re-run
-reuses. On a compute cluster,
+reuses. `physicsnemo` is both too: a training job submitted as a batch job (completes
+when the training does, fails when it fails) and TensorBoard over it, started the same
+detached way on the login node. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse
 `workflows/<name>/app` — or an impl subdir — [+ `tools/...`]), assembles
 `inputs.sh` + `controller.sh` + `start-template.sh`, submits through

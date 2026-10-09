@@ -1,0 +1,31 @@
+{
+  "_test": {
+    "timeout_s": 2700,
+    "endpoint": true,
+    "warm_marker": [
+      "${HOME}/pw/software/physicsnemo/src/physicsnemo-v1.1.0/.complete",
+      "${HOME}/pw/software/physicsnemo/miniforge/envs/tensorboard/bin/python"
+    ],
+    "leftover_patterns": [
+      "pw endpoints",
+      "tensorboard-server.py",
+      "run-example.sh"
+    ],
+    "leftover_commands": {
+      "containers": "sudo -n docker ps -q --filter name=physicsnemo- | wc -l"
+    }
+  },
+  "cluster": {
+    "resource": "pw://alvaro/a30gpuserver",
+    "scheduler": false
+  },
+  "service": {
+    "mode": "custom",
+    "device": "gpu",
+    "gpu_index": 0,
+    "tensorboard": true
+  },
+  "software": {
+    "runtime": "docker"
+  }
+}

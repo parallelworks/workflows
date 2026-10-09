@@ -1,0 +1,54 @@
+Run alive-shepherd: error (52s)
+
+Error annotations:
+
+  Error: The training exited with status 1; the tail of its output follows
+    in results → Check the Exit Status
+
+Failed jobs/steps:
+
+  results > Check the Exit Status (error, 0s)
+    Error: The training exited with status 1; the tail of its output follows
+    ✗ Error: The training exited with status 1; the tail of its output follows
+    All rights reserved.
+    
+    Various files include modifications (c) NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
+    
+    GOVERNING TERMS: The software and materials are governed by the NVIDIA Software License Agreement
+    (found at https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-software-license-agreement/)
+    and the Product-Specific Terms for NVIDIA AI Products
+    (found at https://www.nvidia.com/en-us/agreements/enterprise-software/product-specific-terms-for-ai-products/).
+    
+    Python      : 3.12.3
+    PyTorch     : 2.7.0a0+79aa17489c.nv25.04
+    PhysicsNeMo : 1.1.0
+    Device      : NVIDIA A30, 23.6 GiB, CUDA 12.9
+    Example     : darcy_transolver (PhysicsNeMo examples v1.1.0)
+    Command     : python train_transolver_darcy.py training.max_pseudo_epochs=2 validation.validation_pseudo_epochs=2 
+    
+    Warp CUDA error: Failed to get driver entry point 'cuDeviceGetUuid' (CUDA error 1)
+    Warp CUDA error: Function cuDeviceGetUuid_f: a suitable driver entry point was not found
+    Warp CUDA error 36: API call is not supported in the installed CUDA driver (in function cuda_init, /builds/omniverse/warp/warp/native/warp.cu:277)
+    Warp 1.7.2 initialized:
+       CUDA Toolkit 12.8, Driver 13.0
+       Devices:
+         "cpu"      : "x86_64"
+         "cuda:0"   : "NVIDIA A30" (24 GiB, sm_80, mempool enabled)
+       Kernel cache:
+         /workspace/.home/.cache/warp/1.7.2
+    Traceback (most recent call last):
+      File "/usr/local/lib/python3.12/dist-packages/physicsnemo/launch/logging/mlflow.py", line 25, in <module>
+        import mlflow  # noqa: F401 for docs
+        ^^^^^^^^^^^^^
+    ModuleNotFoundError: No module named 'mlflow'
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/workspace/example/train_transolver_darcy.py", line 31, in <module>
+        from physicsnemo.launch.logging.mlflow import initialize_mlflow
+      File "/usr/local/lib/python3.12/dist-packages/physicsnemo/launch/logging/mlflow.py", line 29, in <module>
+        raise ImportError(
+    ImportError: These utilities require the MLFlow library. Install MLFlow using `pip install mlflow`. For more info, refer: https://www.mlflow.org/docs/2.5.0/quickstart.html#install-mlflow
+
+Summary: 1 job(s) failed, 1 step(s) failed

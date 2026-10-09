@@ -10,7 +10,8 @@ version suffixes** — every file is the latest version; git tags version the re
 Every workflow but [activate-batch](workflows/activate-batch/), [3dcs](workflows/3dcs/)
 and [benchmarks](workflows/benchmarks/) serves through the **`pw` endpoint pattern**;
 those three run batch jobs to completion, as does [probe](workflows/probe/)'s
-`general_run_tests.yaml`.
+`general_run_tests.yaml`; [physicsnemo](workflows/physicsnemo/) runs its training to
+completion and serves TensorBoard beside it.
 
 How this repo was assembled, and where anything older lives, is recorded in
 [MIGRATION.md](MIGRATION.md).
@@ -47,6 +48,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [ollama-openwebui](workflows/ollama-openwebui/) | Ollama + OpenWebUI on Kubernetes | k8s |
 | [open-notebook](workflows/open-notebook/) | Open Notebook (Docker) | general |
 | [openvscode](workflows/openvscode/) | OpenVSCode Server | general, emed, hsp, noaa, general_k8s, k8s |
+| [physicsnemo](workflows/physicsnemo/) | NVIDIA PhysicsNeMo training in the NGC container (Docker or Singularity, GPU or CPU) on the login node or as a SLURM/PBS job: Darcy FNO, Darcy Transolver, LDC PINN or your own script, with TensorBoard live as an endpoint | general |
 | [probe](workflows/probe/) | PROBE: runs a platform's workflow tests from their definitions repository ([probe-tests-activate-parallel-works](https://github.com/parallelworks/probe-tests-activate-parallel-works) for activate.parallel.works), records the results in a bucket and serves the results dashboards | general, general_run_tests (batch, no endpoint) |
 | [pydio-cells](workflows/pydio-cells/) | Pydio Cells file sharing and collaboration platform with MySQL (Docker), a host directory as its Data Directory workspace | general |
 | [rag-service](workflows/rag-service/) | RAG search/index service | general |

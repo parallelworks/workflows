@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-09T13:38:11Z,cold,pass,ok,a17d238,74bcc3d,381d2b2,66bbc71,66bbc71,physicsnemo,alvaro,exciting-vervet,427,

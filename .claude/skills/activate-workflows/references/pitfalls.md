@@ -8,7 +8,7 @@
 >
 > "Step N" means SKILL.md's step N; "reference §N" means section N of
 > [activate-platform.md](activate-platform.md). Lessons about one piece of software
-> (OpenFOAM, Dakota, ParaView, conda environments, Singularity/SIF images, MPI benchmarks, dask-jobqueue) live in
+> (OpenFOAM, Dakota, ParaView, conda environments, Singularity/SIF images, MPI benchmarks, dask-jobqueue, PhysicsNeMo) live in
 > [software/](software/), one file per tool — grep both when a symptom is unclear.
 
 ## Common pitfalls (learned from real runs)
@@ -462,3 +462,10 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   with the font's advance widths (fontTools in a scratch venv; Liberation Sans has
   Helvetica's metrics, DejaVu Sans is the wide fallback) and keep it inside its `<rect>`
   with a few px to spare, wrapping or widening where it does not fit.
+- **`nvidia-smi` says `Driver/library version mismatch` and every GPU job fails** (a30gpuserver,
+  2026-10-09): unattended-upgrades replaced the NVIDIA userspace (580.173 → 580.178) under the
+  running kernel module. A reboot or a module reload fixes it, an admin action on a shared box:
+  ask first. `fuser /dev/nvidia*` misses holders inside containers, which open their own device
+  nodes; grep `/proc/*/fd` for `nvidia` instead (there: a host `dcgm-exporter` container, gdm,
+  and the GPU Operator's device plugin, paused with `nvidia.com/gpu.deploy.<operand>=false`
+  node labels). `workflows/physicsnemo` checks `nvidia-smi -L` first and fails with its message.

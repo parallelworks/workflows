@@ -85,7 +85,12 @@ case "${example}" in
                 "LaunchLogger.initialize(use_mlflow=True)" "LaunchLogger.initialize()"
         fi
         f_patch "${script}" "dataloader = Darcy2D(" "dataloader = Darcy2D(device=dist.device, "
-        epochs="${PHYSICSNEMO_EPOCHS:-20}"
+        # 0: about half an hour on one A30 (80 s per FNO pseudo-epoch, 350 s per Transolver one)
+        epochs="${PHYSICSNEMO_EPOCHS:-0}"
+        if [ "${epochs}" -eq 0 ]; then
+            epochs=20
+            [ "${example}" = darcy_transolver ] && epochs=4
+        fi
         args=("training.max_pseudo_epochs=${epochs}")
         # the examples validate every 4 pseudo-epochs: a shorter run still validates once, at its end
         if [ "${epochs}" -lt 4 ]; then

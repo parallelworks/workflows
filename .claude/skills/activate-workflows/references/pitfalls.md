@@ -138,6 +138,10 @@
 - **A trap that backgrounds `setsid helper &` and then runs `kill -- -$$` can kill the helper
   before it detaches**: wait for a marker the helper writes first
   (`workflows/ray-cluster/app/start-template.sh`).
+- **`nproc` inside an `srun` task counts the task's CPUs, not the node's** (verified
+  2026-10-09 on gcpsmall: 1 by default, 4 with `--cpus-per-task=4`, still 1 with
+  `--exclusive`). A worker pool sized from `nproc` (an "auto" threads option) runs one
+  worker per node unless the step asks for `--cpus-per-task` (`workflows/monte-carlo-pricing`).
 - **`faulted`** is the status of a run whose job failed while the others wind down; it never
   completes, so treat it as final.
 - **`pgrep -f`/`pkill -f` run over `pw ssh` also match the remote shell carrying the command**

@@ -42,6 +42,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [marimo](workflows/marimo/) | marimo notebooks (edit or run mode) | general, hsp, noaa |
 | [metabase](workflows/metabase/) | Metabase BI server (Docker) on a compute cluster or Kubernetes | general, general_k8s |
 | [mlflow](workflows/mlflow/) | MLflow tracking server (UI + REST API) on a compute cluster or Kubernetes | general, hsp, noaa, k8s, general_k8s |
+| [monte-carlo-pricing](workflows/monte-carlo-pricing/) | Multi-site Monte Carlo option pricing (Asian, European, barrier): batches of paths simulated on N sites in parallel, the price converging live in a dashboard | general |
 | [n8n](workflows/n8n/) | n8n automation (Docker/Singularity) | general, emed, hsp, noaa |
 | [ollama](workflows/ollama/) | Ollama GGUF model server (native/container) | general, hsp, noaa |
 | [ollama-openwebui](workflows/ollama-openwebui/) | Ollama + OpenWebUI on Kubernetes | k8s |
@@ -49,6 +50,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [openvscode](workflows/openvscode/) | OpenVSCode Server | general, emed, hsp, noaa, general_k8s, k8s |
 | [postgres](workflows/postgres/) | PostgreSQL server (Docker) on a compute cluster or Kubernetes, with the pgweb SQL client as the endpoint and the database reachable over TCP | general, general_k8s |
 | [probe](workflows/probe/) | PROBE: runs a platform's workflow tests from their definitions repository ([probe-tests-activate-parallel-works](https://github.com/parallelworks/probe-tests-activate-parallel-works) for activate.parallel.works), records the results in a bucket and serves the results dashboards | general, general_run_tests (batch, no endpoint) |
+| [pydio-cells](workflows/pydio-cells/) | Pydio Cells file sharing and collaboration platform with MySQL (Docker), a host directory as its Data Directory workspace | general |
 | [rag-service](workflows/rag-service/) | RAG search/index service | general |
 | [rag-vllm](workflows/rag-vllm/) | vLLM inference server + optional RAG stack | general, hsp, noaa |
 | [ray-cluster](workflows/ray-cluster/) | Multi-site Ray cluster: head and live dashboard on one resource, SLURM/PBS/SSH workers on any others | general, hsp, noaa, general_add_worker, hsp_add_worker, noaa_add_worker |

@@ -623,6 +623,15 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   `workflows/app-testbed/yamls/general.yaml`, `README.md` and `thumbnails/app-testbed.png`
   here (one variant for every platform).
 
+- The marketplace item `pydio-cells` (v1.0.0) pins `parallelworks/activate-pydio-cells@main`'s
+  `workflow.yaml`, `README.md` and `thumbnail.png` → `workflows/pydio-cells/yamls/general.yaml`,
+  `README.md` and `thumbnails/pydio-cells.png` here. Its form changed (`cluster`/`service`
+  groups), so saved inputs of the old item do not carry over.
+
+- Any registration of `parallelworks/monte-carlo-pricing` (its `workflow.yaml`,
+  `README.md`, `thumbnail.png`) → `workflows/monte-carlo-pricing/yamls/general.yaml`,
+  `README.md` and `thumbnails/monte-carlo-pricing.png` here (one variant).
+
 ## Test results (2026-08-31, repo public, canary pushed)
 
 Method: `pw workflows run <abs path to yamls/general.yaml> -i …` from this repo;
@@ -1085,6 +1094,171 @@ skipped `start_server` and `wait_for_endpoint` and found the worker connected. N
 exercised: PBS, `pw-forward`/`ssh` set explicitly, key adoption from the server host, a
 scheduled worker on the server host's own cluster (the placeholder binds loopback), and
 the launcher scripts. The tunnels the tests left were removed by hand.
+
+## pydio-cells (2026-10-09, from parallelworks/activate-pydio-cells)
+
+`workflows/pydio-cells/` is the endpoint-pattern port of `parallelworks/activate-pydio-cells@main`
+(b99edfe): [Pydio Cells](https://pydio.com/en/cells-overview) with MySQL in Docker Compose.
+The source served it through a platform session (`sessions:` block, `pw agent open-port`,
+`parallelworks/update-session`, the run alive on `docker compose up`) behind an nginx
+container whose `sub_filter` rules rewrote Cells' HTML and JSON for the
+`/me/session/<user>/<name>/` prefix.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `prep`, `pydio_cells`, `create_session`; inputs `resource`, `rundir`, `admin_password`, `data_dir`) | `yamls/general.yaml` (preprocessing → `script_submitter` → `wait_for_endpoint`; `filebrowser`'s `cluster`/`service` groups) |
+| install config, nginx config and compose file inline in the YAML; `docker compose up` | `app/controller.sh` (Run Directory must not be inside the Data Directory), `app/start-template.sh` (Docker detection and pulls as `open-notebook`, one-shot install, compose stack behind `pw endpoints run`, Data Directory workspace, `cancel.sh` = `compose down`) |
+| `README.md` | rewritten |
+| `thumbnail.png` | `thumbnails/pydio-cells.png` |
+
+Changes beyond the paths:
+
+- **No nginx.** A subdomain endpoint serves at the root, and every URL Cells' web client
+  builds is relative to it (`<base href="/">`, `/a`, `/io`, `/ws/event`), so the proxy and
+  its rewrites went. `CELLS_SITE_EXTERNAL` is `PW_ENDPOINT_URL` (share links), not
+  `http://localhost:8080`. Path-based endpoints would need the rewrites back.
+- **Pinned images**: `pydio/cells:5.1.0` and `mysql:8.4` as form inputs. The source's
+  `latest` had moved from 4.x to 5.1.0 since it was written; `mysql:8` resolves to 8.4.
+- **Both containers run as the workflow user**, so `mysql_data/`, `cells_data/` and the
+  files Cells writes into the Data Directory are the user's (the source ran Cells as root
+  and MySQL as uid 999). That needs the nested mount point
+  `cells_data/data/user_files` created first, or Docker makes `cells_data/data` root's
+  and the install fails. Run Directories of the source are refused with a `chown` hint.
+- **One-shot install** (`compose run` of the image's `cells configure`, which exits when
+  done) instead of `restart: unless-stopped`, which crash-looped on a failed install and
+  restarts the container without its database after a reboot. `compose logs -f cells`
+  is the liveness process: a Cells that stops ends the endpoint. The install config
+  holding the admin password exists only during the install.
+- **The Data Directory works.** The source mounted it at `/var/cells/data/user_files`, but
+  the installer only creates flat datasources over its own folders, so the files never
+  appeared. The launcher now creates a structured datasource (`userfiles`) and a
+  *Data Directory* workspace, read-write for all users, over REST once per Run Directory
+  (`cells_data/.data-workspace-created`). Its default moved from `$HOME` to
+  `${HOME}/pydio-cells/files`: structured storage writes a `.pydio` file into every folder
+  it indexes, and a Run Directory inside the Data Directory is now refused.
+- **Random database password** in `<rundir>/.mysql.env` (mode 600) and a random MySQL root
+  password, instead of `cells_db_pw`/`cells_root_pw`: the MySQL container answers on its
+  bridge address to every user on the host. Cells listens on `127.0.0.1` only.
+
+`general` only, as `filebrowser` and `open-notebook` (no Docker on the HPCMP and NOAA
+systems).
+
+**Tests (2026-10-09, `pw://alvaro/gcpsmall`, branch `activate-pydio-cells`; rows in
+`workflows/pydio-cells/tests/general/*.csv`):**
+
+| Test | Result |
+|---|---|
+| `gcp-controller` (login node, a file seeded into the Data Directory) | PASS `top-mongrel` (cold, 57 s: install, workspace created, the seeded file indexed; kept for the manual checks), `capital-boxer` (warm, 41 s, `cleanup=ok`) |
+| `gcp-controller-rundir-in-data-dir` (`data_dir: ${HOME}`, `_test.expect: error`) | PASS `relieved-hedgehog` (22 s): the controller refused the Run Directory, nothing started |
+| `gcp-compute` (SLURM job, `compute` partition) | PASS `quiet-pigeon` (289 s, node powering up; healthy 21 s after the endpoint registered) |
+
+Manual on `top-mongrel`: anonymous GET → `307`; with the platform token `/` → `200` with
+`<base href="/"/>`, the `/ws/event` upgrade → `101`; every file in the Run and Data
+Directories owned by the workflow user. `pw endpoints delete` removed both containers and
+the network, no process left. Cancel during the install (`liberal-stork`, cold Run
+Directory, MySQL just healthy): run `canceled`, endpoint deleted by the submitter's
+cleanup, containers (the install's one-off included) and network removed, no install
+config left; a new run on that Run Directory (`valued-dory`) redid the install and came
+up in 10 s. Earlier, on the same stack started by hand on gcpsmall: admin login over
+`/a/frontend/session`, the workspace listing a host file to the admin, a folder created
+through `/a/tree/create` landing in the Data Directory as the workflow user, and
+host-side changes appearing after a restart or `cells admin datasource resync -d
+userfiles`. Not exercised: a browser session through
+the endpoint (the proxy forwards `Authorization`, which the web client sets itself once
+signed in; scripted requests can only authenticate to the platform with that header),
+PBS, a path-based endpoint, a host without `sudo`. The checkout points at `canary` for
+the merge.
+
+## monte-carlo-pricing (2026-10-09, from parallelworks/monte-carlo-pricing)
+
+`workflows/monte-carlo-pricing/` is the multi-site Monte Carlo option pricing demo from
+`parallelworks/monte-carlo-pricing@main` (47d2df6): a FastAPI dashboard on one resource,
+and geometric Brownian motion paths simulated in batches on N compute sites, which POST
+each batch's mean, variance and payoff histogram back (through reverse SSH tunnels for
+other resources); the dashboard merges them live. The source is a fork of the
+burst-render-demo skeleton — `start_dashboard.sh` is byte-identical, and the dispatcher,
+the jobs and the form groups are the same with tiles swapped for batches — so it is
+migrated by the burst-render-demo recipe above, including the fixes the first HSP run
+taught (JSON read from the environment, scripts shipped to remote sites instead of
+cloned, the endpoint name built once). This section records what differs.
+
+| Old | New |
+|---|---|
+| `scripts/dashboard.py`, `scripts/simulator.py`, `scripts/templates/index.html` | `app/…`, verbatim |
+| `scripts/start_dashboard.sh`, install half | `app/controller.sh`: burst-render-demo's (shared `uv`, virtualenv at `${service_parent_install_dir}/monte-carlo-pricing/venv`, verified by importing the app), with `fastapi uvicorn websockets numpy` and a 3.9 minimum Python |
+| `scripts/start_dashboard.sh`, launch half | `app/start-template.sh` (`pw endpoints run` + the `SESSION_PORT` launcher) |
+| `scripts/setup.sh` (numpy via `pip --user`, else a venv in the job dir) | `app/setup_site.sh`, run on remote sites only |
+| `scripts/dispatch_simulations.sh` | `app/dispatch_simulations.sh`: burst-render-demo's dispatcher (local mode for sites on the dashboard host's resource, `#SBATCH` directives to `srun`, `pipefail`, no `pkill` sweep, per-run remote work dir `~/pw/jobs/monte_carlo_remote/<run-slug>/`) with the simulation parameters |
+| `scripts/run_simulation.sh` | `app/run_simulation.sh` (see below) |
+| `workflow.yaml` (`sessions:`, jobs `checkout`, `start_dashboard`, `wait_for_dashboard`, `update_session`, `configure_simulation`, `dispatch_simulations`, `complete`) | `yamls/general.yaml`: `preprocessing` → `session_runner` (`script_submitter/v3.6/general.yaml`, login node) + `wait_for_endpoint` → `simulate` (configure, dispatch, summary) |
+| checkout `parallelworks/monte-carlo-pricing@main`, sparse `scripts`; remote sites `git clone` it | `parallelworks/workflows@canary`, sparse `workflows/monte-carlo-pricing/app`; remote sites get `run_simulation.sh`, `simulator.py`, `setup_site.sh` tarred over the dispatcher's SSH connection |
+| `scripts/generate_thumbnail.py`, `thumbnail.png` | `generate_thumbnail.py` (now writes `thumbnails/monte-carlo-pricing.png`; it regenerates the source thumbnail byte for byte), `thumbnails/monte-carlo-pricing.png` |
+
+**What differs from burst-render-demo:**
+
+- **numpy.** The renderer needs only the standard library; the simulator wants numpy
+  (its pure Python fallback is ~20× slower: 1.7 s against 80 ms per 10,000-path batch
+  on gcpsmall's login node). The dashboard's
+  virtualenv carries numpy, and sites on the dashboard host's own resource run the
+  simulator with it (`LOCAL_PYTHON`; compute nodes see it through the shared home). A
+  remote site runs `setup_site.sh`, which takes the site's `python3` when it imports
+  numpy and otherwise builds `~/pw/software/monte-carlo-pricing/site-venv` once (built
+  beside the final path and renamed into place, so concurrent runs never see half an
+  install); when numpy cannot be installed it warns and the fallback runs.
+- **Python 3.9 on the dashboard host.** `dashboard.py` annotates a module-level
+  `list[WebSocket]`, which Python 3.8 cannot evaluate, so the controller's minimum (below
+  which `uv` installs 3.12) is 3.9 rather than burst-render-demo's 3.8.
+  `python-multipart` is not installed: `/api/config` takes JSON, not a form.
+- **Source bugs fixed.** A multi-node `srun` ran `run_simulation.sh` once per task on the
+  same batch range, so every batch was simulated and posted once per node (same seeds,
+  double-counted paths); the tasks now split the range by `SLURM_PROCID`, as
+  burst-render-demo's tiles do. `setup.sh` fell back to a venv when `pip --user` failed
+  but the simulator kept running the system `python3`, so that numpy was never used;
+  `run_simulation.sh` now takes its interpreter from the dispatcher (`PYTHON_CMD`). A
+  batch that never reached the dashboard was counted and ignored; it now fails its site.
+- **The run checks its result.** The summary reads `/api/state`, prints the price, its
+  standard error and 95% interval (plus the Black-Scholes reference and the distance to
+  it for European options) and fails the run if the dashboard holds a different number
+  of batches than planned. Sites that would get no batch (more sites than batches) are
+  skipped instead of allocated.
+
+**Form.** `simulation_settings` keeps every source field verbatim and gains the hidden
+`name` (`monte-carlo`, the endpoint prefix) and `parent_install_dir`; `head` and
+`targets` are burst-render-demo's `general` form (no `pbs` group or `is_disabled`
+markers, **Schedule Job?** only for SLURM resources, account/QoS through the directives
+editor). One variant: the source had a single `workflow.yaml`; `hsp`/`noaa` variants
+can be derived the way burst-render-demo's were if the demo is offered there.
+
+**Tests (2026-10-09, `pw://alvaro/gcpsmall`, branch `monte-carlo-pricing`; rows in
+`workflows/monte-carlo-pricing/tests/general/*.csv`).** Pass = the run completed (its
+`wait_for_endpoint` saw the endpoint answer, every site reported `COMPLETED` with 0
+batch errors and the summary found all planned batches on the dashboard) and
+`monte-carlo-<run-slug>` was listed; teardown = `pw endpoints delete`, after which no
+dashboard, endpoint wrapper, dispatcher or simulator process and no SLURM job was left.
+
+| Test | Result |
+|---|---|
+| `gcp-dashboard-gcp-login` (dashboard and one site on the gcpsmall login node, Asian call) | PASS `great-marmoset` (cold, 37 s: `uv` and the virtualenv with numpy built in ~15 s); 10 of 10 batches, 4 workers, price 5.7650 ± 0.0253 |
+| `gcp-dashboard-gcp-login-gcp-compute` (two sites: the login node and a 2-node `srun --partition=compute`, multi-line directives, European call) | PASS `proven-seagull` (255 s, compute nodes powering up): `srun ... --nodes=2 --ntasks=2 --comment=monte-carlo-regression` (the `##SBATCH --exclusive` line dropped); task 0 on `-1-0001` ran batches 10–14, task 1 on `-1-0002` 15–19; 20 of 20 batches; price 10.4850 ± 0.0467 against Black-Scholes 10.4506 (0.7 standard errors) |
+| `workspace-dashboard-gcp-compute` (dashboard on the user workspace, site gcpsmall over `pw ssh`, barrier at 130) | PASS `touched-jay` (53 s): SSH probe, reverse tunnel, scripts shipped to `~/pw/jobs/monte_carlo_remote/touched-jay/app/`, `site-venv` built with numpy 2.0.2, TCP proxy on the login node, `srun` on a compute node; 10 of 10 batches, price 3.5407 ± 0.0201 |
+
+**Cancel mid-simulation** (`alert-humpback`, two sites as in the second test, 10M paths
+in 2000 batches, one worker): with the dispatcher, the login-node `run_simulation.sh`,
+both `srun` processes and a `simulator.py` alive in the dispatcher's process group and
+SLURM job 24 running, `pw workflows runs cancel` left only the dashboard tree
+(`pw endpoints run` + uvicorn, released by the skip file as designed), `squeue` empty
+and the endpoint listed; `/api/state` held the 351 batches finished before the cancel,
+and `pw endpoints delete` removed the rest.
+
+Observed, not changed: **Worker Threads: Auto** counts the CPUs SLURM gives a task, one
+by default, so a scheduled site runs one simulator per node unless the directives carry
+`#SBATCH --cpus-per-task=<N>` (`nproc` under `srun` on gcpsmall: 1 by default, 4 with
+`--cpus-per-task=4`, still 1 with `--exclusive`); the README says so. The dashboard merges
+each batch's 50-bin payoff histogram by bin index while every batch picks its own bin
+edges, so the histogram is approximate (the price and its interval are exact merges).
+Not exercised: a PBS or SSH-mode remote site, a site without numpy access (the pure
+Python fallback ran only in a local test), a dashboard host older than Python 3.9, and a
+site whose login shell is tcsh.
 
 ## postgres (2026-10-09, from interactive_session's legacy generation)
 

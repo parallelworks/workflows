@@ -795,10 +795,12 @@ Esc closes the case; ← → step through the list.">?</button>
       const k = S.sortBy, dir = S.sortAsc ? 1 : -1;
       D.sorted = sel.slice().sort((a, b) => (a[k] - b[k]) * dir || (a.__id < b.__id ? -1 : a.__id > b.__id ? 1 : 0));
       D.selectedIds = new Set(sel.map((r) => r.__id));
-      // a selection narrowed to one case opens that case, so sliding a slider
-      // window over a grid steps the case panel through its neighbors
+      // a filter slider that narrows the selection to one case opens it, so
+      // sliding a window over a grid steps the case panel through its
+      // neighbors; a brush being drawn passes through one case by accident
       const single = sel.length === 1 ? sel[0].__id : null;
-      if (single !== null && single !== D.lastSingle) { S.pinned = single; }
+      if (D.fromSlider && single !== null && single !== D.lastSingle) { S.pinned = single; }
+      D.fromSlider = false;
       D.lastSingle = single;
     }
     function visibleAxes() { return S.order.filter((k) => !S.hidden[k]); }
@@ -1081,12 +1083,15 @@ Esc closes the case; ← → step through the list.">?</button>
         PC.svg.setPointerCapture(e.pointerId);
         e.preventDefault();
       } else {
-        const r = PC.pick(p[0], p[1]);
-        if (r) { pin(r.__id); }
+        PC.drag = { type: "click", x0: p[0], y0: p[1] };
       }
     };
     PC.onMove = function (e) {
       const p = svgPoint(e), drag = PC.drag;
+      if (drag && drag.type === "click") {
+        if (Math.abs(p[0] - drag.x0) > 4 || Math.abs(p[1] - drag.y0) > 4) { PC.drag = null; }
+        return;
+      }
       if (!drag) {
         const role = e.target.getAttribute && e.target.getAttribute("data-role");
         if (role) { setHover(null); hideTip(); return; }
@@ -1129,6 +1134,11 @@ Esc closes the case; ← → step through the list.">?</button>
       PC.drag = null;
       if (!drag) { return; }
       try { PC.svg.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
+      if (drag.type === "click") {
+        const r = PC.pick(drag.x0, drag.y0);
+        if (r) { pin(r.__id); }
+        return;
+      }
       if (drag.type === "new" && !drag.started) {
         // a click on an axis outside its brush clears that brush
         if (S.brushes[drag.k]) { delete S.brushes[drag.k]; schedule({ filter: true, results: true }); }
@@ -1399,6 +1409,7 @@ Esc closes the case; ← → step through the list.">?</button>
       const dom = D.slDomain[s.k];
       if (lo > hi) { const t = lo; lo = hi; hi = t; }
       if (lo <= dom[0] && hi >= dom[1]) { delete S.drill[s.k]; } else { S.drill[s.k] = [lo, hi]; }
+      D.fromSlider = true;
       schedule({ filter: true, results: "later" });
     }
     function sliderDown(s, e) {

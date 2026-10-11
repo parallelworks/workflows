@@ -187,7 +187,12 @@ class Test:
 def context():
     line = next((l for l in pw("context", "current").stdout.splitlines() if "@" in l), "")
     m = re.match(r"\s*(?:user:)?([^@\s]+)@(\S+)", line)
-    return (m.group(1), m.group(2)) if m else ("", "")
+    if m:
+        return m.group(1), m.group(2)
+    # a context named for its platform (`hsp`, `noaa`) does not carry the user
+    user = pw("auth", "whoami").stdout.strip()
+    host = pw("auth", "identify-platform").stdout.strip()
+    return (user, host) if user and " " not in user else ("", "")
 
 
 def resource_active(resource, default_user):

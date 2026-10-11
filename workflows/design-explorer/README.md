@@ -44,8 +44,9 @@ studies with it; the figure shows a doe-openfoam study.
 - For a Dakota study, a **Pareto** view comes first: the objective space (each
   objective's sense from the optimizer's `problem.json`, so openfoam-naca's
   drag ↓ against lift ↑) with the front ringed and its attainment staircase, a
-  generation scrubber that replays the study (▶, and a brush on generation, so
-  every view follows it), and convergence cards: the hypervolume from
+  generation scrubber at its top that replays the study (▶) and shows all the
+  generations up to the scrubbed one or **only** that one (a brush on
+  generation, so every view follows it; all of them by default), and convergence cards: the hypervolume from
   `state.json`, the best of each objective so far and the front's size per
   generation. Hover a design for its values and image, click it to open it.
 - Below the chart, the selected cases as a **Gallery** (sized S/M/L, sorted by

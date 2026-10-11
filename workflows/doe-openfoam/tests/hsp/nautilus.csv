@@ -1,0 +1,4 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-11T11:02:25Z,warm,pass,leftover:proc:pw endpoints+proc:design-explorer-server.py,926bf73,74bcc3d,c6c3dbb,4b9977d,4b9977d,explorer-ux-test,mshaxted,healthy-sailfish,450,
+2026-10-11T11:28:54Z,unknown,pass,ok,926bf73,74bcc3d,c6c3dbb,df1eb49,df1eb49,explorer-ux-test,mshaxted,harmless-wombat,363,
+2026-10-11T11:44:35Z,warm,pass,ok,926bf73,74bcc3d,c6c3dbb,ef9f9f3,ef9f9f3,explorer-ux-test,mshaxted,topical-beagle,357,

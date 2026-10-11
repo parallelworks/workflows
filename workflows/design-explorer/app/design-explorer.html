@@ -508,7 +508,7 @@ Esc closes the case; ← → step through the list.">?</button>
         <details class="d-fixed" id="d-fixed" hidden><summary id="d-fixed-sum"></summary><dl id="d-fixed-list"></dl></details>
         <p class="d-note" id="d-note" title="The other inputs are held as close as the brushed cases allow.">‹ › step an input to the next case down or up.</p>
         <div class="d-actions">
-          <button class="btn small" id="d-lock" title="Set every input slider to this case's values, then drag one slider to step along that variable">Lock sliders to this case</button>
+          <button class="btn small" id="d-lock" title="Narrow every input slider to this case&#39;s values; slide one to see its neighbors along that variable">Lock sliders to this case</button>
           <button class="btn small" id="d-exclude" title="Remove this case from the view">Exclude case</button>
         </div>
       </aside>
@@ -549,7 +549,7 @@ Esc closes the case; ← → step through the list.">?</button>
       mode: "hide", view: "gallery", size: "M", sliderMode: "pick",
       status: null, statusOk: null, timer: null, opt: null, viewChosen: false,
     };
-    const D = { base: [], brushed: [], selected: [], sorted: [], byId: new Map(), domain: {}, levels: {}, slDomain: {}, failDrill: null, lastSingle: null };
+    const D = { base: [], brushed: [], selected: [], sorted: [], byId: new Map(), domain: {}, levels: {}, slDomain: {}, failDrill: null };
     try {
       const prefs = JSON.parse(window.localStorage.getItem("design-explorer-prefs") || "{}");
       if (prefs.mode === "fade" || prefs.mode === "hide") { S.mode = prefs.mode; }
@@ -795,13 +795,6 @@ Esc closes the case; ← → step through the list.">?</button>
       const k = S.sortBy, dir = S.sortAsc ? 1 : -1;
       D.sorted = sel.slice().sort((a, b) => (a[k] - b[k]) * dir || (a.__id < b.__id ? -1 : a.__id > b.__id ? 1 : 0));
       D.selectedIds = new Set(sel.map((r) => r.__id));
-      // a filter slider that narrows the selection to one case opens it, so
-      // sliding a window over a grid steps the case panel through its
-      // neighbors; a brush being drawn passes through one case by accident
-      const single = sel.length === 1 ? sel[0].__id : null;
-      if (D.fromSlider && single !== null && single !== D.lastSingle) { S.pinned = single; }
-      D.fromSlider = false;
-      D.lastSingle = single;
     }
     function visibleAxes() { return S.order.filter((k) => !S.hidden[k]); }
 
@@ -1409,7 +1402,6 @@ Esc closes the case; ← → step through the list.">?</button>
       const dom = D.slDomain[s.k];
       if (lo > hi) { const t = lo; lo = hi; hi = t; }
       if (lo <= dom[0] && hi >= dom[1]) { delete S.drill[s.k]; } else { S.drill[s.k] = [lo, hi]; }
-      D.fromSlider = true;
       schedule({ filter: true, results: "later" });
     }
     function sliderDown(s, e) {

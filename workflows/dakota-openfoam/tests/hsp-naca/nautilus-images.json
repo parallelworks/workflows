@@ -1,0 +1,35 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "endpoint": true,
+    "warm_marker": [
+      "${HOME}/pw/software/dakota/miniforge/envs/dakota",
+      "${HOME}/pw/software/openfoam-naca/paraview/ParaView-6.1.1/.render-checked"
+    ],
+    "leftover_patterns": [
+      "pw endpoints",
+      "design-explorer-server.py",
+      "bin/dakota",
+      "app/driver.py",
+      "simpleFoam",
+      "blockMesh",
+      "pvpython"
+    ]
+  },
+  "resource": "pw://mshaxted/nautilus",
+  "cluster": {
+    "scheduler": false
+  },
+  "optimizer": {
+    "max_iterations": 3,
+    "batch_size": 4,
+    "stall_generations": 3,
+    "mesh_scale": 1
+  },
+  "postprocessing": {
+    "generate_images": true
+  },
+  "software": {
+    "openfoam_load": "module load openfoam/Intel/v2512\nsource $foamDotFile\n"
+  }
+}

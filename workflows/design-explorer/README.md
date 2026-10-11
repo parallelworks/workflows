@@ -69,7 +69,10 @@ studies with it; the figure shows a doe-openfoam study.
   Pareto view or the sensitivity grid as PNG images.
 - Hover any control or term for its definition (hypervolume, Pareto front,
   attainment staircase, Pearson's r, the slider behaviors, and so on).
-- The page follows the study: it refreshes while cases are still running.
+- The page follows the study: it reads it again while cases are running,
+  and for three minutes after the last write, since a case is solved before
+  its images are rendered. An image is listed once it has not been written
+  to for 3 seconds, so no browser takes half of one.
 
 ## The study directory
 

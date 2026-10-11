@@ -28,7 +28,15 @@
 - **"Final" differs**: a DOE is final when no case is pending; between two Dakota
   generations no case is pending either, so an optimization is final only when
   `state/status` says CONVERGED or FAILED. `status.json` carries `final` and
-  `state`, and the page polls until `final`.
+  `state`, and the page polls until `final`, then for as long as `quiet`
+  (seconds since any case last wrote a file) is under 180: openfoam-naca
+  writes results.out, then exit_code, then renders, so a DOE is final while
+  its last case still renders. `media` (images listed) is part of the poll's
+  reload key with `ok`; a solved count alone misses images landing later.
+- Images are listed only once unwritten for `SETTLE` (3 s) and served with
+  `no-cache` + ETag, never `max-age`: a card that fetched a half-written PNG
+  under max-age kept it for the hour. Cards are reused by case id, so the
+  reuse checks the image path too (a reused card kept the placeholder).
 - Read cases from the directories, not from Dakota's `evaluations.csv`: the
   optimizer appends to it only at the next generation's ingest, a generation late.
 - A variable that never changes (the loop's angle of attack) is a flat axis: the

@@ -155,9 +155,12 @@
     #sliders.pick .sl-body { cursor: pointer; }
     .side-head .seg button { height: 22px; padding: 0 8px; font-size: 0.6875rem; }
     #clear-drill { margin-top: var(--space-2); }
-    .sl.fixed .sl-body, .sl.fixed .sl-ends { display: none; }
-    .sl-fixed { display: none; color: var(--faint); font-size: var(--text-xs); }
-    .sl.fixed .sl-fixed { display: block; }
+    /* the brushed cases all share one value: the row keeps its height (a
+       brush moving on the chart never shifts the sliders), its track idle */
+    .sl-ends { min-height: 12px; }
+    .sl.fixed .sl-body { pointer-events: none; cursor: default; }
+    .sl.fixed .sl-hist, .sl.fixed .sl-fill, .sl.fixed .sl-thumb, .sl.fixed .sl-ticks, .sl.fixed .sl-pin { visibility: hidden; }
+    .sl.fixed .sl-track { opacity: 0.6; }
 
     /* axes list */
     .axes { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
@@ -247,9 +250,10 @@
     .card { position: relative; margin: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; cursor: pointer; box-shadow: var(--shadow-sm); transition: transform 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out); }
     .card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--swatch, var(--border)); z-index: 1; }
     .card:hover, .card:focus-visible { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-    .card.pinned { outline: 2.5px solid var(--text); outline-offset: 1px; }
+    .card.pinned { outline: 2px solid var(--text); outline-offset: 2px; box-shadow: var(--shadow-md); }
     .card.dim { opacity: 0.32; }
-    .card.dim:hover, .card.dim.pinned { opacity: 0.8; }
+    .card.dim:hover { opacity: 0.8; }
+    .card.dim.pinned { opacity: 1; }
     .card img, .card video { display: block; width: 100%; aspect-ratio: 1.6; object-fit: cover; background: var(--panel-sunk); }
     .card img { opacity: 0; transition: opacity 0.2s var(--ease-out); }
     .card img.ok { opacity: 1; }
@@ -258,6 +262,7 @@
     .card figcaption b { color: var(--text); font-weight: 600; white-space: nowrap; }
     .card figcaption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .thumbs.size-S .card figcaption span { display: none; }
+    .card.pinned figcaption, .card.pinned figcaption b { background: var(--text); color: var(--panel); }
     .table-wrap { overflow: auto; max-height: 75vh; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); }
     table.cases { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
     table.cases th, table.cases td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
@@ -270,7 +275,7 @@
     table.cases .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: middle; }
     table.cases tbody tr { cursor: pointer; }
     table.cases tbody tr:hover { background: var(--accent-soft); }
-    table.cases tbody tr.pinned { background: var(--panel-sunk); box-shadow: inset 3px 0 0 var(--text); }
+    table.cases tbody tr.pinned { background: var(--panel-sunk); box-shadow: inset 3px 0 0 var(--text); font-weight: 600; }
     table.cases tbody tr.dim td { color: var(--faint); }
     table.cases tbody tr.dim .sw { opacity: 0.35; }
     .more { display: flex; justify-content: center; padding: var(--space-2); }
@@ -443,25 +448,22 @@
     <div class="workspace" id="workspace">
       <aside class="sidebar" aria-label="Filters">
         <button class="btn icon ghost rail" id="side-expand" title="Show the sliders and axes" aria-label="Show the sidebar"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+        <details class="panel side-section" id="axes-box">
+          <summary class="side-head"><h3 data-tip="axes">Axes</h3><span class="side-tools"><span class="side-count" id="axes-count"></span><button class="btn icon ghost small" id="side-toggle" title="Hide the sidebar" aria-label="Hide the sidebar"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button></span></summary>
+          <p class="side-note"><button class="linkish" id="axes-all">show all</button> · <button class="linkish" id="axes-none">hide all</button></p>
+          <ul class="axes" id="axes"></ul>
+        </details>
         <section class="panel side-section">
           <div class="side-head">
             <h3 data-tip="sliders">Sliders</h3>
-            <span class="side-tools">
-              <span class="seg" role="group" aria-label="Slider behavior">
-                <button data-slmode="pick" data-tip="pick">Pick case</button><button data-slmode="filter" data-tip="filter">Filter</button>
-              </span>
-              <button class="btn icon ghost small" id="side-toggle" title="Hide the sidebar" aria-label="Hide the sidebar"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+            <span class="seg" role="group" aria-label="Slider behavior">
+              <button data-slmode="pick" data-tip="pick">Pick case</button><button data-slmode="filter" data-tip="filter">Filter</button>
             </span>
           </div>
           <p class="side-note" id="slider-note"></p>
           <div id="sliders"></div>
           <button class="linkish" id="clear-drill" disabled>Clear the slider filters</button>
         </section>
-        <details class="panel side-section" id="axes-box">
-          <summary class="side-head"><h3 data-tip="axes">Axes</h3><span class="side-count" id="axes-count"></span></summary>
-          <p class="side-note"><button class="linkish" id="axes-all">show all</button> · <button class="linkish" id="axes-none">hide all</button></p>
-          <ul class="axes" id="axes"></ul>
-        </details>
       </aside>
 
       <main>
@@ -600,7 +602,7 @@
       colorBy: null, sortBy: null, sortAsc: true, image: null,
       pinned: null, hover: null,
       mode: "hide", view: "gallery", size: "S", sliderMode: "pick", chartCollapsed: true, palette: "viridis", paletteReverse: false,
-      status: null, statusOk: null, timer: null, opt: null, viewChosen: false,
+      status: null, statusKey: null, dataVer: 0, timer: null, opt: null, viewChosen: false,
     };
     const D = { base: [], brushed: [], selected: [], sorted: [], listed: [], byId: new Map(), domain: {}, levels: {}, slDomain: {}, failDrill: null };
     try {
@@ -782,15 +784,17 @@
     function mediaNode(r, opts) {
       const path = S.image && r[S.image] ? r[S.image] : "";
       const alt = caseName(r.__id) + (S.image ? ", " + label(S.image) : "");
+      // a retry asks past the browser's copy of the failed load
+      const q = opts.retry ? "?r=" + opts.retry : "";
       if (isVideo(path)) {
         // #t=0.1 makes a card show a frame of the animation before it plays
-        const v = el("video", { src: "data/" + path + (opts.still ? "#t=0.1" : ""), preload: opts.preload || "metadata", playsinline: "", loop: "", "aria-label": alt });
+        const v = el("video", { src: "data/" + path + q + (opts.still ? "#t=0.1" : ""), preload: opts.preload || "metadata", playsinline: "", loop: "", "aria-label": alt });
         v.muted = true;
         if (opts.controls) { v.controls = true; }
         if (opts.autoplay) { v.autoplay = true; }
         return v;
       }
-      return el("img", { src: path ? "data/" + path : "data/no-image.png", alt: alt, loading: opts.lazy ? "lazy" : "eager" });
+      return el("img", { src: path ? "data/" + path + q : "data/no-image.png", alt: alt, loading: opts.lazy ? "lazy" : "eager" });
     }
 
     // ---- data -------------------------------------------------------------
@@ -812,6 +816,7 @@
     }
     function classify(csv) {
       const keys = csv.header, rows = csv.rows;
+      S.dataVer++;
       S.inputs = keys.filter((k) => k.indexOf("in:") === 0);
       S.outputs = keys.filter((k) => k.indexOf("out:") === 0);
       S.images = keys.filter((k) => k.indexOf("img:") === 0);
@@ -1240,7 +1245,7 @@
         schedule({ layout: true, filter: true });
         return;
       }
-      schedule({ filter: true, results: true });
+      schedule({ filter: true, results: true, release: true });
     };
 
     // ---- hover, pin, tooltip ----------------------------------------------
@@ -1370,8 +1375,6 @@
       s.min = el("span"); s.max = el("span");
       s.ends.appendChild(s.min); s.ends.appendChild(s.max);
       s.root.appendChild(s.ends);
-      s.fixed = el("div", { class: "sl-fixed" });
-      s.root.appendChild(s.fixed);
       s.body.addEventListener("pointerdown", guarded("sliding", (e) => sliderDown(s, e)));
       s.body.addEventListener("pointermove", guarded("sliding", (e) => sliderMove(s, e)));
       s.body.addEventListener("pointerup", (e) => sliderUp(s, e));
@@ -1420,9 +1423,11 @@
       s.root.classList.toggle("active", !pick && !!S.drill[k]);
       computeBins(s);
       if (!s.bins) {
+        const p0 = pinnedRow();
         s.root.classList.add("fixed");
-        s.val.textContent = "";
-        s.fixed.textContent = dom ? "every brushed case has " + fmt(dom[0]) : "no case brushed";
+        s.val.textContent = pick && p0 ? fmt(p0[k]) : dom ? fmt(dom[0]) : "–";
+        s.min.textContent = dom ? "every brushed case has " + fmt(dom[0]) : "no case brushed";
+        s.max.textContent = "";
         return;
       }
       s.root.classList.remove("fixed");
@@ -1569,7 +1574,7 @@
       s.drag = null;
       s.dragVal = null;
       try { s.body.releasePointerCapture(e.pointerId); } catch (err) { /* released */ }
-      if (pick) { s.update(); } else { scheduleResults(0); }
+      if (pick) { s.update(); } else { schedule({ results: true, release: true }); }
     }
     function sliderKey(s, which, e) {
       const keys = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageDown: -5, PageUp: 5 };
@@ -1792,16 +1797,24 @@
     }
     function card(r) {
       const cls = "card" + (r.__id === S.pinned ? " pinned" : "") + (D.selectedIds.has(r.__id) ? "" : " dim");
+      const media = S.image ? r[S.image] || "" : "";
       const old = reuse.cards.get(r.__id);
-      if (old) { old.className = cls; return old; }
-      const fig = el("figure", { class: cls, tabindex: "0", "data-id": r.__id });
+      // a card is reused while it shows the case's current image: one that
+      // landed since (a case is solved before its images are rendered), or
+      // failed to load before the study was last read, gets a new card
+      const failed = old && old.dataset.failed && old.dataset.ver !== String(S.dataVer);
+      if (old && old.dataset.media === media && !failed) { old.className = cls; return old; }
+      const fig = el("figure", { class: cls, tabindex: "0", "data-id": r.__id, "data-media": media, "data-ver": String(S.dataVer) });
       reuse.cards.set(r.__id, fig);
       fig.style.setProperty("--swatch", colorOf(r));
-      const img = mediaNode(r, { lazy: !DEMO.length, preload: "metadata", still: true });
+      const img = mediaNode(r, { lazy: !DEMO.length, preload: "metadata", still: true, retry: failed ? S.dataVer : 0 });
       // a thumbnail fades in once it has loaded instead of popping in
       if (img.tagName === "IMG") {
         const shown = () => img.classList.add("ok");
-        if (img.complete && img.naturalWidth) { shown(); } else { img.addEventListener("load", shown); img.addEventListener("error", shown); }
+        if (img.complete && img.naturalWidth) { shown(); } else {
+          img.addEventListener("load", shown);
+          img.addEventListener("error", () => { fig.dataset.failed = "1"; shown(); });
+        }
       }
       if (isAnim(S.image ? r[S.image] : "")) { fig.appendChild(el("span", { class: "anim" }, "▶ animation")); }
       const cap = el("figcaption");
@@ -2726,7 +2739,7 @@
       pearson: { t: "Pearson's r", d: "From −1 to 1. The sign gives the direction (the output rises or falls with the input); |r| near 1 is a strong linear effect, near 0 none, or one a straight line cannot show." },
       r2: { t: "Panel tint", d: "Each panel is tinted by r², the share of the output's variation the line explains." },
       "fit-line": { t: "Fit line", d: "The least-squares line through the selected cases." },
-      outside: { t: "Outside the filters", d: "This case is outside the current brushes and sliders, or excluded. It stays open, drawn dashed on the chart." },
+      outside: { t: "Outside the filters", d: "This case is outside the current brushes and sliders, or excluded (opened from a faded card, or left behind by the generation scrubber). It is drawn dashed on the chart; the next brush or slider you let go that leaves it out closes it." },
       "on-front": { t: "On the Pareto front", d: "No other design beats this one on every objective (as of the scrubbed generation, when scrubbed back)." },
       position: { t: "Position", d: "Where the value sits within the variable's bounds (from problem.json) or, without them, within the range the study covers." },
       step: { t: "Step", d: "Move to the case with the next lower (‹) or higher (›) value of this input, the other inputs held as close as the brushed cases allow." },
@@ -2909,6 +2922,9 @@
         renderDetail();
         if (S.view === "pareto" && hasPareto()) { renderPareto(); }
       }
+      // a brush or slider let go, or Keep only/Exclude, that leaves the open
+      // case out closes it: the filter has moved on. One still in stays open.
+      if (n.release && S.pinned !== null && !D.selectedIds.has(S.pinned)) { pin(null); }
       persistView();
       if (n.results === true) { scheduleResults(0); }
       else if (n.results === "later") { scheduleResults("drag"); }
@@ -2969,6 +2985,9 @@
       });
       box.dataset.count = String(links.length);
     }
+    // a finished study is read again for a few minutes after its last write:
+    // a case is solved before its images are rendered
+    const quietLately = (st) => !!st && typeof st.quiet === "number" && st.quiet < 180;
     function poll() {
       window.clearTimeout(S.timer);
       fetch("status.json?t=" + Date.now(), { cache: "no-store" })
@@ -2976,10 +2995,11 @@
         .catch(() => null)
         .then(guarded("reading the status", (st) => {
           const final = setStatus(st);
-          const changed = st && S.statusOk !== st.ok;
-          S.statusOk = st ? st.ok : S.statusOk;
+          const key = st ? st.ok + "/" + st.media : null;
+          const changed = st && S.statusKey !== key;
+          S.statusKey = key || S.statusKey;
           if (changed) { reload(); }
-          S.timer = final ? null : window.setTimeout(poll, 10000);
+          S.timer = final && !quietLately(st) ? null : window.setTimeout(poll, 10000);
         }));
     }
     function reload() {
@@ -2988,6 +3008,13 @@
         classify(csv);
         rebuildAll();
       }));
+    }
+    // the solved cases and rendered images data.csv lists, in status.json's terms
+    function csvKey(csv) {
+      const cols = csv.header.filter((h) => h.indexOf("img:") === 0);
+      let media = 0;
+      csv.rows.forEach((r) => cols.forEach((h) => { if (r[h] && r[h] !== "no-image.png") { media++; } }));
+      return csv.rows.length + "/" + media;
     }
 
     // ---- controls ---------------------------------------------------------------
@@ -2999,13 +3026,13 @@
       const keep = D.selectedIds;
       S.all.forEach((r) => { if (!keep.has(r.__id)) { S.excluded.add(r.__id); } });
       S.brushes = {}; S.drill = {};
-      schedule({ layout: true, filter: true, results: true });
+      schedule({ layout: true, filter: true, results: true, release: true });
     });
     $("exclude").addEventListener("click", () => {
       if (D.selected.length === D.base.length) { return; }   // nothing selected: excluding everything is never meant
       D.selected.forEach((r) => S.excluded.add(r.__id));
       S.brushes = {}; S.drill = {};
-      schedule({ layout: true, filter: true, results: true });
+      schedule({ layout: true, filter: true, results: true, release: true });
     });
     $("clear-drill").addEventListener("click", () => { S.drill = {}; schedule({ filter: true, results: true }); });
     $("save").addEventListener("click", guarded("saving", openExportMenu));
@@ -3036,7 +3063,7 @@
       S.chartCollapsed = !S.chartCollapsed; savePrefs(); applyChart(); persistView();
       if (!S.chartCollapsed) { schedule({ layout: true, filter: true }); }
     });
-    $("side-toggle").addEventListener("click", () => { S.sideHidden = true; savePrefs(); applySide(); });
+    $("side-toggle").addEventListener("click", (e) => { e.preventDefault(); S.sideHidden = true; savePrefs(); applySide(); });
     $("side-expand").addEventListener("click", () => { S.sideHidden = false; savePrefs(); applySide(); });
     // the bar between the chart and the lists resizes the chart
     (function () {
@@ -3142,7 +3169,7 @@
     }
     if (DEMO.length) {
       fetchCsv(guarded("loading the study", (csv) => {
-        if (csv) { classify(csv); S.statusOk = csv.rows.length; }
+        if (csv) { classify(csv); S.statusKey = csvKey(csv); }
         const req = new XMLHttpRequest();
         req.open("GET", "status.json?t=" + Date.now(), false);
         req.send();
@@ -3156,15 +3183,15 @@
       const status = fetch("status.json?t=" + Date.now(), { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
       fetchCsv((csv) => {
         status.then(guarded("loading the study", (st) => {
-          // data.csv holds the solved cases only: the poll reloads them only
-          // when more are solved
-          if (csv) { classify(csv); S.statusOk = csv.rows.length; }
+          // data.csv holds the solved cases only: the poll reloads them when
+          // more are solved or more of their images rendered
+          if (csv) { classify(csv); S.statusKey = csvKey(csv); }
           const final = setStatus(st);
           applyViewFromHash();
           rebuildAll();
           renderResults();
           ready();
-          S.timer = final ? null : window.setTimeout(poll, 10000);
+          S.timer = final && !quietLately(st) ? null : window.setTimeout(poll, 10000);
         })).catch(() => $("loader").classList.add("done"));
       });
     }

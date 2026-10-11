@@ -115,11 +115,13 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def send(self, code, body, ctype, cache=False, headers=()):
+        """cache: True (an hour), "revalidate" (kept, but asked about each
+        time: a case's images can be rendered again) or False."""
         data = body.encode() if isinstance(body, str) else body
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "max-age=3600" if cache else "no-store")
+        self.send_header("Cache-Control", "no-cache" if cache == "revalidate" else "max-age=3600" if cache else "no-store")
         for name, value in headers:
             self.send_header(name, value)
         self.end_headers()
@@ -132,10 +134,16 @@ class Handler(BaseHTTPRequestHandler):
     def send_file(self, path, cache):
         try:
             with open(path, "rb") as fh:
+                st = os.fstat(fh.fileno())
+                tag = '"%x-%x"' % (st.st_mtime_ns, st.st_size)
+                if cache == "revalidate" and self.headers.get("If-None-Match") == tag:
+                    self.send(304, b"", "application/octet-stream", cache, [("ETag", tag)])
+                    return
                 data = fh.read()
         except OSError:
             self.send(404, "not found\n", "text/plain")
             return
+        validators = [("ETag", tag)] if cache == "revalidate" else []
         ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
         if ctype.startswith("text/") or ctype in ("application/javascript", "application/json"):
             ctype += "; charset=utf-8"
@@ -153,9 +161,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             end = min(end, size - 1)
             self.send(206, data[start:end + 1], ctype, cache,
-                      [("Content-Range", "bytes %d-%d/%d" % (start, end, size)), ("Accept-Ranges", "bytes")])
+                      [("Content-Range", "bytes %d-%d/%d" % (start, end, size)), ("Accept-Ranges", "bytes")] + validators)
             return
-        self.send(200, data, ctype, cache, [("Accept-Ranges", "bytes")])
+        self.send(200, data, ctype, cache, [("Accept-Ranges", "bytes")] + validators)
 
     def do_HEAD(self):
         self.do_GET()
@@ -189,7 +197,9 @@ class Handler(BaseHTTPRequestHandler):
                         or os.path.splitext(target)[1].lower() not in study.MEDIA):
                     self.send(404, "not found\n", "text/plain")
                 else:
-                    self.send_file(target, cache=True)
+                    # a case's images: not listed until written, and
+                    # revalidated, so no browser keeps an old render
+                    self.send_file(target, cache="revalidate")
             elif DE_DIR:
                 target = safe_join(DE_DIR, path)
                 if target is None or not os.path.isfile(target):

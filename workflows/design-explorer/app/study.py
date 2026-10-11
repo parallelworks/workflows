@@ -36,13 +36,17 @@ import glob
 import json
 import os
 import re
+import stat
 import sys
+import time
 
 # the images workflows/openfoam-naca renders, offered first and in this order;
 # any other images/* of a case follows, by name
 KNOWN_IMAGES = ("pressure", "velocity", "streamlines", "turbulence", "wake", "mesh")
 # what a case may leave in images/: pictures, and animations (gif, mp4, webm)
 MEDIA = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".mp4", ".webm")
+# seconds a picture or animation must sit unwritten before it is listed
+SETTLE = 3
 
 
 def read_pairs(path):
@@ -106,19 +110,51 @@ def outputs_of(results):
     return list(results)
 
 
-def image_files(case_dir):
-    """{kind: file name} of a case's images/: the kind is the file's stem, or
-    its whole name when two files share a stem (pressure.png, pressure.mp4)."""
-    files = sorted(os.path.basename(p) for p in glob.glob(os.path.join(case_dir, "images", "*"))
-                   if os.path.splitext(p)[1].lower() in MEDIA and os.path.isfile(p))
+def media_entries(case_dir):
+    """(file name, mtime) of every picture or animation in a case's images/."""
+    out = []
+    for p in glob.glob(os.path.join(case_dir, "images", "*")):
+        if os.path.splitext(p)[1].lower() not in MEDIA:
+            continue
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        if stat.S_ISREG(st.st_mode):
+            out.append((os.path.basename(p), st.st_mtime))
+    return out
+
+
+def settled(mtime, now):
+    """Not written to in the last SETTLE seconds: a picture or an animation
+    the evaluator is still writing is left out until it is whole, so that no
+    reader takes (and a browser caches) half of it."""
+    return not 0 <= now - mtime < SETTLE
+
+
+def image_files(case_dir, entries=None):
+    """{kind: file name} of a case's settled images/: the kind is the file's
+    stem, or its whole name when two files share a stem (pressure.png,
+    pressure.mp4)."""
+    now = time.time()
+    entries = media_entries(case_dir) if entries is None else entries
+    files = sorted(f for f, mtime in entries if settled(mtime, now))
     stems = [os.path.splitext(f)[0] for f in files]
     return dict((stem if stems.count(stem) == 1 else f, f) for stem, f in zip(stems, files))
 
 
-def image_names(case_dir):
-    names = list(image_files(case_dir))
+def image_names(files):
+    """The kinds of image_files(), the known ones first."""
+    names = list(files)
     known = [n for n in KNOWN_IMAGES if n in names]
     return known + sorted(n for n in names if n not in known)
+
+
+def mtime(path):
+    try:
+        return os.stat(path).st_mtime
+    except OSError:
+        return 0
 
 
 def collect(cases_dir):
@@ -140,13 +176,18 @@ def collect(cases_dir):
             status = "FAILED"
         else:
             status = "PENDING"
-        files = image_files(case_dir)
+        entries = media_entries(case_dir)
+        files = image_files(case_dir, entries)
         images = {}
-        for image in image_names(case_dir):
+        for image in image_names(files):
             images[image] = "%s/images/%s" % (name, files[image])
+        # the case's last write: its outputs, or an image (images come after
+        # the outputs: a solved case may still be rendering)
+        changed = max([mtime(os.path.join(case_dir, "results.out")), mtime(os.path.join(case_dir, "exit_code"))]
+                      + [m for _, m in entries])
         rows.append({"case": name, "generation": generation, "inputs": inputs,
                      "outputs": outputs, "objectives": objectives, "status": status,
-                     "exit_code": exit_code, "images": images})
+                     "exit_code": exit_code, "images": images, "changed": changed})
     return rows
 
 
@@ -309,6 +350,10 @@ def summary(rows, cases_dir=None):
         counts[row["status"]] += 1
     s = {"total": len(rows), "ok": counts["OK"], "failed": counts["FAILED"],
          "pending": counts["PENDING"], "images": sum(1 for r in rows if r["images"]),
+         "media": sum(len(r["images"]) for r in rows if r["status"] == "OK"),
+         # seconds since a case last wrote anything: a page keeps reading a
+         # finished study while its last images may still be rendering
+         "quiet": int(time.time() - max([r["changed"] for r in rows] + [0])) if rows else None,
          "layout": "doe", "generation": 0, "study_status": ""}
     if cases_dir is not None and layout(cases_dir) == "optimization":
         s["layout"] = "optimization"

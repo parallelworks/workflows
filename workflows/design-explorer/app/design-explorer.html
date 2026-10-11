@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Design Explorer</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231a8a8a'/%3E%3Cpath d='M8 7v18M16 7v18M24 7v18' stroke='%23fff' stroke-opacity='.45' stroke-width='2'/%3E%3Cpath d='M8 21 16 11l8 6M8 12l8 9 8-12' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2306354f'/%3E%3Cpath d='M8 7v18M16 7v18M24 7v18' stroke='%23fff' stroke-opacity='.45' stroke-width='2'/%3E%3Cpath d='M8 21 16 11l8 6M8 12l8 9 8-12' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <meta name="description" content="Design Explorer over a design study: parallel coordinates of the inputs and outputs, drill-down sliders, the images of every design." />
   <script>
     // served at the root of a subdomain endpoint or under /me/session/<user>/<name>/
@@ -28,8 +28,8 @@
     @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
 
     /* the ACTIVATE theme: the tokens @parallelworks/ui's deriveTheme gives for
-       Studio's neutral gray surface and teal accent, so the page sits with
-       Studio and the platform's other apps in either theme */
+       Studio's neutral gray surface and its default navy accent, so the page
+       sits with Studio and the platform's other apps in either theme */
     :root {
       color-scheme: light dark;
       font-family: "Geist", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -43,7 +43,7 @@
       color-scheme: light;
       --bg: #f4f4f5; --panel: #fdfdfd; --panel-alt: #f6f6f7; --panel-sunk: #eaeaeb;
       --text: #0a0a0b; --muted: #666667; --faint: #929293; --border: #e0e0e2; --border-strong: #cdcdce;
-      --accent: #0e5750; --accent-soft: rgba(14, 87, 80, 0.1); --accent-text: #0e5750; --on-accent: #ffffff;
+      --accent: #06354f; --accent-soft: rgba(6, 53, 79, 0.09); --accent-text: #06354f; --on-accent: #ffffff;
       --success: #159b46; --danger: #dc2626; --warn: #ce7106;
       --axis: #a3a3a6; --fade: #a3a3a6; --halo: #fdfdfd; --fit: #eb6834; --hist: #dedee0;
       --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.07); --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.07); --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
@@ -52,7 +52,7 @@
       color-scheme: dark;
       --bg: #111214; --panel: #1c1d1f; --panel-alt: #222325; --panel-sunk: #262729;
       --text: #f4f4f5; --muted: #9b9b9c; --faint: #707172; --border: #2e2f31; --border-strong: #37383a;
-      --accent: #6fd6cf; --accent-soft: rgba(111, 214, 207, 0.14); --accent-text: #6fd6cf; --on-accent: #000000;
+      --accent: #7fc0ec; --accent-soft: rgba(127, 192, 236, 0.15); --accent-text: #7fc0ec; --on-accent: #000000;
       --success: #22c55e; --danger: #ef4444; --warn: #f59e0b;
       --axis: #4a4b4e; --fade: #5c5d60; --halo: #1c1d1f; --fit: #f07a4a; --hist: #303134;
       --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35); --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.35), 0 2px 4px -2px rgba(0, 0, 0, 0.35); --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.45), 0 4px 6px -4px rgba(0, 0, 0, 0.45);
@@ -313,6 +313,11 @@
     .sens-inner { position: relative; }
     .sens-inner canvas { position: absolute; left: 0; top: 0; }
     .empty { color: var(--muted); padding: var(--space-8) var(--space-4); text-align: center; }
+    .loader { position: fixed; inset: 52px 0 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); background: var(--bg); color: var(--muted); font-size: var(--text-sm); transition: opacity 0.25s var(--ease-out), visibility 0.25s; }
+    .loader.done { opacity: 0; visibility: hidden; pointer-events: none; }
+    .spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
     .banner { margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--danger); border-radius: var(--radius-md); background: var(--panel); color: var(--danger); font-size: var(--text-sm); white-space: pre-wrap; }
 
     /* case panel */
@@ -403,6 +408,7 @@
     </header>
 
     <div class="banner" id="error" hidden></div>
+    <div class="loader" id="loader" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span id="loader-text">Loading the study…</span></div>
     <div class="workspace" id="workspace">
       <aside class="sidebar" aria-label="Filters">
         <button class="btn icon ghost rail" id="side-expand" title="Show the sliders and axes" aria-label="Show the sidebar"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
@@ -566,7 +572,7 @@ Esc closes the case; ← → step through the list.">?</button>
       brushes: {}, drill: {},
       colorBy: null, sortBy: null, sortAsc: true, image: null,
       pinned: null, hover: null,
-      mode: "hide", view: "gallery", size: "S", sliderMode: "pick", chartCollapsed: true, palette: "blues", paletteReverse: false,
+      mode: "hide", view: "gallery", size: "S", sliderMode: "pick", chartCollapsed: true, palette: "viridis", paletteReverse: false,
       status: null, statusOk: null, timer: null, opt: null, viewChosen: false,
     };
     const D = { base: [], brushed: [], selected: [], sorted: [], listed: [], byId: new Map(), domain: {}, levels: {}, slDomain: {}, failDrill: null };
@@ -589,6 +595,8 @@ Esc closes the case; ← → step through the list.">?</button>
     // an error in the page's own code is shown on the page: the platform's
     // session frame has no console at hand
     function showError(where, err) {
+      const l = $("loader");
+      if (l) { l.classList.add("done"); }
       const box = $("error");
       box.hidden = false;
       box.textContent = where + ": " + (err && err.message ? err.message : err) + (err && err.stack ? "\n" + err.stack.split("\n").slice(0, 4).join("\n") : "");
@@ -692,13 +700,15 @@ Esc closes the case; ← → step through the list.">?</button>
     }
 
     // ---- color ------------------------------------------------------------
-    // the palette the lines, cards and points are colored with. The scale
+    // the palette the lines, cards and points are colored with (viridis by
+    // default: even steps, color-blind safe, and clear of the selected line's
+    // ink, the gray of the unselected and the Pareto orange). The scale
     // spans every solved case, so a filter never repaints the cases it keeps.
     // Each palette may use only part of its range per theme: viridis's
     // darkest purple vanishes on the dark ground, its yellow on the light one.
     const PALETTES = {
       blues: { label: "Blues", light: ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281", "#0d366b"], dark: ["#1c5cab", "#2a78d6", "#5598e7", "#86b6ef", "#b7d3f6", "#e3effd"] },
-      viridis: { label: "Viridis", stops: ["#440154", "#482878", "#3e4989", "#31688e", "#26828e", "#1f9e89", "#35b779", "#6ece58", "#b5de2b", "#fde725"], light: [0, 0.88], dark: [0.12, 1] },
+      viridis: { label: "Viridis", stops: ["#440154", "#482878", "#3e4989", "#31688e", "#26828e", "#1f9e89", "#35b779", "#6ece58", "#b5de2b", "#fde725"], light: [0.1, 0.86], dark: [0.14, 1] },
       plasma: { label: "Plasma", stops: ["#0d0887", "#46039f", "#7201a8", "#9c179e", "#bd3786", "#d8576b", "#ed7953", "#fb9f3a", "#fdca26", "#f0f921"], light: [0, 0.85], dark: [0.15, 1] },
       inferno: { label: "Inferno", stops: ["#000004", "#1b0c41", "#4a0c6b", "#781c6d", "#a52c60", "#cf4446", "#ed6925", "#fb9b06", "#f7d13d", "#fcffa4"], light: [0.05, 0.85], dark: [0.2, 1] },
       cividis: { label: "Cividis (color-blind safe)", stops: ["#00224e", "#123570", "#3b496c", "#575d6d", "#707173", "#8a8779", "#a69d75", "#c4b56c", "#e4cf5b", "#fee838"], light: [0, 0.9], dark: [0.12, 1] },
@@ -1015,7 +1025,10 @@ Esc closes the case; ← → step through the list.">?</button>
         }
         g.appendChild(el("svg:line", { class: "ax-line", x1: 0, x2: 0, y1: sc.top, y2: sc.bot }));
         let ticks, f;
-        if (lv && lv.length <= 12) {
+        // a tick per value for a grid of a few well spaced levels; nice ticks
+        // when values crowd (a continuous output of a small study)
+        const spaced = lv && lv.length <= 12 && lv.every((v, i) => !i || Math.abs(sc.y(v) - sc.y(lv[i - 1])) >= 16);
+        if (spaced) {
           ticks = lv.filter((v) => v >= d[0] && v <= d[1]);
           const steps = ticks.slice(1).map((v, i) => v - ticks[i]);
           f = tickFormat(steps.length ? Math.min.apply(null, steps) : 1, ticks.length ? ticks : [1]);
@@ -1039,11 +1052,12 @@ Esc closes the case; ← → step through the list.">?</button>
         if (br) {
           const a = sc.y(br[0]), z = sc.y(br[1]), y0 = Math.min(a, z), y1 = Math.max(a, z);
           g.appendChild(el("svg:rect", { class: "brush", x: -9, y: y0, width: 18, height: Math.max(2, y1 - y0), rx: 4, "data-role": "brush" }));
-          g.appendChild(el("svg:rect", { class: "brush-grip", x: -6, y: y0 - 2, width: 12, height: 4, rx: 2, "data-role": "grip", "data-end": a < z ? "hi" : "lo" }));
-          g.appendChild(el("svg:rect", { class: "brush-grip", x: -6, y: y1 - 2, width: 12, height: 4, rx: 2, "data-role": "grip", "data-end": a < z ? "lo" : "hi" }));
+          // a = the low end's y: above the high end only on a flipped axis
+          g.appendChild(el("svg:rect", { class: "brush-grip", x: -6, y: y0 - 2, width: 12, height: 4, rx: 2, "data-role": "grip", "data-end": a < z ? "lo" : "hi" }));
+          g.appendChild(el("svg:rect", { class: "brush-grip", x: -6, y: y1 - 2, width: 12, height: 4, rx: 2, "data-role": "grip", "data-end": a < z ? "hi" : "lo" }));
           const right = idx < n - 1 || n === 1, tx = right ? 13 : -13, anchor = right ? "start" : "end";
-          g.appendChild(el("svg:text", { class: "brush-val", x: tx, y: y0 - 1, "text-anchor": anchor, "dominant-baseline": "middle" }, fmt(a < z ? br[1] : br[0])));
-          g.appendChild(el("svg:text", { class: "brush-val", x: tx, y: y1 + 1, "text-anchor": anchor, "dominant-baseline": "middle" }, fmt(a < z ? br[0] : br[1])));
+          g.appendChild(el("svg:text", { class: "brush-val", x: tx, y: y0 - 1, "text-anchor": anchor, "dominant-baseline": "middle" }, fmt(a < z ? br[0] : br[1])));
+          g.appendChild(el("svg:text", { class: "brush-val", x: tx, y: y1 + 1, "text-anchor": anchor, "dominant-baseline": "middle" }, fmt(a < z ? br[1] : br[0])));
         }
         const ly = PC.stagger && idx % 2 === 1 ? sc.top - 34 : sc.top - 16;
         const name = label(k), title = el("svg:title", null, name + (isOut(k) ? " (output)" : " (input)") + " — drag to reorder, click for options");
@@ -2857,20 +2871,42 @@ Esc closes the case; ← → step through the list.">?</button>
     applySide();
     applyChart();
     syncSelects();
-    fetchCsv(guarded("loading the study", (csv) => {
-      // data.csv holds the solved cases only: the first status poll then
-      // reloads only if more were solved meanwhile
-      if (csv) { classify(csv); S.statusOk = csv.rows.length; }
-      if (DEMO.length) {
+    // the first view is drawn once, with the cases and the status both in
+    // hand (the status decides the view of an optimization), behind a loader
+    // that goes when it is drawn and the font is in
+    function ready() {
+      const fonts = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+      Promise.race([fonts, new Promise((r) => window.setTimeout(r, 1200))]).then(() => {
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => $("loader").classList.add("done")));
+      });
+    }
+    if (DEMO.length) {
+      fetchCsv(guarded("loading the study", (csv) => {
+        if (csv) { classify(csv); S.statusOk = csv.rows.length; }
         const req = new XMLHttpRequest();
         req.open("GET", "status.json?t=" + Date.now(), false);
         req.send();
         if (req.status === 200) { setStatus(JSON.parse(req.responseText)); }
-      }
-      rebuildAll();
-      poll();
-      guarded("demo", demo)();
-    }));
+        rebuildAll();
+        guarded("demo", demo)();
+        $("loader").classList.add("done");
+        poll();
+      }));
+    } else {
+      const status = fetch("status.json?t=" + Date.now(), { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
+      fetchCsv((csv) => {
+        status.then(guarded("loading the study", (st) => {
+          // data.csv holds the solved cases only: the poll reloads them only
+          // when more are solved
+          if (csv) { classify(csv); S.statusOk = csv.rows.length; }
+          const final = setStatus(st);
+          rebuildAll();
+          renderResults();
+          ready();
+          S.timer = final ? null : window.setTimeout(poll, 10000);
+        })).catch(() => $("loader").classList.add("done"));
+      });
+    }
   })();
   </script>
 </body>

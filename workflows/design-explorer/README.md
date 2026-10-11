@@ -24,10 +24,10 @@ studies with it; the figure shows a doe-openfoam study.
   scroll, the bar between them resizes the chart, the chart folds to its
   toolbar (▾) so the Pareto view or the gallery gets the window, the sidebar
   folds away, and
-  the light and dark themes are ACTIVATE Studio's (neutral gray).
+  the light and dark themes are ACTIVATE Studio's (neutral gray, navy accent).
 - **Color** colors the lines, cards, swatches and points by any variable; click
-  its gradient to pick the palette (Blues, Viridis, Plasma, Inferno, Cividis,
-  Blue–Red diverging) or reverse it.
+  its gradient to pick the palette (Viridis by default; Plasma, Inferno,
+  Cividis, Blue–Red diverging, Blues) or reverse it.
 - The chart always shows every case, the unselected ones in gray behind the
   selection. **Unselected: Hide | Fade** over the lists below lists only the
   selected cases, or every case with the others faded in place. The axes keep their range while you filter; **Keep only**

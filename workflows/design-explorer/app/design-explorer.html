@@ -176,6 +176,11 @@
     /* chart */
     main { display: grid; gap: var(--space-2); min-width: 0; }
     .chart-panel { padding: var(--space-2) var(--space-3) var(--space-2); overflow-x: auto; }
+    .chart-panel.collapsed .pc-wrap { display: none; }
+    .chart-panel.collapsed .chart-bar { margin-bottom: 0; }
+    .chart-panel.collapsed + .splitter { display: none; }
+    #chart-toggle svg { transition: transform 0.15s var(--ease-out); }
+    .chart-panel.collapsed #chart-toggle svg { transform: rotate(-90deg); }
     .splitter { height: 8px; margin: -4px 0; cursor: row-resize; position: relative; z-index: 2; touch-action: none; }
     .splitter::after { content: ""; position: absolute; left: 50%; top: 2px; width: 44px; height: 4px; margin-left: -22px; border-radius: 2px; background: var(--border-strong); opacity: 0; transition: opacity 0.15s; }
     .splitter:hover::after, .splitter.dragging::after { opacity: 1; }
@@ -409,6 +414,7 @@
         <section class="panel chart-panel">
           <div class="chart-bar">
             <div class="summary">
+              <button class="btn small icon ghost" id="chart-toggle" title="Collapse the chart" aria-label="Collapse the chart" aria-expanded="true"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
               <span><b id="sel-count">0</b> of <span id="base-count">0</span> cases</span>
               <span class="filters" id="filters"></span>
             </div>
@@ -550,10 +556,11 @@ Esc closes the case; ← → step through the list.">?</button>
       if (prefs.size === "S" || prefs.size === "M" || prefs.size === "L") { S.size = prefs.size; }
       if (prefs.sliderMode === "pick" || prefs.sliderMode === "filter") { S.sliderMode = prefs.sliderMode; }
       if (prefs.sideHidden === true) { S.sideHidden = true; }
+      if (prefs.chartCollapsed === true) { S.chartCollapsed = true; }
       if (prefs.chartH > 0) { S.chartH = prefs.chartH; }
     } catch (err) { /* defaults */ }
     function savePrefs() {
-      try { window.localStorage.setItem("design-explorer-prefs", JSON.stringify({ mode: S.mode, size: S.size, sliderMode: S.sliderMode, sideHidden: !!S.sideHidden, chartH: S.chartH || 0 })); } catch (err) { /* ignore */ }
+      try { window.localStorage.setItem("design-explorer-prefs", JSON.stringify({ mode: S.mode, size: S.size, sliderMode: S.sliderMode, sideHidden: !!S.sideHidden, chartH: S.chartH || 0, chartCollapsed: !!S.chartCollapsed })); } catch (err) { /* ignore */ }
     }
 
     // an error in the page's own code is shown on the page: the platform's
@@ -1006,6 +1013,8 @@ Esc closes the case; ← → step through the list.">?</button>
     };
     PC.render = function (needs) {
       if (needs.layout) { PC.layout(); }
+      // a collapsed chart has no room: it draws again when it is expanded
+      if (PC.H < 80 || PC.W < 80) { PC.drawn = []; return; }
       const keys = PC.keys;
       let msg = "";
       if (!S.all.length) { msg = "Waiting for the first solved case…"; }
@@ -2626,6 +2635,19 @@ Esc closes the case; ← → step through the list.">?</button>
       $("workspace").classList.toggle("no-side", !!S.sideHidden);
       $("side-toggle").classList.toggle("active", !S.sideHidden);
     }
+    // the chart folds to its bar (counts, filters, actions) so the lists below,
+    // the Pareto view in particular, get the window
+    function applyChart() {
+      const c = !!S.chartCollapsed, b = $("chart-toggle");
+      document.querySelector(".chart-panel").classList.toggle("collapsed", c);
+      b.setAttribute("aria-expanded", c ? "false" : "true");
+      b.title = c ? "Expand the chart" : "Collapse the chart";
+      b.setAttribute("aria-label", b.title);
+    }
+    $("chart-toggle").addEventListener("click", () => {
+      S.chartCollapsed = !S.chartCollapsed; savePrefs(); applyChart();
+      if (!S.chartCollapsed) { schedule({ layout: true, filter: true }); }
+    });
     $("side-toggle").addEventListener("click", () => { S.sideHidden = !S.sideHidden; savePrefs(); applySide(); });
     // the bar between the chart and the lists resizes the chart
     (function () {
@@ -2714,6 +2736,7 @@ Esc closes the case; ← → step through the list.">?</button>
 
     PC.init();
     applySide();
+    applyChart();
     syncSelects();
     fetchCsv(guarded("loading the study", (csv) => {
       // data.csv holds the solved cases only: the first status poll then

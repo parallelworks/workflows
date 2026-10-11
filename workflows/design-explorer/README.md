@@ -21,7 +21,9 @@ studies with it; the figure shows a doe-openfoam study.
   parameters) stay off the chart, the sliders and the pickers; their values
   fold into a **Fixed** group of the axes list and of the case panel.
 - A full-window layout: the chart stays in view while the lists below it
-  scroll, the bar between them resizes the chart, the sidebar folds away, and
+  scroll, the bar between them resizes the chart, the chart folds to its
+  toolbar (▾) so the Pareto view or the gallery gets the window, the sidebar
+  folds away, and
   the light and dark themes are ACTIVATE Studio's (neutral gray).
 - **Unselected: Hide | Fade** draws only the selected cases, or the others in
   gray behind them. The axes keep their range while you filter; **Keep only**

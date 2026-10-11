@@ -282,9 +282,9 @@ def optimization(rows, cases_dir):
     objectives = []
     for name in names:
         if name in outputs:
-            objectives.append({"key": "out:" + name, "sense": "min"})
+            objectives.append({"key": "out:" + name, "sense": "min", "name": name})
         elif name.startswith("neg_") and name[4:] in outputs:
-            objectives.append({"key": "out:" + name[4:], "sense": "max"})
+            objectives.append({"key": "out:" + name[4:], "sense": "max", "name": name})
     bounds = {}
     for item in problem.get("variables") or []:
         try:

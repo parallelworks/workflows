@@ -103,9 +103,12 @@
     /* workspace: sidebar | main | case panel */
     .workspace { flex: 1; display: grid; grid-template-columns: 256px minmax(0, 1fr); gap: var(--space-2); padding: var(--space-2); align-items: start; }
     .workspace.with-detail { grid-template-columns: 256px minmax(0, 1fr) clamp(320px, 21vw, 420px); }
-    .workspace.no-side { grid-template-columns: minmax(0, 1fr); }
-    .workspace.no-side.with-detail { grid-template-columns: minmax(0, 1fr) clamp(320px, 21vw, 420px); }
-    .workspace.no-side .sidebar { display: none; }
+    .workspace.no-side { grid-template-columns: 30px minmax(0, 1fr); }
+    .workspace.no-side.with-detail { grid-template-columns: 30px minmax(0, 1fr) clamp(320px, 21vw, 420px); }
+    .workspace.no-side .sidebar > :not(.rail) { display: none; }
+    .sidebar .rail { display: none; width: 30px; height: 30px; border: 1px solid var(--border); background: var(--panel); }
+    .workspace.no-side .sidebar .rail { display: inline-flex; }
+    .side-tools { display: inline-flex; align-items: center; gap: 4px; }
     .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
     .sidebar, .detail { overflow: auto; scrollbar-width: thin; }
     .sidebar { display: grid; gap: var(--space-2); align-content: start; }
@@ -122,9 +125,9 @@
     .group-title:first-child { margin-top: 0; }
 
     /* drill-down sliders */
-    .sl { padding: 6px 0 4px; }
+    .sl { padding: 3px 0 1px; }
     .sl + .sl { border-top: 1px dashed var(--border); }
-    .sl-head { display: flex; align-items: baseline; gap: 6px; font-size: var(--text-sm); }
+    .sl-head { display: flex; align-items: baseline; gap: 6px; font-size: var(--text-xs); line-height: 1.3; }
     .sl-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
     .sl-name.out { color: var(--accent-text); }
     .sl-val { color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -132,20 +135,20 @@
     .sl-clear { visibility: hidden; border: 0; background: none; padding: 0 2px; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; }
     .sl.active .sl-clear { visibility: visible; }
     .sl-clear:hover { color: var(--danger); }
-    .sl-body { position: relative; height: 40px; margin: 2px 7px 0; touch-action: none; cursor: pointer; }
-    .sl-hist { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 24px; overflow: visible; }
+    .sl-body { position: relative; height: 28px; margin: 1px 6px 0; touch-action: none; cursor: pointer; }
+    .sl-hist { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 15px; overflow: visible; }
     .sl-hist .ctx { fill: var(--hist); }
     .sl-hist .in { fill: var(--accent); opacity: 0.75; }
     .sl-hist .out { fill: var(--fade); opacity: 0.45; }
-    .sl-track { position: absolute; left: 0; right: 0; top: 29px; height: 4px; border-radius: 2px; background: var(--panel-sunk); }
-    .sl-fill { position: absolute; top: 29px; height: 4px; border-radius: 2px; background: var(--accent); cursor: grab; }
+    .sl-track { position: absolute; left: 0; right: 0; top: 19px; height: 3px; border-radius: 2px; background: var(--panel-sunk); }
+    .sl-fill { position: absolute; top: 19px; height: 3px; border-radius: 2px; background: var(--accent); cursor: grab; }
     .sl-fill::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; bottom: -8px; }
-    .sl-thumb { position: absolute; top: 24px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; border: 2px solid var(--accent); background: var(--panel); box-shadow: var(--shadow-sm); padding: 0; cursor: ew-resize; }
+    .sl-thumb { position: absolute; top: 14.5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; border: 2px solid var(--accent); background: var(--panel); box-shadow: var(--shadow-sm); padding: 0; cursor: ew-resize; }
     .sl-thumb:hover, .sl-thumb:focus-visible { transform: scale(1.15); }
-    .sl-pin { position: absolute; top: 22px; width: 2px; height: 18px; margin-left: -1px; border-radius: 1px; background: var(--text); pointer-events: none; }
-    .sl-ticks { position: absolute; left: 0; right: 0; top: 35px; height: 4px; pointer-events: none; }
-    .sl-ticks i { position: absolute; width: 1px; height: 4px; background: var(--border-strong); }
-    .sl-ends { display: flex; justify-content: space-between; margin: 0 1px; color: var(--faint); font-size: 0.6875rem; font-variant-numeric: tabular-nums; }
+    .sl-pin { position: absolute; top: 13px; width: 2px; height: 15px; margin-left: -1px; border-radius: 1px; background: var(--text); pointer-events: none; }
+    .sl-ticks { position: absolute; left: 0; right: 0; top: 24px; height: 3px; pointer-events: none; }
+    .sl-ticks i { position: absolute; width: 1px; height: 3px; background: var(--border-strong); }
+    .sl-ends { display: flex; justify-content: space-between; margin: -1px 1px 0; color: var(--faint); font-size: 0.625rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
     #sliders.pick .sl-fill, #sliders.pick .sl-thumb.hi, #sliders.pick .sl-clear { display: none; }
     #sliders.pick .sl-thumb { background: var(--accent); border-color: var(--panel); box-shadow: 0 0 0 1.5px var(--accent), var(--shadow-sm); cursor: grab; }
     #sliders.pick .sl-val { color: var(--text); font-weight: 600; }
@@ -372,8 +375,8 @@
       .banner { margin: var(--space-2) var(--space-2) 0; }
     }
     @media (max-width: 1280px) {
-      .workspace.with-detail { grid-template-columns: 288px minmax(0, 1fr); }
-      .workspace.no-side.with-detail { grid-template-columns: minmax(0, 1fr); }
+      .workspace.with-detail { grid-template-columns: 256px minmax(0, 1fr); }
+      .workspace.no-side.with-detail { grid-template-columns: 30px minmax(0, 1fr); }
       .detail { position: fixed; z-index: 35; top: 60px; right: var(--space-2); bottom: var(--space-2); width: min(380px, calc(100vw - 2 * var(--space-2))); max-height: none !important; box-shadow: var(--shadow-lg); }
     }
     @media (max-width: 860px) {
@@ -388,7 +391,6 @@
 <body>
   <div class="app">
     <header class="topbar">
-      <button class="btn ghost icon" id="side-toggle" title="Show or hide the sidebar" aria-label="Show or hide the sidebar"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
       <h1 id="title">Design Explorer</h1>
       <span class="eyebrow" id="eyebrow">Design of experiments</span>
       <span class="lede" id="lede">loading the study…</span>
@@ -403,11 +405,15 @@
     <div class="banner" id="error" hidden></div>
     <div class="workspace" id="workspace">
       <aside class="sidebar" aria-label="Filters">
+        <button class="btn icon ghost rail" id="side-expand" title="Show the sliders and axes" aria-label="Show the sidebar"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
         <section class="panel side-section">
           <div class="side-head">
             <h3>Sliders</h3>
-            <span class="seg" role="group" aria-label="Slider behavior">
-              <button data-slmode="pick" title="One thumb per input: drag to move to a case">Pick case</button><button data-slmode="filter" title="A range per axis: narrow the brushed cases further">Filter</button>
+            <span class="side-tools">
+              <span class="seg" role="group" aria-label="Slider behavior">
+                <button data-slmode="pick" title="One thumb per input: drag to move to a case">Pick case</button><button data-slmode="filter" title="A range per axis: narrow the brushed cases further">Filter</button>
+              </span>
+              <button class="btn icon ghost small" id="side-toggle" title="Hide the sidebar" aria-label="Hide the sidebar"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
             </span>
           </div>
           <p class="side-note" id="slider-note"></p>
@@ -430,11 +436,6 @@
               <span class="filters" id="filters"></span>
             </div>
             <div class="tools">
-              <span class="field">Unselected
-                <span class="seg" role="group" aria-label="Lines outside the selection">
-                  <button data-mode="hide" title="Show only the selected cases, on the chart and in the lists">Hide</button><button data-mode="fade" title="Show the other cases too, dimmed: gray lines behind the selection, faded cards and rows">Fade</button>
-                </span>
-              </span>
               <label class="field">Color <select id="color-by" aria-label="Color the lines and thumbnails by"></select></label>
               <button class="legend" id="legend" title="Change the colors" aria-label="Change the colors"><span id="legend-lo"></span><span class="bar" id="legend-bar"></span><span id="legend-hi"></span></button>
               <span class="divider"></span>
@@ -458,6 +459,11 @@ Esc closes the case; ← → step through the list.">?</button>
             <span class="seg" role="tablist" aria-label="Results view">
               <button data-view="pareto" role="tab" title="The objective space of the optimization, its Pareto front and convergence">Pareto</button><button data-view="gallery" role="tab">Gallery</button><button data-view="table" role="tab">Table</button><button data-view="sens" role="tab" title="Each output against each input over the selected cases">Sensitivity</button>
             </span>
+            <span class="field">Unselected
+              <span class="seg" role="group" aria-label="Cases outside the selection">
+                <button data-mode="hide" title="List only the selected cases">Hide</button><button data-mode="fade" title="List every case, the ones outside the selection faded">Fade</button>
+              </span>
+            </span>
             <label class="field" id="sort-field">Sort <select id="sort-by"></select></label>
             <button class="btn small icon" id="sort-dir" title="Ascending / descending" aria-label="Sort direction">↑</button>
             <label class="field" id="image-field">Image <select id="image-kind"></select></label>
@@ -467,7 +473,7 @@ Esc closes the case; ← → step through the list.">?</button>
             <span class="count" id="count"></span>
           </div>
           <div class="results-body" id="results-body">
-          <div id="grid" class="thumbs size-M"></div>
+          <div id="grid" class="thumbs size-S"></div>
           <div id="table-wrap" class="table-wrap" hidden><table class="cases" id="table"></table></div>
           <div id="pareto" class="pareto" hidden>
             <section class="panel pt-panel">
@@ -477,6 +483,7 @@ Esc closes the case; ← → step through the list.">?</button>
                   <label class="field">X <select id="pt-x"></select></label>
                   <button class="btn small icon" id="pt-swap" title="Swap the axes" aria-label="Swap the axes">⇄</button>
                   <label class="field">Y <select id="pt-y"></select></label>
+                  <span class="field" id="pt-orient">Objectives <span class="seg" role="group" aria-label="Objectives shown"><button data-orient="min" title="As the optimizer minimizes them: a maximized objective negated, under its problem.json name; the front is the lower-left curve">Minimized</button><button data-orient="raw" title="As the study reports them, each with its own sense (lift up)">As reported</button></span></span>
                   <span class="field">Fit <span class="seg" role="group" aria-label="Fit the axes to"><button data-fit="all" title="Every solved design">All</button><button data-fit="front" title="Every design that was ever on the front: early generations and penalty values otherwise squash it">Front</button></span></span>
                 </div>
               </div>
@@ -559,7 +566,7 @@ Esc closes the case; ← → step through the list.">?</button>
       brushes: {}, drill: {},
       colorBy: null, sortBy: null, sortAsc: true, image: null,
       pinned: null, hover: null,
-      mode: "hide", view: "gallery", size: "M", sliderMode: "pick", palette: "blues", paletteReverse: false,
+      mode: "hide", view: "gallery", size: "S", sliderMode: "pick", palette: "blues", paletteReverse: false,
       status: null, statusOk: null, timer: null, opt: null, viewChosen: false,
     };
     const D = { base: [], brushed: [], selected: [], sorted: [], listed: [], byId: new Map(), domain: {}, levels: {}, slDomain: {}, failDrill: null };
@@ -572,10 +579,11 @@ Esc closes the case; ← → step through the list.">?</button>
       if (prefs.chartCollapsed === true) { S.chartCollapsed = true; }
       if (typeof prefs.palette === "string") { S.palette = prefs.palette; }
       if (prefs.paletteReverse === true) { S.paletteReverse = true; }
+      if (prefs.ptOrient === "raw" || prefs.ptOrient === "min") { S.ptOrient = prefs.ptOrient; }
       if (prefs.chartH > 0) { S.chartH = prefs.chartH; }
     } catch (err) { /* defaults */ }
     function savePrefs() {
-      try { window.localStorage.setItem("design-explorer-prefs", JSON.stringify({ mode: S.mode, size: S.size, sliderMode: S.sliderMode, sideHidden: !!S.sideHidden, chartH: S.chartH || 0, chartCollapsed: !!S.chartCollapsed, palette: S.palette, paletteReverse: !!S.paletteReverse })); } catch (err) { /* ignore */ }
+      try { window.localStorage.setItem("design-explorer-prefs", JSON.stringify({ mode: S.mode, size: S.size, sliderMode: S.sliderMode, sideHidden: !!S.sideHidden, chartH: S.chartH || 0, chartCollapsed: !!S.chartCollapsed, palette: S.palette, paletteReverse: !!S.paletteReverse, ptOrient: S.ptOrient || "min" })); } catch (err) { /* ignore */ }
     }
 
     // an error in the page's own code is shown on the page: the platform's
@@ -670,10 +678,17 @@ Esc closes the case; ← → step through the list.">?</button>
         update(n);
       }));
     }
-    let resultsTimer = null;
+    // during a drag the lists refresh every ~90 ms rather than after it; the
+    // cards and rows are reused, so a refresh only reorders and restyles them
+    let resultsTimer = null, resultsAt = 0;
+    const runResults = guarded("listing the cases", () => { resultsTimer = null; resultsAt = performance.now(); renderResults(); });
     function scheduleResults(delay) {
+      if (delay === "drag") {
+        if (!resultsTimer) { resultsTimer = window.setTimeout(runResults, Math.max(0, 90 - (performance.now() - resultsAt))); }
+        return;
+      }
       window.clearTimeout(resultsTimer);
-      resultsTimer = window.setTimeout(guarded("listing the cases", renderResults), delay || 0);
+      resultsTimer = window.setTimeout(runResults, delay || 0);
     }
 
     // ---- color ------------------------------------------------------------
@@ -908,7 +923,8 @@ Esc closes the case; ← → step through the list.">?</button>
       // and only a few hundred lines get width, one stroke each
       const hair = 1 / (window.devicePixelRatio || 1);
       ctx.lineJoin = "bevel";
-      if (S.mode === "fade" && D.selected.length < D.base.length) {
+      // the chart always shows every case: the unselected ones in gray
+      if (D.selected.length < D.base.length) {
         const rest = D.base.filter((r) => !D.selectedIds.has(r.__id));
         ctx.globalAlpha = clamp(Math.sqrt(40 / Math.max(40, rest.length)) * 0.6, 0.06, 0.4);
         ctx.lineWidth = hair;
@@ -1401,7 +1417,7 @@ Esc closes the case; ← → step through the list.">?</button>
       }
       const hist = s.hist;
       while (hist.firstChild) { hist.removeChild(hist.firstChild); }
-      const W = s.body.clientWidth || 240, H = 22, max = Math.max.apply(null, all) || 1;
+      const W = s.body.clientWidth || 240, H = 15, max = Math.max.apply(null, all) || 1;
       hist.setAttribute("viewBox", "0 0 " + W + " " + H);
       const curBin = pick && cur !== null ? b.of(cur) : -1;
       for (let i = 0; i < b.n; i++) {
@@ -1677,8 +1693,15 @@ Esc closes the case; ← → step through the list.">?</button>
     // ---- results: gallery and table -----------------------------------------
     let shown = 0;
     const PAGE = { gallery: 120, table: 300 };
+    // cards and rows by case, rebuilt only when what they show changes
+    const reuse = { key: "", cards: new Map(), rows: new Map() };
+    function reuseKey() {
+      return [S.image, S.sortBy, S.colorBy, ramp().key, S.order.filter((k) => !S.hidden[k]).join(",")].join("|");
+    }
     function renderResults() {
       shown = 0;
+      const key = reuseKey();
+      if (key !== reuse.key) { reuse.key = key; reuse.cards.clear(); reuse.rows.clear(); }
       $("grid").textContent = "";
       $("table").textContent = "";
       const sens = S.view === "sens", pareto = S.view === "pareto" && hasPareto();
@@ -1724,7 +1747,11 @@ Esc closes the case; ← → step through the list.">?</button>
         (all ? " cases, " + nf.format(D.sorted.length) + " selected" : " selected") + ", by " + label(S.sortBy) + (S.sortAsc ? " ↑" : " ↓");
     }
     function card(r) {
-      const fig = el("figure", { class: "card" + (r.__id === S.pinned ? " pinned" : "") + (D.selectedIds.has(r.__id) ? "" : " dim"), tabindex: "0", "data-id": r.__id });
+      const cls = "card" + (r.__id === S.pinned ? " pinned" : "") + (D.selectedIds.has(r.__id) ? "" : " dim");
+      const old = reuse.cards.get(r.__id);
+      if (old) { old.className = cls; return old; }
+      const fig = el("figure", { class: cls, tabindex: "0", "data-id": r.__id });
+      reuse.cards.set(r.__id, fig);
       fig.style.setProperty("--swatch", colorOf(r));
       const img = mediaNode(r, { lazy: !DEMO.length, preload: "metadata", still: true });
       if (isAnim(S.image ? r[S.image] : "")) { fig.appendChild(el("span", { class: "anim" }, "▶ animation")); }
@@ -1748,7 +1775,11 @@ Esc closes the case; ← → step through the list.">?</button>
       t.appendChild(el("tbody"));
     }
     function tableRow(r) {
-      const tr = el("tr", { "data-id": r.__id, class: (r.__id === S.pinned ? "pinned" : "") + (D.selectedIds.has(r.__id) ? "" : " dim") });
+      const cls = (r.__id === S.pinned ? "pinned" : "") + (D.selectedIds.has(r.__id) ? "" : " dim");
+      const old = reuse.rows.get(r.__id);
+      if (old) { old.className = cls; return old; }
+      const tr = el("tr", { "data-id": r.__id, class: cls });
+      reuse.rows.set(r.__id, tr);
       const sw = el("td"), dot = el("span", { class: "sw" });
       dot.style.background = colorOf(r);
       sw.appendChild(dot); tr.appendChild(sw);
@@ -1971,7 +2002,7 @@ Esc closes the case; ← → step through the list.">?</button>
     // convergence per generation. The scrubber is a brush on the generation axis,
     // so the chart, the sliders and the lists follow it.
     const GEN = "in:generation";
-    const PT = { wrap: $("pt-wrap"), base: el("canvas"), over: el("canvas"), L: null, drawn: [], fit: "all", x: null, y: null, timer: null, model: null };
+    const PT = { wrap: $("pt-wrap"), base: el("canvas"), over: el("canvas"), L: null, drawn: [], fit: "all", x: null, y: null, timer: null, model: null, orient: S.ptOrient === "raw" ? "raw" : "min" };
     PT.wrap.appendChild(PT.base); PT.wrap.appendChild(PT.over);
     PT.msg = el("div", { class: "pc-msg" }); PT.msg.hidden = true; PT.wrap.appendChild(PT.msg);
     const optObjectives = () => ((S.opt && S.opt.objectives) || []).filter((d) => S.outputs.indexOf(d.key) >= 0);
@@ -2028,6 +2059,15 @@ Esc closes the case; ← → step through the list.">?</button>
       PT.model = m;
       return m;
     }
+    // the Pareto view shows each objective as the optimizer minimizes it (a
+    // maximized one negated, under its problem.json name, so the front is the
+    // familiar lower-left curve) or as the study reports it, with its sense
+    function ptAxis(k) {
+      const o = optObjectives().find((d) => d.key === k), s = senseOf(k);
+      if (PT.orient === "min" && s === -1) { return { k: k, sign: -1, sense: 1, name: (o && o.name) || "−" + label(k) }; }
+      return { k: k, sign: 1, sense: s, name: label(k) };
+    }
+    const axVal = (a, r) => a.sign * r[a.k];
     function scrubGen(m) { const br = S.brushes[GEN]; return br ? clamp(Math.round(br[1]), m.gMin, m.gMax) : m.gMax; }
     function scrubOnly() { const br = S.brushes[GEN]; return !!br && Math.round(br[0]) === Math.round(br[1]); }
     function scrubTo(g, only) {
@@ -2050,11 +2090,11 @@ Esc closes the case; ← → step through the list.">?</button>
         scrubTo(g + 1, scrubOnly());
       }), 650);
     }
-    function ptDomain(k, m) {
-      const ext = (rows) => extent(rows, k);
+    function ptDomain(a, m) {
+      const ext = (rows) => { const e = extent(rows, a.k); return e && a.sign < 0 ? [-e[1], -e[0]] : e; };
       let e = PT.fit === "front" && m.everFront.length ? ext(m.everFront) : ext(D.base);
       if (!e) { return [0, 1]; }
-      const full = D.domain[k], pad = PT.fit === "front" ? 0.1 : 0.04;
+      const full = ext(D.base), pad = PT.fit === "front" ? 0.1 : 0.04;
       if (PT.fit === "front" && e[1] - e[0] < (full[1] - full[0]) * 0.04) {
         const mid = (e[0] + e[1]) / 2, h = (full[1] - full[0]) * 0.02;
         e = [mid - h, mid + h];
@@ -2074,9 +2114,12 @@ Esc closes the case; ← → step through the list.">?</button>
       fillSelect($("pt-x"), varying, PT.x);
       fillSelect($("pt-y"), varying, PT.y);
       document.querySelectorAll("[data-fit]").forEach((b) => b.classList.toggle("active", b.dataset.fit === PT.fit));
-      const arrow = (o) => label(o.key) + (o.sense === "max" ? " ↑" : " ↓");
-      const pair = senseOf(PT.x) && senseOf(PT.y) && PT.x !== PT.y;
-      $("pt-note").textContent = obj.map(arrow).join(" · ") + (pair ? " · the front is the " + edgeWords(senseOf(PT.x), senseOf(PT.y)) + " edge" : "");
+      PT.ax = { x: ptAxis(PT.x), y: ptAxis(PT.y) };
+      const arrow = (o) => { const a = ptAxis(o.key); return a.name + (a.sense > 0 ? " ↓" : " ↑"); };
+      const pair = PT.ax.x.sense && PT.ax.y.sense && PT.x !== PT.y;
+      $("pt-note").textContent = obj.map(arrow).join(" · ") + (pair ? " · the front is the " + edgeWords(PT.ax.x.sense, PT.ax.y.sense) + " edge" : "");
+      $("pt-orient").hidden = !obj.some((o) => o.sense === "max");
+      document.querySelectorAll("[data-orient]").forEach((b) => b.classList.toggle("active", b.dataset.orient === PT.orient));
       // the scrubber
       const s = $("pt-gen");
       s.min = m.gMin; s.max = m.gMax; s.value = g;
@@ -2123,7 +2166,8 @@ Esc closes the case; ← → step through the list.">?</button>
       ctx.clearRect(0, 0, W, H);
       PT.drawn = [];
       PT.msg.hidden = true;
-      const xk = PT.x, yk = PT.y, xd = ptDomain(xk, m), yd = ptDomain(yk, m);
+      const ax = PT.ax.x, ay = PT.ax.y, X = (r) => axVal(ax, r), Y = (r) => axVal(ay, r);
+      const xd = ptDomain(ax, m), yd = ptDomain(ay, m);
       const ink = cssVar("--text"), muted = cssVar("--muted"), border = cssVar("--border"), halo = cssVar("--halo"), fit = cssVar("--fit"), accent = cssVar("--accent");
       ctx.font = "11px " + font;
       const yt = niceTicks(yd[0], yd[1], Math.max(3, Math.floor((H - 56) / 52))), yf = tickFormat(yt.step, yt.ticks);
@@ -2143,10 +2187,10 @@ Esc closes the case; ← → step through the list.">?</button>
       xt.ticks.forEach((v) => { const x = sx(v); if (x >= fr.l - 1 && x <= fr.l + fr.w + 1) { ctx.fillText(xf(v), x, fr.t + fr.h + 5); } });
       ctx.fillStyle = ink; ctx.font = "700 12px " + font;
       ctx.textBaseline = "bottom";
-      ctx.fillText(label(xk) + (senseOf(xk) ? (senseOf(xk) > 0 ? " ↓" : " ↑") : ""), fr.l + fr.w / 2, H - 2);
+      ctx.fillText(ax.name + (ax.sense ? (ax.sense > 0 ? " ↓" : " ↑") : ""), fr.l + fr.w / 2, H - 2);
       ctx.save();
       ctx.translate(13, fr.t + fr.h / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = "middle";
-      ctx.fillText(label(yk) + (senseOf(yk) ? (senseOf(yk) > 0 ? " ↓" : " ↑") : ""), 0, 0);
+      ctx.fillText(ay.name + (ay.sense ? (ay.sense > 0 ? " ↓" : " ↑") : ""), 0, 0);
       ctx.restore();
       ctx.save();
       ctx.beginPath(); ctx.rect(fr.l, fr.t, fr.w, fr.h); ctx.clip();
@@ -2154,14 +2198,14 @@ Esc closes the case; ← → step through the list.">?</button>
       if (pair && front.length) {
         // the attainment staircase, walked in the space where both objectives
         // are minimized; what the front dominates lies beyond it
-        const sa = senseOf(xk), sb = senseOf(yk), far = (s, axis) => axis === "x" ? (s > 0 ? fr.l + fr.w + 4 : fr.l - 4) : (s > 0 ? fr.t - 4 : fr.t + fr.h + 4);
-        const P = front.map((r) => [sa * r[xk], sb * r[yk], r]).sort((p, q) => p[0] - q[0] || p[1] - q[1]);
-        const X = (p) => sx(sa * p[0]), Y = (p) => sy(sb * p[1]);
+        const sa = ax.sense, sb = ay.sense, far = (s, axis) => axis === "x" ? (s > 0 ? fr.l + fr.w + 4 : fr.l - 4) : (s > 0 ? fr.t - 4 : fr.t + fr.h + 4);
+        const P = front.map((r) => [sa * X(r), sb * Y(r), r]).sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+        const PX = (p) => sx(sa * p[0]), PY = (p) => sy(sb * p[1]);
         const walk = () => {
           ctx.beginPath();
-          ctx.moveTo(X(P[0]), far(sb, "y"));
-          P.forEach((p, i) => { if (i) { ctx.lineTo(X(p), Y(P[i - 1])); } ctx.lineTo(X(p), Y(p)); });
-          ctx.lineTo(far(sa, "x"), Y(P[P.length - 1]));
+          ctx.moveTo(PX(P[0]), far(sb, "y"));
+          P.forEach((p, i) => { if (i) { ctx.lineTo(PX(p), PY(P[i - 1])); } ctx.lineTo(PX(p), PY(p)); });
+          ctx.lineTo(far(sa, "x"), PY(P[P.length - 1]));
         };
         walk();
         ctx.lineTo(far(sa, "x"), far(sb, "y"));
@@ -2173,7 +2217,7 @@ Esc closes the case; ← → step through the list.">?</button>
       const sel = D.selected, n = sel.length, R = n > 3000 ? 2.2 : n > 1200 ? 2.8 : n > 400 ? 3.4 : 4.2;
       if (S.mode === "fade") {
         ctx.fillStyle = cssVar("--fade"); ctx.globalAlpha = 0.35;
-        D.base.forEach((r) => { if (!D.selectedIds.has(r.__id)) { ctx.fillRect(sx(r[xk]) - 1.5, sy(r[yk]) - 1.5, 3, 3); } });
+        D.base.forEach((r) => { if (!D.selectedIds.has(r.__id)) { ctx.fillRect(sx(X(r)) - 1.5, sy(Y(r)) - 1.5, 3, 3); } });
         ctx.globalAlpha = 1;
       }
       const scrubbing = g < m.gMax || only || PT.timer;
@@ -2186,20 +2230,20 @@ Esc closes the case; ← → step through the list.">?</button>
       groups.forEach((gr, b) => {
         if (!gr.length) { return; }
         ctx.beginPath();
-        gr.forEach((r) => { const x = sx(r[xk]), y = sy(r[yk]); ctx.moveTo(x + R, y); ctx.arc(x, y, R, 0, 2 * Math.PI); });
+        gr.forEach((r) => { const x = sx(X(r)), y = sy(Y(r)); ctx.moveTo(x + R, y); ctx.arc(x, y, R, 0, 2 * Math.PI); });
         ctx.fillStyle = buckets[b]; ctx.fill();
       });
       ctx.globalAlpha = 1;
       if (cur.length) {
         ctx.beginPath();
-        cur.forEach((r) => { const x = sx(r[xk]), y = sy(r[yk]); ctx.moveTo(x + R + 1, y); ctx.arc(x, y, R + 1, 0, 2 * Math.PI); });
+        cur.forEach((r) => { const x = sx(X(r)), y = sy(Y(r)); ctx.moveTo(x + R + 1, y); ctx.arc(x, y, R + 1, 0, 2 * Math.PI); });
         ctx.fillStyle = accent; ctx.fill();
         ctx.strokeStyle = halo; ctx.lineWidth = 1.5; ctx.stroke();
       }
       const ring = front.filter((r) => D.selectedIds.has(r.__id));
       if (ring.length) {
         ctx.beginPath();
-        ring.forEach((r) => { const x = sx(r[xk]), y = sy(r[yk]); ctx.moveTo(x + R + 3, y); ctx.arc(x, y, R + 3, 0, 2 * Math.PI); });
+        ring.forEach((r) => { const x = sx(X(r)), y = sy(Y(r)); ctx.moveTo(x + R + 3, y); ctx.arc(x, y, R + 3, 0, 2 * Math.PI); });
         ctx.strokeStyle = halo; ctx.lineWidth = 3.5; ctx.stroke();
         ctx.strokeStyle = fit; ctx.lineWidth = 2; ctx.stroke();
       }
@@ -2212,7 +2256,7 @@ Esc closes the case; ← → step through the list.">?</button>
       if (S.view !== "pareto" || !PT.L) { return; }
       const ctx = PT.over.getContext("2d"), L = PT.L, fr = L.fr;
       ctx.clearRect(0, 0, PT.over.width, PT.over.height);
-      const pos = (r) => [L.sx(r[PT.x]), L.sy(r[PT.y])];
+      const pos = (r) => [L.sx(axVal(PT.ax.x, r)), L.sy(axVal(PT.ax.y, r))];
       const ringAt = (p, rad, color, width) => {
         ctx.beginPath(); ctx.arc(p[0], p[1], rad, 0, 2 * Math.PI);
         ctx.lineWidth = width + 2.5; ctx.strokeStyle = cssVar("--halo"); ctx.stroke();
@@ -2240,8 +2284,8 @@ Esc closes the case; ← → step through the list.">?</button>
         ctx.beginPath(); if (ctx.roundRect) { ctx.roundRect(x0, y - 9, w, 18, 4); } else { ctx.rect(x0, y - 9, w, 18); } ctx.fill();
         ctx.fillStyle = cssVar("--panel"); ctx.fillText(text, x0 + w / 2, y + 0.5);
       };
-      pill(fmt(p[PT.x]), q[0], fr.t + fr.h - 12);
-      const yText = fmt(p[PT.y]);
+      pill(fmt(axVal(PT.ax.x, p)), q[0], fr.t + fr.h - 12);
+      const yText = fmt(axVal(PT.ax.y, p));
       pill(yText, fr.l + 4 + (ctx.measureText(yText).width + 10) / 2, q[1]);
     }
     function ptPick(e) {
@@ -2249,7 +2293,7 @@ Esc closes the case; ← → step through the list.">?</button>
       const b = PT.over.getBoundingClientRect(), px = e.clientX - b.left, py = e.clientY - b.top;
       let best = null, bd = 81;
       PT.drawn.forEach((r) => {
-        const dx = PT.L.sx(r[PT.x]) - px, dy = PT.L.sy(r[PT.y]) - py, d = dx * dx + dy * dy;
+        const dx = PT.L.sx(axVal(PT.ax.x, r)) - px, dy = PT.L.sy(axVal(PT.ax.y, r)) - py, d = dx * dx + dy * dy;
         if (d < bd) { bd = d; best = r; }
       });
       return best;
@@ -2269,6 +2313,7 @@ Esc closes the case; ← → step through the list.">?</button>
     $("pt-y").addEventListener("change", function () { PT.y = this.value; renderPareto(); });
     $("pt-swap").addEventListener("click", () => { const t = PT.x; PT.x = PT.y; PT.y = t; renderPareto(); });
     document.querySelectorAll("[data-fit]").forEach((b) => b.addEventListener("click", () => { PT.fit = b.dataset.fit; renderPareto(); }));
+    document.querySelectorAll("[data-orient]").forEach((b) => b.addEventListener("click", () => { PT.orient = S.ptOrient = b.dataset.orient; savePrefs(); renderPareto(); }));
     $("pt-gen").addEventListener("input", guarded("scrubbing", function () { stopPlay(); scrubTo(+this.value, scrubOnly()); }));
     document.querySelectorAll("[data-gens]").forEach((b) => b.addEventListener("click", guarded("scrubbing", () => {
       scrubTo(scrubGen(optModel()), b.dataset.gens === "only");
@@ -2289,8 +2334,9 @@ Esc closes the case; ← → step through the list.">?</button>
       host.textContent = "";
       const hv = S.opt.hypervolume || [];
       const best = (j) => {
-        const o = m.obj[j], word = o.sense === "max" ? "highest" : "lowest";
-        return { title: "Best " + label(o.key), sub: word + " so far (line) · best of each generation (○)", series: [{ type: "dots", y: (x) => m.genBest[j][x] }, { type: "step", y: (x) => m.bestAt[j][x] }], value: (x) => m.bestAt[j][x] };
+        const a = ptAxis(m.obj[j].key), word = a.sense < 0 ? "highest" : "lowest";
+        const v = (x) => (typeof x === "number" ? a.sign * x : x);
+        return { title: "Best " + a.name, sub: word + " so far (line) · best of each generation (○)", series: [{ type: "dots", y: (x) => v(m.genBest[j][x]) }, { type: "step", y: (x) => v(m.bestAt[j][x]) }], value: (x) => v(m.bestAt[j][x]) };
       };
       const specs = [
         { title: "Hypervolume", sub: "of the front, on normalized objectives · higher is better", series: [{ type: "line", y: (x) => hv[x - 1] }], value: (x) => hv[x - 1] },
@@ -2585,7 +2631,7 @@ Esc closes the case; ← → step through the list.">?</button>
         if (S.view === "pareto" && hasPareto()) { renderPareto(); }
       }
       if (n.results === true) { scheduleResults(0); }
-      else if (n.results === "later") { scheduleResults(140); }
+      else if (n.results === "later") { scheduleResults("drag"); }
     }
     function rebuildAll() {
       computeFilters();
@@ -2702,7 +2748,6 @@ Esc closes the case; ← → step through the list.">?</button>
     }));
     function applySide() {
       $("workspace").classList.toggle("no-side", !!S.sideHidden);
-      $("side-toggle").classList.toggle("active", !S.sideHidden);
     }
     // the chart folds to its bar (counts, filters, actions) so the lists below,
     // the Pareto view in particular, get the window
@@ -2717,7 +2762,8 @@ Esc closes the case; ← → step through the list.">?</button>
       S.chartCollapsed = !S.chartCollapsed; savePrefs(); applyChart();
       if (!S.chartCollapsed) { schedule({ layout: true, filter: true }); }
     });
-    $("side-toggle").addEventListener("click", () => { S.sideHidden = !S.sideHidden; savePrefs(); applySide(); });
+    $("side-toggle").addEventListener("click", () => { S.sideHidden = true; savePrefs(); applySide(); });
+    $("side-expand").addEventListener("click", () => { S.sideHidden = false; savePrefs(); applySide(); });
     // the bar between the chart and the lists resizes the chart
     (function () {
       const bar = $("splitter");

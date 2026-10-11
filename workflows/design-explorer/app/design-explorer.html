@@ -251,6 +251,8 @@
     .card.dim { opacity: 0.32; }
     .card.dim:hover, .card.dim.pinned { opacity: 0.8; }
     .card img, .card video { display: block; width: 100%; aspect-ratio: 1.6; object-fit: cover; background: var(--panel-sunk); }
+    .card img { opacity: 0; transition: opacity 0.2s var(--ease-out); }
+    .card img.ok { opacity: 1; }
     .card .anim { position: absolute; right: 6px; top: 10px; z-index: 1; padding: 1px 7px; border-radius: var(--radius-full); background: rgba(10, 12, 20, 0.6); color: #fff; font-size: 0.6875rem; font-weight: 600; pointer-events: none; }
     .card figcaption { padding: 5px 9px 6px; font-size: var(--text-xs); color: var(--muted); display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
     .card figcaption b { color: var(--text); font-weight: 600; white-space: nowrap; }
@@ -1768,6 +1770,11 @@ Esc closes the case; ← → step through the list.">?</button>
       reuse.cards.set(r.__id, fig);
       fig.style.setProperty("--swatch", colorOf(r));
       const img = mediaNode(r, { lazy: !DEMO.length, preload: "metadata", still: true });
+      // a thumbnail fades in once it has loaded instead of popping in
+      if (img.tagName === "IMG") {
+        const shown = () => img.classList.add("ok");
+        if (img.complete && img.naturalWidth) { shown(); } else { img.addEventListener("load", shown); img.addEventListener("error", shown); }
+      }
       if (isAnim(S.image ? r[S.image] : "")) { fig.appendChild(el("span", { class: "anim" }, "▶ animation")); }
       const cap = el("figcaption");
       cap.appendChild(el("b", null, caseName(r.__id)));

@@ -185,7 +185,7 @@
     main { display: grid; gap: var(--space-2); min-width: 0; }
     .chart-panel { padding: var(--space-2) var(--space-3) var(--space-2); overflow-x: auto; }
     .chart-panel.collapsed .pc-wrap { display: none; }
-    .chart-panel.collapsed .chart-bar { margin-bottom: 0; }
+    .chart-panel.collapsed .chart-bar { margin-bottom: 0; min-height: 26px; }
     .chart-panel.collapsed + .splitter { display: none; }
     #chart-toggle svg { transition: transform 0.15s var(--ease-out); }
     .chart-panel.collapsed #chart-toggle svg { transform: rotate(-90deg); }
@@ -336,6 +336,12 @@
     .d-head h2 { margin: 2px 0 0; font-size: var(--text-lg); line-height: 1.2; }
     .d-path { margin: 2px 0 0; font: 500 var(--text-xs) var(--mono); color: var(--faint); word-break: break-all; }
     .d-nav { display: flex; gap: 2px; }
+    /* no case open: the panel keeps its column (opening one reflows nothing)
+       and says how to open one */
+    .detail.empty > :not(.d-head):not(.d-empty), .detail.empty .d-nav, .detail.empty .eyebrow { display: none; }
+    .detail:not(.empty) .d-empty { display: none; }
+    .d-empty { margin: 0; color: var(--muted); font-size: var(--text-sm); text-align: left; }
+    .detail.empty h2 { color: var(--muted); font-weight: 600; }
     .badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 2px 8px; border-radius: var(--radius-full); font-size: 0.6875rem; font-weight: 700; background: var(--panel-sunk); color: var(--muted); }
     .badge.warn { background: rgba(168, 112, 26, 0.14); color: var(--warn); }
     .d-figure { position: relative; margin: 0; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border); background: var(--panel-sunk); cursor: zoom-in; }
@@ -420,6 +426,7 @@
       .workspace.with-detail { grid-template-columns: 256px minmax(0, 1fr); }
       .workspace.no-side.with-detail { grid-template-columns: 30px minmax(0, 1fr); }
       .detail { position: fixed; z-index: 35; top: 60px; right: var(--space-2); bottom: var(--space-2); width: min(380px, calc(100vw - 2 * var(--space-2))); max-height: none !important; box-shadow: var(--shadow-lg); }
+      .detail.empty { display: none; }
     }
     @media (max-width: 860px) {
       .workspace, .workspace.with-detail, .workspace.no-side.with-detail { grid-template-columns: minmax(0, 1fr); }
@@ -447,7 +454,7 @@
 
     <div class="banner" id="error" hidden></div>
     <div class="loader" id="loader" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span id="loader-text">Loading the study…</span></div>
-    <div class="workspace" id="workspace">
+    <div class="workspace with-detail" id="workspace">
       <aside class="sidebar" aria-label="Filters">
         <button class="btn icon ghost rail" id="side-expand" title="Show the sliders and axes" aria-label="Show the sidebar"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
         <details class="panel side-section" id="axes-box">
@@ -544,7 +551,7 @@
         </section>
       </main>
 
-      <aside class="panel detail" id="detail" hidden aria-label="Selected case">
+      <aside class="panel detail empty" id="detail" aria-label="Selected case">
         <div class="d-head">
           <div>
             <p class="eyebrow">Selected case</p>
@@ -558,6 +565,7 @@
             <button class="btn icon ghost" id="d-close" title="Close (Esc)" aria-label="Close">✕</button>
           </div>
         </div>
+        <p class="d-empty">Click a line on the chart, a card, a row or a point of the Pareto view to open a case here: its images, its values, and steps to its neighbors. With <b>Pick case</b>, a slider moves to the closest case.</p>
         <figure class="d-figure" id="d-figure" title="Open the full image"><div id="d-media"></div><span class="zoom">⤢ full size</span></figure>
         <div class="kinds" id="d-kinds"></div>
         <table class="vals" id="d-vals"></table>
@@ -1288,6 +1296,7 @@
     function pin(id) {
       S.pinned = id;
       persistView();
+      syncReset();
       renderDetail();
       PC.drawOverlay();
       drawSensOverlay();
@@ -1709,6 +1718,10 @@
       $("sort-field").hidden = S.view === "sens" || S.view === "pareto";
       $("sort-dir").hidden = S.view === "sens" || S.view === "pareto";
     }
+    function syncReset() {
+      $("reset").disabled = D.selected.length === D.base.length && !S.excluded.size && !Object.keys(S.brushes).length &&
+        !Object.keys(S.drill).length && S.pinned === null;
+    }
     function renderSummary() {
       $("sel-count").textContent = nf.format(D.selected.length);
       $("base-count").textContent = nf.format(D.base.length);
@@ -1734,7 +1747,7 @@
       const filtered = D.selected.length < D.base.length;
       $("keep").disabled = !filtered || !D.selected.length;
       $("exclude").disabled = !filtered || !D.selected.length;
-      $("reset").disabled = !filtered && !S.excluded.size && !Object.keys(S.brushes).length && !Object.keys(S.drill).length;
+      syncReset();
       $("save").disabled = !D.selected.length;
       $("clear-drill").disabled = !Object.keys(S.drill).length;
     }
@@ -2551,9 +2564,13 @@
     function renderDetail() {
       const r = S.pinned !== null ? D.byId.get(S.pinned) : null;
       const box = $("detail");
-      box.hidden = !r;
-      $("workspace").classList.toggle("with-detail", !!r);
-      if (!r) { return; }
+      box.classList.toggle("empty", !r);
+      if (!r) {
+        $("d-title").textContent = "No case selected";
+        $("d-path").textContent = "";
+        $("d-badge").hidden = true;
+        return;
+      }
       $("d-title").textContent = caseName(r.__id);
       $("d-path").textContent = r.__id;
       const out = !D.selectedIds.has(r.__id);
@@ -2710,7 +2727,7 @@
       excluded: { t: "Excluded cases", d: "Removed with Exclude or Keep only; the axes rescaled to the rest. × brings them back." },
       color: { t: "Color by", d: "The variable that colors the lines, cards, swatches and points. The scale spans every solved case, so filtering never recolors a case." },
       palette: { t: "Palette", d: "Click to choose: Viridis (the default), Plasma, Inferno, Cividis (color-blind safe), Blue–Red (diverging around the middle) or Blues. Reverse swaps the ends." },
-      reset: { t: "Reset", d: "Clear every brush, slider range and exclusion." },
+      reset: { t: "Reset", d: "Clear every brush, slider range and exclusion, and close the open case." },
       keep: { t: "Keep only", d: "Remove every case outside the selection; the axes rescale to what is left. Reset brings them back." },
       exclude: { t: "Exclude", d: "Remove the selected cases; the axes rescale to the rest. Reset brings them back." },
       export: { t: "Export", d: "Save this view: copy a link that restores it, download the selected cases as CSV, or save the chart, the Pareto view or the sensitivity grid as an image." },
@@ -3022,6 +3039,7 @@
     // ---- controls ---------------------------------------------------------------
     $("reset").addEventListener("click", () => {
       S.excluded.clear(); S.brushes = {}; S.drill = {};
+      if (S.pinned !== null) { pin(null); }
       schedule({ layout: true, filter: true, results: true });
     });
     $("keep").addEventListener("click", () => {

@@ -56,11 +56,19 @@ studies with it; the figure shows a doe-openfoam study.
   generation, so every view follows it; all of them by default), and convergence cards: the hypervolume from
   `state.json`, the best of each objective so far and the front's size per
   generation. Hover a design for its values and image, click it to open it.
-- Below the chart, the selected cases as a **Gallery** (sized S/M/L, sorted by
+- Below the chart, the cases as a **Gallery** (sized S/M/L, sorted by
   any variable, any image kind; an animation plays on hover), a **Table** (sort
   by a column) or a **Sensitivity** grid: every output against every input,
   with a least-squares line and Pearson's r, each panel tinted by r². **Export**
   downloads the selection as CSV.
+- **The view is kept**: the address bar holds the brushes, slider ranges,
+  exclusions, the open case, the axes, colors, sort, the list and the Pareto
+  settings, so a refresh comes back to it and the link icon in the header
+  copies a link that opens the same view for anyone who can reach the
+  endpoint. **Export** also saves the selection as CSV and the chart, the
+  Pareto view or the sensitivity grid as PNG images.
+- Hover any control or term for its definition (hypervolume, Pareto front,
+  attainment staircase, Pearson's r, the slider behaviors, and so on).
 - The page follows the study: it refreshes while cases are still running.
 
 ## The study directory

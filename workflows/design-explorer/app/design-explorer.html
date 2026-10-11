@@ -386,7 +386,8 @@
       main { display: flex; flex-direction: column; min-height: 0; gap: 0; }
       .chart-panel { flex: none; margin-bottom: var(--space-2); }
       .results { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-top: var(--space-2); }
-      .results-body { flex: 1; min-height: 0; overflow: auto; padding: 0 2px 2px; scrollbar-width: thin; }
+      /* room for a card's selection ring and hover lift inside the scroller */
+      .results-body { flex: 1; min-height: 0; overflow: auto; padding: 5px 5px 6px; scrollbar-width: thin; }
       .results-body .table-wrap { max-height: none; overflow: visible; }
       /* the Pareto view fits the pane: the scatter takes the height left
          under the chart, the convergence beside it */

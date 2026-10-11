@@ -566,24 +566,24 @@ Esc closes the case; ← → step through the list.">?</button>
       brushes: {}, drill: {},
       colorBy: null, sortBy: null, sortAsc: true, image: null,
       pinned: null, hover: null,
-      mode: "hide", view: "gallery", size: "S", sliderMode: "pick", palette: "blues", paletteReverse: false,
+      mode: "hide", view: "gallery", size: "S", sliderMode: "pick", chartCollapsed: true, palette: "blues", paletteReverse: false,
       status: null, statusOk: null, timer: null, opt: null, viewChosen: false,
     };
     const D = { base: [], brushed: [], selected: [], sorted: [], listed: [], byId: new Map(), domain: {}, levels: {}, slDomain: {}, failDrill: null };
     try {
-      const prefs = JSON.parse(window.localStorage.getItem("design-explorer-prefs") || "{}");
+      const prefs = JSON.parse(window.localStorage.getItem("design-explorer-prefs-v2") || "{}");
       if (prefs.mode === "fade" || prefs.mode === "hide") { S.mode = prefs.mode; }
       if (prefs.size === "S" || prefs.size === "M" || prefs.size === "L") { S.size = prefs.size; }
       if (prefs.sliderMode === "pick" || prefs.sliderMode === "filter") { S.sliderMode = prefs.sliderMode; }
       if (prefs.sideHidden === true) { S.sideHidden = true; }
-      if (prefs.chartCollapsed === true) { S.chartCollapsed = true; }
+      if (typeof prefs.chartCollapsed === "boolean") { S.chartCollapsed = prefs.chartCollapsed; }
       if (typeof prefs.palette === "string") { S.palette = prefs.palette; }
       if (prefs.paletteReverse === true) { S.paletteReverse = true; }
       if (prefs.ptOrient === "raw" || prefs.ptOrient === "min") { S.ptOrient = prefs.ptOrient; }
       if (prefs.chartH > 0) { S.chartH = prefs.chartH; }
     } catch (err) { /* defaults */ }
     function savePrefs() {
-      try { window.localStorage.setItem("design-explorer-prefs", JSON.stringify({ mode: S.mode, size: S.size, sliderMode: S.sliderMode, sideHidden: !!S.sideHidden, chartH: S.chartH || 0, chartCollapsed: !!S.chartCollapsed, palette: S.palette, paletteReverse: !!S.paletteReverse, ptOrient: S.ptOrient || "min" })); } catch (err) { /* ignore */ }
+      try { window.localStorage.setItem("design-explorer-prefs-v2", JSON.stringify({ mode: S.mode, size: S.size, sliderMode: S.sliderMode, sideHidden: !!S.sideHidden, chartH: S.chartH || 0, chartCollapsed: !!S.chartCollapsed, palette: S.palette, paletteReverse: !!S.paletteReverse, ptOrient: S.ptOrient || "min" })); } catch (err) { /* ignore */ }
     }
 
     // an error in the page's own code is shown on the page: the platform's
@@ -2814,7 +2814,7 @@ Esc closes the case; ← → step through the list.">?</button>
     });
 
     // a few states reachable from the URL, for screenshots without a mouse,
-    // combined with "+": brush (the upper part of the first output axis), front
+    // combined with "+" (the chart starts expanded unless "folded"): brush (the upper part of the first output axis), front
     // (the Pareto designs of an optimization), drill (the first input narrowed
     // to its middle), case (opens the first listed case), lightbox, fade, table,
     // dark
@@ -2822,6 +2822,8 @@ Esc closes the case; ← → step through the list.">?</button>
       if (!DEMO.length) { return; }
       const has = (x) => DEMO.indexOf(x) >= 0;
       if (has("dark")) { document.documentElement.dataset.theme = "dark"; rampCache = null; }
+      S.chartCollapsed = has("folded");
+      applyChart();
       const pal = DEMO.find((x) => PALETTES[x]);
       if (pal) { S.palette = pal; rampCache = null; }
       if (has("fade")) { S.mode = "fade"; }

@@ -25,6 +25,9 @@ studies with it; the figure shows a doe-openfoam study.
   toolbar (▾) so the Pareto view or the gallery gets the window, the sidebar
   folds away, and
   the light and dark themes are ACTIVATE Studio's (neutral gray).
+- **Color** colors the lines, cards, swatches and points by any variable; click
+  its gradient to pick the palette (Blues, Viridis, Plasma, Inferno, Cividis,
+  Blue–Red diverging) or reverse it.
 - **Unselected: Hide | Fade** shows only the selected cases, or the others too,
   dimmed: gray lines behind the selection, faded cards and table rows in place. The axes keep their range while you filter; **Keep only**
   and **Exclude** remove cases for good, and the axes rescale to what is left.

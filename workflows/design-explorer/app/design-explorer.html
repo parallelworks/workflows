@@ -207,7 +207,7 @@
     .menu button.on { font-weight: 600; }
     .menu button.on::after { content: "✓"; margin-left: auto; color: var(--accent-text); }
     .divider { width: 1px; height: 22px; background: var(--border); }
-    .pc-wrap { position: relative; height: var(--chart-h, clamp(240px, 36vh, 640px)); min-height: 220px; overflow: hidden; }
+    .pc-wrap { position: relative; height: var(--chart-h, clamp(200px, min(36vh, calc(100vh - 600px)), 640px)); min-height: 220px; overflow: hidden; }
     .pc-wrap canvas, .pc-wrap svg { position: absolute; left: 0; top: 0; }
     .pc-wrap svg { overflow: visible; touch-action: none; user-select: none; -webkit-user-select: none; }
     .pc-msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--panel); border: 1px solid var(--border); color: var(--muted); font-size: var(--text-sm); text-align: center; box-shadow: var(--shadow-md); }
@@ -275,21 +275,22 @@
     table.cases tbody tr.dim .sw { opacity: 0.35; }
     .more { display: flex; justify-content: center; padding: var(--space-2); }
     .pareto { display: grid; gap: var(--space-3); }
-    .pt-panel { padding: var(--space-3); }
+    .pt-panel { padding: var(--space-2) var(--space-3); }
     .pt-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); }
     .pt-title { font-weight: 700; }
     .pt-note { margin-left: 6px; color: var(--muted); font-size: var(--text-xs); }
-    .pt-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: var(--space-2) 0 var(--space-1); color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-    .pt-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+    .pt-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; margin: var(--space-1) 0; color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+    .pt-keys { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+    .pt-keys > span { display: inline-flex; align-items: center; gap: 6px; }
     .pt-legend .ramp { width: 64px; height: 8px; border-radius: 4px; }
     .pt-wrap { position: relative; height: clamp(320px, 52vh, 760px); }
     .pt-wrap canvas { position: absolute; left: 0; top: 0; }
-    .scrub { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-top: var(--space-2); padding: var(--space-2) 0 0; border-top: 1px solid var(--border); }
+    .scrub { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-top: var(--space-1); padding: var(--space-1) 0 0; border-top: 1px solid var(--border); }
     .seg.gens button { height: 26px; padding: 0 12px; font-size: var(--text-sm); }
     .seg.gens button.active { background: var(--accent); color: var(--on-accent); }
     .scrub input[type=range] { flex: 1 1 240px; accent-color: var(--accent); }
     .scrub-label { min-width: 92px; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .scrub-asof { margin-top: var(--space-1); color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+    .scrub-asof { color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
     .scrub-asof b { color: var(--text); }
     .conv { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--space-3); }
     .gc { padding: var(--space-3); min-width: 0; }
@@ -378,8 +379,25 @@
       .results { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-top: var(--space-2); }
       .results-body { flex: 1; min-height: 0; overflow: auto; padding: 0 2px 2px; scrollbar-width: thin; }
       .results-body .table-wrap { max-height: none; overflow: visible; }
+      /* the Pareto view fits the pane: the scatter takes the height left
+         under the chart, the convergence beside it */
+      .results-body.fit { overflow: hidden; display: flex; flex-direction: column; }
+      .results-body.fit .pareto { flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr) clamp(220px, 20%, 320px); }
+      .results-body.fit .pt-panel { display: flex; flex-direction: column; min-height: 0; }
+      .results-body.fit .pt-wrap { flex: 1; height: auto; min-height: 150px; }
+      .results-body.fit .conv { grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); min-height: 0; }
+      .results-body.fit .gc { display: flex; flex-direction: column; min-height: 0; padding: var(--space-2) var(--space-3); }
+      .results-body.fit .gc-sub { display: none; }
+      .results-body.fit .gc-plot { flex: 1; min-height: 50px; height: auto; }
       .results-body table.cases th { top: 0; }
       .banner { margin: var(--space-2) var(--space-2) 0; }
+    }
+    @media (max-width: 1100px) {
+      .results-body.fit { overflow: auto; display: block; }
+      .results-body.fit .pareto { grid-template-columns: minmax(0, 1fr); }
+      .results-body.fit .pt-wrap { flex: none; height: clamp(300px, 50vh, 600px); }
+      .results-body.fit .conv { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); grid-auto-rows: auto; }
+      .results-body.fit .gc-plot { flex: none; height: 140px; }
     }
     @media (max-width: 1280px) {
       .workspace.with-detail { grid-template-columns: 256px minmax(0, 1fr); }
@@ -504,8 +522,7 @@ Esc closes the case; ← → step through the list.">?</button>
                 <span class="scrub-label" id="pt-gen-label"></span>
                 <button class="btn small" id="pt-latest" title="Every generation, up to the latest">Latest</button>
               </div>
-              <div class="scrub-asof" id="pt-asof"></div>
-              <div class="pt-legend" id="pt-legend"></div>
+              <div class="pt-legend"><span class="scrub-asof" id="pt-asof"></span><span class="pt-keys" id="pt-legend"></span></div>
               <div class="pt-wrap" id="pt-wrap"></div>
             </section>
             <div class="conv" id="conv"></div>
@@ -1723,6 +1740,7 @@ Esc closes the case; ← → step through the list.">?</button>
       const sens = S.view === "sens", pareto = S.view === "pareto" && hasPareto();
       $("sens").hidden = !sens;
       $("pareto").hidden = !pareto;
+      $("results-body").classList.toggle("fit", pareto);
       if (pareto) {
         $("grid").hidden = true; $("table-wrap").hidden = true; $("more").hidden = true;
         renderPareto();
@@ -2138,7 +2156,8 @@ Esc closes the case; ← → step through the list.">?</button>
       PT.ax = { x: ptAxis(PT.x), y: ptAxis(PT.y) };
       const arrow = (o) => { const a = ptAxis(o.key); return a.name + (a.sense > 0 ? " ↓" : " ↑"); };
       const pair = PT.ax.x.sense && PT.ax.y.sense && PT.x !== PT.y;
-      $("pt-note").textContent = obj.map(arrow).join(" · ") + (pair ? " · the front is the " + edgeWords(PT.ax.x.sense, PT.ax.y.sense) + " edge" : "");
+      $("pt-note").textContent = pair ? "front: " + edgeWords(PT.ax.x.sense, PT.ax.y.sense) + " edge" : "";
+      $("pt-note").title = obj.map(arrow).join(" · ");
       $("pt-orient").hidden = !obj.some((o) => o.sense === "max");
       document.querySelectorAll("[data-orient]").forEach((b) => b.classList.toggle("active", b.dataset.orient === PT.orient));
       // the scrubber
@@ -2342,11 +2361,11 @@ Esc closes the case; ← → step through the list.">?</button>
     $("pt-latest").addEventListener("click", () => { stopPlay(); delete S.brushes[GEN]; schedule({ filter: true, results: true }); });
     $("pt-play").addEventListener("click", guarded("playing", play));
     if (window.ResizeObserver) {
-      let ptW = 0;
+      let ptW = "";
       new ResizeObserver(() => {
-        const w = PT.wrap.clientWidth + "x" + PT.wrap.clientHeight;
-        if (S.view === "pareto" && w !== ptW) { ptW = w; renderPareto(); }
-      }).observe(PT.wrap);
+        const w = PT.wrap.clientWidth + "x" + PT.wrap.clientHeight + "x" + $("conv").clientHeight;
+        if (S.view === "pareto" && hasPareto() && w !== ptW) { ptW = w; renderPareto(); }
+      }).observe($("pareto"));
     }
 
     // convergence, one point per generation; clicking a chart scrubs to it
@@ -2366,7 +2385,7 @@ Esc closes the case; ← → step through the list.">?</button>
       ];
       specs.forEach((spec) => {
         const card = el("div", { class: "panel gc" }), head = el("div", { class: "gc-head" });
-        head.appendChild(el("h4", null, spec.title));
+        head.appendChild(el("h4", { title: spec.title + ": " + spec.sub }, spec.title));
         const v = spec.value(g), val = el("span", { class: "gc-val" }, typeof v === "number" ? fmt(v) + " " : "– ");
         val.appendChild(el("span", null, "gen " + g));
         head.appendChild(val);

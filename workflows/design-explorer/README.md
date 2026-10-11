@@ -17,6 +17,9 @@ studies with it; the figure shows a doe-openfoam study.
   to clear it. Drag a title to reorder the axes; click it to color or sort by
   that variable, flip the axis or hide it. Every brush and slider shows as a
   chip above the chart, removable from there.
+- Variables with one value in every case (a study that varies a few of many
+  parameters) stay off the chart, the sliders and the pickers; their values
+  fold into a **Fixed** group of the axes list and of the case panel.
 - A full-window layout: the chart stays in view while the lists below it
   scroll, the bar between them resizes the chart, the sidebar folds away, and
   the light and dark themes are ACTIVATE Studio's (neutral gray).

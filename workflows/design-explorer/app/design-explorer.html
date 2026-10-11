@@ -163,7 +163,15 @@
     .axes input { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; }
     .axes span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .axes .out { color: var(--accent-text); font-weight: 600; }
-    .axes .flat { margin-left: auto; color: var(--faint); font-size: var(--text-xs); }
+    .axes .flat { margin-left: auto; padding-left: 6px; color: var(--faint); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .axes .fixed-group summary { cursor: pointer; list-style: none; margin-top: var(--space-2); }
+    .axes .fixed-group summary::-webkit-details-marker { display: none; }
+    .axes .fixed-group summary::before { content: "▸ "; }
+    .axes .fixed-group details[open] summary::before { content: "▾ "; }
+    .d-fixed summary { cursor: pointer; color: var(--muted); font-size: var(--text-xs); font-weight: 600; }
+    .d-fixed dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; margin: 6px 0 0; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+    .d-fixed dt { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .d-fixed dd { margin: 0; text-align: right; }
 
     /* chart */
     main { display: grid; gap: var(--space-2); min-width: 0; }
@@ -491,6 +499,7 @@ Esc closes the case; ← → step through the list.">?</button>
         <figure class="d-figure" id="d-figure" title="Open the full image"><div id="d-media"></div><span class="zoom">⤢ full size</span></figure>
         <div class="kinds" id="d-kinds"></div>
         <table class="vals" id="d-vals"></table>
+        <details class="d-fixed" id="d-fixed" hidden><summary id="d-fixed-sum"></summary><dl id="d-fixed-list"></dl></details>
         <p class="d-note" id="d-note" title="The other inputs are held as close as the brushed cases allow.">‹ › step an input to the next case down or up.</p>
         <div class="d-actions">
           <button class="btn small" id="d-lock" title="Set every input slider to this case's values, then drag one slider to step along that variable">Lock sliders to this case</button>
@@ -1488,12 +1497,24 @@ Esc closes the case; ← → step through the list.">?</button>
     }
 
     // ---- axes list ----------------------------------------------------------
+    // a variable every case shares (a study that varies a few of many
+    // parameters): it starts hidden and its value is listed, folded, once
+    const isFixed = (k) => !!D.levels[k] && D.levels[k].length === 1 && S.all.length > 1;
     function buildAxesList() {
       const ul = $("axes");
       ul.textContent = "";
-      [["Inputs", S.order.filter((k) => !isOut(k))], ["Outputs", S.order.filter(isOut)]].forEach((grp) => {
+      const fixed = S.order.filter(isFixed);
+      [["Inputs", S.order.filter((k) => !isOut(k) && !isFixed(k))], ["Outputs", S.order.filter((k) => isOut(k) && !isFixed(k))], ["Fixed", fixed]].forEach((grp) => {
         if (!grp[1].length) { return; }
-        ul.appendChild(el("li", { class: "group-title" }, grp[0]));
+        let list = ul;
+        if (grp[0] === "Fixed") {
+          const li = el("li", { class: "fixed-group" }), det = el("details");
+          det.appendChild(el("summary", { class: "group-title", title: "Variables with one value in every case: hidden from the chart and the sliders" }, "Fixed · " + grp[1].length));
+          list = el("ul", { class: "axes" });
+          det.appendChild(list); li.appendChild(det); ul.appendChild(li);
+        } else {
+          ul.appendChild(el("li", { class: "group-title" }, grp[0]));
+        }
         grp[1].forEach((k) => {
           const li = el("li"), lab = el("label"), cb = el("input", { type: "checkbox" });
           cb.checked = !S.hidden[k];
@@ -1503,15 +1524,16 @@ Esc closes the case; ← → step through the list.">?</button>
           });
           lab.appendChild(cb);
           lab.appendChild(el("span", { class: isOut(k) ? "out" : "", title: label(k) }, label(k)));
-          if (D.levels[k] && D.levels[k].length === 1) { lab.appendChild(el("span", { class: "flat" }, "constant")); }
+          if (isFixed(k)) { lab.appendChild(el("span", { class: "flat" }, "= " + fmt(D.levels[k][0]))); }
           li.appendChild(lab);
-          ul.appendChild(li);
+          list.appendChild(li);
         });
       });
       countAxes();
     }
     function countAxes() {
-      $("axes-count").textContent = S.order.filter((k) => !S.hidden[k]).length + " of " + S.order.length + " shown";
+      const fixed = S.order.filter(isFixed).length;
+      $("axes-count").textContent = S.order.filter((k) => !S.hidden[k]).length + " of " + S.order.length + " shown" + (fixed ? " · " + fixed + " fixed" : "");
     }
     function setAllAxes(show) {
       S.order.forEach((k) => { S.hidden[k] = !show; S.toggled[k] = true; });
@@ -1529,8 +1551,9 @@ Esc closes the case; ← → step through the list.">?</button>
       });
     }
     function syncSelects() {
-      fillSelect($("color-by"), S.numeric, S.colorBy);
-      fillSelect($("sort-by"), S.numeric, S.sortBy);
+      const varying = S.numeric.filter((k) => !isFixed(k) || k === S.colorBy || k === S.sortBy);
+      fillSelect($("color-by"), varying, S.colorBy);
+      fillSelect($("sort-by"), varying, S.sortBy);
       const ik = $("image-kind");
       ik.textContent = "";
       S.images.forEach((k) => { const o = el("option", { value: k }, label(k)); o.selected = k === S.image; ik.appendChild(o); });
@@ -1974,8 +1997,9 @@ Esc closes the case; ← → step through the list.">?</button>
       const m = optModel(), g = scrubGen(m), only = scrubOnly(), obj = m.obj;
       if (!PT.x || S.numeric.indexOf(PT.x) < 0) { PT.x = obj[0].key; }
       if (!PT.y || S.numeric.indexOf(PT.y) < 0) { PT.y = obj[1].key; }
-      fillSelect($("pt-x"), S.numeric, PT.x);
-      fillSelect($("pt-y"), S.numeric, PT.y);
+      const varying = S.numeric.filter((k) => !isFixed(k) || k === PT.x || k === PT.y);
+      fillSelect($("pt-x"), varying, PT.x);
+      fillSelect($("pt-y"), varying, PT.y);
       document.querySelectorAll("[data-fit]").forEach((b) => b.classList.toggle("active", b.dataset.fit === PT.fit));
       const arrow = (o) => label(o.key) + (o.sense === "max" ? " ↑" : " ↓");
       const pair = senseOf(PT.x) && senseOf(PT.y) && PT.x !== PT.y;
@@ -2160,7 +2184,7 @@ Esc closes the case; ← → step through the list.">?</button>
       PT.over.style.cursor = r ? "pointer" : "";
       if (r) {
         const m = optModel(), front = m.frontAt[scrubGen(m)] || [];
-        showTip(r, e.clientX, e.clientY, { first: m.obj.map((o) => o.key).concat(S.inputs), note: front.indexOf(r) >= 0 ? "◎ on the Pareto front" : "" });
+        showTip(r, e.clientX, e.clientY, { first: m.obj.map((o) => o.key).concat(S.inputs.filter((k) => !isFixed(k))), note: front.indexOf(r) >= 0 ? "◎ on the Pareto front" : "" });
       } else { hideTip(); }
     }));
     PT.over.addEventListener("pointerleave", () => { setHover(null); hideTip(); });
@@ -2365,7 +2389,7 @@ Esc closes the case; ← → step through the list.">?</button>
       });
       const t = $("d-vals");
       t.textContent = "";
-      [["Inputs", S.inputs], ["Outputs", S.outputs]].forEach((grp) => {
+      [["Inputs", S.inputs.filter((k) => !isFixed(k))], ["Outputs", S.outputs.filter((k) => !isFixed(k))]].forEach((grp) => {
         if (!grp[1].length) { return; }
         const gr = el("tr", { class: "group" });
         gr.appendChild(el("td", { colspan: grp[0] === "Inputs" ? 4 : 4 }, grp[0]));
@@ -2394,6 +2418,11 @@ Esc closes the case; ← → step through the list.">?</button>
           t.appendChild(tr);
         });
       });
+      const fixed = S.numeric.filter(isFixed), dl = $("d-fixed-list");
+      $("d-fixed").hidden = !fixed.length;
+      $("d-fixed-sum").textContent = fixed.length + " fixed (the same in every case)";
+      dl.textContent = "";
+      fixed.forEach((k) => { dl.appendChild(el("dt", { title: label(k) }, label(k))); dl.appendChild(el("dd", null, fmt(r[k]))); });
       const gridInputs = S.inputs.filter((k) => D.levels[k] && D.levels[k].length > 1 && !S.hidden[k]);
       $("d-lock").hidden = !gridInputs.length || S.sliderMode !== "filter";
       const idx = D.sorted.indexOf(r);

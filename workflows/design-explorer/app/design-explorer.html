@@ -240,6 +240,8 @@
     .card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--swatch, var(--border)); z-index: 1; }
     .card:hover, .card:focus-visible { transform: translateY(-2px); box-shadow: var(--shadow-md); }
     .card.pinned { outline: 2.5px solid var(--text); outline-offset: 1px; }
+    .card.dim { opacity: 0.32; }
+    .card.dim:hover, .card.dim.pinned { opacity: 0.8; }
     .card img, .card video { display: block; width: 100%; aspect-ratio: 1.6; object-fit: cover; background: var(--panel-sunk); }
     .card .anim { position: absolute; right: 6px; top: 10px; z-index: 1; padding: 1px 7px; border-radius: var(--radius-full); background: rgba(10, 12, 20, 0.6); color: #fff; font-size: 0.6875rem; font-weight: 600; pointer-events: none; }
     .card figcaption { padding: 5px 9px 6px; font-size: var(--text-xs); color: var(--muted); display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
@@ -259,6 +261,8 @@
     table.cases tbody tr { cursor: pointer; }
     table.cases tbody tr:hover { background: var(--accent-soft); }
     table.cases tbody tr.pinned { background: var(--panel-sunk); box-shadow: inset 3px 0 0 var(--text); }
+    table.cases tbody tr.dim td { color: var(--faint); }
+    table.cases tbody tr.dim .sw { opacity: 0.35; }
     .more { display: flex; justify-content: center; padding: var(--space-2); }
     .pareto { display: grid; gap: var(--space-3); }
     .pt-panel { padding: var(--space-3); }
@@ -421,7 +425,7 @@
             <div class="tools">
               <span class="field">Unselected
                 <span class="seg" role="group" aria-label="Lines outside the selection">
-                  <button data-mode="hide" title="Draw only the selected cases">Hide</button><button data-mode="fade" title="Draw the other cases in gray behind the selection">Fade</button>
+                  <button data-mode="hide" title="Show only the selected cases, on the chart and in the lists">Hide</button><button data-mode="fade" title="Show the other cases too, dimmed: gray lines behind the selection, faded cards and rows">Fade</button>
                 </span>
               </span>
               <label class="field">Color <select id="color-by" aria-label="Color the lines and thumbnails by"></select></label>
@@ -549,7 +553,7 @@ Esc closes the case; ← → step through the list.">?</button>
       mode: "hide", view: "gallery", size: "M", sliderMode: "pick",
       status: null, statusOk: null, timer: null, opt: null, viewChosen: false,
     };
-    const D = { base: [], brushed: [], selected: [], sorted: [], byId: new Map(), domain: {}, levels: {}, slDomain: {}, failDrill: null };
+    const D = { base: [], brushed: [], selected: [], sorted: [], listed: [], byId: new Map(), domain: {}, levels: {}, slDomain: {}, failDrill: null };
     try {
       const prefs = JSON.parse(window.localStorage.getItem("design-explorer-prefs") || "{}");
       if (prefs.mode === "fade" || prefs.mode === "hide") { S.mode = prefs.mode; }
@@ -793,8 +797,12 @@ Esc closes the case; ← → step through the list.">?</button>
       D.failDrill = { keys: dk, fail: fail };
       D.selected = sel;
       const k = S.sortBy, dir = S.sortAsc ? 1 : -1;
-      D.sorted = sel.slice().sort((a, b) => (a[k] - b[k]) * dir || (a.__id < b.__id ? -1 : a.__id > b.__id ? 1 : 0));
+      const order = (a, b) => (a[k] - b[k]) * dir || (a.__id < b.__id ? -1 : a.__id > b.__id ? 1 : 0);
+      D.sorted = sel.slice().sort(order);
       D.selectedIds = new Set(sel.map((r) => r.__id));
+      // what the gallery and the table list: the selection, or with Fade every
+      // case in place, the ones outside the selection dimmed as on the chart
+      D.listed = S.mode === "fade" && sel.length < D.base.length ? D.base.slice().sort(order) : D.sorted;
     }
     function visibleAxes() { return S.order.filter((k) => !S.hidden[k]); }
 
@@ -1641,7 +1649,7 @@ Esc closes the case; ← → step through the list.">?</button>
       $("grid").hidden = !gallery;
       $("table-wrap").hidden = gallery;
       $("grid").className = "thumbs size-" + S.size;
-      if (!D.sorted.length) {
+      if (!D.listed.length) {
         $("more").hidden = true;
         $("count").textContent = "";
         const msg = el("p", { class: "empty" }, S.all.length ? "No case matches the filters." : "The solved cases appear here as they land.");
@@ -1653,17 +1661,19 @@ Esc closes the case; ← → step through the list.">?</button>
     }
     function appendResults() {
       const gallery = (S.view === "gallery" || S.view === "pareto") && S.images.length;
-      const rows = D.sorted.slice(shown, shown + PAGE[gallery ? "gallery" : "table"]);
+      const rows = D.listed.slice(shown, shown + PAGE[gallery ? "gallery" : "table"]);
       const frag = document.createDocumentFragment();
       rows.forEach((r) => frag.appendChild(gallery ? card(r) : tableRow(r)));
       (gallery ? $("grid") : $("table").tBodies[0]).appendChild(frag);
       shown += rows.length;
-      $("more").hidden = shown >= D.sorted.length;
-      $("more-btn").textContent = "Show " + nf.format(Math.min(PAGE[gallery ? "gallery" : "table"], D.sorted.length - shown)) + " more";
-      $("count").textContent = (shown < D.sorted.length ? "showing " + nf.format(shown) + " of " : "") + nf.format(D.sorted.length) + " selected, by " + label(S.sortBy) + (S.sortAsc ? " ↑" : " ↓");
+      $("more").hidden = shown >= D.listed.length;
+      $("more-btn").textContent = "Show " + nf.format(Math.min(PAGE[gallery ? "gallery" : "table"], D.listed.length - shown)) + " more";
+      const all = D.listed !== D.sorted;
+      $("count").textContent = (shown < D.listed.length ? "showing " + nf.format(shown) + " of " : "") + nf.format(D.listed.length) +
+        (all ? " cases, " + nf.format(D.sorted.length) + " selected" : " selected") + ", by " + label(S.sortBy) + (S.sortAsc ? " ↑" : " ↓");
     }
     function card(r) {
-      const fig = el("figure", { class: "card" + (r.__id === S.pinned ? " pinned" : ""), tabindex: "0", "data-id": r.__id });
+      const fig = el("figure", { class: "card" + (r.__id === S.pinned ? " pinned" : "") + (D.selectedIds.has(r.__id) ? "" : " dim"), tabindex: "0", "data-id": r.__id });
       fig.style.setProperty("--swatch", colorOf(r));
       const img = mediaNode(r, { lazy: !DEMO.length, preload: "metadata", still: true });
       if (isAnim(S.image ? r[S.image] : "")) { fig.appendChild(el("span", { class: "anim" }, "▶ animation")); }
@@ -1687,7 +1697,7 @@ Esc closes the case; ← → step through the list.">?</button>
       t.appendChild(el("tbody"));
     }
     function tableRow(r) {
-      const tr = el("tr", { "data-id": r.__id, class: r.__id === S.pinned ? "pinned" : "" });
+      const tr = el("tr", { "data-id": r.__id, class: (r.__id === S.pinned ? "pinned" : "") + (D.selectedIds.has(r.__id) ? "" : " dim") });
       const sw = el("td"), dot = el("span", { class: "sw" });
       dot.style.background = colorOf(r);
       sw.appendChild(dot); tr.appendChild(sw);
@@ -1736,7 +1746,7 @@ Esc closes the case; ← → step through the list.">?</button>
     });
     if (window.IntersectionObserver) {
       new IntersectionObserver((entries) => {
-        if (entries.some((x) => x.isIntersecting) && shown < D.sorted.length) { appendResults(); }
+        if (entries.some((x) => x.isIntersecting) && shown < D.listed.length) { appendResults(); }
       }, { root: window.matchMedia("(min-width: 861px)").matches ? $("results-body") : null, rootMargin: "600px" }).observe($("more"));
     }
 
@@ -2437,15 +2447,15 @@ Esc closes the case; ← → step through the list.">?</button>
       fixed.forEach((k) => { dl.appendChild(el("dt", { title: label(k) }, label(k))); dl.appendChild(el("dd", null, fmt(r[k]))); });
       const gridInputs = S.inputs.filter((k) => D.levels[k] && D.levels[k].length > 1 && !S.hidden[k]);
       $("d-lock").hidden = !gridInputs.length || S.sliderMode !== "filter";
-      const idx = D.sorted.indexOf(r);
-      $("d-prev").disabled = !D.sorted.length || idx === 0;
-      $("d-next").disabled = !D.sorted.length || idx === D.sorted.length - 1;
+      const idx = D.listed.indexOf(r);
+      $("d-prev").disabled = !D.listed.length || idx === 0;
+      $("d-next").disabled = !D.listed.length || idx === D.listed.length - 1;
     }
     function stepList(dir) {
-      if (!D.sorted.length) { return; }
+      if (!D.listed.length) { return; }
       const r = S.pinned !== null ? D.byId.get(S.pinned) : null;
-      const idx = r ? D.sorted.indexOf(r) : -1;
-      const next = D.sorted[idx < 0 ? 0 : clamp(idx + dir, 0, D.sorted.length - 1)];
+      const idx = r ? D.listed.indexOf(r) : -1;
+      const next = D.listed[idx < 0 ? 0 : clamp(idx + dir, 0, D.listed.length - 1)];
       if (next) { pin(next.__id); scrollIntoResults(next.__id); }
     }
     function scrollIntoResults(id) {
@@ -2464,9 +2474,9 @@ Esc closes the case; ← → step through the list.">?</button>
     });
     $("d-exclude").addEventListener("click", () => {
       if (S.pinned === null) { return; }
-      const r = D.byId.get(S.pinned), idx = D.sorted.indexOf(r);
+      const r = D.byId.get(S.pinned), idx = D.listed.indexOf(r);
       S.excluded.add(S.pinned);
-      const next = D.sorted[idx + 1] || D.sorted[idx - 1];
+      const next = D.listed[idx + 1] || D.listed[idx - 1];
       S.pinned = next && next !== r ? next.__id : null;
       schedule({ layout: true, filter: true, results: true });
     });
@@ -2675,7 +2685,7 @@ Esc closes the case; ← → step through the list.">?</button>
     $("axes-all").addEventListener("click", () => setAllAxes(true));
     $("axes-none").addEventListener("click", () => setAllAxes(false));
     document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
-      S.mode = b.dataset.mode; savePrefs(); syncSelects(); schedule({ filter: true });
+      S.mode = b.dataset.mode; savePrefs(); syncSelects(); schedule({ filter: true, results: true });
     }));
     document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => {
       S.view = b.dataset.view; S.viewChosen = true;

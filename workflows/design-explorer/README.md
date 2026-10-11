@@ -25,8 +25,8 @@ studies with it; the figure shows a doe-openfoam study.
   toolbar (▾) so the Pareto view or the gallery gets the window, the sidebar
   folds away, and
   the light and dark themes are ACTIVATE Studio's (neutral gray).
-- **Unselected: Hide | Fade** draws only the selected cases, or the others in
-  gray behind them. The axes keep their range while you filter; **Keep only**
+- **Unselected: Hide | Fade** shows only the selected cases, or the others too,
+  dimmed: gray lines behind the selection, faded cards and table rows in place. The axes keep their range while you filter; **Keep only**
   and **Exclude** remove cases for good, and the axes rescale to what is left.
 - **Click a line** (hover shows its values and image), a thumbnail or a table
   row to select that case. It opens in the case panel at the right, which stays

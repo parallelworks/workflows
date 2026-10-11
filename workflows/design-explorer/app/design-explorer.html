@@ -113,7 +113,9 @@
     .sidebar, .detail { overflow: auto; scrollbar-width: thin; }
     .sidebar { display: grid; gap: var(--space-2); align-content: start; }
     .side-section { padding: var(--space-3); }
-    details.side-section > summary { cursor: pointer; list-style: none; }
+    /* folded, the Axes panel lines up with the folded chart beside it */
+    details.side-section { padding: var(--space-2) var(--space-3); }
+    details.side-section > summary { cursor: pointer; list-style: none; min-height: 26px; align-items: center; margin-bottom: 0; }
     details.side-section > summary::-webkit-details-marker { display: none; }
     details.side-section > summary h3::before { content: "▸ "; }
     details.side-section[open] > summary h3::before { content: "▾ "; }

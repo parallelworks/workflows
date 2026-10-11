@@ -1,9 +1,10 @@
 # Design Explorer
 
-[Design Explorer](https://tt-acm.github.io/DesignExplorer/)'s parallel coordinates
-over a design study, served as the endpoint `design-explorer-<run slug>`: the
-design variables and the outputs as axes, the images of every design as
-thumbnails, in a page styled for the platform, light or dark. Any workflow that
+Parallel coordinates over a design study in the manner of
+[Design Explorer](https://tt-acm.github.io/DesignExplorer/), served as the
+endpoint `design-explorer-<run slug>`: the design variables and the outputs as
+axes, the images and animations of every design, in a full-width page styled
+for the platform, light or dark. Any workflow that
 evaluates designs in case directories can call it as a subworkflow. For example,
 [`doe-openfoam`](../doe-openfoam/README.md) and
 [`dakota-openfoam`](../dakota-openfoam/README.md) serve their OpenFOAM airfoil
@@ -12,14 +13,41 @@ studies with it; the figure shows a doe-openfoam study.
 ![The page: axis toggles and input sliders at the left, the selection tools above the parallel coordinates of the four inputs and the three outputs, the thumbnails of the solved designs below, bordered in the color of their drag coefficient](thumbnails/design-explorer.png)
 
 - **Brush** an axis (drag along it) to select a range, and combine brushes
-  across axes. Drag a title to reorder the axes, double-click it to flip one.
-- The **Cases** sliders narrow the inputs, **Parametric variables** hides axes,
-  and **Color by** colors the lines and the thumbnails.
-- **Exclude selection** and **Zoom to selection** act on the brushed designs;
-  **Save selection to file** downloads them as CSV.
-- Thumbnails outside the selection fade. Hover one to trace its line, click it
-  for the full image and the design's values. **Image** switches between the
-  images each case has, such as openfoam-naca's pressure, velocity and mesh.
+  across axes; drag a brush to move it, its ends to resize it, click the axis
+  to clear it. Drag a title to reorder the axes; click it to color or sort by
+  that variable, flip the axis or hide it. Every brush and slider shows as a
+  chip above the chart, removable from there.
+- A full-window layout: the chart stays in view while the lists below it
+  scroll, the bar between them resizes the chart, the sidebar folds away, and
+  the light and dark themes are ACTIVATE Studio's (neutral gray).
+- **Unselected: Hide | Fade** draws only the selected cases, or the others in
+  gray behind them. The axes keep their range while you filter; **Keep only**
+  and **Exclude** remove cases for good, and the axes rescale to what is left.
+- **Click a line** (hover shows its values and image), a thumbnail or a table
+  row to select that case. It opens in the case panel at the right, which stays
+  open while you keep brushing and sliding: its images and animations, its
+  values with where each sits in its range, and ‹ › beside each input to step
+  to the case with the next lower or higher value of it, the other inputs held
+  as close as the brushed cases allow. ← → step through the list, Esc closes.
+- **Sliders**, two behaviors. **Pick case** (the default, Design Explorer's
+  own): one thumb per input at the selected case's value, stepping through
+  the values the brushed cases take, so the sliders drill down from the chart;
+  drag one to move to the case with that value closest to the selected one,
+  and the other sliders follow. **Filter**: a range per axis that narrows the
+  brushed cases further; drag the shaded range to slide a window through the
+  values. Each slider's histogram shows how the brushed cases spread.
+- For a Dakota study, a **Pareto** view comes first: the objective space (each
+  objective's sense from the optimizer's `problem.json`, so openfoam-naca's
+  drag ↓ against lift ↑) with the front ringed and its attainment staircase, a
+  generation scrubber that replays the study (▶, and a brush on generation, so
+  every view follows it), and convergence cards: the hypervolume from
+  `state.json`, the best of each objective so far and the front's size per
+  generation. Hover a design for its values and image, click it to open it.
+- Below the chart, the selected cases as a **Gallery** (sized S/M/L, sorted by
+  any variable, any image kind; an animation plays on hover), a **Table** (sort
+  by a column) or a **Sensitivity** grid: every output against every input,
+  with a least-squares line and Pearson's r, each panel tinted by r². **Export**
+  downloads the selection as CSV.
 - The page follows the study: it refreshes while cases are still running.
 
 ## The study directory
@@ -49,11 +77,13 @@ case_<j>/
 ├── params.in      the design, one <value> <name> line per variable: the in: axes
 ├── results.out    the outputs, same format: the out: axes; values = solved
 ├── exit_code      without results.out: the evaluation failed
-└── images/*.png   optional: one thumbnail kind per file name
+└── images/*       optional: one image kind per file name, a picture (png, jpg,
+                   gif, webp, svg) or an animation (gif, mp4, webm)
 ```
 
 A case with neither `results.out` nor `exit_code` is still running. The page
-links an image as `<case ID>/images/<name>.png`, the same in both layouts.
+links an image as `<case ID>/images/<file>`, the same in both layouts; two files
+with the same stem (`flow.gif`, `flow.mp4`) are two kinds, named by the file.
 [`openfoam-naca`](../openfoam-naca/README.md)'s outputs, `drag_coefficient` and
 `neg_lift_coefficient`, show as the drag and lift coefficients and their ratio.
 
@@ -62,8 +92,8 @@ the first case exists and shows each case as it lands. A `case_<j>/` study is
 finished when no case is running. A Dakota study is finished only when its
 `status` says CONVERGED or FAILED, because between two generations no case runs
 but more are coming. A variable that never changes starts hidden. **Links** adds
-buttons to the header, one `<label>=<URL>` per line; dakota-openfoam links its
-Pareto front page this way.
+buttons to the header, one `<label>=<URL>` per line, for example a
+documentation page or a related study.
 
 ## Running it
 
@@ -90,19 +120,17 @@ The server only runs on the login node, so it is started detached rather than
 through the submitter. The run completes once the endpoint is listed and its
 `/healthz` answers, and the endpoint keeps serving after the run until
 `pw endpoints delete design-explorer-<run slug>`. A server whose endpoint never
-answered is removed by the run's `stop_server_if_unhealthy` job. Design
-Explorer's libraries are downloaded from GitHub once, at a pinned commit, under
-`~/pw/software/design-explorer/`, so the login node needs internet access the
-first time.
+answered is removed by the run's `stop_server_if_unhealthy` job. Nothing is
+installed: the page is self-contained and the server is standard library
+Python, so the login node needs no internet access.
 
 ## Files
 
 | `app/` | Role |
 |---|---|
-| `design-explorer.html` | the page |
-| `design-explorer-server.py` | serves the page, its libraries, the images and the tables |
+| `design-explorer.html` | the page: parallel coordinates on a canvas, sliders, gallery, table, sensitivity grid, case panel |
+| `design-explorer-server.py` | serves the page, the images and animations (with byte ranges, for video) and the tables |
 | `study.py` | reads a study into `results.csv` and Design Explorer's `data.csv`; doe-openfoam's results job uses it too |
-| `install-design-explorer.sh` | downloads Design Explorer once, at a pinned commit |
 
 All standard library Python; [software/design-explorer.md](../../.claude/skills/activate-workflows/references/software/design-explorer.md)
-has the notes on Design Explorer's libraries and data format.
+has the notes on the data format, the page and its canvas performance.

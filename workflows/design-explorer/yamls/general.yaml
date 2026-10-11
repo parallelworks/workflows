@@ -1,8 +1,9 @@
-# Design Explorer (https://tt-acm.github.io/DesignExplorer/) over a study, served
-# as the pw endpoint design-explorer-<run slug>: the design variables and the
-# outputs as brushable parallel coordinates, the images each case rendered as
-# thumbnails. A study is a directory of case directories, each one evaluation
-# with params.in (the design), results.out (its outputs) and images/*.png: the
+# Design Explorer over a study (in the manner of
+# https://tt-acm.github.io/DesignExplorer/), served as the pw endpoint
+# design-explorer-<run slug>: the design variables and the outputs as brushable
+# parallel coordinates, sliders, the images and animations each case rendered.
+# A study is a directory of case directories, each one evaluation with
+# params.in (the design), results.out (its outputs) and images/*: the
 # case_<j>/ that workflows/doe writes, or the iter_<N>/case_<j>/ of a
 # workflows/dakota state directory, where the generation and the Pareto front
 # become axes too. Any workflow that evaluates such cases can call it as a
@@ -19,9 +20,8 @@
 #
 # One form for every platform: nothing here depends on the scheduler, so there
 # is no HSP or NOAA variant, and callers on those platforms pass their resource
-# as cluster.resource. Design Explorer's libraries are downloaded from GitHub
-# once, which needs a login node that reaches the internet (not every HPCMP
-# system does); on NOAA clusters they go to the shared software tree.
+# as cluster.resource. The page is self-contained and the server is standard
+# library Python: nothing is installed and the login node needs no internet.
 permissions:
   - '*'
 
@@ -37,28 +37,6 @@ jobs:
           branch: canary
           sparse_checkout:
             - workflows/design-explorer/app
-      # the page: the app's design-explorer.html over Design Explorer's libraries,
-      # downloaded once (pinned commit) into the software directory
-      - name: Install Design Explorer
-        run: |
-          set -e
-          # NOAA home directories are small: there the install goes to the
-          # cluster's shared software tree if this account can write there (a
-          # no-op on any other login node). Probe by creating the directory
-          # rather than reading mode bits: the trees are group- or ACL-writable
-          # and list as root-owned.
-          case "${{ inputs.cluster.resource.ip }}" in
-            hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
-            mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
-            ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
-            gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
-            *) shared="" ;;                                                    # PPAN, other platforms, cloud clusters
-          esac
-          if [ -n "${shared}" ] && mkdir -p "${shared}/design-explorer" 2>/dev/null; then
-            export service_parent_install_dir="${shared}"
-            echo "::notice::installing under the shared software directory ${shared}"
-          fi
-          bash workflows/design-explorer/app/install-design-explorer.sh "${PWD}/design-explorer-dir.txt"
       # started in its own session so the end of this step, of this job and of
       # the run never reaches it; the only off switch is `pw endpoints delete`,
       # and stop_server_if_unhealthy covers a server whose endpoint never became
@@ -87,14 +65,13 @@ jobs:
           done << 'PW_LINKS_EOF'
           ${{ inputs.study.links }}
           PW_LINKS_EOF
-          de_dir=$(cat design-explorer-dir.txt)
           cat <<EOF > start-design-explorer.sh
           #!/bin/bash
           command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
           # {port} is replaced by pw endpoints run with the local port it forwards to
           exec pw endpoints run --name "design-explorer-${PW_RUN_SLUG}" -- \
               python3 "${PWD}/workflows/design-explorer/app/design-explorer-server.py" \
-              --design-explorer "${de_dir}" --port {port} ${args}
+              --port {port} ${args}
           EOF
           chmod +x start-design-explorer.sh
           if command -v setsid >/dev/null 2>&1; then
@@ -189,7 +166,8 @@ jobs:
             tooltip: |
               Absolute path of the study on the resource: a directory of case
               directories, case_<j>/ or iter_<N>/case_<j>/, each with params.in,
-              results.out and optionally images/*.png. For example the cases/ of
+              results.out and optionally images/* (pictures, or gif/mp4/webm
+              animations). For example the cases/ of
               a doe-openfoam run or the state/ of a dakota-openfoam run, both in
               the run's job directory. The page follows the directory as cases
               are added, so it can be served before the first one exists.
@@ -204,5 +182,4 @@ jobs:
             optional: true
             tooltip: |
               Buttons in the page's header, one <label>=<URL> per line, for
-              example a Pareto front page. dakota-openfoam links its own this
-              way.
+              example a documentation page or a related study.

@@ -8,7 +8,7 @@
     ],
     "leftover_patterns": [
       "pw endpoints",
-      "pareto-server.py",
+      "design-explorer-server.py",
       "bin/dakota",
       "app/driver.py",
       "simpleFoam",

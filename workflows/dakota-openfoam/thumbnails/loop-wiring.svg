@@ -17,9 +17,9 @@
   <text x="40" y="108" font-size="11" fill="#52514e">creates state/, then:</text>
 
   <rect x="30" y="128" width="226" height="54" rx="6" fill="#fff3ec" stroke="#eb6834"/>
-  <text x="40" y="145" font-size="13" fill="#0b0b0b">start the server, wait for its endpoint</text>
-  <text x="40" y="160" font-size="11" fill="#52514e">setsid pw endpoints run -- pareto-server.py &amp;</text>
-  <text x="40" y="174" font-size="11" fill="#52514e">uses: wait_for_endpoint (listed, /healthz answers)</text>
+  <text x="40" y="145" font-size="13" fill="#0b0b0b">serve the study, wait for the page</text>
+  <text x="40" y="160" font-size="11" fill="#52514e">uses: workflows/design-explorer</text>
+  <text x="40" y="174" font-size="11" fill="#52514e">(endpoint listed, /healthz answers)</text>
 
   <rect x="30" y="196" width="226" height="330" rx="6" fill="#ffffff" stroke="#898781"/>
   <text x="40" y="214" font-size="13" fill="#0b0b0b">optimization_loop</text>
@@ -81,7 +81,7 @@
 
   <text x="608" y="438" font-size="12" fill="#eb6834">evaluations.csv, pareto.csv</text>
   <text x="608" y="453" font-size="11" fill="#52514e">every design and the front, rewritten each</text>
-  <text x="608" y="467" font-size="11" fill="#52514e">generation; what the Pareto page shows</text>
+  <text x="608" y="467" font-size="11" fill="#52514e">generation; the page reads the case dirs</text>
 
   <text x="608" y="495" font-size="12" fill="#0b0b0b">iter_N/case_j/case/case.foam</text>
   <text x="608" y="510" font-size="11" fill="#52514e">every solved case, opens in ParaView</text>
@@ -92,13 +92,13 @@
   <line x1="556" y1="392" x2="604" y2="358" stroke="#1a9850" stroke-width="2" marker-end="url(#aG)"/>
   <line x1="604" y1="350" x2="556" y2="270" stroke="#2a78d6" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#aB)"/>
 
-  <!-- pareto endpoint -->
+  <!-- the page's endpoint -->
   <rect x="292" y="60" width="550" height="118" rx="8" fill="#fff3ec" stroke="#eb6834"/>
-  <text x="304" y="84" font-size="15" font-weight="bold" fill="#0b0b0b">pw endpoint  pareto-&lt;run slug&gt;</text>
-  <text x="304" y="104" font-size="12" fill="#52514e">pareto-server.py reads state/ on every request; the page polls every 10 s until the status is final</text>
-  <text x="304" y="121" font-size="12" fill="#52514e">every evaluated design, the Pareto front, variables and objectives on hover</text>
+  <text x="304" y="84" font-size="15" font-weight="bold" fill="#0b0b0b">pw endpoint  design-explorer-&lt;run slug&gt;</text>
+  <text x="304" y="104" font-size="12" fill="#52514e">reads state/ on every request; the page polls every 10 s until the status is final</text>
+  <text x="304" y="121" font-size="12" fill="#52514e">the Pareto front as of any generation, every design, its values and images</text>
   <text x="304" y="141" font-size="12" fill="#52514e">started detached on the login node (no script_submitter); preprocessing waits for /healthz</text>
-  <text x="304" y="162" font-size="12" fill="#52514e">outlives the run and a cancel; pw endpoints delete pareto-&lt;slug&gt; is the off switch</text>
+  <text x="304" y="162" font-size="12" fill="#52514e">outlives the run and a cancel; pw endpoints delete design-explorer-&lt;slug&gt; is the off switch</text>
   <line x1="700" y1="194" x2="700" y2="180" stroke="#eb6834" stroke-width="2" marker-end="url(#aO)"/>
   <line x1="256" y1="150" x2="290" y2="130" stroke="#eb6834" stroke-width="2" marker-end="url(#aO)"/>
 </svg>

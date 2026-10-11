@@ -4,28 +4,31 @@
     design-explorer-server.py --cases-dir CASES --design-explorer DIR --port P
                               [--title TEXT] [--link LABEL=URL ...]
 
-CASES holds one directory per evaluation (params.in, results.out, images/*.png):
+CASES holds one directory per evaluation (params.in, results.out, images/*):
 case_<j>/ as workflows/doe writes them, or iter_<N>/case_<j>/ as a Dakota study
 proposes them; study.py reads either. doe-openfoam's cases/ and dakota-openfoam's
-state/ are examples. --link adds a button to the page's header (dakota-openfoam
-links its Pareto front page).
+state/ are examples; for a Dakota state directory status.json also carries the
+optimizer's objectives, bounds and hypervolume (the page's Pareto view).
+--link adds a button to the page's header.
 
-Serves the page design-explorer.html next to this script: the parallel
-coordinates engine of Design Explorer (https://tt-acm.github.io/DesignExplorer/,
-d3 + d3.parcoords from the tree install-design-explorer.sh downloads into DIR)
-in a shell laid out and styled for the ACTIVATE platform (the hpc_status
-tokens): axis toggles and input sliders at the side, the brush tools above the
-plot, the thumbnails of the designs below it, each one opening its images.
+Serves the page design-explorer.html next to this script, a self-contained
+take on Design Explorer (https://tt-acm.github.io/DesignExplorer/) styled for
+the ACTIVATE platform (the hpc_status tokens): parallel coordinates drawn on a
+canvas, sliders that pick a case or filter the brushed ones, the designs below
+as a gallery, a table or a sensitivity grid, and a panel for the selected case
+with its images and animations. It needs nothing from the Design Explorer
+tree: --design-explorer is optional and only serves that tree's files, for a
+page that still loads them.
 The study is served under data/: data.csv with the solved cases (in: columns
 for the design variables, out: columns for the outputs, img: columns
 pointing at the images each case rendered, the format Design Explorer itself
-reads) and data/<case>/images/<name>.png. Nothing is cached server side:
+reads) and data/<case>/images/<file> (study.MEDIA). Nothing is cached server side:
 data.csv is rebuilt from the case directories on every request (study.py),
 and the page polls status.json and reloads the cases when their count
 changes, until every case has finished.
 
-Routes: /  the page; /data/data.csv  the solved cases; /data/<case>/images/<img>.png
-the images; /results.csv  every case with its status; /status.json  the counts
+Routes: /  the page; /data/data.csv  the solved cases; /data/<case>/images/<file>
+the images and animations; /results.csv  every case with its status; /status.json  the counts
 and the title; /healthz  200 once the server is up; anything else is a file of
 the Design Explorer tree (its libraries). Standard library only.
 """
@@ -35,6 +38,7 @@ import io
 import json
 import mimetypes
 import os
+import re
 import struct
 import sys
 import tempfile
@@ -52,6 +56,10 @@ TITLE = "Design of experiments"
 LINKS = []
 STARTED = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "design-explorer.html")
+# older Pythons (3.6 on HSP login nodes) and bare /etc/mime.types miss some
+for _ext, _type in ((".webp", "image/webp"), (".svg", "image/svg+xml"), (".mp4", "video/mp4"),
+                    (".webm", "video/webm")):
+    mimetypes.add_type(_type, _ext)
 
 
 def placeholder_png():
@@ -106,15 +114,20 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
-    def send(self, code, body, ctype, cache=False):
+    def send(self, code, body, ctype, cache=False, headers=()):
         data = body.encode() if isinstance(body, str) else body
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "max-age=3600" if cache else "no-store")
+        for name, value in headers:
+            self.send_header(name, value)
         self.end_headers()
         if self.command != "HEAD":
-            self.wfile.write(data)
+            try:
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # a video the browser stopped reading after its first bytes
 
     def send_file(self, path, cache):
         try:
@@ -126,7 +139,23 @@ class Handler(BaseHTTPRequestHandler):
         ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
         if ctype.startswith("text/") or ctype in ("application/javascript", "application/json"):
             ctype += "; charset=utf-8"
-        self.send(200, data, ctype, cache)
+        # byte ranges: Safari only plays a video served with them, and seeking
+        # in one needs them everywhere
+        m = re.match(r"bytes=(\d*)-(\d*)$", self.headers.get("Range", "").strip())
+        if m and (m.group(1) or m.group(2)) and data:
+            size = len(data)
+            if m.group(1):
+                start, end = int(m.group(1)), int(m.group(2)) if m.group(2) else size - 1
+            else:
+                start, end = max(0, size - int(m.group(2))), size - 1
+            if start >= size or start > end:
+                self.send(416, b"", ctype, cache, [("Content-Range", "bytes */%d" % size)])
+                return
+            end = min(end, size - 1)
+            self.send(206, data[start:end + 1], ctype, cache,
+                      [("Content-Range", "bytes %d-%d/%d" % (start, end, size)), ("Accept-Ranges", "bytes")])
+            return
+        self.send(200, data, ctype, cache, [("Accept-Ranges", "bytes")])
 
     def do_HEAD(self):
         self.do_GET()
@@ -156,16 +185,19 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(200, PLACEHOLDER, "image/png", cache=True)
             elif path.startswith("/data/"):
                 target = safe_join(CASES_DIR, path[len("/data/"):])
-                if target is None or not os.path.isfile(target) or not target.endswith(".png"):
+                if (target is None or not os.path.isfile(target)
+                        or os.path.splitext(target)[1].lower() not in study.MEDIA):
                     self.send(404, "not found\n", "text/plain")
                 else:
                     self.send_file(target, cache=True)
-            else:
+            elif DE_DIR:
                 target = safe_join(DE_DIR, path)
                 if target is None or not os.path.isfile(target):
                     self.send(404, "not found\n", "text/plain")
                 else:
                     self.send_file(target, cache=True)
+            else:
+                self.send(404, "not found\n", "text/plain")
         except Exception as exc:  # the page must outlive any odd state on disk
             self.send(500, "error: %s\n" % exc, "text/plain")
 
@@ -174,7 +206,7 @@ def main():
     global CASES_DIR, DE_DIR, TITLE, LINKS
     ap = argparse.ArgumentParser()
     ap.add_argument("--cases-dir", required=True)
-    ap.add_argument("--design-explorer", required=True, help="directory holding Design Explorer's index.html")
+    ap.add_argument("--design-explorer", default="", help="a Design Explorer tree to serve files from (optional)")
     ap.add_argument("--port", type=int, required=True)
     ap.add_argument("--title", default=TITLE)
     ap.add_argument("--link", action="append", default=[], metavar="LABEL=URL",
@@ -187,12 +219,10 @@ def main():
         else:
             print("design-explorer-server: ignoring --link %r (expected LABEL=URL)" % link, flush=True)
     CASES_DIR = os.path.abspath(args.cases_dir)
-    DE_DIR = os.path.abspath(args.design_explorer)
+    DE_DIR = os.path.abspath(args.design_explorer) if args.design_explorer else ""
     TITLE = args.title
-    for required in (PAGE, os.path.join(DE_DIR, "d3", "d3.v3.min.js"),
-                     os.path.join(DE_DIR, "pc_source_files", "d3", "d3.parcoords.js")):
-        if not os.path.isfile(required):
-            sys.exit("design-explorer-server: missing %s" % required)
+    if not os.path.isfile(PAGE):
+        sys.exit("design-explorer-server: missing %s" % PAGE)
 
     # not http.server.ThreadingHTTPServer: that arrived in Python 3.7 and HSP
     # login nodes run 3.6
@@ -201,8 +231,7 @@ def main():
         allow_reuse_address = True
 
     server = Server(("0.0.0.0", args.port), Handler)
-    print("design-explorer-server: serving %s with Design Explorer from %s on port %d"
-          % (CASES_DIR, DE_DIR, args.port), flush=True)
+    print("design-explorer-server: serving %s on port %d" % (CASES_DIR, args.port), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -128,15 +128,18 @@ proposals between them).
 
 ## Watching a study
 
-`app/pareto-server.py --state-dir <dir> --port <p>` serves the directory as one
-page (standard library only): every evaluated design on the two objectives,
-the front highlighted, and each design's variables and objectives on hover,
-refreshed every 10 s until the status is final.
-[`dakota-openfoam`](../dakota-openfoam/) serves it as a `pw` endpoint.
+[`workflows/design-explorer`](../design-explorer/README.md) serves a state
+directory as one page: its **Pareto** view plots every evaluated design on the
+two objectives with the front as of any generation (a scrubber replays the
+study), the hypervolume and the best of each objective per generation, and
+every design's variables, objectives and images, refreshed every 10 s until the
+status is final. Call it as a subworkflow with `study.cases_dir` set to the
+state directory, as [`dakota-openfoam`](../dakota-openfoam/) does, or run
+`workflows/design-explorer/app/design-explorer-server.py --cases-dir <dir>
+--port <p>` by hand (standard library only).
 
 ## Files
 
 `app/optimizer.py` (the step), `app/driver.py` (Dakota's analysis driver:
-replay a known design or capture a new one), `app/install-dakota.sh`,
-`app/pareto-server.py`. Shared: `tools/utils/miniforge.sh`,
+replay a known design or capture a new one), `app/install-dakota.sh`. Shared: `tools/utils/miniforge.sh`,
 `tools/utils/prepare-env.sh`.

@@ -6,19 +6,15 @@
 # its `optimize` job and the second once per proposed design as its `workers`
 # matrix; the loop mechanics (retry-as-loop, guarded static matrix, state files,
 # failure semantics) come from tutorials/optimization and are unchanged from the
-# single-app version kept in backup-no-subworkflow/. While the loop runs, a
-# small server from the Dakota app serves the live Pareto front as a pw endpoint
-# (pareto-<run slug>): every evaluated design, the current front, and each
-# design's variables and objectives on hover; it keeps serving the final front
-# after the run completes until `pw endpoints delete` removes it. The server
-# only ever runs on the login node, so it is started detached from a plain step
-# (tutorials/endpoint-workflows Stage 3) rather than through script_submitter.
-# With postprocessing.generate_images, every case also renders its fields with
-# ParaView and preprocessing calls workflows/design-explorer, which serves a
-# second page over the same study as design-explorer-<run slug>: the
-# generation, the design variables, the coefficients and the Pareto front as
-# brushable axes, the images of every design as thumbnails, and a link to the
-# Pareto front page.
+# single-app version kept in backup-no-subworkflow/. Before the loop starts,
+# preprocessing calls workflows/design-explorer over the study directory, which
+# serves it as the pw endpoint design-explorer-<run slug> from the first
+# generation on: the objective space with the Pareto front as of any generation
+# and the convergence per generation, every design as a line of parallel
+# coordinates over the generation, the variables and the coefficients, and each
+# design's values and, with postprocessing.generate_images (every case renders
+# its fields with ParaView), its images. It keeps serving after the run
+# completes until `pw endpoints delete` removes it.
 permissions:
   - '*'
 
@@ -50,9 +46,8 @@ jobs:
     steps:
       # this workflow has no app of its own: the optimizer, the evaluator and
       # Design Explorer check out theirs inside their subworkflows. Checked out
-      # here: the Pareto front page (the Dakota app's viewer of the study
-      # directory) and the installers, for the environment check below
-      - name: Checkout the Pareto Front Server and the Installers
+      # here: the installers, for the environment check below
+      - name: Checkout the Installers
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
@@ -115,67 +110,14 @@ jobs:
           ${{ inputs.software.paraview_load }}
           PW_LOAD_EOF
           fi
-      # the server is a login-node process for the life of the study and beyond:
-      # start it in its own session so the end of this step, of this job and of
-      # the run never reaches it (tutorials/endpoint-workflows Stage 3). The only
-      # off switch is `pw endpoints delete`, which kills pw endpoints run and the
-      # server under it; the stop_server_if_unhealthy job covers a server that
-      # never registered.
-      - name: Start the Pareto Front Server
-        run: |
-          cat <<EOF > start-pareto.sh
-          #!/bin/bash
-          command -v pw >/dev/null 2>&1 || export PATH="\${PATH}:\${HOME}/pw"
-          # {port} is replaced by pw endpoints run with the local port it forwards to
-          exec pw endpoints run --name "pareto-${PW_RUN_SLUG}" -- \
-              python3 "${PWD}/workflows/dakota/app/pareto-server.py" \
-              --state-dir "${PWD}/state" --port {port} --refresh 10 \
-              --title "NACA airfoil Pareto front - ${PW_RUN_SLUG}"
-          EOF
-          chmod +x start-pareto.sh
-          if command -v setsid >/dev/null 2>&1; then
-            setsid ./start-pareto.sh > pareto.out 2>&1 < /dev/null &
-          else
-            nohup ./start-pareto.sh > pareto.out 2>&1 < /dev/null &
-          fi
-          echo $! > pareto.pid
-          echo "::notice::Pareto front server started (pid $(cat pareto.pid)); its output is ${PWD}/pareto.out"
-      # the wait below has no budget while the endpoint is not listed, so a server
-      # that dies on start (a missing pw client, an old python) must fail the run
-      # here, with its output, rather than leave it polling for ever
-      - name: Check the Server Is Alive
-        run: |
-          sleep 10
-          if ! kill -0 "$(cat pareto.pid)" 2>/dev/null; then
-            echo "::error::the Pareto front server exited within 10 s of starting; its output follows"
-            cat pareto.out
-            exit 1
-          fi
-          echo "::notice::server alive after 10 s; $(tail -n 1 pareto.out)"
-      # the health check of the endpoint pattern: this job, and so the loop that
-      # needs it, only completes once the endpoint is listed and /healthz answers
-      # through the platform
-      - name: Wait for endpoint
-        uses: github/parallelworks/workflows@canary
-        with:
-          $yaml: workflows/wait_for_endpoint/general.yaml
-          endpoint_name: pareto-${PW_RUN_SLUG}
-          host: ${{ inputs.cluster.resource.ip }}
-          path: /healthz
-          budget: 120
-      # with images on, the second page: Design Explorer over the same study
-      # directory, served by its own workflow, which reads state/iter_<N>/case_<j>/
-      # directly (a case shows as soon as it solved), waits until its endpoint
-      # answers and removes a server that never did. It links to the Pareto
-      # front page, whose URL is looked up first
-      - name: Find the Pareto Front Page
-        if: ${{ inputs.postprocessing.generate_images == true }}
-        run: |
-          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="pareto-${PW_RUN_SLUG}" '$1 == name {print $3}')
-          echo "PARETO_URL=${url}" | tee -a $OUTPUTS
+      # the page: Design Explorer over the study directory, served by its own
+      # workflow, which reads state/iter_<N>/case_<j>/ directly (a case shows as
+      # soon as it solved) with the optimizer's problem.json and state.json (the
+      # objectives, the bounds, the hypervolume), waits until its endpoint
+      # answers and removes a server that never did. Preprocessing only
+      # completes once the page is served, so a server that cannot start fails
+      # the run before any case is spent
       - name: Design Explorer (Serve the Study)
-        if: ${{ inputs.postprocessing.generate_images == true }}
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/design-explorer/yamls/general.yaml
@@ -184,41 +126,7 @@ jobs:
           study:
             cases_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
             title: NACA airfoil optimization
-            links: Pareto front=${{ needs.preprocessing.outputs.PARETO_URL }}
 
-  # wait_for_endpoint only checks: it fails the job when the endpoint never
-  # answers and tears nothing down, and the Pareto front server is started
-  # detached from a plain step, with no submitter behind it, so this job is its
-  # cleanup. It runs when preprocessing did not complete (the health check
-  # failed, a step before it, or the run was canceled first): it deletes an
-  # endpoint that registered and kills a server whose endpoint never did (`pw
-  # endpoints delete` cannot reach that one). A run that passed preprocessing
-  # never touches it again; the Design Explorer workflow cleans up its own
-  # server. Fixed paths, not job outputs: a canceled preprocessing publishes none.
-  stop_server_if_unhealthy:
-    needs: [preprocessing]
-    if: ${{ !completed }}
-    ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
-    steps:
-      - name: Kill the Pareto Front Server
-        run: |
-          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          name="pareto-${PW_RUN_SLUG}"
-          if pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${name}"; then
-            echo "::warning::the endpoint ${name} registered but the run ended before its health check passed; deleting it"
-            pw endpoints delete "${name}" 2>/dev/null || true
-          fi
-          pid=$(cat "${PW_PARENT_JOB_DIR}/pareto.pid" 2>/dev/null || true)
-          if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
-            echo "::warning::killing the Pareto front server (pid ${pid})"
-            kill -- -"${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
-          fi
-          pkill -f "pareto-server.py --state-dir ${PW_PARENT_JOB_DIR}/state" 2>/dev/null || true
-
-  # preprocessing only completes once the front is being served, so a server
-  # that cannot start fails the run before any case is spent, and the page is
-  # live from the first generation on
   optimization_loop:
     needs: [preprocessing]
     ssh:
@@ -229,7 +137,7 @@ jobs:
       # loop budget: max_iterations proposal cycles + the final converging call.
       # Attempt != iteration — a crashed attempt re-runs the same iteration off the
       # state files and consumes budget. Only the LAST attempt's logs surface here;
-      # per-iteration history lives under state/ and on the Pareto front page.
+      # per-iteration history lives under state/ and on the Design Explorer page.
       - name: Iterate
         retry:
           max-retries: ${{ inputs.optimizer.max_iterations }}
@@ -277,17 +185,11 @@ jobs:
         run: |
           state="${{ needs.preprocessing.outputs.STATE_DIR }}"
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
-          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="pareto-${PW_RUN_SLUG}" '$1 == name {print $3}')
+          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="design-explorer-${PW_RUN_SLUG}" '$1 == name {print $3}')
           if [ -n "${url}" ]; then
-            echo "::notice::the Pareto front page keeps serving at ${url} (every evaluation, hover for the design); remove it with: pw endpoints delete pareto-${PW_RUN_SLUG}"
+            echo "::notice::Design Explorer keeps serving the study at ${url} (the Pareto front as of any generation, every design and its values$( [ "${{ inputs.postprocessing.generate_images }}" = "true" ] && echo " and images")); remove it with: pw endpoints delete design-explorer-${PW_RUN_SLUG}"
           else
-            echo "::warning::the Pareto front endpoint pareto-${PW_RUN_SLUG} is no longer listed; the front is still in ${state}/pareto.csv and ${state}/pareto.svg"
-          fi
-          if [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
-            de_url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="design-explorer-${PW_RUN_SLUG}" '$1 == name {print $3}')
-            if [ -n "${de_url}" ]; then
-              echo "::notice::Design Explorer keeps serving the study at ${de_url} (every solved design with its images); remove it with: pw endpoints delete design-explorer-${PW_RUN_SLUG}"
-            fi
+            echo "::warning::the endpoint design-explorer-${PW_RUN_SLUG} is no longer listed; the front is still in ${state}/pareto.csv and ${state}/pareto.svg"
           fi
           status=$(cat "${state}/status" 2>/dev/null || echo MISSING)
           case "${status}" in
@@ -321,7 +223,7 @@ jobs:
             type: compute-clusters
             label: Compute resource
             include-workspace: false
-            tooltip: Resource where Dakota, the Pareto front server and all OpenFOAM cases run
+            tooltip: Resource where Dakota, Design Explorer and all OpenFOAM cases run
           scheduler:
             type: boolean
             default: false
@@ -499,19 +401,17 @@ jobs:
         items:
           generate_images:
             type: boolean
-            label: Generate images and serve Design Explorer?
+            label: Generate images?
             default: false
             tooltip: |
               Yes → every OpenFOAM case renders its fields with ParaView (pressure,
-              velocity, streamlines, eddy viscosity, wake, mesh), and a second
-              page, design-explorer-<run slug>, serves the study next to the
-              Pareto front: the generation, the design variables, the
-              coefficients and the front as brushable axes, the images of every
-              design as thumbnails. ParaView comes from the commands in Software
-              Environment or, left empty, from the official binaries the
-              workflow downloads once (no sudo, ~830 MB); rendering adds about
-              5 s per case.
-              No → the Pareto front page only.
+              velocity, streamlines, eddy viscosity, wake, mesh), and Design
+              Explorer (design-explorer-<run slug>) shows them for every design:
+              in its gallery, its case panel and on hover. ParaView comes from
+              the commands in Software Environment or, left empty, from the
+              official binaries the workflow downloads once (no sudo, ~830 MB);
+              rendering adds about 5 s per case.
+              No → Design Explorer without images.
       software:
         type: group
         label: Software Environment

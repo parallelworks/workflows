@@ -76,14 +76,13 @@ rendered to images with ParaView), `dakota` (one optimizer step) and
 `probe`'s `general_run_tests.yaml` (one run of a platform's PROBE tests) —
 serves through a **`pw` endpoint** (`pw endpoints list`) named
 `<service>-${PW_RUN_SLUG}`. `dakota-openfoam` is both: a batch optimization loop that
-joins those last two as subworkflows and serves its live Pareto front as an endpoint
-(and, with images on, calls `design-explorer` for a second one); its server only ever
-runs on the login node, so it starts
+joins those last two as subworkflows and serves the live study as an endpoint by
+calling `design-explorer` (Design Explorer over any study of case directories, with a
+Pareto view for a Dakota state directory; a subworkflow of `doe-openfoam` and
+`dakota-openfoam`), whose server only ever runs on the login node, so it starts
 `pw endpoints run` detached from a plain step (`tutorials/endpoint-workflows` Stage 3)
-instead of through the submitter below; `design-explorer` (Design Explorer over any study
-of case directories, a subworkflow of `doe-openfoam` and `dakota-openfoam`) and
-`app-testbed` do the same, the latter at a fixed endpoint name (`apptest`) that a re-run
-reuses. `physicsnemo` is both too: a training job submitted as a batch job (completes
+instead of through the submitter below; `app-testbed` does the same, at a fixed
+endpoint name (`apptest`) that a re-run reuses. `physicsnemo` is both too: a training job submitted as a batch job (completes
 when the training does, fails when it fails) and TensorBoard over it, started the same
 detached way on the login node. On a compute cluster,
 preprocessing checks out this repo (`parallelworks/checkout`, sparse

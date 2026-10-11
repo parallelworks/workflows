@@ -8,11 +8,13 @@
 > Since 2026-10-08 the page is its own workflow, `workflows/design-explorer` (the
 > `app/` paths below are its own), which `doe-openfoam` and `dakota-openfoam` call
 > as a subworkflow with the study directory; it serves any such directory standalone.
+> Since 2026-10-11 the page draws everything itself: the libraries, their
+> download and `install-design-explorer.sh` are gone (below).
 
 ## One server, two study layouts
 
 - Nothing in the reader is specific to the airfoil: every `results.out` value is
-  an `out:` axis, every `images/*.png` an image kind, and the Pareto flag uses the
+  an `out:` axis, every file of `images/` (a picture, or a gif/mp4/webm animation) an image kind, and the Pareto flag uses the
   `results.out` values as minimized objectives (Dakota's convention).
   openfoam-naca's `drag_coefficient` and `neg_lift_coefficient` are the one special
   case, shown as Cd, Cl and Cl/Cd; its six images come first in its order.
@@ -32,7 +34,7 @@
 - A variable that never changes (the loop's angle of attack) is a flat axis: the
   page hides it until the user shows it, decided again on every reload.
 
-## Why a shell of our own
+## Why a page of our own (and, since 2026-10-11, no Design Explorer code)
 
 - The upstream page (`index.html`, 3000 lines) carries its own chrome (Get Data,
   My Static Link, Tutorial, Services, the copyright strip), loads a Google Drive or
@@ -40,41 +42,51 @@
   circles under a scatter matrix. It works behind an endpoint (verified through the
   platform, `?ID=ZGF0YS8=` for the relative folder `data/`), but it does not look like
   the platform and every non-`in:`/`out:`/`img:` column becomes an axis (`case`).
-- The page in the app keeps the engine and the data format (`in:` columns for the
-  inputs, `out:` for the outputs, `img:` for the image paths, so `data.csv` still loads
-  in the upstream page) and redoes the shell with the `hpc_status` tokens: axis
-  toggles and input sliders at the side, Reset/Exclude/Zoom/Save over the plot,
-  a thumbnail grid with a sort and an image selector, a lightbox, a 10 s poll of
-  `status.json` that reloads the cases while any is pending.
+- The app's page keeps the data format (`in:` inputs, `out:` outputs, `img:` media
+  paths, so `data.csv` still loads in the upstream page) and, since 2026-10-11, draws
+  the parallel coordinates itself (canvas lines, SVG axes and brushes, no library):
+  d3.parcoords could not keep the axes still while filtering, hide the unselected
+  lines, or pick a line under the pointer. Nothing is downloaded any more, so the
+  login node needs no internet; the server keeps an optional `--design-explorer`
+  (serve files from a tree) for a page that still loads them.
+- Filtering runs in stages: excluded cases are gone (the axes rescale: Keep only,
+  Exclude), chart brushes select, sidebar sliders act inside the brushed set. Axis
+  domains and the color scale span the non-excluded / all cases, so brushing never
+  rescales an axis or repaints a kept line.
+- Sliders follow Design Explorer's own behavior (and the fixes of
+  github.com/mattshax/design_tools' patched index.html), as "Pick case": one thumb
+  per input at the selected case, its steps the values the brushed cases take (40
+  bins for a continuous variable), a drag selects the brushed case at that step
+  nearest the current one in the other inputs, the dragged thumb stays under the
+  pointer while the others follow. "Filter" turns them into ranges.
 
-## d3.parcoords, Design Explorer's build: what bit
+## The Pareto view and the retired pareto-server.py (2026-10-11)
 
-- **`createAxes()` calls `string_as_unicode_escape()`, which only Design Explorer's
-  own page defines**: define it (hex of each char code) before the library, or every
-  axis is missing and the init dies after the lines are drawn.
-- **Every field of a row is typed** (`detectDimensionTypes`), and there is no scale
-  for a boolean: a `row.__excluded = true` flag broke `autoscale` with
-  `defaultScales[__.dimensions[k].type] is not a function`. Keep flags out of the row
-  objects (a set keyed by id); strings are fine (`"string"` scale).
-- **Setters redraw at once**: `pc.margin(...)`, `.width()`, `.height()` call
-  `pc.resize()` → `render()` → `autoscale()` before the dimensions are set. Pass
-  the options through the constructor, `d3.parcoords({margin, alpha, composite,
-  color})(selector)`, then `.data()`, `.dimensions()`.
-- **`pc.dimensions({...})` keeps only the keys**: the side effect rebuilds the table
-  from `d3.keys(value)`, so a title or type passed there is lost. Set them afterwards
-  on the exposed state, `pc.state.dimensions[k].title = ...`, before `createAxes()`.
-- Init order that works: `pc.data(rows).dimensions(dims)`, titles on the state,
-  `pc.render().createAxes().brushMode("1D-axes").reorderable()`,
-  `pc.alphaOnBrushed(0.08)`, `pc.on("brush", fn).on("brushend", fn)`;
-  `pc.brushed()` is `false` without a brush, the brushed rows otherwise;
-  `pc.brushExtents()` reads `{axis: [lo, hi]}` and takes the same to restore;
-  `pc.highlight([row])` / `pc.unhighlight()`; `pc.on("axesreorder", keys => ...)`.
-  Rebuild the chart (clear the container, construct again) for any structural
-  change; 32 rows take milliseconds.
-- The library's canvas layers are `position: absolute` inside the container: give
-  the container `position: relative` and an explicit height.
-- d3 3.5's `d3.csv(url, cb)` calls `cb(error, rows)`; older 3.x called `cb(rows)`.
-  Take `(a, b) => b === undefined ? a : b`.
+- `study.summary()` adds `optimization` to `status.json` for a Dakota state
+  directory: the `problem.json` objectives mapped to `data.csv` columns with a
+  sense (`neg_X` with an `out:X` column is X maximized: openfoam-naca's lift), the
+  variable bounds, and `state.json`'s `hv_history`. The page computes the front as
+  of every generation itself (one sort and sweep per generation, two objectives).
+- The generation scrubber is a brush on `in:generation` ([gMin, g], or [g, g] for
+  one generation), so the chart, the sliders and the lists follow it for free.
+- This replaced `workflows/dakota/app/pareto-server.py` and the second endpoint of
+  dakota-openfoam: it calls design-explorer unconditionally and serves one page.
+
+## Canvas performance: the hairline cliff
+
+- Chrome/Skia strokes a path **wider than one device pixel** through the general
+  stroker; a batched path of thousands of translucent lines then costs seconds per
+  frame (measured: 3000 rows x 11 axes, 50 ms at width 1, 2400 ms at 1.15, on CPU or
+  emulated GPU). Draw dense line sets at `lineWidth = 1 / devicePixelRatio` (one
+  device pixel, crisp on HiDPI) and give width only to a few hundred lines, each its
+  own stroke. Round joins cost several times more as well; use bevel.
+- The cost hides from JavaScript timing: canvas draws are recorded and rasterized at
+  commit, so a trace shows `Commit` / `CanvasResourceProviderSharedImage::
+  ProduceCanvasResource` growing with the number of lines while JS stays at a few ms.
+  A benchmark that calls `getImageData` forces a CPU canvas and hides the problem.
+- In a headless trace, compare against a frame with no change: profile with
+  `page.tracing` (categories `toplevel,cc,blink,devtools.timeline`) and aggregate
+  `X` events by name.
 
 ## Checking a page without a browser at hand
 
@@ -84,8 +96,10 @@
   on). A fresh profile per shot: a shot killed by `timeout` leaves a lock that makes
   the next one say "Firefox is already running".
 - The shot is taken at the `load` event, before an XHR-loaded page is complete. The
-  page's `?demo=brush|lightbox|dark` loads its CSV synchronously and applies the
-  state at once, so those states are deterministic in a screenshot; never load
-  synchronously outside that mode.
+  page's `?demo=` mode loads its CSV synchronously and applies states joined by `+`
+  (`brush`, `front`, `drill`, `case`, `lightbox`, `fade`, `table`, `sens`, `filter`,
+  `dark`), so those states are deterministic in a screenshot; never load
+  synchronously outside that mode. For interactions, puppeteer-core driving
+  `/usr/bin/google-chrome` works where Chrome is installed.
 - Errors in the page's own code are shown in a banner (`#error`): the platform's
   session frame has no console at hand, and a blank page says nothing.

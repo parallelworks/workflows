@@ -6,24 +6,22 @@ NACA airfoil shape optimization as a loop of two standalone workflows:
 |---|---|---|
 | propose designs or stop | [`workflows/dakota`](../dakota/README.md) | the `optimize` job of `iteration-naca.yaml` |
 | solve one design | [`workflows/openfoam-naca`](../openfoam-naca/README.md) | the `workers` matrix of `iteration-naca.yaml`, once per design |
-| explore the designs (optional) | [`workflows/design-explorer`](../design-explorer/README.md) | `preprocessing`, with images on |
+| serve the study live | [`workflows/design-explorer`](../design-explorer/README.md) | `preprocessing` |
 
 Their READMEs describe the optimizer, the evaluator, the page and their inputs;
-this one covers only the loop and the live pages. The loop mechanics come from
+this one covers only the loop and the live page. The loop mechanics come from
 [`tutorials/optimization`](../../tutorials/optimization/README.md).
 
 ## How the pieces connect
 
-![The loop: general-naca.yaml runs iteration-naca.yaml until it exits 0; its optimize job calls the dakota workflow and its workers call openfoam-naca once per design; they share only the files under state/, which the Pareto endpoint serves](thumbnails/loop-wiring.svg)
+![The loop: general-naca.yaml runs iteration-naca.yaml until it exits 0; its optimize job calls the dakota workflow and its workers call openfoam-naca once per design; they share only the files under state/, which the Design Explorer endpoint serves](thumbnails/loop-wiring.svg)
 
 ```
 general-naca.yaml
  ├─ preprocessing       state/ (the study); checks that the OpenFOAM and Dakota environments deliver
- │                      their tools; starts pareto-server.py detached under pw endpoints run, then waits
- │                      until the endpoint is listed and /healthz answers through the platform; with
- │                      images on, calls design-explorer for the second page
- ├─ stop_server_if_unhealthy   if: !completed — removes the Pareto server if its endpoint never came up
- └─ optimization_loop   needs the endpoint, then:
+ │                      their tools; calls design-explorer over state/, which serves it and waits until
+ │                      its endpoint is listed and /healthz answers through the platform
+ └─ optimization_loop   needs the page, then:
      ├─ Iterate         retried step; each attempt runs iteration-naca.yaml once:
      │                    optimize ──▶ workers-1..batch_size ──▶ decide
      │                    dakota step   openfoam-naca   exit 1 = next cycle, exit 0 = done
@@ -50,53 +48,45 @@ and a `case/case.foam` that opens in ParaView, for every design of every
 generation.
 
 
-## The live Pareto front
+## The live page
 
-`pareto-<run slug>` (in `pw endpoints list` and on the run page) is
-`workflows/dakota/app/pareto-server.py` serving the study directory: every
-evaluated design plotted as drag against negative lift, the front highlighted,
-and `max_camber`, `camber_position`, `thickness`, generation, case and both
-objectives on hover. It reads the files on every request and the page polls
-every 10 s until the status is final, so a tab left open on a long run costs
-one small request per refresh and nothing afterwards.
-
-The server only ever runs on the login node, so preprocessing starts it
-detached (`setsid pw endpoints run ...`, as in
-[`tutorials/endpoint-workflows` Stage 3](../../tutorials/endpoint-workflows/README.md))
-instead of through `script_submitter`, and its last step calls the
-`wait_for_endpoint` subworkflow to check that the endpoint is listed and
-`/healthz` answers; the loop needs preprocessing, so the page is live from the
-first generation and a server that cannot start fails the run before any case
-is spent. **The endpoint outlives the run**: after
-the optimization finishes, or after a cancel, it keeps showing the final front
-until you delete it. **Deleting the session cleans up its processes**:
-`pw endpoints delete pareto-<run slug>` kills `pw endpoints run` and the server
-under it. The one case the workflow handles itself is a server whose endpoint
-never became healthy (it is not listed, so it cannot be deleted):
-`stop_server_if_unhealthy` kills it by pid. A cancel mid-generation kills the
-running cases and SLURM jobs and leaves only the endpoint.
-
-## Design Explorer (optional)
-
-Turn on **Generate images and serve Design Explorer?** (off by default) and every
-case renders its flow fields with ParaView, and a second endpoint,
-`design-explorer-<run slug>`, serves the study next to the Pareto front:
+`design-explorer-<run slug>` (in `pw endpoints list` and on the run page) is
+[`workflows/design-explorer`](../design-explorer/README.md) serving the study
+directory, called from preprocessing, so the page is live from the first
+generation and a server that cannot start fails the run before any case is
+spent. It reads the case directories and the optimizer's `problem.json` and
+`state.json` on every request, and polls every 10 s until Dakota's status is
+final.
 
 ![Design Explorer over a three-generation optimization: generation, design variables, coefficients and the Pareto-front flag as axes, the flag brushed so 8 of 11 designs stay selected and the dominated ones fade, lines and thumbnails colored by generation](thumbnails/design-explorer.png)
 
+- **Pareto**, the first view for an optimization: drag (↓) against lift (↑),
+  every solved design colored by generation, the front ringed with its
+  attainment staircase. The scrubber replays the study generation by
+  generation (▶), and the convergence cards show the hypervolume, the best
+  drag and lift so far and the front's size per generation. Hover a design
+  for its values and image, click it to open it in the case panel.
 - One axis per design variable and coefficient, plus **generation** and
   **pareto_front** (1 for the designs no other design beats on both drag and
-  lift). Brush `pareto_front` to see the front's designs and their images.
-- Lines and thumbnails are colored by generation, so the search's progress
-  shows at a glance. The angle of attack is fixed, so its axis starts hidden.
-- A case appears as soon as it solved; the page follows the study until
-  Dakota's status is final. **Pareto front ↗** opens the other page.
+  lift); the scrubber is a brush on generation, so every view follows it. The
+  angle of attack is fixed, so its axis starts hidden.
+- A case appears as soon as it solved. Failed designs have no outputs and are
+  counted, not plotted.
 
-[`workflows/design-explorer`](../design-explorer/README.md) serves the page, and
-its README describes it. ParaView comes from **ParaView environment commands**
-or, left empty, from the official binaries downloaded once; rendering adds
-about 5 s per case. The endpoint outlives the run like the Pareto one, and the
-design-explorer workflow removes its server when the endpoint never answers.
+**The endpoint outlives the run**: after the optimization finishes, or after a
+cancel, it keeps showing the final study until `pw endpoints delete
+design-explorer-<run slug>` removes it (that kills `pw endpoints run` and the
+server under it). The design-explorer workflow removes its own server when its
+endpoint never answered. A cancel mid-generation kills the running cases and
+SLURM jobs and leaves only the endpoint.
+
+## Images (optional)
+
+Turn on **Generate images?** (off by default) and every case renders its flow
+fields with ParaView (pressure, velocity, streamlines, eddy viscosity, wake,
+mesh); the page then shows them in its gallery, its case panel and on hover.
+ParaView comes from **ParaView environment commands** or, left empty, from the
+official binaries downloaded once; rendering adds about 5 s per case.
 
 ## Running it
 

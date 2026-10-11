@@ -6,7 +6,7 @@
       "${HOME}/pw/software/openfoam-naca/miniforge/envs/openfoam",
       "${HOME}/pw/software/dakota/miniforge/envs/dakota"
     ],
-    "leftover_patterns": ["pw endpoints", "pareto-server.py", "bin/dakota", "app/driver.py", "simpleFoam", "blockMesh"]
+    "leftover_patterns": ["pw endpoints", "design-explorer-server.py", "bin/dakota", "app/driver.py", "simpleFoam", "blockMesh"]
   },
   "cluster": {
     "resource": "pw://alvaro/gcpsmall",

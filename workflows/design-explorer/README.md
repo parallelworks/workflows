@@ -28,8 +28,9 @@ studies with it; the figure shows a doe-openfoam study.
 - **Color** colors the lines, cards, swatches and points by any variable; click
   its gradient to pick the palette (Blues, Viridis, Plasma, Inferno, Cividis,
   Blue–Red diverging) or reverse it.
-- **Unselected: Hide | Fade** shows only the selected cases, or the others too,
-  dimmed: gray lines behind the selection, faded cards and table rows in place. The axes keep their range while you filter; **Keep only**
+- The chart always shows every case, the unselected ones in gray behind the
+  selection. **Unselected: Hide | Fade** over the lists below lists only the
+  selected cases, or every case with the others faded in place. The axes keep their range while you filter; **Keep only**
   and **Exclude** remove cases for good, and the axes rescale to what is left.
 - **Click a line** (hover shows its values and image), a thumbnail or a table
   row to select that case. It opens in the case panel at the right, which stays
@@ -45,8 +46,11 @@ studies with it; the figure shows a doe-openfoam study.
   brushed cases further; drag the shaded range to slide a window through the
   values. Each slider's histogram shows how the brushed cases spread.
 - For a Dakota study, a **Pareto** view comes first: the objective space (each
-  objective's sense from the optimizer's `problem.json`, so openfoam-naca's
-  drag ↓ against lift ↑) with the front ringed and its attainment staircase, a
+  objective's sense from the optimizer's `problem.json`; **Objectives:
+  Minimized** shows them as Dakota minimizes them, openfoam-naca's drag ↓
+  against `neg_lift_coefficient` ↓, so the front is the familiar lower-left
+  curve, and **As reported** shows lift itself ↑) with the front ringed and its
+  attainment staircase, a
   generation scrubber at its top that replays the study (▶) and shows all the
   generations up to the scrubbed one or **only** that one (a brush on
   generation, so every view follows it; all of them by default), and convergence cards: the hypervolume from

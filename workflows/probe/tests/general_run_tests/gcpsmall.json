@@ -6,9 +6,7 @@
       "probe run"
     ]
   },
-  "cluster": {
-    "resource": "pw://alvaro/gcpsmall"
-  },
+  "resource": "pw://alvaro/gcpsmall",
   "selection": "activate.parallel.works/alvaro/script_submitter/gcpsmall-controller.json",
   "tests": {
     "repo": "https://github.com/parallelworks/probe-tests-activate-parallel-works.git",

@@ -39,7 +39,7 @@ configurations:
 jobs:
   preprocessing:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       # this workflow has no app of its own: the sampler and Design Explorer
       # check out theirs inside their subworkflows. Checked out here: the
@@ -109,8 +109,7 @@ jobs:
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/doe/yamls/general.yaml
-          cluster:
-            resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           doe:
             method: ${{ inputs.doe.method }}
             cases_csv: ${{ inputs.doe.cases_csv }}
@@ -145,8 +144,7 @@ jobs:
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/design-explorer/yamls/general.yaml
-          cluster:
-            resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           study:
             cases_dir: ${{ needs.preprocessing.outputs.CASES_DIR }}
             title: NACA airfoil DOE (${{ inputs.doe.method }})
@@ -178,14 +176,14 @@ jobs:
         job_id: "${{ [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] get 0:(inputs.doe.method == 'csv' ? 32 : inputs.doe.n_cases) }}"
     if: ${{ matrix.job_id <= needs.preprocessing.outputs.N_CASES }}
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: OpenFOAM (Solve the Design)
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/openfoam-naca/yamls/general.yaml
+          resource: ${{ inputs.resource }}
           cluster:
-            resource: ${{ inputs.cluster.resource }}
             scheduler: ${{ inputs.cluster.scheduler }}
             cores_per_case: ${{ inputs.cluster.cores_per_case }}
             slurm:
@@ -216,7 +214,7 @@ jobs:
     needs: [preprocessing, workers]
     if: ${{ always }}
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Collect the Results
         run: |
@@ -258,20 +256,20 @@ jobs:
 'on':
   execute:
     inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: Resource where the sampler, the Design Explorer server and all OpenFOAM cases run
       cluster:
         type: group
         label: Compute Cluster Settings
         items:
-          resource:
-            type: compute-clusters
-            label: Compute resource
-            include-workspace: false
-            tooltip: Resource where the sampler, the Design Explorer server and all OpenFOAM cases run
           scheduler:
             type: boolean
             default: false
             label: Schedule Cases?
-            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            hidden: ${{ inputs.resource.schedulerType == '' }}
             ignore: ${{ .hidden }}
             tooltip: |
               Yes → Each OpenFOAM case is submitted to the scheduler using sbatch, qsub, etc
@@ -296,8 +294,8 @@ jobs:
           slurm:
             type: group
             label: SLURM Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean
@@ -308,7 +306,7 @@ jobs:
                 type: slurm-partitions
                 label: SLURM partition
                 optional: true
-                resource: ${{ inputs.cluster.resource }}
+                resource: ${{ inputs.resource }}
                 tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime per case
@@ -327,8 +325,8 @@ jobs:
           pbs:
             type: group
             label: PBS Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean

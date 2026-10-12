@@ -27,8 +27,7 @@ jobs:
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/dakota/yamls/general.yaml
-          cluster:
-            resource: ${{ inputs.resource }}
+          resource: ${{ inputs.resource }}
           problem:
             variables: ${{ inputs.variables }}
             objectives: ${{ inputs.objectives }}
@@ -78,8 +77,8 @@ jobs:
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/openfoam-naca/yamls/general.yaml
+          resource: ${{ inputs.resource }}
           cluster:
-            resource: ${{ inputs.resource }}
             scheduler: ${{ inputs.scheduler }}
             cores_per_case: ${{ inputs.cores_per_case }}
             slurm:

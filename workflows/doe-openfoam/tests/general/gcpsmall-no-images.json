@@ -5,8 +5,8 @@
     "warm_marker": "${HOME}/pw/software/openfoam-naca/miniforge/envs/openfoam",
     "leftover_patterns": ["pw endpoints", "design-explorer-server.py", "simpleFoam", "blockMesh", "pvpython"]
   },
+  "resource": "pw://alvaro/gcpsmall",
   "cluster": {
-    "resource": "pw://alvaro/gcpsmall",
     "scheduler": false
   },
   "doe": {

@@ -273,11 +273,11 @@ workspace + a worker per cluster). Platform mechanics are in **reference §12**.
   `needs.preprocessing.outputs.CASE_DIR` (`Expression Parser Error: job preprocessing not
   in needs`, the step fails at parse time, 0 s, no `logs/<job>/` dir at all). List every
   job whose outputs a job reads (verified 2026-10-01).
-- **Nested input groups pass through `with:` as nested maps**, `compute-clusters` item
-  included (`cluster: {resource: ${{ inputs.resource }}, scheduler: …, slurm: {…}}` into
-  `workflows/openfoam-naca/yamls/general.yaml`'s `cluster` group; dry-run and live run,
-  2026-10-01). Dotted keys (`cluster.resource:`) are rejected with `Could not parse
-  subworkflow`. A standalone workflow's full form can therefore be its own subworkflow
+- **Nested input groups pass through `with:` as nested maps** (`cluster: {scheduler: …,
+  slurm: {…}}` beside the top-level `resource: ${{ inputs.resource }}` into
+  `workflows/openfoam-naca/yamls/general.yaml`; dry-run and live run, 2026-10-01, when the
+  `compute-clusters` item still sat inside the group and passed through the same way).
+  Dotted keys (`cluster.scheduler:`) are rejected with `Could not parse subworkflow`. A standalone workflow's full form can therefore be its own subworkflow
   interface — the design of `workflows/dakota-openfoam`.
 - **The test runner's variant is the YAML's basename:** `tests/<variant>/<test>.json`
   launches `yamls/<variant>.yaml`, so a workflow whose YAML is `general-naca.yaml` keeps

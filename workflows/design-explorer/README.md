@@ -133,8 +133,7 @@ doe-openfoam does it:
   uses: github/parallelworks/workflows@canary
   with:
     $yaml: workflows/design-explorer/yamls/general.yaml
-    cluster:
-      resource: ${{ inputs.cluster.resource }}
+    resource: ${{ inputs.resource }}
     study:
       cases_dir: ${{ needs.preprocessing.outputs.CASES_DIR }}
       title: NACA airfoil DOE

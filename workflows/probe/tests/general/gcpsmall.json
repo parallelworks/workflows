@@ -9,9 +9,7 @@
       "probe serve"
     ]
   },
-  "cluster": {
-    "resource": "pw://alvaro/gcpsmall"
-  },
+  "resource": "pw://alvaro/gcpsmall",
   "tests": {
     "repo": "https://github.com/parallelworks/probe-tests-activate-parallel-works.git",
     "branch": "main",

@@ -4,8 +4,8 @@
     "endpoint": false,
     "scheduler": true
   },
+  "resource": "pw://Weisheng.Gan/3dcsv3",
   "cluster": {
-    "resource": "pw://Weisheng.Gan/3dcsv3",
     "slurm": {
       "partition": "c5-2xlarge",
       "time": "999:00:00",

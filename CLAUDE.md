@@ -138,8 +138,10 @@ To convert an older workflow to this pattern, follow
 - Checked-out paths are repo-relative: scripts materialize at
   `<rundir>/workflows/<name>/app/...` (or `.../<impl>/...`) — reference them with
   that full prefix, including paths composed from variables.
-- Form inputs are grouped as `cluster` (resource/scheduler) and `service`
-  (service-specific); values read as `${{ inputs.cluster.* }}` / `${{ inputs.service.* }}`.
+- The resource is the top-level `resource` input (`compute-clusters`, read as
+  `${{ inputs.resource }}`) on every variant; the rest of the form is grouped as `cluster`
+  (scheduler/slurm/pbs) and `service` (service-specific), read as `${{ inputs.cluster.* }}`
+  / `${{ inputs.service.* }}`.
 - The hidden `service.name` input is the **endpoint name prefix** — it is not
   a checkout path. Keep its value stable; renaming it changes endpoint names.
 - Endpoint names must be lowercase `[a-z0-9-]`. `<service.name>-${PW_RUN_SLUG}` already
@@ -167,7 +169,7 @@ To convert an older workflow to this pattern, follow
   `.claude/skills/activate-workflows/references/design-parameters.md`.
 - A workflow that only runs on the login node and submits no scheduler job keeps a single
   `general.yaml` (`wait_for_endpoint`, `doe`, `dakota`, `design-explorer`): nothing differs between
-  platforms, so an HSP or NOAA caller passes its top-level resource as `cluster.resource`.
+  platforms, so an HSP or NOAA caller passes its `resource` straight through.
   Variants exist for what does differ: the submitter, the SLURM/PBS fields, install paths.
 
 ### Comments

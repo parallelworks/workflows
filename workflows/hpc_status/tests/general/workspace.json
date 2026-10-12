@@ -8,7 +8,5 @@
     ],
     "endpoint_name": "hpc-status"
   },
-  "cluster": {
-    "resource": "workspace"
-  }
+  "resource": "workspace"
 }

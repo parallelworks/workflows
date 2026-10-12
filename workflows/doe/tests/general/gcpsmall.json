@@ -6,9 +6,7 @@
       "doe.py"
     ]
   },
-  "cluster": {
-    "resource": "pw://alvaro/gcpsmall"
-  },
+  "resource": "pw://alvaro/gcpsmall",
   "doe": {
     "method": "lhs",
     "n_cases": 8

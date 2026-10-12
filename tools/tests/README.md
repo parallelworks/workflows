@@ -38,10 +38,10 @@ The runner picks the lane from the inputs:
 
 | lane | how it is recognised | pass | teardown |
 |---|---|---|---|
-| cluster | `cluster.resource` (or `resource`) is a resource name or `pw://` URI | the run reaches `completed` and an endpoint named `*-<run-slug>` is listed (`completed` alone when `_test.endpoint` is `false`) | `pw endpoints delete`; leftovers are checked over `pw ssh` |
+| cluster | `resource` (or `cluster.resource`, the emed forms) is a resource name or `pw://` URI | the run reaches `completed` and an endpoint named `*-<run-slug>` is listed (`completed` alone when `_test.endpoint` is `false`) | `pw endpoints delete`; leftovers are checked over `pw ssh` |
 | k8s | `resource` is an object with `"type": "kubernetes"` (hybrid `*_k8s.yaml`) or the inputs carry `k8s.cluster` (standalone `k8s.yaml`) | the run is still `running` when its `wait_for_endpoint_k8s` job completes and an endpoint named `*-<run-slug>` is listed | `pw workflows runs cancel`; leftovers are Kubernetes objects |
 
-`cluster.resource` may also be `workspace` (or `user-workspace`) for a workflow that
+`resource` may also be `workspace` (or `user-workspace`) for a workflow that
 serves from the user workspace: it is not listed by `pw cluster ls`, so the runner takes
 it as active and runs the warm-marker, setup and leftover checks there with
 `pw ssh workspace`.
@@ -76,7 +76,7 @@ Optional, stripped before launch.
 | `leftover_patterns` | cluster | process patterns that must not survive teardown, matched against `ps -u $USER -o args` | `["pw endpoints"]` |
 | `leftover_commands` | cluster | `{name: shell snippet}`; each snippet must print `0` after teardown, e.g. `docker ps -q \| wc -l` for containers `ps` cannot see. The checks run in one shell that `ps` lists, so a snippet must not contain a `leftover_patterns` entry verbatim (`name=filebrowser_` with the pattern `filebrowser --config`) | none |
 | `leftover_kinds` | k8s | object kinds that must be gone after teardown; drop `persistentvolumeclaims` for a test that sets `pvc_persist: true` | `deployments`, `services`, `pods`, `persistentvolumeclaims`, `secrets` |
-| `resource` | cluster | the resource the runner checks (warm marker, leftovers) when the form has no `cluster.resource`, e.g. librechat `general-all` with its `librechat_resource` | none |
+| `resource` | cluster | the resource the runner checks (warm marker, leftovers) when the form has no `resource`, e.g. librechat `general-all` with its `librechat_resource` | none |
 | `scheduler` | cluster | `true` when scheduler jobs are requested through an input the runner cannot see (`ray-cluster`'s workers), so teardown also checks `squeue` | from `cluster.scheduler` |
 | `expect` | cluster | `error` for a failure-path test: pass = the run ends in `error`, then the usual leftover checks | `completed` |
 | `endpoint_name` | both | the exact endpoint name, for a workflow that keeps a fixed one (`hpc_status`'s `hpc-status`): it replaces `*-<run-slug>` in the pass check, the teardown and the leftover check | none |

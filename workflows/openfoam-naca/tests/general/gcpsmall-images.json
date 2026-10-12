@@ -8,8 +8,8 @@
     ],
     "leftover_patterns": ["simpleFoam", "potentialFoam", "blockMesh", "pvpython"]
   },
+  "resource": "pw://alvaro/gcpsmall",
   "cluster": {
-    "resource": "pw://alvaro/gcpsmall",
     "scheduler": false
   },
   "case": {

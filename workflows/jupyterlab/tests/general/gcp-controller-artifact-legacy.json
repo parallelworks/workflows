@@ -5,8 +5,8 @@
     "setup": "p=${HOME}/pw/software/.miniconda3c-legacy; if [ -d \"$p\" ]; then rm -rf \"$p/.pw-jupyterlab-conda-source\" \"$p/.pw-env-markers\"; fi",
     "leftover_patterns": ["jupyter-lab", "pw endpoints run"]
   },
+  "resource": "pw://alvaro/gcpsmall",
   "cluster": {
-    "resource": "pw://alvaro/gcpsmall",
     "scheduler": false
   },
   "service": {

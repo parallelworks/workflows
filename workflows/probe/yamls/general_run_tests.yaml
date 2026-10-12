@@ -8,7 +8,7 @@ permissions:
 jobs:
   run:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Checkout
         uses: parallelworks/checkout
@@ -74,18 +74,14 @@ jobs:
 'on':
   execute:
     inputs:
-      cluster:
-        type: group
-        label: Where to run
-        items:
-          resource:
-            type: compute-clusters
-            label: Host
-            include-workspace: true
-            tooltip: |
-              Where PROBE runs: the user workspace or the login node of a connected
-              cluster with the pw CLI, python3 and git. Tests are launched from here
-              with the pw CLI.
+      resource:
+        type: compute-clusters
+        label: Host
+        include-workspace: true
+        tooltip: |
+          Where PROBE runs: the user workspace or the login node of a connected
+          cluster with the pw CLI, python3 and git. Tests are launched from here
+          with the pw CLI.
       selection:
         type: editor
         label: Tests to run

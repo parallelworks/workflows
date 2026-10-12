@@ -8,9 +8,7 @@
       "design-explorer-server.py"
     ]
   },
-  "cluster": {
-    "resource": "pw://alvaro/gcpsmall"
-  },
+  "resource": "pw://alvaro/gcpsmall",
   "study": {
     "cases_dir": "${HOME}/pw/tests/design-explorer/study",
     "title": "Design Explorer test",

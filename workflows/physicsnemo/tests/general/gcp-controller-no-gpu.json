@@ -8,8 +8,8 @@
       "run-example.sh"
     ]
   },
+  "resource": "pw://alvaro/gcpsmall",
   "cluster": {
-    "resource": "pw://alvaro/gcpsmall",
     "scheduler": false
   },
   "service": {

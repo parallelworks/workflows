@@ -14,7 +14,7 @@ permissions:
 jobs:
   preprocessing:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Checkout
         uses: parallelworks/checkout
@@ -34,7 +34,7 @@ jobs:
           # Write input form variables and ensure the pw agent is in the PATH
           cat <<'EOF' >> inputs.sh
           PATH=$HOME/pw:$PATH
-          cluster_scheduler_type="${{ inputs.cluster.resource.schedulerType }}"
+          cluster_scheduler_type="${{ inputs.resource.schedulerType }}"
           dask_partition="${{ inputs.cluster.slurm.partition }}"
           dask_cores="${{ inputs.cluster.slurm.cores }}"
           dask_memory="${{ inputs.cluster.slurm.memory }}"
@@ -107,14 +107,14 @@ jobs:
     needs:
       - preprocessing
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Session Runner
         uses: github/parallelworks/workflows@canary
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
-          resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
           # the submitter works in the run's job directory: the service's output
           # (run.<id>.out) lands there and ./cancel.sh is the one the start script writes
@@ -142,7 +142,7 @@ jobs:
     needs:
       - preprocessing
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Wait for endpoint
         early-cancel: any-job-failed
@@ -150,7 +150,7 @@ jobs:
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
-          host: ${{ inputs.cluster.resource.ip }}
+          host: ${{ inputs.resource.ip }}
           skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
           budget: 300
       - name: Cancel Script Submitter
@@ -163,7 +163,7 @@ jobs:
     needs:
       - wait_for_endpoint
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Run the workloads
         run: |
@@ -228,36 +228,36 @@ jobs:
 'on':
   execute:
     inputs:
+      resource:
+        type: compute-clusters
+        label: SLURM cluster
+        include-workspace: false
+        tooltip: |
+          The Dask scheduler and its dashboard run on this cluster's login node, and the
+          workers are SLURM jobs submitted there with sbatch: only a SLURM cluster works.
       cluster:
         type: group
         label: SLURM Cluster
         items:
-          resource:
-            type: compute-clusters
-            label: SLURM cluster
-            include-workspace: false
-            tooltip: |
-              The Dask scheduler and its dashboard run on this cluster's login node, and the
-              workers are SLURM jobs submitted there with sbatch: only a SLURM cluster works.
           not_slurm:
             label: Not a SLURM cluster
             type: string
             default: 'The selected resource has no SLURM scheduler: this workflow submits its Dask workers with sbatch and cannot run there'
             disabled: true
             optional: true
-            hidden: ${{ inputs.cluster.resource.schedulerType == 'slurm' }}
+            hidden: ${{ inputs.resource.schedulerType == 'slurm' }}
             ignore: true
           slurm:
             type: group
             label: Dask Worker Jobs
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' }}
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' }}
             items:
               partition:
                 type: slurm-partitions
                 label: Partition
                 optional: true
-                resource: ${{ inputs.cluster.resource }}
+                resource: ${{ inputs.resource }}
                 tooltip: '--partition of the worker jobs; empty for the cluster default'
               cores:
                 label: Cores per job

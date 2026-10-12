@@ -5,8 +5,8 @@
     "expect": "error",
     "leftover_patterns": ["IMB-MPI1", "mpirun"]
   },
+  "resource": "pw://alvaro/gcpsmall",
   "cluster": {
-    "resource": "pw://alvaro/gcpsmall",
     "scheduler": false,
     "ntasks_per_node": 0
   },

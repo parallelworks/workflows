@@ -11,8 +11,8 @@
     ]
   },
   "runtype": "vllm",
+  "resource": "pw://alvaro/a30gpuserver",
   "cluster": {
-    "resource": "pw://alvaro/a30gpuserver",
     "scheduler": false
   },
   "model": {

@@ -8,9 +8,7 @@
     ],
     "endpoint_name": "hpc-status"
   },
-  "cluster": {
-    "resource": "pw://alvaro/gcpsmall"
-  },
+  "resource": "pw://alvaro/gcpsmall",
   "service": {
     "theme": "dark",
     "cluster_monitor_interval": 300,

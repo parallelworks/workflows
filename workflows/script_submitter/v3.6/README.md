@@ -64,11 +64,11 @@ Use the scheduler agent for single-node jobs:
 jobs:
   run_my_script:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - uses: marketplace/script_submitter/v3.6
         with:
-          resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           script: |
             echo "Running on $(hostname) at $(date)"
             python my_analysis.py --input data.csv
@@ -92,11 +92,11 @@ Write your script directly in the workflow YAML:
 jobs:
   run_my_script:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - uses: marketplace/script_submitter/v3.6
         with:
-          resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           script: |
             echo "Running on $(hostname) at $(date)"
             echo "Working directory: $(pwd)"
@@ -122,7 +122,7 @@ Reference a script that was created in a previous job step:
 jobs:
   prepare:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Create script
         run: |
@@ -134,11 +134,11 @@ jobs:
   submit:
     needs: [prepare]
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - uses: marketplace/script_submitter/v3.6
         with:
-          resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           rundir: ${{ env.PW_PARENT_JOB_DIR }}
           use_existing_script: true
           script_path: ${PW_PARENT_JOB_DIR}/my-script.sh

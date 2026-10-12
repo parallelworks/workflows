@@ -5,8 +5,8 @@
     "warm_marker": "${HOME}/pw/software/.miniforge3-dask/bin/dask",
     "leftover_patterns": ["dask_cluster", "dask_demo", "pw endpoints run"]
   },
+  "resource": "pw://alvaro/gcpsmall",
   "cluster": {
-    "resource": "pw://alvaro/gcpsmall",
     "slurm": {
       "partition": "compute",
       "cores": 2,

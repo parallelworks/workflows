@@ -15,8 +15,8 @@
       "docker_networks": "(docker network ls -q --filter name=pydio_cells_ 2>/dev/null || sudo -n docker network ls -q --filter name=pydio_cells_ 2>/dev/null || echo ERR) | wc -l"
     }
   },
+  "resource": "pw://alvaro/gcpsmall",
   "cluster": {
-    "resource": "pw://alvaro/gcpsmall",
     "scheduler": true,
     "slurm": {
       "is_enabled": true,

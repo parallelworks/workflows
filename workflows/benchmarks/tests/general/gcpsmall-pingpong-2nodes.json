@@ -5,8 +5,8 @@
     "warm_marker": "${HOME}/pw/software/benchmarks/usr_lib64_openmpi/imb-2021.11/IMB-MPI1",
     "leftover_patterns": ["IMB-MPI1", "mpirun"]
   },
+  "resource": "pw://alvaro/gcpsmall",
   "cluster": {
-    "resource": "pw://alvaro/gcpsmall",
     "scheduler": true,
     "nodes": 2,
     "ntasks_per_node": 2,

@@ -8,9 +8,7 @@
       "design-explorer-server.py"
     ]
   },
-  "cluster": {
-    "resource": "pw://mshaxted/nautilus"
-  },
+  "resource": "pw://mshaxted/nautilus",
   "study": {
     "cases_dir": "${HOME}/pw/tests/design-explorer/optimization-study",
     "title": "Optimization study"

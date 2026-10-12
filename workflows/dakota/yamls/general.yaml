@@ -12,14 +12,14 @@
 # The step is seconds of work on the login node, so there is no scheduler
 # section: the resource is only where the state directory lives. For the same
 # reason one form serves every platform: there is no HSP or NOAA variant, and
-# callers on those platforms pass their resource as cluster.resource.
+# callers on those platforms pass their resource through as is.
 permissions:
   - '*'
 
 jobs:
   optimize:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Checkout Dakota App
         uses: parallelworks/checkout
@@ -40,7 +40,7 @@ jobs:
           # rather than reading mode bits: the trees are group- or ACL-writable and
           # list as root-owned. Only the installer reads this; the environment file
           # it writes records the absolute prefix.
-          case "${{ inputs.cluster.resource.ip }}" in
+          case "${{ inputs.resource.ip }}" in
             hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
             mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
             ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
@@ -103,15 +103,11 @@ jobs:
 'on':
   execute:
     inputs:
-      cluster:
-        type: group
-        label: Compute Cluster Settings
-        items:
-          resource:
-            type: compute-clusters
-            label: Compute resource
-            include-workspace: false
-            tooltip: Resource whose filesystem holds the study (the state directory and the case directories the evaluator reads and writes). Dakota itself runs on its login node.
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: Resource whose filesystem holds the study (the state directory and the case directories the evaluator reads and writes). Dakota itself runs on its login node.
       problem:
         type: group
         label: Problem Definition

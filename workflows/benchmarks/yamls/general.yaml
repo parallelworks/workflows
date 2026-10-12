@@ -15,7 +15,7 @@ permissions:
 jobs:
   preprocessing:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Checkout
         uses: parallelworks/checkout
@@ -126,13 +126,13 @@ jobs:
   benchmark:
     needs: [preprocessing]
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Run the Benchmark
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
-          resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
           # the submitter cds into the run's job directory, where benchmark.sh and results/ are
           rundir: ${{ env.PW_PARENT_JOB_DIR }}
@@ -164,7 +164,7 @@ jobs:
   results:
     needs: [preprocessing, benchmark]
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Check the Exit Status
         run: |
@@ -195,20 +195,20 @@ jobs:
 'on':
   execute:
     inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: The cluster whose nodes, interconnect or file system is benchmarked
       cluster:
         type: group
         label: Compute Cluster Settings
         items:
-          resource:
-            type: compute-clusters
-            label: Compute resource
-            include-workspace: false
-            tooltip: The cluster whose nodes, interconnect or file system is benchmarked
           scheduler:
             type: boolean
             default: true
             label: Schedule Job?
-            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            hidden: ${{ inputs.resource.schedulerType == '' }}
             ignore: ${{ .hidden }}
             tooltip: |
               Yes → The benchmark runs on compute nodes as one SLURM or PBS job of Nodes x MPI ranks per node
@@ -219,7 +219,7 @@ jobs:
             default: 1
             min: 1
             max: 10000
-            hidden: ${{ inputs.cluster.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
             ignore: ${{ .hidden }}
             tooltip: |
               --nodes (PBS select=N). With 2 or more nodes IMB-MPI1 numbers the ranks so that
@@ -238,8 +238,8 @@ jobs:
           slurm:
             type: group
             label: SLURM Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean
@@ -250,7 +250,7 @@ jobs:
                 type: slurm-partitions
                 label: SLURM partition
                 optional: true
-                resource: ${{ inputs.cluster.resource }}
+                resource: ${{ inputs.resource }}
                 tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
@@ -269,8 +269,8 @@ jobs:
           pbs:
             type: group
             label: PBS Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean

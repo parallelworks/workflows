@@ -11,14 +11,14 @@
 # The sampler is seconds of work on the login node, so there is no scheduler
 # section: the resource is only where the cases are written. For the same reason
 # one form serves every platform: there is no HSP or NOAA variant, and callers on
-# those platforms pass their resource as cluster.resource.
+# those platforms pass their resource through as is.
 permissions:
   - '*'
 
 jobs:
   sample:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Checkout the DOE App
         uses: parallelworks/checkout
@@ -59,15 +59,11 @@ jobs:
 'on':
   execute:
     inputs:
-      cluster:
-        type: group
-        label: Compute Cluster Settings
-        items:
-          resource:
-            type: compute-clusters
-            label: Compute resource
-            include-workspace: false
-            tooltip: Resource whose filesystem holds the cases. The sampler runs on its login node, in seconds.
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: Resource whose filesystem holds the cases. The sampler runs on its login node, in seconds.
       doe:
         type: group
         label: Design of Experiments

@@ -4,8 +4,8 @@
     "endpoint": false,
     "scheduler": true
   },
+  "resource": "pw://Hanif/3dcsv3",
   "cluster": {
-    "resource": "pw://Hanif/3dcsv3",
     "slurm": {
       "time": "",
       "scheduler_directives": "#SBATCH --exclusive\n",

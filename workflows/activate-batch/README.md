@@ -81,7 +81,7 @@ and cluster.pbs (see workflows/activate-batch/README.md). Nothing was run.
 
 | Standalone template | `general.yaml` | `hsp.yaml` |
 |---|---|---|
-| `resource` | `cluster.resource` | `resource` |
+| `resource` | `resource` | `resource` |
 | `commands` | `service.commands` | `service.commands` |
 | `scheduler` / `submit_to_scheduler` | `cluster.scheduler` | `cluster.scheduler` |
 | `slurm.partition`, `slurm.time`, `slurm.scheduler_directives` | `cluster.slurm.*` | `cluster.slurm.*` |

@@ -85,8 +85,7 @@ is how [`workflows/doe-openfoam`](../doe-openfoam/README.md) calls it:
   uses: github/parallelworks/workflows@canary
   with:
     $yaml: workflows/doe/yamls/general.yaml
-    cluster:
-      resource: ${{ inputs.cluster.resource }}
+    resource: ${{ inputs.resource }}
     doe:
       method: ${{ inputs.doe.method }}
       n_cases: ${{ inputs.doe.n_cases }}

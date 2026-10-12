@@ -10,7 +10,7 @@ permissions:
 jobs:
   preprocessing:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Checkout
         uses: parallelworks/checkout
@@ -35,7 +35,7 @@ jobs:
           service_default_top_k="${{ inputs.service.default_top_k }}"
           service_table_name="${{ inputs.service.table_name }}"
           service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
-          pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG} --description rag-service:${{ inputs.cluster.resource.name }}"
+          pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG} --description rag-service:${{ inputs.resource.name }}"
           EOF
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
           sed -i '/=""/d' inputs.sh
@@ -79,14 +79,14 @@ jobs:
     needs:
       - preprocessing
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Session Runner
         uses: github/parallelworks/workflows@canary
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
-          resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
           use_existing_script: true
           script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
@@ -119,7 +119,7 @@ jobs:
     needs:
       - preprocessing
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Wait for endpoint
         early-cancel: any-job-failed
@@ -127,7 +127,7 @@ jobs:
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
-          host: ${{ inputs.cluster.resource.ip }}
+          host: ${{ inputs.resource.ip }}
           skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
           budget: 600
       - name: Cancel Script Submitter
@@ -139,22 +139,22 @@ jobs:
 'on':
   execute:
     inputs:
+      resource:
+        type: compute-clusters
+        label: Cluster
+        include-workspace: false
+        tooltip: >-
+          The cluster to run the retrieval service on. The docs directory
+          must exist on this cluster's shared filesystem.
       cluster:
         type: group
         label: Cluster
         items:
-          resource:
-            type: compute-clusters
-            label: Cluster
-            include-workspace: false
-            tooltip: >-
-              The cluster to run the retrieval service on. The docs directory
-              must exist on this cluster's shared filesystem.
           scheduler:
             type: boolean
             default: false
             label: Schedule Job?
-            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            hidden: ${{ inputs.resource.schedulerType == '' }}
             ignore: ${{ .hidden }}
             tooltip: >-
               Off: run on the login node. On: submit to the scheduler; the
@@ -163,8 +163,8 @@ jobs:
           slurm:
             type: group
             label: SLURM Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean
@@ -175,7 +175,7 @@ jobs:
                 type: slurm-partitions
                 label: SLURM partition
                 optional: true
-                resource: ${{ inputs.cluster.resource }}
+                resource: ${{ inputs.resource }}
               time:
                 label: Walltime
                 type: string
@@ -186,7 +186,7 @@ jobs:
                 optional: true
                 min: 0
                 default: 0
-                hidden: ${{ inputs.cluster.resource.ip != 'dn-slurm-1.parallel.works' }}
+                hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
@@ -196,8 +196,8 @@ jobs:
           pbs:
             type: group
             label: PBS Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean

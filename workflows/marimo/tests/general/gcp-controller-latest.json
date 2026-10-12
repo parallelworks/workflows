@@ -4,8 +4,8 @@
     "warm_marker": "${HOME}/pw/software/.miniforge3-marimo/bin/marimo",
     "leftover_patterns": ["marimo", "pw endpoints run"]
   },
+  "resource": "pw://alvaro/gcpsmall",
   "cluster": {
-    "resource": "pw://alvaro/gcpsmall",
     "scheduler": false
   },
   "service": {

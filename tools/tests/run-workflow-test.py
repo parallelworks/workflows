@@ -12,7 +12,7 @@ One row per launch is appended to the CSV next to it:
 
 The lane is picked from the inputs:
 
-    cluster lane   cluster.resource (or resource) names a compute resource, or the user
+    cluster lane   resource (or cluster.resource, the emed forms) names a compute resource, or the user
                    workspace ("workspace"). Pass = the run completes and an endpoint named
                    *-<run-slug> is listed. Teardown = `pw endpoints delete`; leftovers are
                    checked over `pw ssh`.
@@ -44,7 +44,7 @@ The optional "_test" object is stripped before launch:
     leftover_kinds     Kubernetes object kinds that must be gone after teardown (k8s lane;
                        default: deployments, services, pods, persistentvolumeclaims, secrets)
     resource           the resource the runner checks (warm marker, leftovers) when the form
-                       has no cluster.resource, e.g. librechat general-all's librechat_resource
+                       has no resource, e.g. librechat general-all's librechat_resource
     scheduler          true when scheduler jobs are requested through an input the runner cannot
                        see (ray-cluster's workers), so teardown also checks squeue (cluster lane)
     expect             "error" for a failure-path test: pass = the run ends in error (cluster lane;
@@ -146,7 +146,7 @@ class Test:
         data = json.loads(self.path.read_text())
         self.meta = {**DEFAULTS, **data.pop("_test", {})}
         self.inputs = data
-        resource = self.meta["resource"] or self.lookup("cluster", "resource") or self.lookup("resource")
+        resource = self.meta["resource"] or self.lookup("resource") or self.lookup("cluster", "resource")
         k8s_cluster = self.lookup("k8s", "cluster")
         self.k8s = (isinstance(resource, dict) and resource.get("type") == "kubernetes") or bool(k8s_cluster)
         if self.k8s:
@@ -166,9 +166,9 @@ class Test:
             if self.meta["scheduler"] is not None:
                 self.scheduler = bool(self.meta["scheduler"])
             if not self.resource:
-                raise SystemExit(f"{self.id}: no cluster.resource, resource, k8s.cluster or _test.resource input")
-            self.resource_path = (("cluster", "resource") if self.lookup("cluster", "resource")
-                                  else ("resource",) if self.lookup("resource") else None)
+                raise SystemExit(f"{self.id}: no resource, cluster.resource, k8s.cluster or _test.resource input")
+            self.resource_path = (("resource",) if self.lookup("resource")
+                                  else ("cluster", "resource") if self.lookup("cluster", "resource") else None)
             # The platform hydrates a pw:// string only for compute-clusters inputs; a
             # compute-resources one reaches the workflow raw, so `.ip` is empty and
             # ssh steps run on the workspace. The UI sends the object, so we do too.

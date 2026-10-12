@@ -15,8 +15,8 @@
       "containers": "sudo -n docker ps -q --filter name=physicsnemo- | wc -l"
     }
   },
+  "resource": "pw://alvaro/a30gpuserver",
   "cluster": {
-    "resource": "pw://alvaro/a30gpuserver",
     "scheduler": true,
     "gpus": 0,
     "slurm": {

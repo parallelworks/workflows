@@ -21,7 +21,7 @@ listens behind a registered tunnel yet, the app's answer afterwards.
   wait_for_endpoint:
     needs: [preprocessing]
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Wait for endpoint
         early-cancel: any-job-failed
@@ -29,7 +29,7 @@ listens behind a registered tunnel yet, the app's answer afterwards.
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
-          host: ${{ inputs.cluster.resource.ip }}
+          host: ${{ inputs.resource.ip }}
           skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
       - name: Cancel Script Submitter
         uses: parallelworks/cancel-jobs

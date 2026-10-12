@@ -3,8 +3,8 @@
     "timeout_s": 900,
     "endpoint": false
   },
+  "resource": "pw://alvaro/gcpsmall",
   "cluster": {
-    "resource": "pw://alvaro/gcpsmall",
     "scheduler": false
   },
   "service": {}

@@ -77,7 +77,7 @@ run stops Dakota and hands them out.
 
 ## Interface
 
-**In** (form groups): `cluster.resource` (the resource holding the study; Dakota
+**In**: `resource` (the resource holding the study; Dakota
 runs on its login node, the step is seconds of work); `problem.variables`
 (one `<name> <lower> <upper>` per line) and `problem.objectives` (two names, in
 the order `results.out` lists them); `optimizer.state_dir`, `batch_size`,

@@ -101,7 +101,7 @@ jobs:
         type: string
         optional: true
         default: ''
-        tooltip: IP of the login node (inputs.cluster.resource.ip); leave empty to probe from the workspace (Kubernetes)
+        tooltip: IP of the login node (inputs.resource.ip); leave empty to probe from the workspace (Kubernetes)
       skip_cleanups_file:
         label: Skip-cleanups file
         type: string

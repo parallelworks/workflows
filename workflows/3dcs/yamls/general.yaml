@@ -37,7 +37,7 @@ jobs:
           # resource. Past sshd's default MaxSessions (10) channels per connection, sshd refuses
           # them ("no more sessions") and the run fails. A reload only applies to new connections,
           # so raise the limit here, before any remote job connects.
-          ssh ${{ inputs.cluster.resource.ip }} 'bash -s' <<'EOF'
+          ssh ${{ inputs.resource.ip }} 'bash -s' <<'EOF'
           set -e
           MAX_SESSIONS=500
           MAX_STARTUPS="50:30:200"
@@ -67,7 +67,7 @@ jobs:
     needs:
       - workspace_preprocessing
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Checkout
         uses: parallelworks/checkout
@@ -195,7 +195,7 @@ jobs:
           mkdir -p usage
           while true; do
               sleep 60
-              rsync -az --delete "${{ inputs.cluster.resource.ip }}:${job_dir}/usage/" usage/
+              rsync -az --delete "${{ inputs.resource.ip }}:${job_dir}/usage/" usage/
               rsync -az usage/ "${{ inputs.service.metering_user }}@${{ inputs.service.metering_ip }}:~/.3dcs/usage-pending"
               echo "$(date) INFO: Synced usage files: $(ls usage | tr '\n' ' ')"
           done
@@ -204,7 +204,7 @@ jobs:
     needs:
       - preprocessing
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Estimate End Time
         early-cancel: any-job-failed
@@ -280,14 +280,14 @@ jobs:
     if: ${{ matrix.job_id <= inputs.service.concurrency }}
     working-directory: ${{ env.PW_PARENT_JOB_DIR }}/job_dir_${{ matrix.job_id }}
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Run 3DCS Worker
         uses: github/parallelworks/workflows@canary
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
-          resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
           rundir: ${{ env.PW_PARENT_JOB_DIR }}/job_dir_${{ matrix.job_id }}
           use_existing_script: true
@@ -323,7 +323,7 @@ jobs:
       - workers
     working-directory: ${{ env.PW_PARENT_JOB_DIR }}/merge
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Create Merge Script
         run: |
@@ -350,7 +350,7 @@ jobs:
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
-          resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
           rundir: ${{ env.PW_PARENT_JOB_DIR }}/merge
           use_existing_script: true
@@ -389,15 +389,15 @@ jobs:
 'on':
   execute:
     inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: SLURM cluster with 3DCS installed. Every worker and the merge run as SLURM jobs.
       cluster:
         type: group
         label: Compute Cluster Settings
         items:
-          resource:
-            type: compute-clusters
-            label: Compute resource
-            include-workspace: false
-            tooltip: SLURM cluster with 3DCS installed. Every worker and the merge run as SLURM jobs.
           slurm:
             type: group
             label: SLURM Directives
@@ -406,7 +406,7 @@ jobs:
                 type: slurm-partitions
                 label: SLURM partition
                 optional: true
-                resource: ${{ inputs.cluster.resource }}
+                resource: ${{ inputs.resource }}
                 tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime

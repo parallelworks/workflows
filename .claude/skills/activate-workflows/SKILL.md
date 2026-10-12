@@ -79,7 +79,7 @@ workflow run any `pw` command the user who launched it can run.
   `script_submitter` and its resource/scheduler/slurm/pbs form sections ship per
   platform. A workflow that runs on the login node needs no variant
   (`wait_for_endpoint`, `doe`, `dakota`, `design-explorer`): an HSP or NOAA caller
-  passes its top-level resource as `cluster.resource`, and a site difference a
+  passes its `resource` straight through, and a site difference a
   hostname can decide, such as where software installs on NOAA, is runtime logic in
   the one YAML (`dakota`). Pick the variant by platform host
   (`pw context list`): `emed` for `cluster.einsteinmed.edu`, `noaa` for
@@ -186,7 +186,9 @@ Pass `script_submitter`'s inputs **from the matching variant's YAML** (`resource
 `use_existing_script`+`script_path`, `scheduler`, `slurm`/`pbs`, and the
 `skip_cleanups_file` wiring — copy the whole `with:` block). `skip_cleanups_file` exists
 only for endpoint workflows (it is what lets the service outlive the run); a plain
-batch job leaves it unset. Add
+batch job leaves it unset. **The resource is a top-level `resource` input on every
+variant** (`${{ inputs.resource }}`, `${{ inputs.resource.ip }}`); the `cluster` group
+holds only the scheduler fields. Add
 `include-workspace: true` on the `compute-clusters` input if the workspace should be
 selectable. The hidden `service.name` input is the **endpoint name prefix** — keep it
 stable (renaming it changes endpoint names users see).

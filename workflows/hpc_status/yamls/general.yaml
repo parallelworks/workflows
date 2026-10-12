@@ -5,7 +5,7 @@ permissions:
 jobs:
   preprocessing:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Checkout
         uses: parallelworks/checkout
@@ -90,14 +90,14 @@ jobs:
     needs:
       - preprocessing
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Session Runner
         uses: github/parallelworks/workflows@canary
         early-cancel: any-job-failed
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
-          resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
           use_existing_script: true
           script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
@@ -131,7 +131,7 @@ jobs:
     needs:
       - preprocessing
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Wait for endpoint
         early-cancel: any-job-failed
@@ -139,7 +139,7 @@ jobs:
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: ${{ needs.preprocessing.outputs.ENDPOINT_NAME }}
-          host: ${{ inputs.cluster.resource.ip }}
+          host: ${{ inputs.resource.ip }}
           skip_cleanups_file: ${{ needs.preprocessing.outputs.HEALTHY_MARKER_PATH }}
           # A first start has no cached fleet and answers only after one full sweep:
           # a pw ssh round trip to every cluster, or the HPCMP status pages
@@ -156,7 +156,7 @@ jobs:
       - preprocessing
       - wait_for_endpoint
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Summary
         run: |
@@ -273,19 +273,14 @@ jobs:
             hidden: true
             default: ${HOME}/pw/software
             tooltip: The dashboard's Python environment is installed under this directory on the dashboard host
-      cluster:
-        type: group
-        label: Where To Run
-        collapsed: true
-        items:
-          resource:
-            type: compute-clusters
-            label: Dashboard Host
-            include-workspace: true
-            default: workspace
-            tooltip: >-
-              Advanced. The user workspace needs no setup and is what you want
-              unless you have a reason not to. Pick a cluster to keep the dashboard
-              serving when the workspace recycles — that host needs the pw CLI on
-              its PATH and authenticated (pw auth there), and the run says so
-              plainly if it does not.
+      resource:
+        type: compute-clusters
+        label: Dashboard Host
+        include-workspace: true
+        default: workspace
+        tooltip: >-
+          Advanced. The user workspace needs no setup and is what you want
+          unless you have a reason not to. Pick a cluster to keep the dashboard
+          serving when the workspace recycles — that host needs the pw CLI on
+          its PATH and authenticated (pw auth there), and the run says so
+          plainly if it does not.

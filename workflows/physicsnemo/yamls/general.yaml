@@ -32,7 +32,7 @@ configurations:
 jobs:
   preprocessing:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Checkout
         uses: parallelworks/checkout
@@ -218,7 +218,7 @@ jobs:
         with:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: tensorboard-${PW_RUN_SLUG}
-          host: ${{ inputs.cluster.resource.ip }}
+          host: ${{ inputs.resource.ip }}
           budget: 120
       - name: Publish the TensorBoard Page
         if: ${{ inputs.service.tensorboard == true }}
@@ -239,7 +239,7 @@ jobs:
     needs: [preprocessing]
     if: ${{ !completed }}
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Kill the TensorBoard Server
         run: |
@@ -262,13 +262,13 @@ jobs:
   training:
     needs: [preprocessing]
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Train
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/script_submitter/v3.6/general.yaml
-          resource: ${{ inputs.cluster.resource }}
+          resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
           # the submitter cds into the run's job directory, where train.sh and work/ are
           rundir: ${{ env.PW_PARENT_JOB_DIR }}
@@ -297,7 +297,7 @@ jobs:
   results:
     needs: [preprocessing, training]
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Summarize the Training
         run: |
@@ -330,20 +330,20 @@ jobs:
 'on':
   execute:
     inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: Resource where the training runs; TensorBoard runs on its login node
       cluster:
         type: group
         label: Compute Cluster Settings
         items:
-          resource:
-            type: compute-clusters
-            label: Compute resource
-            include-workspace: false
-            tooltip: Resource where the training runs; TensorBoard runs on its login node
           scheduler:
             type: boolean
             default: false
             label: Schedule Job?
-            hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
+            hidden: ${{ inputs.resource.schedulerType == '' }}
             ignore: ${{ .hidden }}
             tooltip: |
               Yes → The training is submitted to the scheduler using sbatch or qsub (GPU compute nodes)
@@ -354,7 +354,7 @@ jobs:
             default: 1
             min: 0
             max: 8
-            hidden: ${{ inputs.cluster.resource.schedulerType == '' || inputs.cluster.scheduler == false || inputs.service.device != 'gpu' }}
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false || inputs.service.device != 'gpu' }}
             ignore: ${{ .hidden }}
             tooltip: |
               Requested as --gres=gpu:N (PBS: -l select=1:ngpus=N) ahead of the directives
@@ -363,8 +363,8 @@ jobs:
           slurm:
             type: group
             label: SLURM Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean
@@ -375,7 +375,7 @@ jobs:
                 type: slurm-partitions
                 label: SLURM partition
                 optional: true
-                resource: ${{ inputs.cluster.resource }}
+                resource: ${{ inputs.resource }}
                 tooltip: Select a partition with GPU nodes from the drop down menu.
               time:
                 label: Walltime
@@ -392,8 +392,8 @@ jobs:
           pbs:
             type: group
             label: PBS Directives
-            hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
               is_enabled:
                 type: boolean

@@ -31,8 +31,7 @@ jobs:
         uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/dakota/yamls/general.yaml
-          cluster:
-            resource: ${{ inputs.resource }}
+          resource: ${{ inputs.resource }}
           problem:
             variables: ${{ inputs.variables }}
             objectives: ${{ inputs.objectives }}

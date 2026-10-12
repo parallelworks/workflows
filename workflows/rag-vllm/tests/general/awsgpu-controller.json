@@ -11,8 +11,8 @@
     ]
   },
   "runtype": "vllm",
+  "resource": "pw://alvaro/awsgpu",
   "cluster": {
-    "resource": "pw://alvaro/awsgpu",
     "scheduler": false
   },
   "model": {

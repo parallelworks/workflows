@@ -40,11 +40,9 @@ docs and harden this skill (Step 5):
 **Assume the `pw` client on this machine is already authenticated** — otherwise ask
 the user to log in. Confirm context with `pw context list` if unsure.
 
-**Set `permissions: ['*']` in every workflow.** A run's own `pw` client is always
-authenticated, but without the grant it may only update the sessions the run creates.
-`['*']` lets the run do anything the launching user can — `pw endpoints run`,
-`pw sessions ls`, `pw workflows run`. A subworkflow's own grant is not enough: the
-parent must grant it too.
+**Add `permissions: ['*']` only when the workflow or its subworkflows use the `pw`
+client** (`pw agent open-port` is the exception: it needs no grant). It lets the
+workflow run any `pw` command the user who launched it can run.
 
 ## Golden rules
 

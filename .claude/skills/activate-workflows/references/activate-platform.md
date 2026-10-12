@@ -113,7 +113,7 @@ Top of file (enables editor autocomplete; harmless at runtime):
 ### Top-level keys
 | key | purpose |
 |-----|---------|
-| `permissions` | what the run's own token may do against the platform API. Omitted: only update the sessions the run creates (`pw agent open-port` still works). `['*']`: anything the launching user can do — needed from the first `pw endpoints`, `pw sessions ls` or `pw workflows run` call, and on the parent of any subworkflow that makes them (its own grant is not enough). Always set it. |
+| `permissions` | `['*']` lets the workflow and its subworkflows run any `pw` command the launching user can; needed for every `pw` call but `pw agent open-port`. |
 | `jobs` | the job DAG |
 | `env` | workflow-level environment variables injected into every job/step's runtime env. **The canonical way to make `PW_API_KEY` available to your workflow code** — set `env: { PW_API_KEY: ${PW_API_KEY} }` (see §12). **⚠ Do NOT also name an input *group* `env`** if this block references `${{ inputs.env.* }}`: the shared `env` name makes the expression engine recurse → `400 Expression Parser Error: max recursion exceeded`, which fails **both `--dry-run` and `pw workflows run`** (the web UI may still submit it). Name the group e.g. `env_vars`. |
 | `'on'.execute.inputs` | the input form (note the quoted `'on'` to avoid YAML's bool) |
@@ -818,8 +818,7 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   https://<platform>/?sessionRedirect=<host>` whether or not anything serves behind
   the tunnel — it proves nothing about the service. With
   `Authorization: Bearer ${PW_API_KEY}` (the run's own key, in every step's
-  environment — verified only under `permissions: ['*']`, which every workflow here
-  grants) the proxy forwards the request and returns the service's own
+  environment) the proxy forwards the request and returns the service's own
   status: `503` for a registered tunnel whose local port has nothing listening (seen
   for ~5 s while JupyterLab booted on a compute node), the app's `200`/`404`/… once it
   serves. The endpoint is listed as `running` ~2 s after `pw endpoints run` starts,

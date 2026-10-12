@@ -34,9 +34,10 @@ documented here, **trust the docs and fix this file** (Step 5 of the methodology
   `pw endpoints run`, which dials out, registers a reverse tunnel, and gets a
   subdomain URL (§12). Every workflow in this repo uses this pattern (converting an
   older one: [session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md)).
-- **Subworkflows** are workflows invoked from a step with `uses:` + `$yaml:`. Reuse
-  `script_submitter` (submit a script via SSH/SLURM/PBS) instead of writing launch
-  logic yourself; the endpoint registration lives in each workflow's start script.
+- **Subworkflows** are workflows invoked from a step with `uses:` + `$yaml:` (§3):
+  `script_submitter` and `wait_for_endpoint` under every endpoint workflow, and any
+  standalone workflow a composed one calls (`doe-openfoam` calls `doe`,
+  `openfoam-naca` and `design-explorer`).
 
 ### Where jobs run = where you debug (IMPORTANT)
 `ssh: remoteHost: ${{ inputs.resource.ip }}` runs that job's steps on the **login
@@ -159,12 +160,25 @@ jobs:
 ### Calling a subworkflow
 ```yaml
 - uses: github/parallelworks/workflows@canary
-  $yaml: workflows/script_submitter/v3.6/general.yaml   # path within this repo
-  with: { ...subworkflow inputs... }
+  with:
+    $yaml: workflows/script_submitter/v3.6/general.yaml   # path within this repo
+    ...subworkflow inputs...
 # or a marketplace slug:
 - uses: marketplace/script_submitter/v3.6
   with: { ... }
 ```
+- `with:` carries the called workflow's form inputs by name; a nested group passes as
+  a nested map (`cluster: {resource: …, slurm: {…}}`), never as dotted keys. `$yaml`
+  goes inside `with:` and picks the file; the docs only describe
+  `github/<owner>/<repo>@<ref>` running the repo's root `workflow.yaml`.
+- Data crosses the call as files: pass the paths the subworkflow reads and writes
+  (under the caller's `${PW_PARENT_JOB_DIR}`) and read what it leaves there. No
+  workflow here reads a subworkflow step's outputs; `doe-openfoam` reads the sampler's
+  `doe.env` from the `cases_dir` it passed in. A matrix slot hands per-slot data the
+  same way, through paths built from `matrix.job_id` (pitfalls).
+- A workflow may never call itself, even indirectly, and calls nest at most 5 deep
+  (docs); `dakota-openfoam` → its iteration YAML → `openfoam-naca` →
+  `script_submitter` is already a chain of four.
 
 ### Inputs (`on.execute.inputs`)
 Each input has a `type`. Groups nest via `items`. Visibility via `hidden`/`ignore`
@@ -201,8 +215,7 @@ Common attributes: `label`, `default`, `tooltip`, `optional: true`, `hidden: <ex
 
 ### Multi-job orchestration (DAG, outputs, fan-out — all verified)
 Not every workflow needs a subworkflow — plain job orchestration is a first-class
-use (subworkflows are specifically for job *submission*). The job
-graph gives you sequencing, data flow, conditionals, and parallelism:
+use. The job graph gives you sequencing, data flow, conditionals, and parallelism:
 
 - **Sequencing & sharing:** `needs: [a, b]` makes a job wait for `a` and `b`. All
   jobs in a run share `${PW_PARENT_JOB_DIR}`, so a file one job writes there is
@@ -608,6 +621,8 @@ sync with the platform. Read the one closest to your task:
 | **Job DAG: `needs`, `$OUTPUTS`, `pw endpoints run`, exiting while the service keeps running** | `tutorials/endpoint-workflows/` (staged `README.md` + stage YAMLs 1→4) |
 | **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` (staged README) |
 | **`if:` status keywords on steps and jobs** (`always`, `error`, `canceled`, `!completed`) | `tutorials/if-conditions/` (one YAML: succeed/fail/cancel a job, watch which handlers run) |
+| **Compose standalone workflows** (sampler or optimizer → matrix of evaluators → a live page; files as the only coupling) | `workflows/doe-openfoam/`, `workflows/dakota-openfoam/` (READMEs show the wiring); the file contract in [design-parameters.md](design-parameters.md) |
+| **A workflow others can call** (form as the interface, paths as inputs, one `general.yaml` for every platform) | `workflows/doe/`, `workflows/design-explorer/`, `workflows/wait_for_endpoint/` |
 
 > **Adding a new tutorial requires maintainer approval.** Tutorials must each show
 > something new and non-repetitive — do not add one to `tutorials/` without

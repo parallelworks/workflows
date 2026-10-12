@@ -1,0 +1,34 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "warm_marker": "${HOME}/pgadmin4/pgadmin4.db",
+    "secrets": {
+      "service.password": "PGADMIN_TEST_PASSWORD"
+    },
+    "leftover_patterns": [
+      "pw endpoints run",
+      "docker compose",
+      "run_pgadmin:app"
+    ]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "01:00:00"
+    }
+  },
+  "service": {
+    "email": "admin@example.com",
+    "data_dir": "${HOME}/pgadmin4",
+    "server": {
+      "host": "localhost",
+      "port": 5432,
+      "db": "postgres",
+      "user": "postgres"
+    },
+    "image": "dpage/pgadmin4:9.18"
+  }
+}

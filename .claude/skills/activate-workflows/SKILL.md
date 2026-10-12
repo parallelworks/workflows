@@ -37,10 +37,14 @@ docs and harden this skill (Step 5):
 - `pw endpoints` CLI — <https://parallelworks.com/docs/cli/pw/endpoints>
 - `pw` CLI — <https://parallelworks.com/docs/cli>
 
-**Assume the `pw` client is already authenticated** — otherwise ask the user to log
-in. Confirm context with `pw context list` if unsure. **Set `permissions: ['*']`** in
-every workflow: it is what lets the in-workflow
-`pw` client authenticate (e.g. `pw endpoints run`).
+**Assume the `pw` client on this machine is already authenticated** — otherwise ask
+the user to log in. Confirm context with `pw context list` if unsure.
+
+**Set `permissions: ['*']` in every workflow.** A run's own `pw` client is always
+authenticated, but without the grant it may only update the sessions the run creates.
+`['*']` lets the run do anything the launching user can — `pw endpoints run`,
+`pw sessions ls`, `pw workflows run`. A subworkflow's own grant is not enough: the
+parent must grant it too.
 
 ## Golden rules
 

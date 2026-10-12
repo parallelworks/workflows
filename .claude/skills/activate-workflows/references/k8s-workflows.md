@@ -65,7 +65,7 @@ where `pw` and `kubectl` are installed.
 
    The sidecar dials out from inside the pod and forwards the endpoint to
    `localhost:<image_port>`: no Service, no ingress (the CLI's env-var auth and the
-   distroless image: [activate-platform.md §12](activate-platform.md), "Env-var auth for
+   distroless image: [activate-platform.md §10](activate-platform.md), "Env-var auth for
    containers/sidecars"). `ollama-openwebui` keeps one Service, for Open WebUI to reach
    Ollama in-cluster; `postgres` keeps one for the database's TCP port, which an endpoint
    cannot carry.

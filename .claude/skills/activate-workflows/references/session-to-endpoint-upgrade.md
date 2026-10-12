@@ -17,7 +17,7 @@
 > live runs (2026-07). Use the openvscode and
 > jupyterlab `*_v5.yaml` files as the ground truth; this doc explains the deltas and
 > the order to apply them. Platform facts live in
-> [activate-platform.md](activate-platform.md) (§12 "Endpoint sessions").
+> [activate-platform.md](activate-platform.md) (§10 "Endpoints").
 >
 > **hsp variant (`hsp_v5.yaml`):** same steps, but start from `hsp_v4.yaml`'s form —
 > keep the top-level `resource` input and the full hsp `slurm`/`pbs` groups
@@ -207,7 +207,7 @@ Contract differences vs v3:
    that never answers fails the run and the submitter's cleanup tears the job down.
    Path-based endpoints are handled (the listed path gets `https://${PW_PLATFORM_HOST}`).
 6. Form: keep the v4 `cluster`/`service` groups; drop the `juice` group.
-7. `parallelworks/checkout` → your **dev branch** while testing; **flip to `main`
+7. `parallelworks/checkout` → your **dev branch** while testing; **flip to `canary`
    after merge** (both openvscode and jupyterlab needed this follow-up).
 
 ## Variant — a service the run's other jobs must reach (burst-render-demo, 2026-09-23)
@@ -343,7 +343,7 @@ full ask_cluster round trip).
   workflow **empty**; always pass absolute paths.
 - `pw workflows run` uses the **stored** definition — `update` after every YAML edit.
 - Checkout `branch:` left pointing at a merged-and-deleted dev branch breaks future
-  runs — flip to `main` right after merge.
+  runs — flip to `canary` right after merge.
 - On k8s, cancel the run; `pw endpoints delete` tears nothing down
   ([k8s-workflows.md §2](k8s-workflows.md)).
 - Don't hand-verify with `--dry-run` alone; the four checks in Step 5 are the test.
@@ -417,5 +417,5 @@ cluster agent needed no workspace proxy. One session could expose many models (e
 advertised itself plus one `hermes-<cluster>` model per worker. A flaky agentic session
 could instead serve its own web UI (`openAI: false`, `redirect: true`), offered from one
 workflow via a `dropdown` driving the `sessions:` block. The endpoint equivalent is
-`pw endpoints run --openai` ([activate-platform.md §12](activate-platform.md)); the SSE
+`pw endpoints run --openai` ([activate-platform.md §11](activate-platform.md)); the SSE
 framing rules there apply unchanged.

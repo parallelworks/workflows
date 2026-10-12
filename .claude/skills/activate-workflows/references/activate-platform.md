@@ -1,11 +1,10 @@
 # Activate (Parallel Works) platform reference
 
-Dense, copy-paste-ready facts for building workflows on the Activate platform.
-Everything here was verified against `pw v7.56.0` and the workflows now consolidated in this
-`parallelworks/workflows` repo (one directory per workflow under `workflows/`; version
-suffixes dropped — git tags version the repo; the tutorials live at `tutorials/`).
-Originally verified against the `interactive_session` repo
-(`script_submitter/v3.6`), and live runs on this machine.
+Dense, copy-paste-ready facts for building workflows on the Activate platform, verified
+on live runs against the workflows in this repo (one directory per workflow under
+`workflows/`, tutorials under `tutorials/`, no version suffixes: git tags version the
+repo). Facts carry the date or CLI version they were checked with; the CLI was
+`v7.105.0` on 2026-10-12.
 
 ## Official documentation (authoritative — consult when in doubt)
 
@@ -22,6 +21,20 @@ documented here, **trust the docs and fix this file** (Step 5 of the methodology
 - `pw endpoints` CLI — <https://parallelworks.com/docs/cli/pw/endpoints>
 - `pw` CLI — <https://parallelworks.com/docs/cli>
 
+## Contents
+
+1. Mental model: workflow, job, endpoint, subworkflow; where a job runs is where you debug
+2. Resources: the resource object, passing one from the CLI, the workspace
+3. Workflow YAML schema: top-level keys, jobs and steps, subworkflow calls, inputs, expressions, DAG and outputs, matrix, retries
+4. Choosing the deployment variant (`general` / `emed` / `hsp` / `noaa`)
+5. `script_submitter`: submission modes, inputs, scheduled-job behavior, failure path
+6. `pw` CLI reference: workflows, runs, endpoints, kube, ssh, forward
+7. Job directory layout
+8. Where to look for working patterns (the repo's workflows and tutorials)
+9. Getting your workflow code onto the node (`parallelworks/checkout`)
+10. Endpoints: `pw endpoints run`, tokens, naming, lifecycle, probing, path-based endpoints
+11. AI agents and LLM-backed services: the platform LLM endpoint, `PW_API_KEY`, `--openai`, Ollama
+
 ---
 
 ## 1. Mental model
@@ -32,7 +45,7 @@ documented here, **trust the docs and fix this file** (Step 5 of the methodology
   (`run:`) or reusable **actions** (`uses:`). Jobs form a DAG via `needs:`.
 - A web service is exposed as a **`pw` endpoint**: the service side runs
   `pw endpoints run`, which dials out, registers a reverse tunnel, and gets a
-  subdomain URL (§12). Every workflow in this repo uses this pattern (converting an
+  subdomain URL (§10). Every workflow in this repo uses this pattern (converting an
   older one: [session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md)).
 - **Subworkflows** are workflows invoked from a step with `uses:` + `$yaml:` (§3):
   `script_submitter` and `wait_for_endpoint` under every endpoint workflow, and any
@@ -43,11 +56,12 @@ documented here, **trust the docs and fix this file** (Step 5 of the methodology
 `ssh: remoteHost: ${{ inputs.resource.ip }}` runs that job's steps on the **login
 node** of the selected resource. The job directory and any service process live on
 **that** node, not necessarily the box you launched `pw` from.
-- This Claude shell's host is itself a cluster login node (e.g. `*-mgmt`). Choosing
-  the resource whose login node **is** that host (here: `gcpsmall`) puts the job dir
-  and process **local**, inspectable with `ls ~/pw/jobs/...` and `ps -x`.
-- Choosing `workspace` runs jobs on a **different** node (`pw-user-alvaro`); inspect
-  there instead. Reach any resource's node with `pw ssh <resource>`.
+- When this shell runs on a cluster login node (common when the agent works from a
+  session on the cluster; compare `hostname` with the resource), choosing that resource
+  puts the job dir and process **local**, inspectable with `ls ~/pw/jobs/...` and `ps -x`.
+- Otherwise (a laptop, or the `workspace` resource, whose jobs run on the workspace
+  node) reach the node with `pw ssh <resource>`, or read the logs through the API
+  (`pw workflows runs logs`, §6).
 
 ---
 
@@ -116,8 +130,11 @@ Top of file (enables editor autocomplete; harmless at runtime):
 |-----|---------|
 | `permissions` | `['*']` lets the workflow and its subworkflows run any `pw` command the launching user can; needed for every `pw` call but `pw agent open-port`. |
 | `jobs` | the job DAG |
-| `env` | workflow-level environment variables injected into every job/step's runtime env. **The canonical way to make `PW_API_KEY` available to your workflow code** — set `env: { PW_API_KEY: ${PW_API_KEY} }` (see §12). **⚠ Do NOT also name an input *group* `env`** if this block references `${{ inputs.env.* }}`: the shared `env` name makes the expression engine recurse → `400 Expression Parser Error: max recursion exceeded`, which fails **both `--dry-run` and `pw workflows run`** (the web UI may still submit it). Name the group e.g. `env_vars`. |
+| `env` | workflow-level environment variables injected into every job/step's runtime env. **The canonical way to make `PW_API_KEY` available to your workflow code** — set `env: { PW_API_KEY: ${PW_API_KEY} }` (see §11). **⚠ Do NOT also name an input *group* `env`** if this block references `${{ inputs.env.* }}`: the shared `env` name makes the expression engine recurse → `400 Expression Parser Error: max recursion exceeded`, which fails **both `--dry-run` and `pw workflows run`** (the web UI may still submit it). Name the group e.g. `env_vars`. |
 | `'on'.execute.inputs` | the input form (note the quoted `'on'` to avoid YAML's bool) |
+| `configurations` | named sets of saved inputs (`configurations.<name>.inputs.<input>: value`), loadable with `pw workflows run --saved-inputs <name>` |
+| `timeout` | workflow-level timeout (`30m`, `2h`, `1d`); also per job and per step, and every level applies |
+| `needs.organizationVariables` | org variables the workflow refuses to run without. Account variables a repository workflow declares (`variables:`) are granted on its first run (`--trust` on the CLI; `pw workflows permissions ls\|revoke` reviews them) |
 
 ### `jobs.<name>`
 ```yaml
@@ -132,29 +149,47 @@ jobs:
       - name: A shell step
         run: |
           echo hello
-        cleanup: |                              # runs on cancel/failure (e.g. scancel)
+        cleanup: |                              # runs when the JOB ends, success included, in reverse step order
           echo cleaning up
       - name: A reusable action
         uses: parallelworks/checkout
-        early-cancel: any-job-failed            # cancel this job if any job fails
+        early-cancel: any-job-failed            # cancel this STEP if any job fails before it finishes
         with: { ... }
+      - name: A step with its own target and tolerance
+        ssh: { remoteHost: ${{ needs.agent.outputs.remoteHost }} }   # step-level ssh overrides the job's; `ssh: null` = the workspace
+        ignore-errors: true                     # a non-zero exit does not fail the job
+        timeout: 10m                            # also at job and workflow level; every level applies
+        run: ...
 ```
 
 ### Steps: `run` vs `uses`
 - `run:` — shell. `set -x` for tracing. Emit annotations with
-  `echo "::notice::msg"`, `::warning::`, `::error title=Error::msg`, `::group::`/`::endgroup::`.
+  `echo "::notice::msg"`, `::warning::`, `::error title=Error::msg`, `::group::`/`::endgroup::`
+  (`::debug::` stays hidden until *Show Debug*; at most 50 per step). An `::error::` line
+  reports a problem but does **not** fail the step — `exit 1` does; `pw workflows runs
+  errors` lists them and exits non-zero when any exist.
 - Export step outputs: `echo "KEY=value" | tee -a $OUTPUTS`, then read with
-  `${{ needs.<job>.outputs.KEY }}` or `${{ needs.<job>.steps.<id>.outputs.KEY }}`.
+  `${{ needs.<job>.outputs.KEY }}` or `${{ needs.<job>.steps.<id>.outputs.KEY }}`. The
+  docs plan to stop publishing step outputs to the job level automatically; the
+  forward-compatible form gives the step an `id:` and maps it in a job-level `outputs:`
+  block (`outputs: { KEY: ${{ needs.<job>.steps.<id>.outputs.KEY }} }`). The repo's
+  `tee -a $OUTPUTS` idiom still works (verified 2026-10-12).
 - `uses:` — an action. Common ones seen in the repo:
   - `parallelworks/checkout` — clone a git repo **into the job dir** (`PW_PARENT_JOB_DIR`).
-    `with: { repo, branch, sparse_checkout: [paths...] }` (list items may be templated).
-    Verified: `sparse_checkout: [workflow/readmes]` materializes
-    `${PW_PARENT_JOB_DIR}/workflow/readmes`, visible to later `needs:`-dependent jobs.
-    This is **the** way to get code onto the node — see §10. Every real workflow YAML in
+    `with: { repo, branch, sparse_checkout: [paths...], path }` (`repo` and `branch` are
+    required, `path` defaults to the run dir, list items may be templated).
+    Verified: `sparse_checkout: [workflows/<name>/app]` materializes
+    `${PW_PARENT_JOB_DIR}/workflows/<name>/app`, visible to later `needs:`-dependent jobs.
+    This is **the** way to get code onto the node — see §9. Every real workflow YAML in
     the repo (e.g. `workflows/webshell/yamls/general.yaml`) starts preprocessing with a
     `parallelworks/checkout` of `parallelworks/workflows` + a `sparse_checkout` of `workflows/<name>/app` (or an impl subdir).
-  - `parallelworks/cancel-jobs` — cancel sibling jobs (e.g. a `tail -f` streamer)
-  - `parallelworks/scheduler-agent`, `parallelworks/wait-for-agent` — dynamic compute node
+  - `parallelworks/cancel-jobs` — cancel sibling jobs (`with: { jobs: [...] }`, default
+    all; inside a subworkflow pass no `slug`/`workflow`, so it cancels the subworkflow's
+    own jobs, not the caller's)
+  - `parallelworks/scheduler-agent`, `parallelworks/wait-for-agent` — provision a compute
+    node (`scheduler-type`, `scheduler-flags`, `script-headers`; outputs `agentId`,
+    `remoteHost`, `sshPort`) and wait for it (`agentId`, optional `schedulerJobId` to fail
+    early); `script_submitter`'s `use_scheduler_agent` wraps them
   - `github/parallelworks/workflows@canary` + `$yaml:` — call a subworkflow (below)
 
 ### Calling a subworkflow
@@ -186,21 +221,32 @@ expressions (`ignore: ${{ .hidden }}` mirrors the hidden flag).
 
 | type | renders / resolves to |
 |------|----------------------|
-| `string`, `integer`, `number`, `boolean` | scalar (`number` = float, `integer` = int). Verified 2026-09-16: an `integer` renders as bare digits in the shell (`$(( n + 1 ))` works) and compares numerically in expressions (`inputs.n == 5`, `inputs.n > 3` true; a JSON `"7"` in `-i` behaves like `7`); an **optional integer left unset renders empty** — guard with `${v:-default}` — and `inputs.m == ''` is *false* for it; an explicit `""` for a top-level input is default-filled |
+| `string`, `integer`, `number`, `boolean` | scalar (`number` = float, with `min`/`max`/`step`/`slider`; `integer` = int, undocumented but works). Verified 2026-09-16: an `integer` renders as bare digits in the shell (`$(( n + 1 ))` works) and compares numerically in expressions (`inputs.n == 5`, `inputs.n > 3` true; a JSON `"7"` in `-i` behaves like `7`); an **optional integer left unset renders empty** — guard with `${v:-default}` — and `inputs.m == ''` is *false* for it; an explicit `""` for a top-level input is default-filled |
 | `editor` | multi-line text box (e.g. scheduler directives) |
 | `dropdown` | `options: [{label, value}]` |
 | `group` | container with `items:` (values at `inputs.<group>.<item>`) |
 | `list` | repeater the user adds rows to; each row has the fields under `template:`. At runtime `${{ inputs.<name> }}` is a **JSON array** — parse with `python3`, don't slice in shell. Items can themselves be `compute-clusters` (pass `[{"resource":"<name>"}]` in `-i`). See `tutorials/endpoint-workflows/07-failover.yaml`. |
 | `compute-clusters` | resource picker → resource object (§2); `include-workspace: true/false` |
 | `slurm-partitions` | partition dropdown; needs `resource: ${{ inputs.resource }}` |
+| `password`, `multi-dropdown`, `header` | masked string; multi-select (`options`); a label-only row (`text`) |
+| `slurm-accounts`, `slurm-qos` | dropdowns fed from the resource (`resource`, `account`, `partition`) |
+| `kubernetes-clusters`, `kubernetes-namespaces`, `kubernetes-*` | Kubernetes pickers (`clusterName`, `namespace`); [k8s-workflows.md](k8s-workflows.md) |
 
-Common attributes: `label`, `default`, `tooltip`, `optional: true`, `hidden: <expr>`,
-`ignore: <expr>`, `collapsed: true`. Expressions read other inputs, `org.<VAR>`
-(org secrets/vars, e.g. `${{ org.JUICE_TOKEN }}`), and `${{ .hidden }}`.
+Common attributes: `label`, `default`, `tooltip`, `description` (always visible),
+`optional: true`, `disabled`, `hidden: <expr>`, `ignore: <expr>`, `collapsed: true`. A
+`string`'s `default` fills the form only with `prefillDefault: true` (otherwise it applies
+when the run has no value); a `dropdown` whose `options` are keyed by another input
+(`option-key: ${{ inputs.x }}`) is dynamic. Expressions read other inputs, `org.<VAR>`
+(organization variables set by admins, e.g. `${{ org.JUICE_TOKEN }}`), `var.<NAME>`
+(your own variables, `pw variables`, secret by default) and `${{ .hidden }}`.
 
 ### Expressions & env
 - `${{ ... }}` — platform templating, evaluated **before** the shell sees the line
-  (inputs, `needs.*.outputs`, `org.*`, comparisons).
+  (inputs, `needs.*.outputs`, `org.*`, comparisons). The parser is whitespace-sensitive
+  (`${{ 1 + 1 }}` is 2, `${{ 1+1 }}` the string `1+1`; only `!` goes unspaced) and never
+  throws: a malformed expression renders as some string, so check rendered values in
+  `step.out`. `==` is loose (`1 == true`), `===` strict; `??` gives a fallback; `get`
+  indexes lists and maps.
 - `${VAR}` / `$VAR` — ordinary shell, evaluated at runtime on the node. Only expands
   inside something a shell actually runs: `run:`, `cleanup:`, or a `with:` value that
   ends up in the subworkflow's `run:`.
@@ -228,15 +274,19 @@ use. The job graph gives you sequencing, data flow, conditionals, and parallelis
   String equality is reliable; compute booleans **upstream** (e.g. in Python) and
   emit them, rather than doing numeric comparisons inside the expression. `if:` also
   takes **status keywords** — `always`, `never`, `completed`, `error`, `canceled` and
-  their negations — that look at the job's earlier steps (on a step) or at the jobs in
-  `needs` (on a job); no `if:` means `if: ${{ completed }}`. They combine with
-  expressions (`if: ${{ error && inputs.fallback }}`; quote a ternary). See
-  `tutorials/if-conditions/`.
+  their negations (aliases `success`, `failure`, `cancelled`) — that look at the job's
+  earlier steps (on a step) or at the jobs in `needs` (on a job); no `if:` means
+  `if: ${{ completed }}`. They combine with expressions (`if: ${{ error && inputs.fallback }}`;
+  quote a ternary). `if: ${{ always }}` steps run in order and can be cancelled, unlike
+  `cleanup:`. See `tutorials/if-conditions/`.
 - **Fan-out / fan-in:** sibling jobs that share a common `needs` but don't depend on
   each other **run concurrently**; a downstream job with `needs: [w1, w2, w3]` joins
   them. (Verified: 3 workers logged the same finish second.) For N identical workers,
   use a **matrix strategy** (`strategy.matrix`) rather than hand-copying jobs — see
-  `tutorials/endpoint-workflows/05-matrix.yaml`.
+  `tutorials/endpoint-workflows/05-matrix.yaml`. `strategy.fail-fast` defaults to
+  **true** (one failing worker cancels the rest; set `fail-fast: false` for a sweep that
+  should finish the others), `max-parallel` caps concurrency, `matrix.include`/`exclude`
+  adjust the combinations.
 - **Matrix expansion is STATIC (verified 2026-09-28):** the platform expands
   `strategy.matrix` at submission, so it only iterates values concrete then — form
   inputs or literals. A runtime-computed list fails **both dry-run and the real run**
@@ -292,9 +342,9 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
 ```yaml
 - name: Probe
   retry:
-    max-retries: 2     # EXTRA attempts after the first (so 3 total); may be an expression
-    interval: 2s       # wait between attempts
-    timeout: 60s       # cap a single attempt
+    max-retries: 2     # EXTRA attempts after the first (so 3 total); may be an expression; 10 when omitted inside a retry block
+    interval: 2s       # wait between attempts (default 5s)
+    timeout: 60s       # cap on ONE attempt; default 30s, which kills a slow subworkflow attempt (pitfalls) — size it for the whole attempt
   run: |
     ssh "${TARGET_IP}" nvidia-smi   # exit code drives the retry
 ```
@@ -335,8 +385,9 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   arithmetic is evaluated in the expression layer. An upstream step writing `N` to
   `$OUTPUTS` lets a later step in the **same job** size its own retries
   (`needs.<this-job>.outputs.N`; outputs written earlier in a job are visible later in it).
-- **In-step SSH vs job-level `ssh:`:** a job-level `ssh.remoteHost` pins every step to one
-  host; running `ssh "$HOST" cmd` *inside* a step lets the step pick (and change) its
+- **Per-step targets:** a step-level `ssh:` block overrides the job's (`ssh: null` runs the
+  step on the workspace; `jumpNodeHost` hops through a login node), but it is fixed when
+  the step renders. Running `ssh "$HOST" cmd` *inside* a step lets the step change its
   target per attempt — that's how round-robin failover reaches a different resource each try.
 
 ---
@@ -450,7 +501,7 @@ live there with `squeue` / `sinfo` / `sacct`. On cancel, `script_submitter` runs
 
 **Use it directly** when your task is "run this script/sim on a cluster" with no web
 service (batch compute). When you also need a live web UI, keep the same submitter and
-wrap the start script in `pw endpoints run` — the endpoint pattern (§12).
+wrap the start script in `pw endpoints run` — the endpoint pattern (§10).
 
 ---
 
@@ -471,10 +522,12 @@ setsid rewrite (#4) had dropped it from `general`/`emed` `ssh_job` and `noaa`
 ## 6. `pw` CLI reference (verified)
 
 Global flags: `--context`, `--platform-host`, `-v/--verbose`. Assume already
-authenticated (`pw context list` shows the current user/org). Short-term tokens
-**expire** (typically after ~a day): when every command starts failing with
-"Authentication has expired", ask the user to run `pw auth` — the credential prompt
-needs a human; do not try to mint one.
+authenticated (`pw context list` shows the current user/org). Access tokens are
+short-lived; they renew while the CLI is in use, but an idle shell's lapse: when every
+command fails with "Authentication has expired", ask the user to run `pw auth`
+(`pw auth --device <host>` prints a code for a headless machine; a `PW_API_KEY`
+environment variable takes precedence over the credentials file). The sign-in needs a
+human; do not try to mint a token.
 
 ### Workflows
 ```bash
@@ -483,21 +536,25 @@ pw workflows create <name> --yaml file.yaml [--display-name "X"] [--description 
 pw workflows update <name> --yaml file.yaml [--display-name ...] [--description ...]
 pw workflows get <name> -o yaml            # fetch the stored YAML
 pw workflows delete <name>
-pw workflows run <name-or-file> [-i <json|file>] [--name "label"] [--dry-run] [-o json|text]
+pw workflows run <name|file|repo> [-i <json|file>] [--name "label"] [--dry-run] [--saved-inputs <name>] [--trust] [-o json|text]
 ```
-`run` accepts a saved name, a `marketplace/...` slug, or a local YAML file — pass the
-**absolute path**: a relative `./workflows/x/yamls/y.yaml` is parsed as a git host and
-fails with a bogus DNS error (inline run → workflow `inline.<slug>`). `-i` is a JSON
-string or path to a JSON file.
+`run` accepts a saved name, a `marketplace/...` slug, a local YAML file (an inline run,
+workflow `inline.<slug>`) or a git repository (`github.com/<owner>/<repo>[/path][@ref]`).
+Pass a local file as an **absolute path**: the shell's cwd is not guaranteed between tool
+calls, and CLIs before v7.105 parsed a relative path as a git host (on v7.105.0 both
+`./x.yaml` and `x.yaml` dry-run fine, verified 2026-10-12). `-i` is a JSON string or
+path to a JSON file; `--saved-inputs <name>` loads inputs saved on a registered workflow;
+`--trust` grants a repository workflow every account variable it declares without
+prompting (`pw workflows permissions` reviews and revokes those grants).
 `--dry-run` validates YAML+schema and each subworkflow's required inputs server-side
 **without executing** (not unknown fields — §5) — run it before every real launch. `-o json` returns the run object (`run.slug`, `run.number`,
 `run.status`).
 
 ### Runs (debugging)
 ```bash
-pw workflows runs list [--workflow <name>] [--status running|completed|error|canceled] [--limit N] [-o json|table]
+pw workflows runs list [--workflow <name>] [--status running|completed|error|canceled] [--search <text>] [--limit N] [-o json|table]
 pw workflows runs view  <slug> [-o text|json]
-pw workflows runs logs  <slug> [--job <name>] [--step <name|idx>] [--failed] [--tail N] [-f]
+pw workflows runs logs  <slug> [--job <name>] [--step <name|idx>] [--failed] [--tail N] [-f] [--run-level]
 pw workflows runs errors <slug> [-o text|json] [--tail N]
 pw workflows runs cancel <slug>            # triggers cleanup trap → cancel.sh → stops the service + endpoint
 pw workflows runs clean [filters]
@@ -505,24 +562,32 @@ pw workflows runs clean [filters]
 `runs logs`/`errors` work from any host (pulled via API) — your first stop when the
 service node isn't local. `--job <job name>` narrows to one job (the
 submitter job's name is in §7). Step logs may 404 for steps that haven't produced
-output yet — harmless.
+output yet — harmless. A step's log rotates at 10 MiB (one backup, `logs.out.1`);
+`--run-level` fetches the executor log when a step died before writing its own.
+`runs errors` exits non-zero when any `::error` annotation exists.
 
 ### Endpoints (how every workflow here serves)
 ```bash
+pw endpoints run [flags] -- <cmd>   # spawn a command and expose it (§10); http/https expose a port already listening, serve a static directory
 pw endpoints list                   # name, status, URL — the pass/fail check for a run
 pw endpoints delete <name>          # tears down the whole remote process tree
 ```
-`pw endpoints list` has **no `-o json`** (`unknown shorthand flag: 'o'`, v7.99.0); its
-lines are tab-separated `name`, `status`, `URL`.
-Endpoint names are `<service.name>-<run-slug>`. `delete` kills the `pw endpoints run`
-wrapper and its children — but a daemonizing app that re-parented to PID 1 (e.g.
-RStudio's `rsession`) can survive; check `ps -x` after teardown.
+`pw endpoints list` has **no `-o json`** (its only flags are the global ones, v7.105.0);
+its lines are tab-separated `name`, `status`, `URL`. An endpoint started with `--keep`
+stays listed after its command exits, until `delete`.
+Endpoint names are `<service.name>-<run-slug>`. `delete` disconnects the serving
+command (the docs' wording) and, verified, kills the `pw endpoints run` wrapper and its
+children — but a daemonizing app that re-parented to PID 1 (e.g. RStudio's `rsession`)
+can survive; check `ps -x` after teardown. Other flags worth knowing: re-running with
+the same `--name` takes over that endpoint; `--pool` joins several processes under one
+name; `-p` pins the local port; `http --link` stops the local server when the command
+exits.
 
 ### Other useful
 ```bash
 pw kube ls [-o json]               # kubernetes clusters: id, name, cpus, memory (no status field)
 pw kube auth [--no-context-switch] <cluster>   # kubeconfig context pw#<cluster>; exec plugin = pw kube token (kubectl >= 1.22)
-pw cluster ls [-o json]            # resources + status
+pw cluster ls [-o json] [--status active]   # resources + status
 pw ssh <resource> ["cmd"]          # shell on a resource's node, or run "cmd" and exit
 pw forward -L [bind:]lport:host:rport <resource>   # local→remote tunnel (auto-reconnects)
 ```
@@ -569,62 +634,53 @@ Contents after an endpoint-pattern launch (all verified on live runs):
 ├── run.<JOBID>.out                        # service stdout (here, or under subworkflows/…/step_0/
 │                                          #   when the YAML does not pass rundir)
 ├── cancel.sh                              # shutdown script (run on cancel / endpoint delete)
-├── logs/<job>/step_N/step.out             # per-step trace; step.exit = exit code
-├── logs/<job>/step_N/script-unstable.sh   # the RENDERED step: every ${{ input }} as its
-│                                          #   literal value — read this first when a form
-│                                          #   value seems ignored
+├── logs/<job>/step_N/step.out             # per-step trace: with set -x every command as it
+│                                          #   ran, form values expanded; step.exit = exit code
+├── logs/<job>/outputs-unstable/           # the $OUTPUTS the job published
 └── subworkflows/session_runner/step_0/…   # script_submitter subworkflow logs — every YAML
                                            #   here names its submitter job `session_runner`
 ```
-Debug checklist on the service node: `cat run.<JOBID>.out`, the rendered step scripts,
+Debug checklist on the service node: `cat run.<JOBID>.out`, the `step.out` traces,
 `ps -x | grep <your-process>`, `pw endpoints list`, then `pw workflows runs errors <slug>`.
+When a form value seems ignored, read `inputs.sh` (the values preprocessing wrote) and the
+`set -x` lines of `step.out`; the rendered step script older platform versions wrote as
+`logs/<job>/step_N/script-unstable.sh` no longer exists (checked 2026-10-12, gcpsmall).
 
 ---
 
 **Kubernetes jobs run on the workspace exec node** — job dir, object naming and
 debugging in [k8s-workflows.md §6](k8s-workflows.md).
 
-## 8. Best example workflows in this repo
+## 8. Where to look for working patterns (use the repo, not invented examples)
 
-Repo: `https://github.com/parallelworks/workflows`. Read these for working patterns:
-
-| file | why |
-|------|-----|
-| `DeveloperGuide.md`, `CLAUDE.md` | the repo's own how-to + conventions |
-| `workflows/webshell/yamls/general.yaml` | **simplest** full endpoint example (preprocessing → script_submitter → wait_for_endpoint) |
-| `workflows/webshell/app/{controller,start-template}.sh` | minimal controller + start scripts |
-| `workflows/script_submitter/v3.6/general.yaml` + `README.md` | submission modes + interface |
-| `workflows/wait_for_endpoint/general.yaml` + `README.md` | the subworkflow every `wait_for_endpoint` job calls: wait for the name, probe the URL, touch the skip file (inputs: endpoint_name, host, skip_cleanups_file, healthy, budget, path) |
-| `workflows/jupyterlab/yamls/general.yaml` + scripts | typical: conda install + support files |
-| `workflows/streamlit/yamls/general.yaml` + scripts | **Singularity/SIF service**: SIF via `oras_pull_file`, `.def` + `build-container.sh`, sandbox fallback |
-| `workflows/openvscode/yamls/general.yaml` | endpoint whose URL slug is a query string (`?folder=...`) |
-| `workflows/kasmvnc/` | complex: containers, multiple options |
-| `workflows/mlflow/yamls/k8s.yaml`, `workflows/openvscode/yamls/general_k8s.yaml` | **Kubernetes**: k8s-only and hybrid sidecar-endpoint examples ([k8s-workflows.md](k8s-workflows.md)) |
-
-Conventions: scripts idempotent; service binds `${service_port}` on `0.0.0.0`; write
-`cancel.sh`; end with `sleep inf`; all shared paths under `${PW_PARENT_JOB_DIR}`; form
-inputs grouped into a cluster group + a service group; `permissions: ['*']`.
-
----
-
-## 9. Where to look for working patterns (use the repo, not invented examples)
-
-Learn from the **real workflows already in this repo** and the **tutorials under
-`tutorials/`** — they are maintained, reviewed, and kept in
-sync with the platform. Read the one closest to your task:
+Learn from the **real workflows in this repo** and the **tutorials under `tutorials/`**:
+they are maintained, reviewed and kept in sync with the platform. Read the one closest
+to your task.
 
 | Pattern you need | Look at |
 |---|---|
-| **Endpoint with a real install + support files** | `workflows/jupyterlab/yamls/general.yaml` + `workflows/jupyterlab/*.sh` |
-| **Singularity/SIF service** (oras pull, def + build script) | `workflows/streamlit/` (simple); `workflows/kasmvnc/` (multi-impl, GPU helpers) |
+| **Simplest complete endpoint workflow** (preprocessing → `script_submitter` → `wait_for_endpoint`) | `workflows/webshell/yamls/general.yaml` + `workflows/webshell/app/{controller,start-template}.sh` |
+| **Endpoint with a real install + support files** (conda env, config) | `workflows/jupyterlab/yamls/general.yaml` + `workflows/jupyterlab/app/` |
+| **Singularity/SIF service** (oras pull, `.def` + build script, sandbox fallback) | `workflows/streamlit/` (simple); `workflows/kasmvnc/` (multi-impl, GPU helpers); [software/singularity-sif-containers.md](software/singularity-sif-containers.md) |
 | **Endpoint whose `--slug` is a query string** | `workflows/openvscode/yamls/general.yaml` (`--slug ?folder=...`) |
-| **`parallelworks/checkout` (sparse) to fetch code** | preprocessing job of any workflow YAML above |
-| **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/endpoint-workflows/05-matrix.yaml` (use this for sweeps) |
-| **Job DAG: `needs`, `$OUTPUTS`, `pw endpoints run`, exiting while the service keeps running** | `tutorials/endpoint-workflows/` (staged `README.md` + stage YAMLs 1→4) |
-| **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` (staged README) |
-| **`if:` status keywords on steps and jobs** (`always`, `error`, `canceled`, `!completed`) | `tutorials/if-conditions/` (one YAML: succeed/fail/cancel a job, watch which handlers run) |
+| **Endpoint name from a form input** (folded to `[a-z0-9-]`) | `workflows/ollama/yamls/general.yaml` (`endpoint_name`) |
+| **The two shared subworkflows** | `workflows/script_submitter/v3.6/` (`README.md`: submission modes and inputs); `workflows/wait_for_endpoint/` (`README.md`: `endpoint_name`, `host`, `skip_cleanups_file`, `healthy`, `budget`, `path`) |
+| **Kubernetes** (k8s-only and hybrid sidecar-endpoint examples) | `workflows/mlflow/yamls/k8s.yaml`, `workflows/openvscode/yamls/general_k8s.yaml`; [k8s-workflows.md](k8s-workflows.md) |
+| **Job DAG: `needs`, `$OUTPUTS`, `pw endpoints run`, exiting while the service keeps running** | `tutorials/endpoint-workflows/` (staged `README.md`, stages 1→4) |
+| **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/endpoint-workflows/05-matrix.yaml` |
+| **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` |
+| **Iterative loop over computed cases** (retry-as-loop + guarded static matrix) | `tutorials/optimization/` |
+| **`if:` status keywords on steps and jobs** (`always`, `error`, `canceled`, `!completed`) | `tutorials/if-conditions/` |
 | **Compose standalone workflows** (sampler or optimizer → matrix of evaluators → a live page; files as the only coupling) | `workflows/doe-openfoam/`, `workflows/dakota-openfoam/` (READMEs show the wiring); the file contract in [design-parameters.md](design-parameters.md) |
 | **A workflow others can call** (form as the interface, paths as inputs, one `general.yaml` for every platform) | `workflows/doe/`, `workflows/design-explorer/`, `workflows/wait_for_endpoint/` |
+| **Repo conventions and the human how-to** | `CLAUDE.md`, `DeveloperGuide.md` |
+
+Conventions every workflow here follows: scripts idempotent; the service binds the port
+`pw endpoints run` assigns (the `{port}` token) on `0.0.0.0`; the start script stays in
+the foreground for the service's life and writes `cancel.sh` for anything that escapes
+the endpoint's process tree; all shared paths under `${PW_PARENT_JOB_DIR}`; form inputs
+grouped into a `cluster` group + a `service` group beside the top-level `resource`;
+`permissions: ['*']`.
 
 > **Adding a new tutorial requires maintainer approval.** Tutorials must each show
 > something new and non-repetitive — do not add one to `tutorials/` without
@@ -632,7 +688,7 @@ sync with the platform. Read the one closest to your task:
 
 ---
 
-## 10. Getting your workflow code onto the node
+## 9. Getting your workflow code onto the node
 
 `parallelworks/checkout` clones a git repo into the job dir — that is how every real
 workflow YAML delivers its controller / start-template scripts (§3). **Do not
@@ -641,11 +697,12 @@ base64-embed files** (the old approach); use one of these two modes.
 ### Mode A — Claude has write access (recommended)
 Ask the user to grant write access via a **deploy key with write permission** on the
 repo. Then:
-1. Do all work on a **development branch — never push to `main`.**
+1. Do all work on a **development branch — never push to `canary` directly** (branch
+   rules require a pull request).
 2. Commit and push your workflow code (scripts, etc.) to that branch.
 3. In preprocessing, `parallelworks/checkout` that **branch** (sparse-checkout your
    service dir), exactly like the repo examples but with `branch: <your-dev-branch>`.
-4. The user reviews and merges the branch themselves; then flip the `branch:` to `main`.
+4. The user reviews and merges the branch themselves; then flip the `branch:` back to `canary`.
 
 ### Mode B — Claude has no write access (cannot push)
 `parallelworks/checkout` can't fetch code that isn't pushed yet, so stage it on the
@@ -673,10 +730,101 @@ resource and **mimic** checkout with a copy step:
 
 ---
 
-## 11. Apps that need a base path (path-based endpoints)
+## 10. Endpoints (`pw endpoints`): how every workflow here serves
+
+**Upgrading a v4 workflow to this pattern? Follow the step-by-step playbook in
+[session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md)** (distilled from the
+openvscode and jupyterlab conversions). Every workflow in this repo uses
+**endpoint sessions**: the service side runs
+`pw endpoints run`/`http`, which dials out, registers a reverse tunnel, and gets a
+subdomain URL (`https://<random-label>.<sessions domain>/<slug>`, the domain being
+`activate.pw` on activate.parallel.works; `--slug` may be a query string like
+`?folder=/dir` or a path like `lab`). The docs also describe the older exposure, a
+`sessions:` block filled by `parallelworks/update-session` (`detach: true` to outlive
+the run); nothing here uses it any more (the appendix of
+[session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md) reads it). Key facts,
+all verified on live runs:
+- **Endpoints are platform-authenticated by default**: an anonymous request to
+  `https://<name>.activate.pw/...` gets `307 → https://<platform-host>/?sessionRedirect=…`.
+  A service that leaves authentication to the platform login (e.g. Jupyter with
+  `token = ''`) keeps that trust model behind an endpoint; only `--public` (which the
+  organization must allow) changes that.
+- **The endpoint name is a registry key, not the subdomain**: a random subdomain is
+  assigned by default (`-s/--subdomain` pins one). Names are how you *find* endpoints —
+  `pw endpoints list | grep -w <name>` — so build them from `${PW_RUN_SLUG}` (plus the
+  resource name when several workers share a run). Names must be lowercase `[a-z0-9-]`
+  (undocumented; one uppercase letter fails the launch): when a form input feeds the
+  name, fold it before it reaches `pw endpoints` and make the wait step look for the
+  same folded name (`workflows/ollama/yamls/general.yaml`, input `endpoint_name`).
+  Killing the client process (cancel
+  the run/step) deregisters the endpoint within seconds; racing/fan-out over a shared
+  name prefix is shown in `tutorials/endpoint-workflows/` (verified two-resource
+  first-start-wins race).
+- **`--subdomain <label>` pins the origin** (`https://<label>.<sessions-domain>/`).
+  Needed when the app keeps state in the browser, which is per origin: code-server's
+  sign-ins (localStorage `secrets.provider`), disabled extensions and workspace trust
+  (IndexedDB `vscode-web-state-db-*`) all vanish under a new random subdomain. Labels
+  are platform-wide DNS labels, so derive them from `vscode` + namespace + cluster + `PW_USER`
+  (`workflows/openvscode`), and fail loud if `pw endpoints list` already shows an
+  endpoint at that host — the name stays `<service>-${PW_RUN_SLUG}`.
+- **Base-path apps need no base_url and no nginx on a subdomain endpoint**
+  (`workflows/jupyterlab/app/start-template.sh`): subdomain endpoints serve at the root, so
+  `pw endpoints run ${pw_endpoints_args} -- jupyter-lab --port {port} --config …` is
+  enough — v3's nginx proxy + base-path config is obsolete in v5. For path-based
+  endpoints (`--no-subdomain`) set the app's base path to the `{path}` token
+  (exported as `PW_ENDPOINT_PATH`) instead.
+- **Path-based endpoints (verified on `cluster.einsteinmed.edu`, kasmvnc emed):** the
+  emed platform has **no session subdomains**, so `pw endpoints http/run` there needs
+  `--no-subdomain`. The URL is `https://<platform-host>/me/session/<PW_USER>/<name>/<slug>`
+  and the platform forwards the **full path** to the app (no `--strip-path`), so the
+  base path is known before launch: `/me/session/${PW_USER}/<name>` (both vars are in
+  the workflow env and reach compute nodes via `inputs.sh`). `pw endpoints list` prints
+  the path instead of a URL. Anonymous requests still get the `307` login redirect;
+  `Authorization: Bearer <token>` requests (and websocket upgrades) go through.
+- **`pw endpoints run` substitutes the `{port}` token** (also exports `PORT`) into the
+  wrapped command — shell `${port}` expands to empty *before* `pw` sees it, so the app
+  falls back to its default port (code-server → `:80` → `EACCES`, instant exit) while
+  the tunnel forwards to the assigned port. Always write `{port}`.
+- **The other tokens:** `{host}`, the endpoint's public hostname (exported as
+  `PW_ENDPOINT_HOST`; give it to an app with an allowed-hosts check), and `{path}`, the
+  base path (exported as `PW_ENDPOINT_PATH`: `/` on a subdomain endpoint,
+  `/me/session/<user>/<name>/` on a path-based one). The full public URL is exported as
+  `PW_ENDPOINT_URL` (`pw endpoints run --help`, v7.105.0).
+- **Lifecycle = the tunnel client.** In v5 the workflow *run* completes once
+  `wait_for_endpoint` sees the name in `pw endpoints list` (it touches the
+  `skip_cleanups_file` and `parallelworks/cancel-jobs` the submitter) **and the
+  `wait_for_endpoint` subworkflow saw the URL answer**; the service outlives the run.
+  `pw endpoints delete <name>` tears down the whole remote process tree (verified: the
+  `pw endpoints run` child dies with it; rc 0, and rc 1 `Session not found` for a
+  name already gone).
+- **Probing an endpoint URL (verified 2026-09-21, `pw endpoints list` is
+  tab-separated `name status URL`).** An anonymous GET gets `307 →
+  https://<platform>/?sessionRedirect=<host>` whether or not anything serves behind
+  the tunnel — it proves nothing about the service. With
+  `Authorization: Bearer ${PW_API_KEY}` (the run's own key, in every step's
+  environment) the proxy forwards the request and returns the service's own
+  status: `503` for a registered tunnel whose local port has nothing listening (seen
+  for ~5 s while JupyterLab booted on a compute node), the app's `200`/`404`/… once it
+  serves. The endpoint is listed as `running` ~2 s after `pw endpoints run` starts,
+  before the app listens, which is why the health step retries.
+- **Env-var auth for containers/sidecars (v7.79.0):** the CLI authenticates from
+  `PW_API_KEY` + `PW_PLATFORM_HOST` env vars with no config file — this is how to run
+  it in a pod. `ghcr.io/parallelworks/pw-cli:<ver>` is distroless (entrypoint
+  `/usr/local/bin/pw`, nonroot 65532), so pass subcommands via container `args:`.
+- **Kubernetes: run the client as a sidecar** — everything k8s is in [k8s-workflows.md](k8s-workflows.md).
+- `PW_RUN_SLUG` holds the **run slug** (same in every job) — build the endpoint name as
+  `<service>-${PW_RUN_SLUG}` in one job and wait for it in another. (`PW_JOB_ID` carries
+  the same value, but prefer `PW_RUN_SLUG` — the name says what it is.) It is also the
+  argument `pw workflows runs cancel` takes. Start templates must NOT self-cancel the
+  run with it (removed everywhere — it marked failed runs as canceled): on failure they
+  exit non-zero, the submitter job fails, and the submitter job's cancel-jobs step
+  stops `wait_for_endpoint`. Both vars reach scheduled
+  compute nodes via the `inputs.sh` `env | grep '^PW_'` capture.
+
+### Apps that need a base path (path-based endpoints)
 
 Subdomain endpoints serve at the URL root, so most apps need no base-URL config and no
-proxy (§12). A **path-based** endpoint (`--no-subdomain`; required on emed, §12) serves at
+proxy (above). A **path-based** endpoint (`--no-subdomain`; required on emed, above) serves at
 `https://<platform-host>/me/session/<PW_USER>/<name>/<slug>` and forwards the full path, so
 an app that builds **absolute URLs** (JupyterLab, many SPAs) must know that prefix:
 
@@ -693,7 +841,7 @@ risks the empty token being eaten by the arg parser).
 
 ---
 
-## 12. AI agents & LLM-backed services (verified building `hermes-agent`)
+## 11. AI agents & LLM-backed services (verified building `hermes-agent`)
 
 ### Platform LLM endpoint — a service's "brain"
 OpenAI-compatible at **`https://${PW_PLATFORM_HOST}/api/openai/v1`**; auth
@@ -735,7 +883,7 @@ env:
 env:
   PW_API_KEY: ${PW_API_KEY}
 ```
-This is the canonical way (used by `hermes-orchestrator`/`hermes-worker`). Still keep
+This is the canonical way (`hermes-agent`, `wait_for_endpoint`, every Kubernetes YAML). Still keep
 the key OUT of `inputs.sh`: standard preprocessing writes
 `env | grep '^PW_' | grep -v 'PW_API_KEY'` deliberately, and a long-running service
 process inherits the key directly anyway (verified via `/proc/<pid>/environ`), so a
@@ -774,86 +922,6 @@ orchestrator on the workspace → `pw ssh <cluster> curl localhost:<port>`). **s
 is NOT reliably forwarded** through `pw ssh <c> <cmd>` — base64 the payload INTO the
 command instead: `pw ssh c "echo <b64> | base64 -d | curl --data-binary @- http://localhost:P/x"`.
 
-### Endpoint sessions (`pw endpoints`) — the v5 workflow pattern (verified)
-**Upgrading a v4 workflow to this pattern? Follow the step-by-step playbook in
-[session-to-endpoint-upgrade.md](session-to-endpoint-upgrade.md)** (distilled from the
-openvscode and jupyterlab conversions). Every workflow in this repo uses
-**endpoint sessions**: the service side runs
-`pw endpoints run`/`http`, which dials out, registers a reverse tunnel, and gets a
-subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query string like
-`?folder=/dir` or a path like `lab`). Key facts, all verified on live runs:
-- **Endpoints are platform-authenticated by default**: an anonymous request to
-  `https://<name>.activate.pw/...` gets `307 → https://<platform-host>/?sessionRedirect=…`.
-  A service that leaves authentication to the platform login (e.g. Jupyter with
-  `token = ''`) keeps that trust model behind an endpoint; only serving it "publicly"
-  (`pw endpoints http --help`) changes that.
-- **The endpoint name is a registry key, not the subdomain**: a random subdomain is
-  assigned by default (`-s/--subdomain` pins one). Names are how you *find* endpoints —
-  `pw endpoints list | grep -w <name>` — so build them from `${PW_RUN_SLUG}` (plus the
-  resource name when several workers share a run). Names must be lowercase `[a-z0-9-]`
-  (undocumented; one uppercase letter fails the launch): when a form input feeds the
-  name, fold it before it reaches `pw endpoints` and make the wait step look for the
-  same folded name (`workflows/ollama/yamls/general.yaml`, input `endpoint_name`).
-  Killing the client process (cancel
-  the run/step) deregisters the endpoint within seconds; racing/fan-out over a shared
-  name prefix is shown in `tutorials/endpoint-workflows/` (verified two-resource
-  first-start-wins race).
-- **`--subdomain <label>` pins the origin** (`https://<label>.<sessions-domain>/`).
-  Needed when the app keeps state in the browser, which is per origin: code-server's
-  sign-ins (localStorage `secrets.provider`), disabled extensions and workspace trust
-  (IndexedDB `vscode-web-state-db-*`) all vanish under a new random subdomain. Labels
-  are platform-wide DNS labels, so derive them from `vscode` + namespace + cluster + `PW_USER`
-  (`workflows/openvscode`), and fail loud if `pw endpoints list` already shows an
-  endpoint at that host — the name stays `<service>-${PW_RUN_SLUG}`.
-- **Base-path apps need no base_url and no nginx on a subdomain endpoint**
-  (`workflows/jupyterlab/start-template.sh`): subdomain endpoints serve at the root, so
-  `pw endpoints run ${pw_endpoints_args} -- jupyter-lab --port {port} --config …` is
-  enough — v3's nginx proxy + base-path config is obsolete in v5. For path-based
-  endpoints (`--no-subdomain`) set the app's base path to the `{path}` token
-  (exported as `PW_ENDPOINT_PATH`) instead.
-- **Path-based endpoints (verified on `cluster.einsteinmed.edu`, kasmvnc emed):** the
-  emed platform has **no session subdomains**, so `pw endpoints http/run` there needs
-  `--no-subdomain`. The URL is `https://<platform-host>/me/session/<PW_USER>/<name>/<slug>`
-  and the platform forwards the **full path** to the app (no `--strip-path`), so the
-  base path is known before launch: `/me/session/${PW_USER}/<name>` (both vars are in
-  the workflow env and reach compute nodes via `inputs.sh`). `pw endpoints list` prints
-  the path instead of a URL. Anonymous requests still get the `307` login redirect;
-  `Authorization: Bearer <token>` requests (and websocket upgrades) go through.
-- **`pw endpoints run` substitutes the `{port}` token** (also exports `PORT`) into the
-  wrapped command — shell `${port}` expands to empty *before* `pw` sees it, so the app
-  falls back to its default port (code-server → `:80` → `EACCES`, instant exit) while
-  the tunnel forwards to the assigned port. Always write `{port}`.
-- **Lifecycle = the tunnel client.** In v5 the workflow *run* completes once
-  `wait_for_endpoint` sees the name in `pw endpoints list` (it touches the
-  `skip_cleanups_file` and `parallelworks/cancel-jobs` the submitter) **and the
-  `wait_for_endpoint` subworkflow saw the URL answer**; the service outlives the run.
-  `pw endpoints delete <name>` tears down the whole remote process tree (verified: the
-  `pw endpoints run` child dies with it; rc 0, and rc 1 `Session not found` for a
-  name already gone).
-- **Probing an endpoint URL (verified 2026-09-21, `pw endpoints list` is
-  tab-separated `name status URL`).** An anonymous GET gets `307 →
-  https://<platform>/?sessionRedirect=<host>` whether or not anything serves behind
-  the tunnel — it proves nothing about the service. With
-  `Authorization: Bearer ${PW_API_KEY}` (the run's own key, in every step's
-  environment) the proxy forwards the request and returns the service's own
-  status: `503` for a registered tunnel whose local port has nothing listening (seen
-  for ~5 s while JupyterLab booted on a compute node), the app's `200`/`404`/… once it
-  serves. The endpoint is listed as `running` ~2 s after `pw endpoints run` starts,
-  before the app listens, which is why the health step retries.
-- **Env-var auth for containers/sidecars (v7.79.0):** the CLI authenticates from
-  `PW_API_KEY` + `PW_PLATFORM_HOST` env vars with no config file — this is how to run
-  it in a pod. `ghcr.io/parallelworks/pw-cli:<ver>` is distroless (entrypoint
-  `/usr/local/bin/pw`, nonroot 65532), so pass subcommands via container `args:`.
-- **Kubernetes: run the client as a sidecar** — everything k8s is in [k8s-workflows.md](k8s-workflows.md).
-- `PW_RUN_SLUG` holds the **run slug** (same in every job) — build the endpoint name as
-  `<service>-${PW_RUN_SLUG}` in one job and wait for it in another. (`PW_JOB_ID` carries
-  the same value, but prefer `PW_RUN_SLUG` — the name says what it is.) It is also the
-  argument `pw workflows runs cancel` takes. Start templates must NOT self-cancel the
-  run with it (removed everywhere — it marked failed runs as canceled): on failure they
-  exit non-zero, the submitter job fails, and the submitter job's cancel-jobs step
-  stops `wait_for_endpoint`. Both vars reach scheduled
-  compute nodes via the `inputs.sh` `env | grep '^PW_'` capture.
-
 ### Serving GGUF models with Ollama behind an endpoint (verified, `ollama-gguf`)
 - **The whole pattern is one command** (from `pw endpoints run --help`'s own example):
   `pw endpoints run --openai --rewrite-host=localhost --name <n> -- sh -c 'OLLAMA_HOST=127.0.0.1:{port} ollama serve'`.
@@ -875,29 +943,3 @@ subdomain URL (`https://<name>.activate.pw/<slug>`; `--slug` may be a query stri
   platform with `"<model> does not support tools"` (its plain
   `/v1/chat/completions` works fine) — this is the agentic client, not a tunnel
   failure. Verify agentic chat with a tools-capable model (e.g. `qwen3:0.6b`).
-
-### More verified gotchas
-- **`pw workflows run <name>` uses the STORED definition.** After editing a YAML,
-  `pw workflows update <name> --yaml file.yaml` first, or the run uses the old form
-  (e.g. `400 Missing required fields` for an input you removed).
-- **`pw workflows create --yaml <path>` with an unreadable path still creates the
-  workflow — empty** ("workflow created but failed to read YAML file"), and a
-  subsequent `run` executes that empty definition instead of erroring. The Bash shell
-  cwd is not guaranteed between tool calls — pass the YAML as an **absolute path**, and
-  recover with `pw workflows update <name> --yaml <abs-path>`.
-- **Long synchronous requests through the platform proxy can `502 Proxy Error`**
-  (~a minute+ exceeds the proxy timeout). Stream to keep bytes flowing, or use an
-  async job+poll pattern for long work.
-- Transient `pw workflows run/cancel` API timeouts happen — just retry.
-- **List-template `default:`s do not fill explicit empty strings (probable platform
-  bug — verified July 2026).** Three paths behave differently for a field passed as
-  `""`: a **top-level input** is default-filled; a value passed **directly to a
-  subworkflow input** is filled by that subworkflow's own default; but a **list-template
-  field** (e.g. `workers[0].slurm.time` from an inputs JSON copied off a past run)
-  stays `""` and flows through `with:` chains untouched. Consequence: an empty
-  `slurm.time` reaches `script_submitter`, and the `general`/`emed`/`noaa` variants
-  emit `#SBATCH --time=` → `sbatch: error: Invalid --time specification` (only `hsp`
-  guards it). Do NOT patch the submitters and do NOT add warnings to the tutorials —
-  Alvaro is reporting the `default:` behavior to the platform devs (July 2026); expect
-  it to be fixed platform-side. If a scalar input must be guarded, a ternary works
-  (`"${{ x == '' ? '1h' : x }}"` — quote it: the ternary's `: ` breaks plain YAML scalars).

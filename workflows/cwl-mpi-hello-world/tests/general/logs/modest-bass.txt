@@ -1,0 +1,30 @@
+Run modest-bass: error (10s)
+Reason: executorExitedEarly
+
+Failed jobs/steps:
+
+  run_cwl > Run the CWL Workflow (error, 0s)
+    [1;30mINFO[0m /home/alvaro/pw/software/miniconda3-cwltool/bin/cwltool 3.3.20260925135507
+    [1;30mINFO[0m Resolved 'mpi_workflow.cwl' to 'file:///home/alvaro/pw/jobs/modest-bass/cwl_workflow/mpi_workflow.cwl'
+    [1;30mINFO[0m [workflow ] start
+    [1;30mINFO[0m [workflow ] starting step compile
+    [1;30mINFO[0m [step compile] start
+    [1;30mINFO[0m [job compile] /home/alvaro/pw/jobs/modest-bass/cwl-tmp/_bzvt7ai$ bash \
+        compile.sh \
+        /home/alvaro/pw/jobs/modest-bass/cwl-tmp/e0bswkwk/stg432ccac7-ab17-48c3-8878-1e36847ee476/mpitest.c
+    compile.sh: line 2: /home/alvaro/pw/jobs/modest-bass/cwl-tmp/_bzvt7ai/pw/software/load-intel-oneapi-mpi.sh: No such file or directory
+    compile.sh: line 3: mpicc: command not found
+    chmod: cannot access 'mpitest': No such file or directory
+    [1;30mWARNING[0m [33m[job compile] exited with status: 1[0m
+    [1;30mERROR[0m [31m[job compile] Job error:
+    Error collecting output for parameter 'executable': compile.cwl:20:7: Did not find output file with glob pattern: ['mpitest'].[0m
+    [1;30mWARNING[0m [33m[job compile] completed permanentFail[0m
+    [1;30mERROR[0m [31m[step compile] Output is missing expected field file:///home/alvaro/pw/jobs/modest-bass/cwl_workflow/mpi_workflow.cwl#compile/executable[0m
+    [1;30mWARNING[0m [33m[step compile] completed permanentFail[0m
+    [1;30mINFO[0m [workflow ] completed permanentFail
+    {
+        "job_status": null,
+        "sbatch_script": null
+    }[1;30mWARNING[0m [33mFinal process status is permanentFail[0m
+
+Summary: 1 job(s) failed, 1 step(s) failed

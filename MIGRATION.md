@@ -1469,3 +1469,72 @@ both are probed on the node that trains.
 The new pull pipeline (status of `docker pull`, not of the filter) was checked by hand on
 gcpsmall's login node with a small image and a missing tag; `a30-docker-gpu` (`magnetic-quail`) and
 `a30-singularity-gpu` (`kind-goblin`) passed again on the new `train.sh`.
+
+## cwl-mpi-hello-world (2026-10-12, from parallelworks/cwlmpihelloworld)
+
+Migrated from `parallelworks/cwlmpihelloworld@main` (d08ff56), the Common Workflow
+Language demo: an MPI Hello World compiled and run as a SLURM job by a four-step CWL
+workflow (compile, generate the batch script, `sbatch` it, poll `squeue`/`sacct`)
+that cwltool executes on the cluster's login node. The CWL workflow submitting its
+own SLURM job is the point of the demo, so it keeps that role: `script_submitter`
+runs cwltool itself with `scheduler: false` (the submitter is there for its cancel
+cleanup, not to schedule); the ACTIVATE YAML is preprocessing (checkout, installs,
+the CWL input file and run script), the submitter job, a `results` job (the exit
+file, then the SLURM state) and an error-path `cancel_slurm_job` handler. The
+source was a
+registered workflow whose files lived in the registration bundle and were rsynced
+from the user workspace; here the login node sparse-checks-out
+`workflows/cwl-mpi-hello-world/app` like every other workflow.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `install_intel_mpi`, `install_cwltool`, `run_cwl`, each step `ssh`-ing from the workspace to the cluster) | `yamls/general.yaml` (`preprocessing`, `run_cwl` = `script_submitter/v3.6/general.yaml` with `scheduler: false`, `results`, `cancel_slurm_job`), every step on the login node via `ssh.remoteHost` |
+| `install_intel_mpi_with_spack.sh`, `install_cwltool_with_miniconda.sh` | `app/install-mpi.sh`, `app/install-cwltool.sh` |
+| `cwl_workflow/` (five `.cwl` files, `wait_for_slurm_job.sh`, `mpitest.c`) | `app/cwl/`, verbatim |
+| form: flat `install_mpi`, `load_mpi`, `install_cwltool`, `load_cwltool`, `np`, `resource`, `scheduler_directives`, hidden unused `wait_for_job` | `resource` + groups `cwl` (`np`, `scheduler_directives`) and `software` (the install/load pairs); `wait_for_job` dropped |
+| `cwl-logo.png` | `thumbnails/cwl-logo.png` |
+
+**Code changes beyond the paths:**
+
+- **The form values are used.** The source hardcoded `load_mpi:
+  "source /home/alvaro/pw/software/load-intel-oneapi-mpi.sh"` and `np: 4` into the
+  CWL input file, ignoring the form; `inputs.yaml` is now built from the form values.
+- **The run fails when the SLURM job does.** The CWL workflow completes whatever
+  final state `sacct` reports, and the submitter never forwards the script's exit
+  status: `run-cwl.sh` records it in `cwl.exit`, and the `results` job fails the
+  run unless that is `0`, `job_status.txt` says `COMPLETED` and
+  `slurm-output/mpitest.out` holds MPI output.
+- **A cancel cleans up.** A cancel kills cwltool on the login node but not a SLURM
+  job it already submitted, and nothing YAML-side runs after a user cancel
+  (pitfalls, 2026-10-12: a job-level `cleanup:` list, a step `if: canceled` and a
+  handler job were all skipped — three attempts). That is why cwltool runs under
+  `script_submitter`: its cleanup runs `cancel.sh`, which scancels any job id
+  recorded in the `cwl-tmp` staging dirs that `squeue` still lists (verified: a
+  running 10-node job ended `CANCELLED`, nothing left). A `cancel_slurm_job`
+  handler (`if: ${{ !completed }}`) keeps the error path covered.
+- **Installs are idempotent and absolute.** `install-mpi.sh` writes the load file
+  last (a failed install never looks complete), clones spack `--depth 1`, installs
+  under `service_parent_install_dir` (default `${HOME}/pw/software`) instead of
+  `pw/software` relative to the ssh cwd, and drops the unused lmod module refresh
+  (the load file uses `spack load`); `install-cwltool.sh` keys idempotency on the
+  cwltool binary, not the directory the script itself creates.
+- **cwltool's staging dirs stay in the job dir**: `--tmpdir-prefix <job
+  dir>/cwl-tmp/` instead of `~/tmp/`, so `--leave-tmpdir` (needed: the batch script
+  references staged files the SLURM job reads after the staging step finished)
+  no longer accumulates debris in the home directory.
+
+**Judgment calls:** SLURM-only stays SLURM-only (the CWL steps call `sbatch` and
+`squeue`; the resource keeps the `*-slurm` provider filter, one `general.yaml`); the
+install jobs became preprocessing steps (same login node, no gain from parallel
+jobs); `np` defaults to 4, matching the default directives' 2 nodes x 2 tasks (the
+source's form default 2 disagreed with the hardcoded 4).
+
+**Tests (2026-10-12, `pw://alvaro/gcpsmall`, branch `cwl`; rows in
+`workflows/cwl-mpi-hello-world/tests/general/gcpsmall.csv`; installs pre-warmed by
+hand on the login node, where the transient spack download failure of
+`intel-oneapi-compilers` surfaced and a rerun of the idempotent installer fixed it):**
+
+| Test | Result |
+|---|---|
+| `gcpsmall` (4 ranks, 2 nodes x 2 tasks) | FAIL `modest-bass` (cwltool overrides `HOME`, so the load command's `~` resolved into the staging dir — the bug behind the source's hardcoded `/home/alvaro`; expanded at preprocessing), then PASS `needed-dory` (4 min, nodes booting) and PASS `upright-clam` (2m43s, the final submitter-based YAML), both `cleanup=ok`, 4 ranks over 2 nodes `COMPLETED` |
+| cancel path (by hand, 8–10 nodes so the job pends) | `giving-silkworm` and `smashing-asp`: every YAML-side hook skipped on the user cancel, SLURM job survived (pitfalls); `clever-blowfish` on the submitter-based YAML: the running 10-node job ended `CANCELLED` by `cancel.sh`, `cwl.exit` 143, no leftovers |

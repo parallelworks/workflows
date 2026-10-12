@@ -4,20 +4,27 @@ Demonstrates Common Workflow Language (CWL) based job execution on ACTIVATE: an
 MPI Hello World program compiled and run as a SLURM job, orchestrated by
 [cwltool](https://github.com/common-workflow-language/cwltool) on the cluster's
 login node. The CWL workflow itself submits and monitors the SLURM job — that
-submission is the point of the demo, so this workflow does not use
-`script_submitter`.
+submission is the point of the demo, so the `script_submitter` call runs cwltool
+with `scheduler: false`: the submitter contributes its cancel cleanup, not the
+scheduling.
 
 ## The jobs
 
 1. **preprocessing** (login node): sparse-checks-out `workflows/cwl-mpi-hello-world/app`,
    installs Intel oneAPI MPI with spack and cwltool under Miniconda when the form
    asks (idempotent, under `${HOME}/pw/software`, reused by later runs) — otherwise
-   the form's load commands are used — and writes the CWL input file `inputs.yaml`
-   from the form values.
-2. **run_cwl** (login node): runs `cwltool mpi_workflow.cwl inputs.yaml` and then
-   checks the final SLURM job state: the run fails unless the job `COMPLETED` and
-   wrote MPI output. A cancel mid-flight `scancel`s a SLURM job the CWL workflow
-   left behind.
+   the form's load commands are used — and writes the CWL input file `inputs.yaml`,
+   the run script `run-cwl.sh` and the cleanup script `cancel.sh` from the form
+   values.
+2. **run_cwl**: `script_submitter` runs `run-cwl.sh` (cwltool on the login node).
+   On a cancel the submitter's cleanup runs `cancel.sh`, which `scancel`s a SLURM
+   job the CWL workflow left behind — nothing else runs after a user cancel
+   (the skill's pitfalls, 2026-10-12).
+3. **results** (login node): fails the run unless `cwl.exit` is `0` (the submitter
+   never forwards the script's status), `job_status.txt` says `COMPLETED` and
+   `slurm-output/mpitest.out` holds MPI output.
+4. **cancel_slurm_job** (`if: ${{ !completed }}`): the error-path belt and braces
+   for a SLURM job that outlived a failed cwltool.
 
 ## The CWL workflow (`app/cwl/`)
 

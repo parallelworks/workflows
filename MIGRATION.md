@@ -1469,3 +1469,84 @@ both are probed on the node that trains.
 The new pull pipeline (status of `docker pull`, not of the filter) was checked by hand on
 gcpsmall's login node with a small image and a missing tag; `a30-docker-gpu` (`magnetic-quail`) and
 `a30-singularity-gpu` (`kind-goblin`) passed again on the new `train.sh`.
+
+## pgadmin4 (2026-10-12, from interactive_session's legacy generation)
+
+`workflows/pgadmin4/` is the endpoint-pattern port of `interactive_session`'s
+`workflow/yamls/pgadmin4/general_k8s.yaml` (hybrid: `targetType` dropdown, compute cluster
+or Kubernetes) and `pgadmin4/start-template-v3.sh`, on the metabase shapes: `general.yaml`
+plus the hybrid `general_k8s.yaml`. The endpoint `pgadmin4-<run-slug>` serves pgAdmin
+itself, which keeps its own login.
+
+| interactive_session | here |
+|---|---|
+| `pgadmin4/start-template-v3.sh`: `sudo docker run -d` of `${service_image}` (`dpage/pgadmin4`, no tag) named `pgadmin4-${service_port}`, `-p ${service_port}:80`, the form's Docker mount volumes, `PGADMIN_DEFAULT_EMAIL` and `PGADMIN_DEFAULT_PASSWORD` on the `docker run` command line (so in the job's `set -x` log), no data volume, so the account, servers and settings died with the container; `pgadmin4/kill-template.sh` ran the `docker-kill-<job>.sh` the start script wrote | `app/start-template.sh`: one Docker Compose project per run. The container runs as the workflow user (in the image's root group) on **Data Directory**; the password comes from a mode-600 file written in preprocessing (compose `secrets`, `PGADMIN_DEFAULT_PASSWORD_FILE`); the form can register one server (`PGADMIN_SERVER_JSON_FILE`). The script picks a free loopback port, starts the container on it, waits for `/misc/ping`, logs in through the login page, and only then runs `pw endpoints run --port` on that port. `cancel.sh` is `compose down`. `app/controller.sh` creates the data directory |
+| k8s: a Deployment with the password in plaintext in `app.yaml`, `containerPort: 80`, a `-lb` Service and `parallelworks/update-session`, no volume | a Deployment (`strategy: Recreate`) of pgAdmin (data on the PVC's `pgadmin4/`, given to the image's uid 5050 by an init container; the password from a Secret; `/misc/ping` readiness) and the `pw-endpoint` sidecar. Not run yet (judgment call 7) |
+| form: `targetType`, `pwrl_host`, `service` (`image` `dpage/pgadmin4`, Docker mount volumes, email, password), `k8s` (with GPU limits), `service_k8s` (`image`, email, password) | `resource`/`cluster`/`service` (`email` default `admin@example.com`, `password`, `data_dir`, a `server` group, `image` pinned to `dpage/pgadmin4:9.18`) and `k8s` (without the GPU fields and the mount path)/`service_k8s` (`email`, `password`, `image`) |
+| `workflow/readmes/pgadmin4/general_k8s.md`, `workflow/thumbnails/pgadmin.png` | `README.md` (rewritten), `thumbnails/pgadmin4.png` |
+
+**Judgment calls:**
+
+1. The login is checked before the endpoint registers. pgAdmin creates the account only
+   with an empty data directory, so a reused one with another password would come up as a
+   completed run nobody can log in to; and once `pw endpoints run` starts, the probe sees
+   `/misc/ping` answer and completes the run, so the check cannot follow it. The script
+   therefore picks the port itself (`pw endpoints run --port`), starts and checks the
+   container, then registers (pitfalls.md, "Endpoints and the service"; the login flow is
+   in the skill's `references/software/pgadmin4.md`).
+2. The container runs as the workflow user in group 0, which the image supports for
+   OpenShift, rather than as the image's uid 5050 on a chowned directory or through
+   `PUID`/`PGID` (9.18's entrypoint, container started as root): the files belong to the
+   user and older tags work the same way.
+3. The Docker mount volumes field is gone: pgAdmin's file dialogs only see
+   `storage/<email>/` under the data directory, so a directory mounted elsewhere was
+   unreachable from the UI.
+4. One server from four form fields instead of a `servers.json` editor: a composed
+   workflow can wire a postgres run's node and port into them. It is imported with a new
+   data directory only; `PGADMIN_REPLACE_SERVERS_ON_STARTUP` would re-import on every start
+   but drop the servers added in the UI.
+5. The email defaults to `admin@example.com`; pgAdmin rejects reserved domains (`.local`,
+   `.test`) and the start script checks the email's shape before it lands in the compose
+   file. No minimum password length: the image enforces none at setup (a 3-character
+   password logged in), so the workflow does not invent one.
+6. The port is published on the node's loopback only: pgAdmin has a login, but nothing
+   outside the node needs the port, and the endpoint reaches it there.
+7. The Kubernetes lane is the metabase hybrid's with the pgAdmin container, kept minimal
+   (no server registration, no login check) because no Kubernetes cluster was reachable to
+   run it: `pw kube auth` succeeds for k3sgpu and cloudinfra but the API proxy answers
+   404 to every `kubectl` call, and `pw kube ls` shows k3sgpu with 0 CPUs. It validates
+   with `--dry-run`; `tests/general_k8s/k3sgpu.json` is ready for when the cluster is back.
+
+Before the YAML existed, on gcpsmall's login node by hand (the skill's step 1): the image
+runs as `<uid>:0` on a user-owned bind mount; `admin@pgadmin.local` is rejected and
+`admin@example.com` accepted; the login page carries its CSRF token as `"csrfToken"` in a
+JSON blob and `POST /authenticate/login` with the `csrf_token` form field redirects to
+`/browser/` (right password) or `/login` (wrong one, wrong email, or the new password of a
+restarted container on the same data directory, while the old password still logs in);
+`/misc/ping` answers 200 with and without a Bearer header; a compose stack with a
+`secrets` file holding `: $ " \ ' # @` logged in and imported one server.
+
+**Tests (2026-10-12, `pw://alvaro/gcpsmall`, branch `pgadmin4`; rows in
+`workflows/pgadmin4/tests/*/*.csv`).** The test password (`PGADMIN_TEST_PASSWORD`) holds
+`: $ " \ ' # @`, so the password file, the compose secret and the login form are exercised
+on every run.
+
+| Test | Result |
+|---|---|
+| `general/gcp-controller` (login node, registers `postgres@localhost:5432`) | PASS `one-satyr` (cold, 78 s, `cleanup=ok`): the probe saw 200 after 0 s; the service log shows the login and `Added 0 Server Group(s) and 1 Server(s)` |
+| `general/gcp-wrong-password` (`_test.expect: error`) | PASS `known-sturgeon` (53 s): `Cannot log in to pgAdmin 4 as admin@example.com with the password given ...` and nothing left |
+| `general/gcp-compute` (SLURM job, `compute` partition) | PASS `mature-crab` (84 s, `cleanup=ok`, on a node another session had already powered up; the SLURM job ended 40 s after the endpoint was deleted) |
+| `general_k8s/gcp-controller` (the hybrid's compute lane) | PASS `dear-toad` (53 s, `cleanup=ok`) |
+| `general_k8s/k3sgpu` (Kubernetes lane) | not run (judgment call 7) |
+
+Cancel 28 s after launch on a new data directory (`ideal-ape`, container just started,
+account being created): run `canceled`, the cleanup trap ran `cancel.sh` (`compose down`
+removed the container and the network), no skip file, no process, no endpoint. A cancel
+33 s after launch on the warm data directory (`upward-gnu`) landed in the second the
+health check released the submitter (endpoint live 22 s after launch): the run ended
+`canceled` while the service stayed up behind its registered endpoint, which is how every
+endpoint workflow here leaves a run once the probe has passed; `pw endpoints delete
+pgadmin4-upward-gnu` then killed the tree and the trap removed the container. Not
+exercised: PBS, a host without `sudo` for Docker, two runs on one data directory (no lock
+is taken; pgAdmin's SQLite database tolerates two servers). The checkout points at
+`canary` for the merge.

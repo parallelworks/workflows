@@ -302,6 +302,14 @@
   `screen` session, a docker container, a daemonizing app that re-parents to PID 1)
   survives `pw endpoints delete` unless `cancel.sh` kills it; write `cancel.sh` first thing
   in the start script so a cancel at any moment finds it.
+- **A check that must fail the run goes before `pw endpoints run`, on a port you pick**
+  (verified 2026-10-12, `workflows/pgadmin4`): the endpoint is listed within seconds of
+  `pw endpoints run` starting and `wait_for_endpoint` completes the run the moment the URL
+  answers, so a check made after the service is reachable (a login against a reused data
+  directory, a migration) can fail after the run has already completed, leaving a
+  completed run with a dead endpoint. Find a free loopback port, start the service on it,
+  check it, then `pw endpoints run --port <port> -- <foreground command>` (`docker compose
+  logs -f` for a container that is already up); `app/start-template.sh` there.
 - **Endpoint names must be lowercase `[a-z0-9-]`** (undocumented; one uppercase letter
   fails the launch). `<service>-${PW_RUN_SLUG}` is safe; a name typed into a form is not:
   fold it before it reaches `pw endpoints`, and make the wait step look for the same

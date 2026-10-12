@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-12T15:19:59Z,cold,pass,kept,c585334,e0cda99,e8105a3,ca0ea01,ca0ea01,grafana,alvaro,fine-boxer,68,

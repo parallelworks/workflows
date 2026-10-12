@@ -6,8 +6,8 @@ server, in Docker on a compute cluster, served through a `pw` endpoint named
 ([node-exporter](https://github.com/prometheus/node_exporter): CPU, memory, disks, file
 systems), its GPUs when it has them
 ([dcgm-exporter](https://github.com/NVIDIA/dcgm-exporter), with the GPU dashboard
-provisioned), the platform agent's experimental exporter on the login node, and any
-scrape targets typed into the form. The run completes once the endpoint answers; the
+provisioned), any scrape targets typed into the form and, on request, the platform
+agent's experimental exporter on the login node. The run completes once the endpoint answers; the
 containers run until `pw endpoints delete grafana-<run-slug>`. Visitors are signed in
 anonymously as Admin (the platform login protects the endpoint); the `admin` account
 takes the form's **Admin Password**.
@@ -36,7 +36,10 @@ takes the form's **Admin Password**.
 - **Admin Password** (default `changeme`): set when the Run Directory is first
   initialized; later runs keep the current one, which you change in Grafana.
 - **Prometheus Retention** (default `15d`): how long the metrics are kept.
-- **Platform Agent Metrics** (default on): the platform agent's exporter, login node only.
+- **Platform Agent Metrics** (default off): the platform agent's experimental exporter,
+  login node only. Inside a run that agent has no platform credentials, so it only
+  serves the login node's CPU, memory and storage (`pw_agent_*`), which node-exporter
+  reports in more detail, and it listens on an SSH server and proxy port of its own.
 - **Extra Scrape Targets**: one `host:port` per line, scraped as the `extra` job. A
   service on the host that runs the stack is `host.docker.internal:<port>` from inside
   the containers.

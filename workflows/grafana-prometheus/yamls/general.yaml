@@ -254,9 +254,9 @@ jobs:
           agent_metrics:
             label: Platform Agent Metrics
             type: boolean
-            default: true
+            default: false
             tooltip: |
-              Start the platform agent's experimental Prometheus exporter on the login node (pw agent start-existing --experimental-prometheus-exporter) and scrape it as the pw-agent job. Only when the service runs on the login node.
+              Start the platform agent's experimental Prometheus exporter beside the stack (pw agent start-existing --experimental-prometheus-exporter) and scrape it as the pw-agent job: the login node's CPU, memory and storage as the platform agent measures them, which node-exporter already reports in more detail. Only when the service runs on the login node; that agent also listens on an SSH server and proxy port of its own for the life of the stack.
           extra_targets:
             label: Extra Scrape Targets
             type: editor

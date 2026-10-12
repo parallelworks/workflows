@@ -74,13 +74,19 @@ workflow run any `pw` command the user who launched it can run.
   contract is [references/design-parameters.md](references/design-parameters.md));
   Kubernetes (no script_submitter, no login node) →
   [references/k8s-workflows.md](references/k8s-workflows.md).
-- **Pick the deployment variant by platform host — don't default to `general`.**
-  `script_submitter` ships as `general` / `emed` / `hsp` / `noaa`, and
-  the **resource/scheduler/slurm/pbs form sections differ between them**. Choose:
-  `emed` for `cluster.einsteinmed.edu`, `noaa` for `noaa.parallel.works`, `hsp` for
-  `activate.hpc.mil`, `general` otherwise — **if unclear, ask the user.** Then copy the
-  cluster/slurm/pbs form and `with:` block from the matching
-  `workflows/<name>/yamls/<variant>.yaml`. (`pw context list` shows the host.)
+- **Add a variant only where the platform changes the YAML; pick it by host.**
+  `general.yaml` serves every platform unless something differs there: the workflow
+  submits scheduler jobs (`script_submitter` and its resource/scheduler/slurm/pbs
+  form sections ship per platform), users run it from the platform's own form (HSP
+  and NOAA forms take the resource as a top-level input, not `cluster.resource`), or
+  the site changes where software installs or how it loads (`dakota`). A workflow
+  that runs on the login node and is only called from other YAMLs needs no variant
+  (`wait_for_endpoint`, `doe`, `design-explorer`): an HSP or NOAA caller passes its
+  top-level resource as `cluster.resource`. Pick the variant by platform host
+  (`pw context list`): `emed` for `cluster.einsteinmed.edu`, `noaa` for
+  `noaa.parallel.works`, `hsp` for `activate.hpc.mil`, `general` otherwise — **if
+  unclear, ask the user** — and copy the cluster/slurm/pbs form and `with:` block
+  from the matching `workflows/<name>/yamls/<variant>.yaml`.
 - **Pass every required subworkflow input, and `--dry-run` first.** `--dry-run`
   validates the YAML and each subworkflow's required inputs: omit a non-optional input
   with no default and it fails with the terse `Could not parse subworkflow` (the field

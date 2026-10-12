@@ -343,8 +343,10 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
 
 ## 4. Choosing the deployment variant (`general` / `emed` / `hsp` / `noaa`) — IMPORTANT
 
-Do **not** default to `general`. Pick the variant that matches the **Activate platform
-host you are on** (check `pw context list` → the `user@host` / platform host):
+Not every workflow has variants: golden rule 2 in SKILL.md says when one is needed.
+Where they exist, do **not** default to `general`. Pick the variant that matches the
+**Activate platform host you are on** (check `pw context list` → the `user@host` /
+platform host):
 
 | Platform host | Variant |
 |---|---|

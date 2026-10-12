@@ -35,6 +35,12 @@ are [../activate-platform.md](../activate-platform.md) §5 (`script_submitter`) 
    login redirect; with the key the service's own status comes back, `503` while
    nothing listens behind the tunnel yet.
 
+The form's `service` group holds the app's fields. Its hidden `service.name` input is
+the **endpoint name prefix**: keep it stable, because renaming it changes the endpoint
+names users see. Endpoint names are lowercase `[a-z0-9-]`; fold a name that comes from
+a form input before it reaches `pw endpoints`, and make the wait job look for the same
+folded name (`workflows/ollama/yamls/general.yaml`, input `endpoint_name`).
+
 ## The two contract scripts
 
 Both source `inputs.sh`:

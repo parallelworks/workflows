@@ -137,12 +137,10 @@ node may not export `PW_PARENT_JOB_DIR`) or through the `PW_PARENT_JOB_DIR` that
 **Form.** The resource is the top-level `resource` input (`compute-clusters`) on every
 variant; the `cluster` group holds the scheduler fields and is hidden and ignored as a
 whole when the resource has no scheduler (`${{ inputs.resource.schedulerType == '' }}`);
-`service` holds the service's own fields. The hidden `service.name` input is the
-**endpoint name prefix**: keep it stable (renaming it changes the endpoint names users
-see). Endpoint names are lowercase `[a-z0-9-]`; fold a name that comes from a form
-input (`workflows/ollama/yamls/general.yaml`). An optional input left unset renders
-empty in the shell (verified for `integer`): guard with `${var:-default}` and quote every
-`${{ }}` interpolation.
+the rest of the form is grouped by what it configures (`service` for a served app,
+`case`, `doe`, `optimizer`, `software`, ... elsewhere). An optional input left unset
+renders empty in the shell (verified for `integer`): guard with `${var:-default}` and
+quote every `${{ }}` interpolation.
 
 **Code delivery: `parallelworks/checkout`, never base64.** The repo is fetched from
 GitHub at run time, so nothing you edit locally takes effect until it is pushed (both
@@ -167,8 +165,11 @@ checks:
 | **Composed** | the study or loop finishes | `uses:` of the rows above: a matrix of evaluators, retry-as-loop, a live page | `workflows/doe-openfoam`, `workflows/dakota-openfoam` | [shapes/composed.md](references/shapes/composed.md) |
 | **Kubernetes** | never: cancelling the run is the teardown | the sidecar pod jobs; no submitter, nothing checked out | `workflows/mlflow/yamls/k8s.yaml`, `workflows/openvscode/yamls/general_k8s.yaml` (hybrid) | [k8s-workflows.md](references/k8s-workflows.md) |
 
-Rows combine: `physicsnemo` and `dakota-openfoam` run a batch job or a loop beside a
-page started the callable-step way.
+The rows are tested shapes, not a menu: combine them (`physicsnemo`, `dakota-openfoam`)
+or build a new one from the same parts, as long as it keeps what every row keeps: the
+run ends on evidence (a health probe, an exit file) and fails loud without it, whatever
+outlives it has a teardown, a cancel leaves nothing behind, and the test is recorded. A
+new shape proven end-to-end earns a row (Step 5).
 
 ## Step 3 — Test end-to-end and record the test
 
@@ -259,8 +260,9 @@ matching section, with the date it was verified; one about a single piece of sof
 goes into its file under [references/software/](references/software/) (new tool, new
 file: short, pointing at the workflow that uses it). A platform fact that changes what
 the process says belongs in
-[references/activate-platform.md](references/activate-platform.md). Because the platform
-docs change, re-check them when behavior surprises you and correct the skill toward the
+[references/activate-platform.md](references/activate-platform.md); a workflow shape
+proven end-to-end gets a file under `references/shapes/` and a row in Step 2's table.
+Because the platform docs change, re-check them when behavior surprises you and correct the skill toward the
 docs. Do not add a tutorial to `tutorials/` without maintainer approval; point at an
 existing one.
 

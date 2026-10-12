@@ -4,3 +4,4 @@ date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fe
 2026-09-21T07:56:39Z,cold,pass,ok,,70e6154,436820d,8e2818b,6f42902-dirty,6f42902,test-dev,alvaro,optimum-skink,31,
 2026-09-21T10:18:19Z,warm,pass,ok,,2f34633,436820d,9b833fc,aa37094-dirty,5e96588,dev,alvaro,usable-piranha,33,
 2026-09-21T10:29:15Z,warm,pass,ok,,2f34633,436820d,9b833fc,ad6e4a1-dirty,5e96588,dev,alvaro,dashing-kodiak,32,
+2026-10-12T12:31:11Z,cold,pass,ok,,bb47c10,74bcc3d,c6c3dbb,b1ce74d-dirty,403af2f,variantes,alvaro,teaching-goat,39,

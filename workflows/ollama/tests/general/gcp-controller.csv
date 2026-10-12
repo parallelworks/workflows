@@ -2,3 +2,4 @@ date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fe
 2026-09-11T16:22:12Z,cold,pass,ok,307,9f2e846,436820d,e7b718b,ae7a06f,ae7a06f,tests,alvaro,on-fox,65,
 2026-09-21T08:01:35Z,cold,pass,ok,,4f60188,436820d,8e2818b,6f42902-dirty,6f42902,test-dev,alvaro,tight-guinea,61,
 2026-09-21T10:32:02Z,warm,pass,ok,,99116bd,436820d,9b833fc,ad6e4a1-dirty,5e96588,dev,alvaro,curious-mastodon,33,
+2026-10-12T12:28:15Z,cold,pass,ok,,607aac5,74bcc3d,c6c3dbb,b1ce74d-dirty,403af2f,variantes,alvaro,singular-marlin,163,

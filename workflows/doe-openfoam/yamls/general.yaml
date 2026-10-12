@@ -106,7 +106,7 @@ jobs:
       # own: a full factorial is L^d cases; a pasted table has as many as it has
       # rows) is read back from its doe.env to guard the workers matrix
       - name: DOE (Sample the Designs)
-        uses: github/parallelworks/workflows@variantes
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/doe/yamls/general.yaml
           resource: ${{ inputs.resource }}
@@ -141,7 +141,7 @@ jobs:
       # solves and shows each one as it finishes
       - name: Design Explorer (Serve the Study)
         if: ${{ inputs.postprocessing.generate_images == true }}
-        uses: github/parallelworks/workflows@variantes
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/design-explorer/yamls/general.yaml
           resource: ${{ inputs.resource }}
@@ -179,7 +179,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: OpenFOAM (Solve the Design)
-        uses: github/parallelworks/workflows@variantes
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/openfoam-naca/yamls/general.yaml
           resource: ${{ inputs.resource }}

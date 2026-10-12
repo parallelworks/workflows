@@ -632,6 +632,11 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   `README.md`, `thumbnail.png`) → `workflows/monte-carlo-pricing/yamls/general.yaml`,
   `README.md` and `thumbnails/monte-carlo-pricing.png` here (one variant).
 
+- Any registration of `parallelworks/grafana-prometheus` (its `workflow.yaml`, `README.md`,
+  `grafana.png`) → `workflows/grafana-prometheus/yamls/general.yaml`, `README.md` and
+  `thumbnails/grafana-prometheus.png` here (one variant). Its form changed (`cluster`/`service`
+  groups, no repository inputs), so saved inputs of the old item do not carry over.
+
 - The marketplace item `physicsnemo` ("PhysicsNemo Training", v1.0.0, featured) pins
   `parallelworks/activate-physicsnemo@main`'s `workflow.yaml`, `README.md` and
   `thumbnail.png` → `workflows/physicsnemo/yamls/general.yaml`, `README.md` and
@@ -1469,6 +1474,163 @@ both are probed on the node that trains.
 The new pull pipeline (status of `docker pull`, not of the filter) was checked by hand on
 gcpsmall's login node with a small image and a missing tag; `a30-docker-gpu` (`magnetic-quail`) and
 `a30-singularity-gpu` (`kind-goblin`) passed again on the new `train.sh`.
+
+## cwl-mpi-hello-world (2026-10-12, from parallelworks/cwlmpihelloworld)
+
+Migrated from `parallelworks/cwlmpihelloworld@main` (d08ff56), the Common Workflow
+Language demo: an MPI Hello World compiled and run as a SLURM job by a four-step CWL
+workflow (compile, generate the batch script, `sbatch` it, poll `squeue`/`sacct`)
+that cwltool executes on the cluster's login node. The CWL workflow submitting its
+own SLURM job is the point of the demo, so it keeps that role: `script_submitter`
+runs cwltool itself with `scheduler: false` (the submitter is there for its cancel
+cleanup, not to schedule); the ACTIVATE YAML is preprocessing (checkout, installs,
+the CWL input file and run script), the submitter job, a `results` job (the exit
+file, then the SLURM state) and an error-path `cancel_slurm_job` handler. The
+source was a
+registered workflow whose files lived in the registration bundle and were rsynced
+from the user workspace; here the login node sparse-checks-out
+`workflows/cwl-mpi-hello-world/app` like every other workflow.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `install_intel_mpi`, `install_cwltool`, `run_cwl`, each step `ssh`-ing from the workspace to the cluster) | `yamls/general.yaml` (`preprocessing`, `run_cwl` = `script_submitter/v3.6/general.yaml` with `scheduler: false`, `results`, `cancel_slurm_job`), every step on the login node via `ssh.remoteHost` |
+| `install_intel_mpi_with_spack.sh`, `install_cwltool_with_miniconda.sh` | `app/install-mpi.sh`, `app/install-cwltool.sh` |
+| `cwl_workflow/` (five `.cwl` files, `wait_for_slurm_job.sh`, `mpitest.c`) | `app/cwl/`, verbatim |
+| form: flat `install_mpi`, `load_mpi`, `install_cwltool`, `load_cwltool`, `np`, `resource`, `scheduler_directives`, hidden unused `wait_for_job` | `resource` + groups `cwl` (`np`, `scheduler_directives`) and `software` (the install/load pairs); `wait_for_job` dropped |
+| `cwl-logo.png` | `thumbnails/cwl-logo.png` |
+
+**Code changes beyond the paths:**
+
+- **The form values are used.** The source hardcoded `load_mpi:
+  "source /home/alvaro/pw/software/load-intel-oneapi-mpi.sh"` and `np: 4` into the
+  CWL input file, ignoring the form; `inputs.yaml` is now built from the form values.
+- **The run fails when the SLURM job does.** The CWL workflow completes whatever
+  final state `sacct` reports, and the submitter never forwards the script's exit
+  status: `run-cwl.sh` records it in `cwl.exit`, and the `results` job fails the
+  run unless that is `0`, `job_status.txt` says `COMPLETED` and
+  `slurm-output/mpitest.out` holds MPI output.
+- **A cancel cleans up.** A cancel kills cwltool on the login node but not a SLURM
+  job it already submitted, and nothing YAML-side runs after a user cancel
+  (pitfalls, 2026-10-12: a job-level `cleanup:` list, a step `if: canceled` and a
+  handler job were all skipped — three attempts). That is why cwltool runs under
+  `script_submitter`: its cleanup runs `cancel.sh`, which scancels any job id
+  recorded in the `cwl-tmp` staging dirs that `squeue` still lists (verified: a
+  running 10-node job ended `CANCELLED`, nothing left). A `cancel_slurm_job`
+  handler (`if: ${{ !completed }}`) keeps the error path covered.
+- **Installs are idempotent and absolute.** `install-mpi.sh` writes the load file
+  last (a failed install never looks complete), clones spack `--depth 1`, installs
+  under `service_parent_install_dir` (default `${HOME}/pw/software`) instead of
+  `pw/software` relative to the ssh cwd, and drops the unused lmod module refresh
+  (the load file uses `spack load`); `install-cwltool.sh` keys idempotency on the
+  cwltool binary, not the directory the script itself creates.
+- **cwltool's staging dirs stay in the job dir**: `--tmpdir-prefix <job
+  dir>/cwl-tmp/` instead of `~/tmp/`, so `--leave-tmpdir` (needed: the batch script
+  references staged files the SLURM job reads after the staging step finished)
+  no longer accumulates debris in the home directory.
+
+**Judgment calls:** SLURM-only stays SLURM-only (the CWL steps call `sbatch` and
+`squeue`; the resource keeps the `*-slurm` provider filter, one `general.yaml`); the
+install jobs became preprocessing steps (same login node, no gain from parallel
+jobs); `np` defaults to 4, matching the default directives' 2 nodes x 2 tasks (the
+source's form default 2 disagreed with the hardcoded 4).
+
+**Tests (2026-10-12, `pw://alvaro/gcpsmall`, branch `cwl`; rows in
+`workflows/cwl-mpi-hello-world/tests/general/gcpsmall.csv`; installs pre-warmed by
+hand on the login node, where the transient spack download failure of
+`intel-oneapi-compilers` surfaced and a rerun of the idempotent installer fixed it):**
+
+| Test | Result |
+|---|---|
+| `gcpsmall` (4 ranks, 2 nodes x 2 tasks) | FAIL `modest-bass` (cwltool overrides `HOME`, so the load command's `~` resolved into the staging dir — the bug behind the source's hardcoded `/home/alvaro`; expanded at preprocessing), then PASS `needed-dory` (4 min, nodes booting) and PASS `upright-clam` (2m43s, the final submitter-based YAML), both `cleanup=ok`, 4 ranks over 2 nodes `COMPLETED` |
+| cancel path (by hand, 8–10 nodes so the job pends) | `giving-silkworm` and `smashing-asp`: every YAML-side hook skipped on the user cancel, SLURM job survived (pitfalls); `clever-blowfish` on the submitter-based YAML: the running 10-node job ended `CANCELLED` by `cancel.sh`, `cwl.exit` 143, no leftovers |
+
+The checkout points at `canary` for the merge.
+
+## grafana-prometheus (2026-10-12, from parallelworks/grafana-prometheus)
+
+`workflows/grafana-prometheus/` is the endpoint-pattern port of
+`parallelworks/grafana-prometheus@main` (e5dae72): Grafana over Prometheus with
+node-exporter and dcgm-exporter in Docker Compose. The source served Grafana through a
+platform session (`sessions:` block, `parallelworks/update-session`) behind an nginx
+container that proxied `/me/session/<user>/<name>/` to Grafana's sub path
+(`GF_SERVER_SERVE_FROM_SUB_PATH`), cloned its own repository into the Run Directory, ran
+the stack with `sudo docker compose up` from `run.sh` and kept the run alive on `docker
+compose logs -f` until a `CANCEL` file; a parallel `run_agent` job ran `pw agent
+start-existing --experimental-prometheus-exporter` on the login node for the run's life.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `run_agent`, `prepare_job_directory`, `wait_and_run_cleanup`, `start_service`, `stream_docker_logs`, `create_session`; inputs `resource`, `rundir`, `admin_password`, `advanced_settings.repository*`) | `yamls/general.yaml` (preprocessing → `script_submitter` → `wait_for_endpoint`; `pydio-cells`'s `cluster`/`service` groups) |
+| `run.sh`, `docker-compose.yml.template`, `env.sample`, `nginx/nginx.conf.template`, `prometheus/prometheus.yml` (and an unused root `prometheus.yml`) | `app/controller.sh` (form checks), `app/start-template.sh` (Docker detection and pulls as `pydio-cells`; the Prometheus configuration and the compose files written at start; the stack behind `pw endpoints run`; `cancel.sh` = `compose down`) |
+| `grafana/provisioning/` | `app/grafana/provisioning/`, copied into the Run Directory on every start |
+| `README.md` | rewritten |
+| `grafana.png` | `thumbnails/grafana-prometheus.png` |
+
+Changes beyond the paths:
+
+- **No nginx.** A subdomain endpoint serves at the root; `GF_SERVER_ROOT_URL` is
+  `PW_ENDPOINT_URL`, for the links Grafana builds. A path-based endpoint would need
+  `GF_SERVER_SERVE_FROM_SUB_PATH` and the `{path}` token back.
+- **No host ports.** The source published Prometheus on 9090, dcgm-exporter on 9400 and
+  nginx on 8080 of the host: one stack per node, open to everyone on it. Here only Grafana is
+  published, on the loopback port the endpoint assigned, and Prometheus is reached through
+  Grafana (Explore, the datasource proxy). One compose project per run (`grafana_<run-slug>`).
+- **The containers run as the workflow user** (the source `chown`ed `data/grafana` to 472 and
+  `data/prometheus` to 65534), so the data directories are yours; a source Run Directory is
+  refused with a `chown` hint. A `flock` on the Run Directory makes a second run on it fail
+  in seconds: two Grafanas on one SQLite file.
+- **Host metrics.** The source's node-exporter ran as a plain container and reported its own
+  view of the node. Here it has `pid: host`, the host root at `/host` and
+  `--path.rootfs/procfs/sysfs`, without a host port (the network interfaces are still the
+  container's).
+- **GPU metrics are conditional.** The source's compose file reserved an NVIDIA GPU for
+  dcgm-exporter unconditionally, so `compose up` failed on a node without the driver
+  (gcpsmall: the nvidia runtime, no driver). dcgm-exporter is an override file added when
+  `nvidia-smi -L` succeeds and Docker lists the `nvidia` runtime, with the `gpu` scrape job.
+- **Pinned images** as form inputs (`grafana/grafana:13.2.3`, `prom/prometheus:v3.15.0`;
+  node-exporter and dcgm-exporter hidden): the source pulled `latest` for all but
+  dcgm-exporter. The GPU dashboard, exported from 12.2.1, loads unchanged in 13.2.3.
+- **The platform agent's exporter is opt-in** (`agent_metrics`, default off). The source's
+  `run_agent` job ran a second controller agent of the user for the run's life; here it is a
+  background child of the start script, in the endpoint's process tree, with its pid in
+  `cancel.sh`, on the login node only. Tested on gcpsmall: it serves 15 `pw_agent_*` families
+  (CPU, memory, storage of the node), never authenticates inside a run (it ignores the run's
+  key: "no platform credentials available", "Pool not found"), and opens an SSH server and a
+  proxy port of its own plus port files under `~/pw` and `~/.ssh`
+  (`.claude/skills/activate-workflows/references/software/grafana-prometheus.md`). node-exporter
+  reports the same in more detail, so the default is off.
+- **Extra scrape targets** (`extra_targets`, one `host:port` per line, checked in the
+  controller) and **Prometheus retention** (`retention`, a fixed `15d` in the source) are form
+  inputs. The dropped `juice-agent:9101` target pointed at a container the compose file never
+  had; the `exported-by` label became `exported_by` (Prometheus 2 rejects the dash, 3 accepts it).
+- **The admin password** comes from a mode-600 file (`GF_SECURITY_ADMIN_PASSWORD__FILE`,
+  compose `secrets`) instead of the Run Directory's `.env`. Anonymous access as Admin is kept
+  from the source: the platform login protects the endpoint.
+- The `advanced_settings` repository inputs went: the code is the checkout.
+
+`general` only, as `pydio-cells` and `postgres` (Docker).
+
+**Tests (2026-10-12, `pw://alvaro/gcpsmall`, branch `grafana`; rows in
+`workflows/grafana-prometheus/tests/general/*.csv`):**
+
+| Test | Result |
+|---|---|
+| `gcp-controller` (login node, `agent_metrics: true`) | PASS `fine-boxer` (cold, 68 s, kept for the manual checks), `suitable-bee` (warm, 37 s, `cleanup=ok`) |
+| `gcp-compute` (SLURM job, `compute` partition, `agent_metrics: true`, an extra target) | PASS `evident-stinkbug` (348 s, node powering up; healthy 26 s after the endpoint registered, `cleanup=ok`, no SLURM job left). On the compute node the start script skipped the agent with a warning and the `extra` job carried the form's target |
+
+Manual on `fine-boxer`: the four targets up (`prometheus`, `node`, `grafana`, `pw-agent`)
+through Grafana's datasource proxy, `node_memory_MemTotal_bytes` equal to `free -b` on the
+node; anonymous `GET /` → `307`; with the platform token `/`, `/login`, `/api/search`, the
+dashboard page and the datasource proxy → `200`; through the local port, anonymously, `/`
+and the dashboard → `200` and `/api/user` → `401`; the admin login with the form's
+password → `200`, with a wrong one → `401`; every file under the Run Directory owned by the
+workflow user. A second run on the Run Directory (`summary-jay`) ended in `error` in 14 s
+through the submitter's failure path and left the running stack alone. `pw endpoints delete`
+removed the three containers, the network, the agent and its four ports. A cancel while the
+containers were starting (`happy-ghost`, 17 s after launch, its own Run Directory): run
+`canceled`, containers and network removed, no process, port or endpoint record left. Not
+exercised: a GPU node (dcgm-exporter and the GPU dashboard's data), PBS, a path-based
+endpoint, a host without `sudo`. The checkout points at `canary` for the merge.
 
 ## pgadmin4 (2026-10-12, from interactive_session's legacy generation)
 

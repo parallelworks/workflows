@@ -1,0 +1,4 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-12T15:40:12Z,warm,fail,ok,575ed63,e0cda99,e8105a3,3a94bb8,3a94bb8,cwl,alvaro,modest-bass,22,"run error, expected completed: run_cwl > Run the CWL Workflow (error, 0s)"
+2026-10-12T15:41:43Z,warm,pass,ok,575ed63,e0cda99,e8105a3,3a94bb8-dirty,3a94bb8,cwl,alvaro,needed-dory,271,
+2026-10-12T16:00:02Z,warm,pass,ok,575ed63,e0cda99,e8105a3,3a94bb8-dirty,3a94bb8,cwl,alvaro,upright-clam,163,

@@ -9,7 +9,8 @@
 > "Step N" means SKILL.md's step N; "reference §N" means section N of
 > [activate-platform.md](activate-platform.md). Lessons about one piece of software
 > (OpenFOAM, Dakota, ParaView, conda environments, Singularity/SIF images, MPI benchmarks,
-> dask-jobqueue, PhysicsNeMo, PostgreSQL, Pydio Cells, File Browser, Design Explorer) live
+> dask-jobqueue, PhysicsNeMo, PostgreSQL, Pydio Cells, File Browser, Design Explorer, Grafana +
+> Prometheus) live
 > in [software/](software/), one file per tool — grep both when a symptom is unclear.
 >
 > Sections: validation · inputs and expressions · jobs, outputs, matrix and retries ·
@@ -149,6 +150,21 @@
   plain step started detached when the run did not get to its health check"; a
   step-level `cleanup:` is not, because cleanups always run at the end of their own
   job (docs: yaml-fields), which would kill a detached server right after launch.
+- **NOTHING in the YAML runs after a `pw workflows runs cancel` — only the submitter's
+  cleanup script does** (verified 2026-10-12, `workflows/cwl-mpi-hello-world`, three runs).
+  A plain step the cancel reached is killed with its remote process tree, but what that
+  process had *submitted* (the SLURM job cwltool sbatch'd) survives, and every YAML-side
+  cleanup hook was skipped: a job-level `cleanup:` list showed `(skipped, 0s)`
+  (giving-silkworm); a step `if: ${{ canceled }}` in the canceled job was skipped, and a
+  handler job `if: ${{ canceled || !completed }}` on it resolved `"if": false` →
+  `skipped-failed` (smashing-asp) — the if-conditions tutorial's cancel row holds for a
+  `parallelworks/cancel-jobs` self-cancel while the run continues, not for a user cancel
+  of the run (and contrast the 2026-10-01 entry above, where such a handler did run; do
+  not rely on it for a user cancel). What worked: run the process under
+  `script_submitter` with `define_cleanup_script: true` and a `cancel.sh` that scancels
+  the recorded job ids — on cancel the submitter killed the process group and `cancel.sh`
+  scancelled the running 10-node job (clever-blowfish). Handler jobs with
+  `if: ${{ !completed }}` remain the hook for the *error* path.
 - **A subworkflow's own `if: ${{ !completed }}` handler runs when the top-level run is
   canceled** (verified 2026-10-08, run included-corgi): canceling a doe-openfoam run while its
   nested `workflows/design-explorer` call had started its server showed that subworkflow's

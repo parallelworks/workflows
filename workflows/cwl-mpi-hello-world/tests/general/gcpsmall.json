@@ -1,0 +1,21 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "endpoint": false,
+    "scheduler": true,
+    "warm_marker": [
+      "${HOME}/pw/software/load-intel-oneapi-mpi.sh",
+      "${HOME}/pw/software/miniconda3-cwltool/bin/cwltool"
+    ],
+    "leftover_patterns": ["cwltool", "mpitest"]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cwl": {
+    "np": 4,
+    "scheduler_directives": "#!/bin/bash\n#SBATCH --ntasks-per-node=2\n#SBATCH --nodes=2\n#SBATCH --job-name=mpi-hello-world\n#SBATCH --time=00:30:00"
+  },
+  "software": {
+    "install_mpi": true,
+    "install_cwltool": true
+  }
+}

@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-12T15:26:54Z,warm,pass,ok,4e68a9f,e0cda99,e8105a3,e88e429,e88e429,grafana,alvaro,evident-stinkbug,348,

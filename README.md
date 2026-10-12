@@ -31,6 +31,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [doe](workflows/doe/) | Design of experiments sampler (Latin hypercube, Sobol, random, full factorial, one at a time, or your own cases as CSV): one `params.in` case directory per design, for any evaluator (no endpoint) | general |
 | [doe-openfoam](workflows/doe-openfoam/) | Design of experiments over the NACA airfoil case (Latin hypercube, Sobol, random, full factorial, one at a time, or your own cases as CSV): every design an `openfoam-naca` call in parallel, the results as a table and, with images on, Design Explorer over the study as an endpoint | general, hsp, noaa |
 | [filebrowser](workflows/filebrowser/) | File Browser web file manager (Docker) | general |
+| [grafana-prometheus](workflows/grafana-prometheus/) | Grafana over Prometheus (Docker): the service node's metrics from node-exporter, its GPUs from dcgm-exporter with the GPU dashboard provisioned, extra scrape targets and, on request, the platform agent's experimental exporter | general |
 | [h2o](workflows/h2o/) | H2O-3 node with its Flow UI | general, hsp, noaa |
 | [hermes-agent](workflows/hermes-agent/) | Hermes agent with auth/TCP proxies | general |
 | [hpc_status](workflows/hpc_status/) | HPC Status Monitor: fleet status, topology, queues, quota and storage dashboard over every cluster `pw` reaches, at a stable `status-<user>` address | general, hsp, noaa |

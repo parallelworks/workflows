@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: grafana
+          branch: canary
           sparse_checkout:
             - workflows/grafana-prometheus/app
       - name: Create Inputs

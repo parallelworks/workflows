@@ -9,7 +9,8 @@
 > "Step N" means SKILL.md's step N; "reference §N" means section N of
 > [activate-platform.md](activate-platform.md). Lessons about one piece of software
 > (OpenFOAM, Dakota, ParaView, conda environments, Singularity/SIF images, MPI benchmarks,
-> dask-jobqueue, PhysicsNeMo, PostgreSQL, Pydio Cells, File Browser, Design Explorer) live
+> dask-jobqueue, PhysicsNeMo, PostgreSQL, Pydio Cells, File Browser, Design Explorer, Grafana +
+> Prometheus) live
 > in [software/](software/), one file per tool — grep both when a symptom is unclear.
 >
 > Sections: validation · inputs and expressions · jobs, outputs, matrix and retries ·

@@ -1,0 +1,201 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+# An MPI Hello World run through the Common Workflow Language on a SLURM cluster:
+# cwltool executes a four-step CWL workflow (compile mpitest.c, generate the batch
+# script, sbatch it, wait for the job) on the login node, and the CWL workflow
+# itself submits and monitors the SLURM job — no script_submitter, that submission
+# is the point of the demo. Preprocessing installs Intel oneAPI MPI (spack) and
+# cwltool (Miniconda) when asked, or takes the form's load commands, and assembles
+# the CWL input file. The run completes when the SLURM job does and fails loud
+# when the job or any CWL step fails.
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: cwl
+          sparse_checkout:
+            - workflows/cwl-mpi-hello-world/app
+      - name: Create Inputs
+        run: |
+          set -e
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          cat <<'EOF' >> inputs.sh
+          install_mpi="${{ inputs.software.install_mpi }}"
+          load_mpi="${{ inputs.software.load_mpi }}"
+          install_cwltool="${{ inputs.software.install_cwltool }}"
+          load_cwltool="${{ inputs.software.load_cwltool }}"
+          np="${{ inputs.cwl.np }}"
+          EOF
+          # a hidden or empty input renders as nothing or undefined: drop those lines
+          sed -i '/=\s*$\|=undefined\s*$\|=""\s*$\|="undefined"\s*$/d' inputs.sh
+          sed -i 's/^/export /' inputs.sh
+          cat > scheduler-directives.txt <<'PW_EOF'
+          ${{ inputs.cwl.scheduler_directives }}
+          PW_EOF
+          source inputs.sh
+          if ! [[ "${np:-}" =~ ^[0-9]+$ ]] || [ "${np}" -lt 1 ]; then
+            echo "::error::Number of MPI processes must be a positive integer, got '${np:-}'"
+            exit 1
+          fi
+          if [ -z "${load_mpi:-}" ] || [ -z "${load_cwltool:-}" ]; then
+            echo "::error::A load command is empty: give one or let the workflow install"
+            exit 1
+          fi
+          cat inputs.sh
+          echo "JOB_DIR=${PWD}" | tee -a $OUTPUTS
+      - name: Install Intel oneAPI MPI
+        run: |
+          set -e
+          source inputs.sh
+          if [ "${install_mpi}" = "true" ]; then
+            bash workflows/cwl-mpi-hello-world/app/install-mpi.sh
+          fi
+      - name: Install cwltool
+        run: |
+          set -e
+          source inputs.sh
+          if [ "${install_cwltool}" = "true" ]; then
+            bash workflows/cwl-mpi-hello-world/app/install-cwltool.sh
+          fi
+      - name: Create the CWL Input File
+        run: |
+          set -e
+          source inputs.sh
+          mkdir -p cwl_workflow/slurm-output
+          cp workflows/cwl-mpi-hello-world/app/cwl/* cwl_workflow/
+          {
+            echo "load_mpi: \"${load_mpi}\""
+            echo "np: ${np}"
+            echo "scheduler_directives: |"
+            sed 's/^/  /' scheduler-directives.txt
+            cat <<'EOF'
+          source_code:
+            class: File
+            path: mpitest.c
+          wait_script:
+            class: File
+            path: wait_for_slurm_job.sh
+          output_dir:
+            class: Directory
+            path: ./slurm-output
+          EOF
+          } > cwl_workflow/inputs.yaml
+          cat cwl_workflow/inputs.yaml
+
+  run_cwl:
+    needs: [preprocessing]
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Run the CWL Workflow
+        run: |
+          set -eo pipefail
+          cd "${{ needs.preprocessing.outputs.JOB_DIR }}"
+          source inputs.sh
+          # substituted textually, so a ~ in the command still tilde-expands
+          ${{ inputs.software.load_cwltool }}
+          cd cwl_workflow
+          # --leave-tmpdir because the sbatch script references files cwltool staged
+          # there, and the SLURM job reads them after the staging step has finished
+          cwltool --tmpdir-prefix "${{ needs.preprocessing.outputs.JOB_DIR }}/cwl-tmp/" \
+            --leave-tmpdir mpi_workflow.cwl inputs.yaml
+      # the CWL workflow completes whatever final state SLURM reports: the check is
+      # what fails the run when the SLURM job did not COMPLETE
+      - name: Check the SLURM Job Status
+        run: |
+          cd "${{ needs.preprocessing.outputs.JOB_DIR }}/cwl_workflow"
+          status=$(tr -d '[:space:]' < job_status.txt)
+          if [ "${status}" != "COMPLETED" ]; then
+            echo "::error title=Error::The SLURM job finished in state '${status}'; the output follows"
+            cat slurm-output/mpitest.out 2>/dev/null
+            exit 1
+          fi
+          if ! grep -q "Hello world from processor" slurm-output/mpitest.out; then
+            echo "::error title=Error::No MPI output in ${PWD}/slurm-output/mpitest.out"
+            exit 1
+          fi
+          echo "::notice::The SLURM job completed; the MPI output follows"
+          cat slurm-output/mpitest.out
+          echo "MPI_OUTPUT=${PWD}/slurm-output/mpitest.out" | tee -a $OUTPUTS
+    cleanup:
+      # a cancel kills cwltool on the login node but not a SLURM job it already
+      # submitted: scancel whatever job id the submit step recorded and SLURM still runs
+      - name: Cancel a Leftover SLURM Job
+        run: |
+          grep -rhs "Submitted batch job" "${{ needs.preprocessing.outputs.JOB_DIR }}/cwl-tmp" 2>/dev/null \
+            | awk '{print $4}' | sort -u | while read -r jobid; do
+            if [ -n "${jobid}" ] && squeue -h -j "${jobid}" 2>/dev/null | grep -q .; then
+              scancel "${jobid}"
+              echo "Canceled SLURM job ${jobid}"
+            fi
+          done
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        provider:
+          - aws-slurm
+          - google-slurm
+          - azure-slurm
+        tooltip: The SLURM cluster the CWL workflow submits the MPI job to
+      cwl:
+        type: group
+        label: CWL MPI Hello World
+        items:
+          np:
+            type: number
+            label: Number of MPI processes
+            default: 4
+            min: 1
+            max: 100
+            tooltip: mpirun -np N inside the SLURM job; match it to the nodes x tasks per node the directives request
+          scheduler_directives:
+            type: editor
+            label: Scheduler directives
+            default: |
+              #!/bin/bash
+              #SBATCH --ntasks-per-node=2
+              #SBATCH --nodes=2
+              #SBATCH --job-name=mpi-hello-world
+            tooltip: |
+              The head of the batch script the CWL workflow generates and submits, shebang
+              included, one #SBATCH directive per line. The workflow appends --chdir to the
+              run's output directory.
+      software:
+        type: group
+        label: Software Environment
+        collapsed: true
+        items:
+          install_mpi:
+            type: boolean
+            label: Install Intel oneAPI MPI?
+            default: true
+            tooltip: Installs Intel oneAPI MPI with spack under ${HOME}/pw/software once; later runs reuse it. Otherwise give the command that loads an MPI below.
+          load_mpi:
+            type: string
+            label: Command to load MPI
+            hidden: ${{ inputs.software.install_mpi }}
+            optional: ${{ .hidden }}
+            default: ${{ .hidden && "source ~/pw/software/load-intel-oneapi-mpi.sh" || "" }}
+            tooltip: 'The command that puts mpicc and mpirun on PATH, for example: module load module-name or source path/to/env.sh'
+          install_cwltool:
+            type: boolean
+            label: Install cwltool?
+            default: true
+            tooltip: Installs cwltool under its own Miniconda in ${HOME}/pw/software once; later runs reuse it. Otherwise give the command that loads cwltool below.
+          load_cwltool:
+            type: string
+            label: Command to load cwltool
+            hidden: ${{ inputs.software.install_cwltool }}
+            optional: ${{ .hidden }}
+            default: ${{ .hidden && "source ~/pw/software/miniconda3-cwltool/bin/activate" || "" }}
+            tooltip: 'The command that puts cwltool on PATH, for example: module load module-name or source path/to/env.sh'

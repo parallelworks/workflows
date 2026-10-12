@@ -17,6 +17,7 @@ jobs:
           branch: canary
           sparse_checkout:
             - workflows/jupyterlab/app
+            - tools/oras
       - name: Create Inputs
         run: |
           set -x

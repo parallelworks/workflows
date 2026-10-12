@@ -157,6 +157,8 @@ jobs:
         include-workspace: false
         tooltip: The cluster to run Hermes on. Keep "Schedule Job" off so it stays on the login node (where it has internet for install + model calls).
       cluster:
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
         label: Cluster
         items:
@@ -164,8 +166,6 @@ jobs:
             type: boolean
             default: false
             label: Schedule Job?
-            hidden: ${{ inputs.resource.schedulerType == '' }}
-            ignore: ${{ .hidden }}
             tooltip: |
               Keep this off. Hermes must stay on the login node so the platform
               can reach it and so it has the internet access its brain and

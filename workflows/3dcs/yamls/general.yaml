@@ -395,6 +395,8 @@ jobs:
         include-workspace: false
         tooltip: SLURM cluster with 3DCS installed. Every worker and the merge run as SLURM jobs.
       cluster:
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
         label: Compute Cluster Settings
         items:

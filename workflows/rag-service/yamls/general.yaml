@@ -147,6 +147,8 @@ jobs:
           The cluster to run the retrieval service on. The docs directory
           must exist on this cluster's shared filesystem.
       cluster:
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
         label: Cluster
         items:
@@ -154,8 +156,6 @@ jobs:
             type: boolean
             default: false
             label: Schedule Job?
-            hidden: ${{ inputs.resource.schedulerType == '' }}
-            ignore: ${{ .hidden }}
             tooltip: >-
               Off: run on the login node. On: submit to the scheduler; the
               embedding model is served from a pre-populated cache so compute

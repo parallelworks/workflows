@@ -187,7 +187,11 @@ Pass `script_submitter`'s inputs **from the matching variant's YAML** (`resource
 only for endpoint workflows (it is what lets the service outlive the run); a plain
 batch job leaves it unset. **The resource is a top-level `resource` input on every
 variant** (`${{ inputs.resource }}`, `${{ inputs.resource.ip }}`); the `cluster` group
-holds only the scheduler fields. Add
+holds only the scheduler fields and is hidden and ignored as a whole when the resource
+has no scheduler (`${{ inputs.resource.schedulerType == '' }}`, on the group). A group
+with a field that also applies on the login node (OpenFOAM's cores per case, the
+benchmarks' ranks per node) stays visible and puts that condition on its `scheduler`
+item instead. Add
 `include-workspace: true` on the `compute-clusters` input if the workspace should be
 selectable. The hidden `service.name` input is the **endpoint name prefix** — keep it
 stable (renaming it changes endpoint names users see).

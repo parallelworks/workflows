@@ -336,6 +336,8 @@ jobs:
         include-workspace: false
         tooltip: Resource where the training runs; TensorBoard runs on its login node
       cluster:
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
         label: Compute Cluster Settings
         items:
@@ -343,8 +345,6 @@ jobs:
             type: boolean
             default: false
             label: Schedule Job?
-            hidden: ${{ inputs.resource.schedulerType == '' }}
-            ignore: ${{ .hidden }}
             tooltip: |
               Yes → The training is submitted to the scheduler using sbatch or qsub (GPU compute nodes)
               No  → It runs on the controller or login node (a single GPU server)

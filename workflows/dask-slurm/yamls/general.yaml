@@ -235,18 +235,20 @@ jobs:
         tooltip: |
           The Dask scheduler and its dashboard run on this cluster's login node, and the
           workers are SLURM jobs submitted there with sbatch: only a SLURM cluster works.
+      not_slurm:
+        label: Not a SLURM cluster
+        type: string
+        default: 'The selected resource has no SLURM scheduler: this workflow submits its Dask workers with sbatch and cannot run there'
+        disabled: true
+        optional: true
+        hidden: ${{ inputs.resource.schedulerType == 'slurm' }}
+        ignore: true
       cluster:
+        hidden: ${{ inputs.resource.schedulerType != 'slurm' }}
+        ignore: ${{ inputs.resource.schedulerType != 'slurm' }}
         type: group
         label: SLURM Cluster
         items:
-          not_slurm:
-            label: Not a SLURM cluster
-            type: string
-            default: 'The selected resource has no SLURM scheduler: this workflow submits its Dask workers with sbatch and cannot run there'
-            disabled: true
-            optional: true
-            hidden: ${{ inputs.resource.schedulerType == 'slurm' }}
-            ignore: true
           slurm:
             type: group
             label: Dask Worker Jobs

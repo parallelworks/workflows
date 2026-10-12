@@ -4,3 +4,4 @@ date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fe
 2026-09-21T10:15:50Z,warm,pass,ok,,4470a2e,436820d,9b833fc,aa37094-dirty,5e96588,dev,alvaro,touching-mole,33,
 2026-09-21T10:26:46Z,warm,pass,ok,,4470a2e,436820d,9b833fc,7e7e5bf-dirty,5e96588,dev,alvaro,above-oriole,32,
 2026-10-12T12:07:39Z,cold,pass,ok,,cd006ea,74bcc3d,c6c3dbb,b1ce74d-dirty,403af2f,variantes,alvaro,grand-airedale,37,
+2026-10-12T13:24:28Z,warm,pass,ok,,cd006ea,74bcc3d,c6c3dbb,48e0f4c-dirty,403af2f,variantes,alvaro,ideal-mako,37,

@@ -10,7 +10,9 @@
 # with OpenFOAM as the evaluator; by hand, any script will do.
 #
 # The step is seconds of work on the login node, so there is no scheduler
-# section: the resource is only where the state directory lives.
+# section: the resource is only where the state directory lives. For the same
+# reason one form serves every platform: there is no HSP or NOAA variant, and
+# callers on those platforms pass their resource as cluster.resource.
 permissions:
   - '*'
 
@@ -32,6 +34,23 @@ jobs:
       - name: Prepare the Dakota Environment
         run: |
           set -e
+          # NOAA home directories are small: when no environment commands are
+          # given, the conda-forge install goes to the cluster's shared software
+          # tree if this account can write there. Probe by creating the directory
+          # rather than reading mode bits: the trees are group- or ACL-writable and
+          # list as root-owned. Only the installer reads this; the environment file
+          # it writes records the absolute prefix.
+          case "${{ inputs.cluster.resource.ip }}" in
+            hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
+            mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
+            ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
+            gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
+            *) shared="" ;;                                                    # PPAN, cloud clusters
+          esac
+          if [ -n "${shared}" ] && mkdir -p "${shared}/dakota" 2>/dev/null; then
+            export service_parent_install_dir="${shared}"
+            echo "::notice::installing under the shared software directory ${shared}"
+          fi
           bash tools/utils/prepare-env.sh dakota "${PWD}/dakota-env.sh" \
             workflows/dakota/app/install-dakota.sh dakota << 'PW_LOAD_EOF'
           ${{ inputs.software.dakota_load }}
@@ -178,4 +197,9 @@ jobs:
             tooltip: |
               Shell commands that put `dakota` on PATH, e.g. `module load dakota`.
               Leave empty to install Dakota 6.16 from conda-forge (no sudo, ~3 min
-              once) under ${service_parent_install_dir:-$HOME/pw/software}/dakota.
+              once) under ${service_parent_install_dir:-$HOME/pw/software}/dakota,
+              which needs a login node that reaches the internet; where it does
+              not, give the site's module command. On NOAA the install goes to
+              the cluster's shared software directory (/contrib/pw on Hera,
+              Mercury and Ursa, /usw/rdhpcs/software/pw on Gaea) when this
+              account can write there.

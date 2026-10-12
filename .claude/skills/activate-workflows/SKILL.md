@@ -75,14 +75,13 @@ workflow run any `pw` command the user who launched it can run.
   Kubernetes (no script_submitter, no login node) →
   [references/k8s-workflows.md](references/k8s-workflows.md).
 - **Add a variant only where the platform changes the YAML; pick it by host.**
-  `general.yaml` serves every platform unless something differs there: the workflow
-  submits scheduler jobs (`script_submitter` and its resource/scheduler/slurm/pbs
-  form sections ship per platform), users run it from the platform's own form (HSP
-  and NOAA forms take the resource as a top-level input, not `cluster.resource`), or
-  the site changes where software installs or how it loads (`dakota`). A workflow
-  that runs on the login node and is only called from other YAMLs needs no variant
-  (`wait_for_endpoint`, `doe`, `design-explorer`): an HSP or NOAA caller passes its
-  top-level resource as `cluster.resource`. Pick the variant by platform host
+  `general.yaml` serves every platform unless the workflow submits scheduler jobs:
+  `script_submitter` and its resource/scheduler/slurm/pbs form sections ship per
+  platform. A workflow that runs on the login node needs no variant
+  (`wait_for_endpoint`, `doe`, `dakota`, `design-explorer`): an HSP or NOAA caller
+  passes its top-level resource as `cluster.resource`, and a site difference a
+  hostname can decide, such as where software installs on NOAA, is runtime logic in
+  the one YAML (`dakota`). Pick the variant by platform host
   (`pw context list`): `emed` for `cluster.einsteinmed.edu`, `noaa` for
   `noaa.parallel.works`, `hsp` for `activate.hpc.mil`, `general` otherwise — **if
   unclear, ask the user** — and copy the cluster/slurm/pbs form and `with:` block

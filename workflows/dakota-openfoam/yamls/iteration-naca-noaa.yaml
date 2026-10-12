@@ -5,15 +5,16 @@
 # next iteration. The pattern and file contract come from tutorials/optimization.
 #
 # The two compute pieces are the standalone workflows, called as subworkflows:
-#   optimize  ->  workflows/dakota/yamls/noaa.yaml           (one optimizer step)
+#   optimize  ->  workflows/dakota/yamls/general.yaml        (one optimizer step)
 #   workers   ->  workflows/openfoam-naca/yamls/noaa.yaml    (one case per design)
 # They meet in the files of the state directory: the Dakota step leaves one
 # iter_<N>/case_<j>/params.in per proposed design, each OpenFOAM call takes that
 # file as its design and that directory as its case directory, and leaves
 # results.out (or exit_code) there for the next Dakota step to ingest.
 # This is the NOAA (noaa.parallel.works) variant of iteration-naca.yaml: it calls
-# the noaa variants of the two workflows and passes their extra fields (SLURM
-# account and QoS) through.
+# the noaa variant of the OpenFOAM workflow and passes its extra fields (SLURM
+# account and QoS) through; the Dakota step has one YAML for every platform and
+# takes the resource under cluster.
 permissions:
   - '*'
 
@@ -29,8 +30,9 @@ jobs:
       - name: Dakota (Propose or Stop)
         uses: github/parallelworks/workflows@canary
         with:
-          $yaml: workflows/dakota/yamls/noaa.yaml
-          resource: ${{ inputs.resource }}
+          $yaml: workflows/dakota/yamls/general.yaml
+          cluster:
+            resource: ${{ inputs.resource }}
           problem:
             variables: ${{ inputs.variables }}
             objectives: ${{ inputs.objectives }}

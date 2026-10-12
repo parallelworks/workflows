@@ -22,7 +22,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: cwl
+          branch: canary
           sparse_checkout:
             - workflows/cwl-mpi-hello-world/app
       - name: Create Inputs

@@ -57,5 +57,3 @@ Hello world from processor alvaro-gcpsmall-00319-1-0001, rank 0 out of 4 process
 SLURM only: the CWL steps submit with `sbatch` and poll with `squeue`/`sacct`,
 so the form restricts the resource to the `*-slurm` providers and there is one
 `general.yaml`.
-
-Migrated from <https://github.com/parallelworks/cwlmpihelloworld>.

@@ -1544,6 +1544,8 @@ hand on the login node, where the transient spack download failure of
 | `gcpsmall` (4 ranks, 2 nodes x 2 tasks) | FAIL `modest-bass` (cwltool overrides `HOME`, so the load command's `~` resolved into the staging dir — the bug behind the source's hardcoded `/home/alvaro`; expanded at preprocessing), then PASS `needed-dory` (4 min, nodes booting) and PASS `upright-clam` (2m43s, the final submitter-based YAML), both `cleanup=ok`, 4 ranks over 2 nodes `COMPLETED` |
 | cancel path (by hand, 8–10 nodes so the job pends) | `giving-silkworm` and `smashing-asp`: every YAML-side hook skipped on the user cancel, SLURM job survived (pitfalls); `clever-blowfish` on the submitter-based YAML: the running 10-node job ended `CANCELLED` by `cancel.sh`, `cwl.exit` 143, no leftovers |
 
+The checkout points at `canary` for the merge.
+
 ## grafana-prometheus (2026-10-12, from parallelworks/grafana-prometheus)
 
 `workflows/grafana-prometheus/` is the endpoint-pattern port of

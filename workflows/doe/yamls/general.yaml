@@ -10,8 +10,7 @@
 #
 # The sampler is seconds of work on the login node, so there is no scheduler
 # section: the resource is only where the cases are written. For the same reason
-# one form serves every platform: there is no HSP or NOAA variant, and callers on
-# those platforms pass their resource through as is.
+# one form serves every platform: there is no HSP or NOAA variant.
 permissions:
   - '*'
 

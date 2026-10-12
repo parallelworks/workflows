@@ -169,7 +169,7 @@ To convert an older workflow to this pattern, follow
   `.claude/skills/activate-workflows/references/design-parameters.md`.
 - A workflow that only runs on the login node and submits no scheduler job keeps a single
   `general.yaml` (`wait_for_endpoint`, `doe`, `dakota`, `design-explorer`): nothing differs between
-  platforms, so an HSP or NOAA caller passes its `resource` straight through.
+  platforms, so a caller on any platform calls that one file.
   Variants exist for what does differ: the submitter, the SLURM/PBS fields, install paths.
 
 ### Comments

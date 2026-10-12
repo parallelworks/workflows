@@ -78,10 +78,9 @@ workflow run any `pw` command the user who launched it can run.
   `general.yaml` serves every platform unless the workflow submits scheduler jobs:
   `script_submitter` and its resource/scheduler/slurm/pbs form sections ship per
   platform. A workflow that runs on the login node needs no variant
-  (`wait_for_endpoint`, `doe`, `dakota`, `design-explorer`): an HSP or NOAA caller
-  passes its `resource` straight through, and a site difference a
-  hostname can decide, such as where software installs on NOAA, is runtime logic in
-  the one YAML (`dakota`). Pick the variant by platform host
+  (`wait_for_endpoint`, `doe`, `dakota`, `design-explorer`): its form is the same on
+  every platform, and a site difference a hostname can decide, such as where software
+  installs on NOAA, is runtime logic in the one YAML (`dakota`). Pick the variant by platform host
   (`pw context list`): `emed` for `cluster.einsteinmed.edu`, `noaa` for
   `noaa.parallel.works`, `hsp` for `activate.hpc.mil`, `general` otherwise — **if
   unclear, ask the user** — and copy the cluster/slurm/pbs form and `with:` block

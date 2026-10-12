@@ -6,3 +6,4 @@ date,phase,result,cleanup,http,workflow_tree,submitter_tree,tools_tree,commit,fe
 2026-10-12T12:07:39Z,cold,pass,ok,,cd006ea,74bcc3d,c6c3dbb,b1ce74d-dirty,403af2f,variantes,alvaro,grand-airedale,37,
 2026-10-12T13:24:28Z,warm,pass,ok,,cd006ea,74bcc3d,c6c3dbb,48e0f4c-dirty,403af2f,variantes,alvaro,ideal-mako,37,
 2026-10-12T13:41:02Z,warm,pass,ok,,4a3858d,e0cda99,e8105a3,c02fe39,c02fe39,skill,alvaro,uncommon-dog,37,
+2026-10-12T14:23:32Z,warm,pass,ok,,4a3858d,e0cda99,e8105a3,1036376,c02fe39,skill,alvaro,logical-louse,38,

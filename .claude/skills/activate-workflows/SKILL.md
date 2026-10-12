@@ -26,6 +26,7 @@ file):
 |---|---|
 | [references/activate-platform.md](references/activate-platform.md) | Any YAML or CLI question: schema, inputs and expressions, DAG / matrix / retries, `script_submitter`, `pw` CLI, job-dir layout, endpoints, LLM services. Numbered sections, contents at the top. |
 | [references/pitfalls.md](references/pitfalls.md) | **A run misbehaves**: grep it for the symptom text before debugging from scratch. Every surprise a real run taught, grouped by theme, dated. |
+| [references/shapes/](references/shapes/) | The jobs after preprocessing for each workflow shape (endpoint service, batch job, callable step, composed workflow): what "done" means, the teardown, the test. Step 2 picks one. |
 | [references/k8s-workflows.md](references/k8s-workflows.md) | The target is a Kubernetes cluster: no login node, no `script_submitter`, its own dev loop, tests and debugging. |
 | [references/design-parameters.md](references/design-parameters.md) | A driver (`doe`, `dakota`) and a runner (`openfoam-naca`) exchange designs: the `params.in` / `results.out` contract. |
 | [references/session-to-endpoint-upgrade.md](references/session-to-endpoint-upgrade.md) | Converting an older session-tunnel workflow to the endpoint pattern. |
@@ -115,47 +116,12 @@ standalone from a clean shell with no manual setup. No YAML yet.
 
 ## Step 2 — Wrap the working code in workflow YAML
 
-Mirror the proven pattern, `workflows/webshell/yamls/general.yaml`: three jobs.
-
-1. **preprocessing**: `parallelworks/checkout` of this repo (sparse:
-   `workflows/<name>/app`, plus `tools/...` when the scripts use the shared tools);
-   write `inputs.sh` from the form values and the `PW_*` environment; run
-   `inputs.sh + controller.sh` inline; assemble the start script (`inputs.sh` + the
-   generic cleanup trap + `start-template.sh`) and publish its path and the
-   `SKIP_CLEANUP` path as outputs.
-2. **session_runner** (the submitter job's name in every YAML here): the
-   `script_submitter` subworkflow submits the start script, with the whole `with:`
-   block copied from the matching variant (`resource`, `use_existing_script` +
-   `script_path`, `scheduler`, `slurm`/`pbs`, `skip_cleanups_file`). The two steps after
-   it (`cancel-jobs` on the waiter, `exit 1`) only run when the script returns before the
-   endpoint came up: that is the failure path (reference §5).
-3. **wait_for_endpoint**: the `wait_for_endpoint` subworkflow
-   (`workflows/wait_for_endpoint/README.md`) polls `pw endpoints list` for
-   `<service.name>-${PW_RUN_SLUG}`, probes the URL with
-   `Authorization: Bearer ${PW_API_KEY}` until the status matches `healthy` within
-   `budget`, touches the `SKIP_CLEANUP` file so the service outlives the run, and the
-   job cancels the submitter. If the service never answers, the job fails without the
-   marker and the submitter's cleanup tears the job down. **The workflow owns this
-   health check.** Set the inputs per service: `healthy` (`2*|3*` for a web UI; a
-   `path` to a health route for an API server), `budget` (seconds for a Python server,
-   minutes for a container or a model load); read the wait job's log once to confirm the
-   choice. The key matters: an anonymous request only ever sees the platform's `307`
-   login redirect; with the key the service's own status comes back, `503` while
-   nothing listens behind the tunnel yet.
-
-The two contract scripts, both sourcing `inputs.sh`:
-
-- **`controller.sh`**: idempotent setup on the login node (it has internet). Check
-  before installing; often it only verifies prerequisites.
-- **`start-template.sh`**: launches the service **in the foreground** under
-  `pw endpoints run ${pw_endpoints_args} -- <cmd with {port}>`, the literal `{port}`
-  token (the shell would expand `${port}` to nothing). `pw endpoints run` blocks for
-  the service's life, so the script needs no `sleep inf`; a server started in the
-  background does. Write `cancel.sh` first, for anything the endpoint's process-tree
-  kill will not reach (a `screen` session, a docker container, a daemonizing app). Fail
-  loud: when `pw endpoints run` exits without the endpoint registered, exit non-zero
-  (copy the tail of `workflows/webshell/app/start-template.sh`), and never cancel the
-  run from inside the start script.
+Every YAML here starts the same way, whatever it goes on to do: a **preprocessing** job
+that checks out the code with `parallelworks/checkout` (sparse: `workflows/<name>/app`,
+plus `tools/...` when the scripts use the shared tools), writes `inputs.sh` from the
+form values and the `PW_*` environment, runs `inputs.sh + controller.sh` inline, and
+assembles whatever script the next jobs run, publishing its path as an output. The
+rules every shape shares:
 
 **Paths.** Only the runtime subtree is checked out, `workflows/<name>/app` (or an
 implementation subdir), and it materializes at
@@ -178,9 +144,9 @@ input (`workflows/ollama/yamls/general.yaml`). An optional input left unset rend
 empty in the shell (verified for `integer`): guard with `${var:-default}` and quote every
 `${{ }}` interpolation.
 
-**Getting the scripts onto the node: `parallelworks/checkout`, never base64.** The repo
-is fetched from GitHub at run time, so nothing you edit locally takes effect until it is
-pushed (both modes in detail: reference §9).
+**Code delivery: `parallelworks/checkout`, never base64.** The repo is fetched from
+GitHub at run time, so nothing you edit locally takes effect until it is pushed (both
+modes in detail: reference §9).
 1. **Write access (recommended):** work on a development branch, never `canary`
    directly (branch rules require a PR); push, and point the checkout at that branch
    (`branch: <dev-branch>`). After the merge, flip `branch:` back to `canary`.
@@ -189,16 +155,20 @@ pushed (both modes in detail: reference §9).
    (`cp -r ~/pw/dev/<workflow>/. .`) that stands in for it. The user swaps them after
    merging.
 
-**Base paths.** Subdomain endpoints serve at the URL root, so most apps need no
-base-URL setting and no proxy; `--slug` adds a landing path or query string. A
-path-based endpoint (`--no-subdomain`, required on emed) forwards the full prefix: give
-the app the `{path}` token as its base path, or `--strip-path` (reference §10).
+Then pick the **shape** by what the run must leave behind. Its file has the jobs that
+follow preprocessing, what "done" means, how the run is torn down and what its test
+checks:
 
-**Kubernetes:** the same endpoint, registered by a `pw-cli` sidecar inside the pod; no
-submitter, no login node, nothing checked out, and the run stays alive until it is
-cancelled. Copy `workflows/mlflow/yamls/k8s.yaml` (k8s-only) or
-`workflows/openvscode/yamls/general_k8s.yaml` (hybrid); everything else is in
-[references/k8s-workflows.md](references/k8s-workflows.md).
+| Shape | The run ends when | After preprocessing | Copy from | Read |
+|---|---|---|---|---|
+| **Endpoint service** (most workflows) | the service answers its URL; it outlives the run until `pw endpoints delete` | `session_runner` (`script_submitter`) + `wait_for_endpoint` | `workflows/webshell` | [shapes/endpoint.md](references/shapes/endpoint.md) |
+| **Batch job** | the script finishes; the run fails when it fails | `script_submitter` once, then a step that reads the exit file the script wrote | `workflows/activate-batch`, `workflows/benchmarks` | [shapes/batch.md](references/shapes/batch.md) |
+| **Callable step** (login node only) | its steps finish; one `general.yaml` for every platform | plain `run:` steps; a detached `pw endpoints run` with a `!completed` handler when it serves | `workflows/doe`, `workflows/design-explorer` | [shapes/composed.md](references/shapes/composed.md) |
+| **Composed** | the study or loop finishes | `uses:` of the rows above: a matrix of evaluators, retry-as-loop, a live page | `workflows/doe-openfoam`, `workflows/dakota-openfoam` | [shapes/composed.md](references/shapes/composed.md) |
+| **Kubernetes** | never: cancelling the run is the teardown | the sidecar pod jobs; no submitter, nothing checked out | `workflows/mlflow/yamls/k8s.yaml`, `workflows/openvscode/yamls/general_k8s.yaml` (hybrid) | [k8s-workflows.md](references/k8s-workflows.md) |
+
+Rows combine: `physicsnemo` and `dakota-openfoam` run a batch job or a loop beside a
+page started the callable-step way.
 
 ## Step 3 — Test end-to-end and record the test
 
@@ -214,9 +184,10 @@ on the referenced branch. The YAML itself is read from the local path.
 python3 tools/tests/run-workflow-test.py workflows/<name>/tests/<variant>/<test>.json
 ```
 
-Pass = `result=pass` and `cleanup=ok` in the row the runner appends (a run only
-completes after the workflow's own health check saw the URL answer, so the runner never
-probes it). On failure read `tests/<variant>/logs/<slug>.txt` and
+Pass = `result=pass` and `cleanup=ok` in the row the runner appends. What `completed`
+proves is the shape's business: an endpoint workflow only completes after its own
+health check saw the URL answer, so the runner never probes it; a batch test sets
+`_test.endpoint: false`. On failure read `tests/<variant>/logs/<slug>.txt` and
 `pw workflows runs errors <slug>`, fix, push, re-run. Commit the test and the CSV rows
 with the change; never edit a CSV by hand. Run the tests of one resource sequentially.
 
@@ -229,21 +200,22 @@ path because the shell's cwd is not guaranteed between tool calls):
 - Pass the resource as its URI (`pw://<user>/<cluster>`) or bare name, never an IP; it
   must be `active` in `pw cluster ls`. A `compute-resources` input (the hybrid k8s
   forms) needs the resource object (reference §2).
-- The run completes once `wait_for_endpoint` saw the endpoint listed and its URL
-  answer; the service keeps running until `pw endpoints delete <name>`, which kills the
-  remote process tree (a daemonizing app that re-parented to PID 1 can survive it).
+- What the run's completion proves, and how the service or job is torn down, is in
+  the shape's file (Step 2).
 - **Kubernetes:** pass = the `wait_for_endpoint_k8s` job completes while the run is
   still `running`; teardown = `pw workflows runs cancel <slug>`
   ([references/k8s-workflows.md §4–§5](references/k8s-workflows.md)).
 
 **Verify cleanup on cancel, every time, not as an afterthought:** cancel one run
 mid-flight (`pw workflows runs cancel <slug>` while the service is starting or serving)
-and confirm nothing survived: no service processes (`ps -x`), no scheduler job
-(`squeue`/`qstat` when `scheduler: true`), no container instances
-(`singularity instance list`, `docker ps`), no stray listeners, no `stopped` record in
-`pw endpoints list`. If anything survives, fix `cancel.sh` before calling the workflow
-done. Test the failure path too: an `exit 1` before `pw endpoints run` must end the run
-in `error`.
+and confirm nothing survived: no service or worker processes (`ps -x`), no scheduler
+job (`squeue`/`qstat` when `scheduler: true`), no container instances
+(`singularity instance list`, `docker ps`), no stray listeners, no endpoint record left
+in `pw endpoints list` (a cancel while a service starts can leave a `stopped` one). If
+anything survives, fix the cleanup (`cancel.sh`, the submitter's cleanup script) before
+calling the workflow done. Test the failure path too: a deliberate failure (an `exit 1`
+before the service starts, an input the form forbids) must end the run in `error`; the
+success path never exercises those steps.
 
 ## Step 4 — Debug from the job directory and processes
 
@@ -255,16 +227,16 @@ login node when `scheduler: false`; `~/pw/jobs/<run-slug>/` for CLI file runs,
 ls -la ~/pw/jobs/<run>/                               # inputs.sh, the assembled scripts, SKIP_CLEANUP, the checkout
 cat   ~/pw/jobs/<run>/inputs.sh                       # the form values the scripts saw
 cat   ~/pw/jobs/<run>/logs/<job>/step_N/step.out      # per-step trace (set -x shows every expanded command); step.exit
-find  ~/pw/jobs/<run> -name 'run.*.out'               # the service's stdout (under subworkflows/session_runner/step_0/ unless rundir is set)
+find  ~/pw/jobs/<run> -name 'run.*.out'               # the submitted script's stdout (under subworkflows/<submitter job>/step_0/ unless rundir is set)
 find  ~/pw/jobs/<run> -name step.out | xargs grep -h '^::error'   # every failure of the run, nested subworkflows included
 ps -x | grep <your-process>                           # is the service alive?
-pw endpoints list                                     # is the endpoint registered?
+pw endpoints list                                     # is the endpoint registered? (endpoint shapes)
 ```
 
 From anywhere, through the API:
 ```bash
 pw workflows runs errors <slug> -o text                       # just the failures
-pw workflows runs logs   <slug> --job session_runner          # one job's steps (the submitter job here)
+pw workflows runs logs   <slug> --job <job>                   # one job's steps (`session_runner` is the submitter job of endpoint workflows)
 pw workflows runs logs   <slug> --job wait_for_endpoint       # the statuses the health probe saw
 pw workflows runs view   <slug> -o json                       # the inputs the run was launched with, the resolved YAML
 ```

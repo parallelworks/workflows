@@ -46,9 +46,9 @@ so the endpoint must be a subdomain one (the default).
 
 ## Kubernetes
 
-**Not run yet.** No Kubernetes cluster was reachable when this workflow was written
-(2026-10-12); `yamls/general_k8s.yaml` validates with `pw workflows run --dry-run` on both
-lanes and its compute lane is tested. The Kubernetes lane follows the
+Tested on `k3sgpu` (2026-10-13, `tests/general_k8s/k3sgpu.json`): the endpoint answered
+within about a minute and cancelling the run left nothing in the namespace. The
+Kubernetes lane follows the
 [metabase](../metabase/) and [postgres](../postgres/) hybrids: a Deployment
 (`strategy: Recreate`) with the pgAdmin container and a `pw` client sidecar that publishes
 it as the endpoint; the PersistentVolumeClaim (new or existing) is mounted at
@@ -68,4 +68,4 @@ request 512Mi and 500m CPU, with limits of 1Gi and 1 CPU.
 server), a SLURM job (`gcp-compute`), and a wrong password on an existing data directory
 (`gcp-wrong-password`: the run must fail and leave nothing behind, so run it after one of
 the others has created `${HOME}/pgadmin4`). `tests/general_k8s/` holds the hybrid's
-compute lane (`gcp-controller`) and its Kubernetes lane (`k3sgpu`, not run yet).
+compute lane (`gcp-controller`) and its Kubernetes lane (`k3sgpu`).

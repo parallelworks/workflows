@@ -21,6 +21,7 @@
   "doe": {
     "method": "csv",
     "cases_csv": "max_camber\tthickness\tangle_of_attack\n0.00\t0.12\t4\n0.02\t0.12\t4\n0.04\t0.12\t4\n0.02\t0.09\t8\n0.02\t0.15\t8\n",
+    "n_cases": 5,
     "max_parallel": 5,
     "mesh_scale": 1
   }

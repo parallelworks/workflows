@@ -81,6 +81,14 @@
   run. Until 2026-10-08 (CLI v7.105.0) a dry-run of `range inputs.count` failed with
   `Expression Parser Error: max recursion exceeded` (core PR #20674 brought `range` and
   `fromJSON`; `fromJSON` not re-checked since).
+- **A run has a budget of 1000 YAML references, and every matrix slot that calls a
+  subworkflow spends them** (verified 2026-10-13, dry-run): with the matrix sized from the
+  form, `tutorials/optimization/general.yaml` validates at `batch_size` 999 and fails at
+  1000, `workflows/doe-openfoam` and `workflows/dakota-openfoam` at about 500 cases (each
+  case is `openfoam-naca`, which calls `script_submitter`: two references per slot, plus
+  the page's), all with `[ERROR] workflow run exceeds total YAML reference limit (1000)` at
+  submission. Dry-run the widest form value a workflow is meant to take; a form `max:` is
+  the place to say what fits.
 - **List-template `default:`s do not fill explicit empty strings (probable platform
   bug — verified July 2026).** Three paths behave differently for a field passed as
   `""`: a **top-level input** is default-filled; a value passed **directly to a

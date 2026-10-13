@@ -151,9 +151,14 @@ rundir: ${{ needs.optimize.outputs.ITER_DIR }}/case_${{ matrix.job_id }}
 so the case directory becomes the working directory, `./run.sh` runs there, and
 the form's scheduler settings (run on the login node, or one SLURM/PBS job per
 case) pass straight through. `fail-fast: false` lets the other cases finish when
-one fails. There is no ceiling to extend: a wider batch is a bigger `batch_size`
-in the form, and the optimizer itself cannot widen it (its proposal is a runtime
-value), which is why the guard step above fails loudly instead.
+one fails. There is no ceiling in the YAML to extend: a wider batch is a bigger
+`batch_size` in the form, and the optimizer itself cannot widen it (its proposal
+is a runtime value), which is why the guard step above fails loudly instead. The
+platform's own limit is its budget of 1000 YAML references per run: every worker
+slot is one `uses:` of `script_submitter`, so submission fails with `workflow run
+exceeds total YAML reference limit (1000)` from `batch_size` 1000 on, and sooner
+in a workflow whose evaluator is itself composed (two references per case in
+`workflows/doe-openfoam` and `workflows/dakota-openfoam`).
 
 ### The `decide` job — an exit code as the loop signal
 
@@ -302,7 +307,8 @@ job or process tree), skipped workers never start, and the loop keeps no daemons
 ### Scaling and tuning
 
 - **Wider batches** — raise `batch_size`: the matrix ranges over it, so the
-  YAMLs hold no ceiling. To limit how many cases run at the same time, add
+  YAMLs hold no ceiling (the platform's 1000-reference budget per run is the
+  limit, see above). To limit how many cases run at the same time, add
   `max-parallel: <n>` under `strategy`.
 - **More iterations** — every platform iteration adds scheduling overhead (roughly
   a minute at small scale), so budget accordingly; the loop is restartable state,

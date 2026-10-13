@@ -4,3 +4,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-08T12:43:41Z,warm,pass,ok,61f5b9a,74bcc3d,0b74bc0,0e30e94,0e30e94,design-explorer,alvaro,valued-caribou,109,
 2026-10-08T14:16:36Z,warm,pass,ok,8d578be,74bcc3d,0b74bc0,397bb20,397bb20,design-explorer,alvaro,hardy-jennet,109,
 2026-10-08T14:57:05Z,warm,pass,ok,bf00fc3,74bcc3d,0b74bc0,0c9b3ee,0c9b3ee,design-explorer,alvaro,huge-hyena,109,
+2026-10-13T16:14:44Z,cold,pass,ok,bb33bc8,e0cda99,e8105a3,11df441-dirty,f0da98c,optimization,alvaro,tight-finch,260,

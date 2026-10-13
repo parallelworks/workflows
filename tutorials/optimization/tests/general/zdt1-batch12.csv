@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-13T16:12:16Z,,pass,ok,a806986,e0cda99,e8105a3,11df441-dirty,f0da98c,optimization,alvaro,alert-dogfish,134,

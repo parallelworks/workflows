@@ -1,0 +1,20 @@
+jobs:
+  pick:
+    steps:
+      - run: echo "workers=$(( RANDOM % 9 + 2 ))" | tee -a $OUTPUTS
+  subworkflow:
+    needs:
+      - pick
+    steps:
+      - uses: github/parallelworks/workflows@tmp
+        with:
+          $yaml: tmp/subworkflow.yaml
+          resource: ${{ inputs.resource }}
+          workers: ${{ needs.pick.outputs.workers }}
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Resource
+        optional: false

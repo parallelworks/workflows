@@ -1,0 +1,107 @@
+Run relaxing-mosquito: error (5m32s)
+
+Error annotations:
+
+  Error: Endpoint mlflow-relaxing-mosquito is unhealthy (HTTP 503 from https://rested-hound.activate.pw/ after 303s)
+    in wait_for_endpoint_k8s > wait_for_endpoint → Check endpoint health
+
+Failed jobs/steps:
+
+  wait_for_endpoint > Check endpoint health (error, 0s)
+    notice: Checking that https://rested-hound.activate.pw/ answers
+    Error: Endpoint mlflow-relaxing-mosquito is unhealthy (HTTP 503 from https://rested-hound.activate.pw/ after 303s)
+    Wed Oct  7 11:49:22 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 52s; retrying in 5 seconds
+    Wed Oct  7 11:49:27 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 57s; retrying in 5 seconds
+    Wed Oct  7 11:49:32 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 62s; retrying in 5 seconds
+    Wed Oct  7 11:49:37 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 67s; retrying in 5 seconds
+    Wed Oct  7 11:49:42 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 72s; retrying in 5 seconds
+    Wed Oct  7 11:49:47 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 77s; retrying in 5 seconds
+    Wed Oct  7 11:49:53 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 83s; retrying in 5 seconds
+    Wed Oct  7 11:49:58 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 88s; retrying in 5 seconds
+    Wed Oct  7 11:50:03 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 93s; retrying in 5 seconds
+    Wed Oct  7 11:50:08 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 98s; retrying in 5 seconds
+    Wed Oct  7 11:50:13 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 103s; retrying in 5 seconds
+    Wed Oct  7 11:50:18 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 108s; retrying in 5 seconds
+    Wed Oct  7 11:50:23 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 113s; retrying in 5 seconds
+    Wed Oct  7 11:50:28 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 118s; retrying in 5 seconds
+    Wed Oct  7 11:50:34 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 124s; retrying in 5 seconds
+    Wed Oct  7 11:50:39 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 129s; retrying in 5 seconds
+    Wed Oct  7 11:50:44 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 134s; retrying in 5 seconds
+    Wed Oct  7 11:50:49 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 139s; retrying in 5 seconds
+    Wed Oct  7 11:50:54 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 144s; retrying in 5 seconds
+    Wed Oct  7 11:50:59 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 149s; retrying in 5 seconds
+    Wed Oct  7 11:51:04 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 154s; retrying in 5 seconds
+    Wed Oct  7 11:51:10 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 160s; retrying in 5 seconds
+    Wed Oct  7 11:51:15 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 165s; retrying in 5 seconds
+    Wed Oct  7 11:51:20 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 170s; retrying in 5 seconds
+    Wed Oct  7 11:51:25 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 175s; retrying in 5 seconds
+    Wed Oct  7 11:51:30 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 180s; retrying in 5 seconds
+    Wed Oct  7 11:51:35 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 185s; retrying in 5 seconds
+    Wed Oct  7 11:51:40 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 190s; retrying in 5 seconds
+    Wed Oct  7 11:51:45 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 195s; retrying in 5 seconds
+    Wed Oct  7 11:51:50 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 200s; retrying in 5 seconds
+    Wed Oct  7 11:51:56 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 206s; retrying in 5 seconds
+    Wed Oct  7 11:52:01 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 211s; retrying in 5 seconds
+    Wed Oct  7 11:52:06 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 216s; retrying in 5 seconds
+    Wed Oct  7 11:52:11 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 221s; retrying in 5 seconds
+    Wed Oct  7 11:52:16 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 226s; retrying in 5 seconds
+    Wed Oct  7 11:52:21 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 231s; retrying in 5 seconds
+    Wed Oct  7 11:52:26 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 236s; retrying in 5 seconds
+    Wed Oct  7 11:52:31 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 241s; retrying in 5 seconds
+    Wed Oct  7 11:52:36 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 246s; retrying in 5 seconds
+    Wed Oct  7 11:52:42 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 252s; retrying in 5 seconds
+    Wed Oct  7 11:52:47 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 257s; retrying in 5 seconds
+    Wed Oct  7 11:52:52 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 262s; retrying in 5 seconds
+    Wed Oct  7 11:52:57 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 267s; retrying in 5 seconds
+    Wed Oct  7 11:53:02 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 272s; retrying in 5 seconds
+    Wed Oct  7 11:53:07 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 277s; retrying in 5 seconds
+    Wed Oct  7 11:53:12 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 282s; retrying in 5 seconds
+    Wed Oct  7 11:53:18 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 288s; retrying in 5 seconds
+    Wed Oct  7 11:53:23 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 293s; retrying in 5 seconds
+    Wed Oct  7 11:53:28 UTC 2026 HTTP 503 from https://rested-hound.activate.pw/ after 298s; retrying in 5 seconds
+    ✗ Error: Endpoint mlflow-relaxing-mosquito is unhealthy (HTTP 503 from https://rested-hound.activate.pw/ after 303s)
+
+Summary: 2 job(s) failed, 1 step(s) failed
+
+
+=== kubectl get events (last 40) ===
+16m         Normal    ExternalProvisioning    persistentvolumeclaim/alvarojobsartistic-jaguar-pvc     Waiting for a volume to be created either by the external provisioner 'rancher.io/local-path' or manually by the system administrator. If volume creation is delayed, please verify that the provisioner is running and correctly registered.
+16m         Normal    ScalingReplicaSet       deployment/alvarojobsartistic-jaguar                    Scaled up replica set alvarojobsartistic-jaguar-5ccb89666f from 0 to 1
+16m         Normal    Provisioning            persistentvolumeclaim/alvarojobsartistic-jaguar-pvc     External provisioner is provisioning volume for claim "alvarok8s/alvarojobsartistic-jaguar-pvc"
+16m         Normal    ProvisioningSucceeded   persistentvolumeclaim/alvarojobsartistic-jaguar-pvc     Successfully provisioned volume pvc-130ab122-7972-47b3-85ad-f086e208eefc
+16m         Normal    Pulling                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Pulling image "busybox"
+16m         Normal    Started                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Started container set-permissions
+16m         Normal    Created                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Created container: set-permissions
+16m         Normal    Pulled                  pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Successfully pulled image "busybox" in 1.504s (1.504s including waiting). Image size: 2236767 bytes.
+16m         Normal    Pulling                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Pulling image "ghcr.io/mlflow/mlflow:v3.17.0"
+16m         Normal    Pulled                  pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Successfully pulled image "ghcr.io/mlflow/mlflow:v3.17.0" in 10.266s (10.266s including waiting). Image size: 292797809 bytes.
+16m         Normal    Pulling                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Pulling image "ghcr.io/parallelworks/pw-cli:v7.79.0"
+16m         Normal    Created                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Created container: pw-endpoint
+16m         Normal    Started                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Started container pw-endpoint
+16m         Normal    Pulled                  pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Successfully pulled image "ghcr.io/parallelworks/pw-cli:v7.79.0" in 2.497s (2.497s including waiting). Image size: 28348441 bytes.
+14m         Normal    Created                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Created container: alvarojobsartistic-jaguar
+14m         Normal    Started                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Started container alvarojobsartistic-jaguar
+12m         Normal    Pulled                  pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Container image "ghcr.io/mlflow/mlflow:v3.17.0" already present on machine
+11m         Warning   BackOff                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Back-off restarting failed container alvarojobsartistic-jaguar in pod alvarojobsartistic-jaguar-5ccb89666f-ltc5t_alvarok8s(0b30847a-069b-4ac3-9474-20aae6cc68cb)
+10m         Normal    Killing                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t          Stopping container pw-endpoint
+5m46s       Normal    WaitForFirstConsumer    persistentvolumeclaim/alvarojobsrelaxing-mosquito-pvc   waiting for first consumer to be created before binding
+5m44s       Normal    SuccessfulCreate        replicaset/alvarojobsrelaxing-mosquito-5765644664       Created pod: alvarojobsrelaxing-mosquito-5765644664-dzxm9
+5m44s       Normal    ExternalProvisioning    persistentvolumeclaim/alvarojobsrelaxing-mosquito-pvc   Waiting for a volume to be created either by the external provisioner 'rancher.io/local-path' or manually by the system administrator. If volume creation is delayed, please verify that the provisioner is running and correctly registered.
+5m44s       Normal    Provisioning            persistentvolumeclaim/alvarojobsrelaxing-mosquito-pvc   External provisioner is provisioning volume for claim "alvarok8s/alvarojobsrelaxing-mosquito-pvc"
+5m44s       Normal    ScalingReplicaSet       deployment/alvarojobsrelaxing-mosquito                  Scaled up replica set alvarojobsrelaxing-mosquito-5765644664 from 0 to 1
+5m39s       Normal    ProvisioningSucceeded   persistentvolumeclaim/alvarojobsrelaxing-mosquito-pvc   Successfully provisioned volume pvc-702b5641-ad87-449c-b94b-f11c16bd6cb6
+5m38s       Normal    Pulling                 pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Pulling image "busybox"
+5m37s       Normal    Started                 pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Started container set-permissions
+5m37s       Normal    Created                 pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Created container: set-permissions
+5m37s       Normal    Pulled                  pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Successfully pulled image "busybox" in 1.241s (1.241s including waiting). Image size: 2236767 bytes.
+5m36s       Normal    Pulling                 pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Pulling image "ghcr.io/mlflow/mlflow:v3.17.0"
+5m29s       Normal    Pulling                 pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Pulling image "ghcr.io/parallelworks/pw-cli:v7.79.0"
+5m29s       Normal    Pulled                  pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Successfully pulled image "ghcr.io/mlflow/mlflow:v3.17.0" in 6.837s (6.837s including waiting). Image size: 292797809 bytes.
+5m27s       Normal    Pulled                  pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Successfully pulled image "ghcr.io/parallelworks/pw-cli:v7.79.0" in 2.111s (2.111s including waiting). Image size: 28348441 bytes.
+5m27s       Normal    Created                 pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Created container: pw-endpoint
+5m27s       Normal    Started                 pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Started container pw-endpoint
+3m16s       Normal    Started                 pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Started container alvarojobsrelaxing-mosquito
+3m16s       Normal    Created                 pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Created container: alvarojobsrelaxing-mosquito
+105s        Normal    Pulled                  pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Container image "ghcr.io/mlflow/mlflow:v3.17.0" already present on machine
+18s         Warning   BackOff                 pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Back-off restarting failed container alvarojobsrelaxing-mosquito in pod alvarojobsrelaxing-mosquito-5765644664-dzxm9_alvarok8s(f6cc01ad-bd8d-4ec8-a5e3-302cf7ac3e64)
+17s         Normal    Killing                 pod/alvarojobsrelaxing-mosquito-5765644664-dzxm9        Stopping container pw-endpoint

@@ -1,0 +1,4 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-06T17:29:55Z,cold,pass,ok,cc68989,74bcc3d,c7922cb,0feecca,0feecca,benchmarks,alvaro,national-pelican,53,
+2026-10-06T17:41:07Z,warm,pass,ok,59fe134,74bcc3d,ef324c0,c7d6a01,c7d6a01,benchmarks,alvaro,cuddly-crawdad,37,
+2026-10-07T08:44:02Z,warm,pass,ok,43affae,74bcc3d,ef324c0,5c50f49,5c50f49,benchmarks,alvaro,literate-sheep,37,

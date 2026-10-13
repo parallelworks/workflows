@@ -1,0 +1,23 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "warm_marker": "${HOME}/pw/software/code-server-4.105.1-linux-amd64/bin/code-server",
+    "leftover_patterns": [
+      "code-server",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "partition": "compute",
+      "time": "00:30:00"
+    }
+  },
+  "service": {
+    "directory": "${HOME}",
+    "subdomain": "vscode-test-general-k8s-gcpsmall"
+  }
+}

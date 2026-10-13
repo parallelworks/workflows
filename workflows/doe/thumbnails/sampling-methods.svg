@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="292" viewBox="0 0 880 292" font-family="Helvetica, Arial, sans-serif">
+  <rect width="880" height="292" rx="10" fill="#fcfcfb" stroke="#d8d5cf"/>
+  <text x="24" y="32" font-size="15" font-weight="bold" fill="#0b0b0b">16 designs over two variables</text>
+  <text x="24" y="50" font-size="12" fill="#52514e">max_camber 0 to 0.06 (across), thickness 0.08 to 0.18 (up); seed 4242</text>
+  <text x="46" y="74" font-size="13" fill="#0b0b0b">Latin hypercube</text>
+  <rect x="46" y="80" width="140" height="140" fill="#ffffff" stroke="#898781"/>
+  <line x1="54.8" y1="80" x2="54.8" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="88.8" x2="186" y2="88.8" stroke="#e6e4de"/>
+  <line x1="63.5" y1="80" x2="63.5" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="97.5" x2="186" y2="97.5" stroke="#e6e4de"/>
+  <line x1="72.2" y1="80" x2="72.2" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="106.2" x2="186" y2="106.2" stroke="#e6e4de"/>
+  <line x1="81.0" y1="80" x2="81.0" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="115.0" x2="186" y2="115.0" stroke="#e6e4de"/>
+  <line x1="89.8" y1="80" x2="89.8" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="123.8" x2="186" y2="123.8" stroke="#e6e4de"/>
+  <line x1="98.5" y1="80" x2="98.5" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="132.5" x2="186" y2="132.5" stroke="#e6e4de"/>
+  <line x1="107.2" y1="80" x2="107.2" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="141.2" x2="186" y2="141.2" stroke="#e6e4de"/>
+  <line x1="116.0" y1="80" x2="116.0" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="150.0" x2="186" y2="150.0" stroke="#e6e4de"/>
+  <line x1="124.8" y1="80" x2="124.8" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="158.8" x2="186" y2="158.8" stroke="#e6e4de"/>
+  <line x1="133.5" y1="80" x2="133.5" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="167.5" x2="186" y2="167.5" stroke="#e6e4de"/>
+  <line x1="142.2" y1="80" x2="142.2" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="176.2" x2="186" y2="176.2" stroke="#e6e4de"/>
+  <line x1="151.0" y1="80" x2="151.0" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="185.0" x2="186" y2="185.0" stroke="#e6e4de"/>
+  <line x1="159.8" y1="80" x2="159.8" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="193.8" x2="186" y2="193.8" stroke="#e6e4de"/>
+  <line x1="168.5" y1="80" x2="168.5" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="202.5" x2="186" y2="202.5" stroke="#e6e4de"/>
+  <line x1="177.2" y1="80" x2="177.2" y2="220" stroke="#e6e4de"/>
+  <line x1="46" y1="211.2" x2="186" y2="211.2" stroke="#e6e4de"/>
+  <circle cx="64.6" cy="213.4" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="113.4" cy="95.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="133.0" cy="199.2" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="149.0" cy="187.9" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="173.1" cy="110.2" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="78.7" cy="148.7" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="117.4" cy="155.7" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="165.9" cy="195.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="89.5" cy="181.3" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="97.3" cy="109.2" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="141.9" cy="123.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="103.6" cy="162.6" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="131.3" cy="134.4" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="54.7" cy="170.2" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="70.6" cy="90.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="157.3" cy="133.2" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <text x="46" y="238" font-size="11" fill="#52514e">16 cases</text>
+  <text x="216" y="74" font-size="13" fill="#0b0b0b">Sobol sequence</text>
+  <rect x="216" y="80" width="140" height="140" fill="#ffffff" stroke="#898781"/>
+  <circle cx="332.4" cy="160.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="268.4" cy="96.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="300.4" cy="128.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="236.4" cy="192.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="252.4" cy="112.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="316.4" cy="176.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="284.4" cy="144.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="348.4" cy="208.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="228.4" cy="120.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="292.4" cy="184.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="324.4" cy="152.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="260.4" cy="88.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="244.4" cy="136.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="308.4" cy="200.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="276.4" cy="104.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="340.4" cy="168.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <text x="216" y="238" font-size="11" fill="#52514e">16 cases</text>
+  <text x="386" y="74" font-size="13" fill="#0b0b0b">Random</text>
+  <rect x="386" y="80" width="140" height="140" fill="#ffffff" stroke="#898781"/>
+  <circle cx="502.4" cy="160.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="395.6" cy="164.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="433.1" cy="190.3" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="455.2" cy="109.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="412.1" cy="140.6" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="478.0" cy="198.7" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="408.2" cy="195.8" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="435.1" cy="192.1" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="422.4" cy="125.9" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="477.5" cy="184.1" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="449.0" cy="97.2" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="435.1" cy="173.2" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="413.5" cy="171.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="437.5" cy="163.5" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="433.1" cy="174.7" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="413.5" cy="137.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <text x="386" y="238" font-size="11" fill="#52514e">16 cases</text>
+  <text x="556" y="74" font-size="13" fill="#0b0b0b">Full factorial</text>
+  <rect x="556" y="80" width="140" height="140" fill="#ffffff" stroke="#898781"/>
+  <circle cx="562.0" cy="214.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="562.0" cy="171.3" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="562.0" cy="128.7" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="562.0" cy="86.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="604.7" cy="214.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="604.7" cy="171.3" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="604.7" cy="128.7" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="604.7" cy="86.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="647.3" cy="214.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="647.3" cy="171.3" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="647.3" cy="128.7" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="647.3" cy="86.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="690.0" cy="214.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="690.0" cy="171.3" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="690.0" cy="128.7" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="690.0" cy="86.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <text x="556" y="238" font-size="11" fill="#52514e">16 cases</text>
+  <text x="726" y="74" font-size="13" fill="#0b0b0b">One at a time</text>
+  <rect x="726" y="80" width="140" height="140" fill="#ffffff" stroke="#898781"/>
+  <circle cx="796.0" cy="150.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="732.0" cy="150.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="753.3" cy="150.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="774.7" cy="150.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="817.3" cy="150.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="838.7" cy="150.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="860.0" cy="150.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="796.0" cy="214.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="796.0" cy="192.7" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="796.0" cy="171.3" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="796.0" cy="128.7" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="796.0" cy="107.3" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <circle cx="796.0" cy="86.0" r="4" fill="#2a78d6" fill-opacity="0.85"/>
+  <text x="726" y="238" font-size="11" fill="#52514e">13 cases</text>
+  <text x="46" y="254" font-size="11" fill="#898781">each row and column of the</text>
+  <text x="46" y="267" font-size="11" fill="#898781">16 x 16 grid used once</text>
+  <text x="556" y="254" font-size="11" fill="#898781">4 levels per variable</text>
+  <text x="726" y="254" font-size="11" fill="#898781">the center, then each</text>
+  <text x="726" y="267" font-size="11" fill="#898781">variable alone across its</text>
+  <text x="726" y="280" font-size="11" fill="#898781">range</text>
+</svg>

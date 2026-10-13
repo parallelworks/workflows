@@ -1,0 +1,39 @@
+{
+  "_test": {
+    "timeout_s": 1500,
+    "expect": "error",
+    "endpoint": false,
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "leftover_patterns": [
+      "pw endpoints run",
+      "gcs_server",
+      "raylet",
+      "uvicorn dashboard:app",
+      "start_ray_head.sh",
+      "dispatch_workers.sh",
+      "start-service-"
+    ]
+  },
+  "head": {
+    "resource": "pw://alvaro/gcpsmall"
+  },
+  "workers": [
+    {
+      "resource": "pw://alvaro/gcpsmall",
+      "scheduler": true,
+      "slurm": {
+        "nodes": 1,
+        "gres": "",
+        "time": "00:30:00",
+        "scheduler_directives": ""
+      }
+    }
+  ],
+  "workload_settings": {
+    "workload_type": "cluster_only",
+    "run_user_script": true,
+    "keep_alive": false,
+    "user_script": "#!/bin/bash\necho 'this user script fails on purpose'\nexit 3\n"
+  }
+}

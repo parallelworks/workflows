@@ -1,13 +1,6 @@
 {
   "_test": {
     "timeout_s": 3600,
-    "http_expect": [
-      200,
-      302,
-      307,
-      401,
-      404
-    ],
     "warm_marker": [
       "/contrib/pw/containers/vllm.sif",
       "/contrib/pw/tools/oras/oras",

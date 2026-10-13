@@ -1,0 +1,6 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-09T13:20:46Z,,pass,ok,fb75b64,74bcc3d,381d2b2,5cc7fe6,5cc7fe6,postgres,alvaro,handy-cattle,33,
+2026-10-09T13:23:50Z,,pass,kept,fb75b64,74bcc3d,381d2b2,5cc7fe6,5cc7fe6,postgres,alvaro,lenient-crane,33,
+2026-10-09T13:35:39Z,,pass,ok,d3a6e3f,74bcc3d,381d2b2,7ef1f2e,7ef1f2e,postgres,alvaro,welcomed-gator,33,
+2026-10-09T14:26:19Z,,pass,ok,2c80ccf,74bcc3d,381d2b2,046428f,046428f,postgres,alvaro,current-bluejay,34,
+2026-10-09T14:41:09Z,,pass,ok,2c80ccf,74bcc3d,381d2b2,046428f-dirty,046428f,postgres,alvaro,relaxed-chimp,33,

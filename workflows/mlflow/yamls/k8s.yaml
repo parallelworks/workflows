@@ -1,10 +1,7 @@
 permissions:
   - '*'
-sessions:
-  session:
-    useTLS: false
-    redirect: true
-    useCustomDomain: true
+env:
+  PW_API_KEY: ${PW_API_KEY}
 
 jobs:
   auth_k8s:
@@ -20,6 +17,7 @@ jobs:
     steps:
       - name: Creating New PVC YAML
         early-cancel: any-job-failed
+        if: ${{ inputs.k8s.volumes.pvc == New }}
         run: |
           if [[ ${{ inputs.k8s.volumes.pvc_persist }} == "true" ]]; then
             pvc_name="${{ inputs.k8s.volumes.pvc_name }}"
@@ -60,6 +58,7 @@ jobs:
           cat pvc.yaml
       - name: Dry Run PVC
         early-cancel: any-job-failed
+        if: ${{ inputs.k8s.volumes.pvc == New }}
         run: |
           echo "Performing dry run..."
           kubectl apply -f pvc.yaml --dry-run=client
@@ -75,7 +74,7 @@ jobs:
           workflow_name=$(pwd | rev | cut -d "/" -f2 | rev)
           app_name=$(echo "${PW_USER}${workflow_name}${job_number}" | sed 's|_||g' | sed 's|\.||g' | tr '[:upper:]' '[:lower:]' | tail -c 56)
           echo "app_name=${app_name}" | tee -a $OUTPUTS | tee -a OUTPUTS
-      - name: Creating Deployment and Service YAML
+      - name: Creating Deployment YAML
         early-cancel: any-job-failed
         run: |
           if [[ "${{ inputs.k8s.resources.limits.select_gpu }}" == "Custom" ]]; then
@@ -84,14 +83,12 @@ jobs:
             gpu_limits="${{ inputs.k8s.resources.limits.select_gpu }}: ${{ inputs.k8s.resources.limits.number_of_gpus }}"
           fi
           # Attach RuntimeClass if it's available and using NVIDIA
-          if kubectl get runtimeclass nvidia &>/dev/null; then
-            echo "nvidia RuntimeClass is available"
-            runtimeClassName="runtimeClassName: nvidia"
+          if ! [ -z "${gpu_limits}" ]; then
+            if kubectl get runtimeclass nvidia &>/dev/null; then
+              echo "nvidia RuntimeClass is available"
+              runtimeClassName="runtimeClassName: nvidia"
+            fi
           fi
-          if [[ "${{ inputs.service_k8s.use_token_auth }}" == "true" ]]; then
-            token="$(openssl rand -hex 16)"
-          fi
-          echo "token=${token}" | tee -a $OUTPUTS | tee -a OUTPUTS
 
           if [[ "${{ inputs.k8s.volumes.pvc }}" == "Existing" ]]; then
             pvc_name=${{ inputs.k8s.volumes.pvc_existing }}
@@ -139,10 +136,32 @@ jobs:
                     image: ${{ inputs.service_k8s.image }}
                     ports:
                       - containerPort: ${{ inputs.service_k8s.image_port }}
-                    command: ["mlflow", "ui"]
+                    # MLflow 3 answers 403 to a Host header or an Origin outside its
+                    # allow-lists; the endpoint host only exists once the sidecar has
+                    # registered, and the pod is reachable through that login-protected
+                    # tunnel alone, so both lists are opened. Its job runner is seven
+                    # 250 MB processes, so it stays off unless asked for.
+                    env:
+                      - name: MLFLOW_SERVER_ALLOWED_HOSTS
+                        value: "*"
+                      - name: MLFLOW_SERVER_CORS_ALLOWED_ORIGINS
+                        value: "*"
+                      - name: MLFLOW_SERVER_ENABLE_JOB_EXECUTION
+                        value: "${{ inputs.service_k8s.job_execution }}"
+                    # The stores live on the PVC so the tracking data outlives the pod
+                    command: ["mlflow", "server"]
                     args:
-                      - "-h"
+                      - "--host"
                       - "0.0.0.0"
+                      - "--port"
+                      - "${{ inputs.service_k8s.image_port }}"
+                      - "--backend-store-uri"
+                      - "sqlite:///${{ inputs.k8s.volumes.pvc_mount_path }}/mlflow.db"
+                      - "--artifacts-destination"
+                      - "${{ inputs.k8s.volumes.pvc_mount_path }}/artifacts"
+                      - "--serve-artifacts"
+                      - "--workers"
+                      - "${{ inputs.service_k8s.workers }}"
                     resources:
                       requests:
                         memory: "${{ inputs.k8s.resources.requests.memory }}"
@@ -154,24 +173,36 @@ jobs:
                     volumeMounts:
                       - name: storage
                         mountPath: ${{ inputs.k8s.volumes.pvc_mount_path }}
+                  # Sidecar: the pw client dials out and exposes the service as an endpoint
+                  - name: pw-endpoint
+                    image: ghcr.io/parallelworks/pw-cli:v7.79.0
+                    args:
+                      - endpoints
+                      - http
+                      - --name
+                      - ${{ inputs.service_k8s.name }}-${PW_RUN_SLUG}
+                      - --output
+                      - text
+                      - "${{ inputs.service_k8s.image_port }}"
+                    env:
+                      - name: PW_PLATFORM_HOST
+                        value: "${PW_PLATFORM_HOST}"
+                      - name: PW_API_KEY
+                        valueFrom:
+                          secretKeyRef:
+                            name: ${{ needs.prepare_k8s_deployment.outputs.app_name }}-pw-api-key
+                            key: PW_API_KEY
+                    resources:
+                      requests:
+                        memory: "64Mi"
+                        cpu: "50m"
+                      limits:
+                        memory: "256Mi"
+                        cpu: "500m"
                 volumes:
                   - name: storage
                     persistentVolumeClaim:
-                      claimName: ${pvc_name}  # Assumes PVC name is provided as an input
-
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: ${{ needs.prepare_k8s_deployment.outputs.app_name }}-lb
-            namespace: ${{ inputs.k8s.namespace }}
-          spec:
-            selector:
-              app: ${{ needs.prepare_k8s_deployment.outputs.app_name }}
-            ports:
-              - protocol: TCP
-                port: ${{ inputs.service_k8s.image_port }}
-                targetPort: ${{ inputs.service_k8s.image_port }}
+                      claimName: ${pvc_name}
           EOF
       - name: Dry Run Deployment
         early-cancel: any-job-failed
@@ -186,6 +217,7 @@ jobs:
         early-cancel: any-job-failed
         run: cat OUTPUTS >> $OUTPUTS
       - name: Apply PVC
+        if: ${{ inputs.k8s.volumes.pvc == New }}
         run: kubectl apply -f pvc.yaml
         cleanup: |
           [[ "${DEBUG:-}" == "true" ]] && set -x
@@ -207,7 +239,17 @@ jobs:
               fi
             done
           fi
-      - name: Apply Deployment and Service
+      - name: Create API Key Secret
+        early-cancel: any-job-failed
+        run: |
+          kubectl create secret generic ${{ needs.apply_k8s_deployment.outputs.app_name }}-pw-api-key \
+            --namespace ${{ inputs.k8s.namespace }} \
+            --from-literal=PW_API_KEY="${PW_API_KEY}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        cleanup: |
+          kubectl delete secret ${{ needs.apply_k8s_deployment.outputs.app_name }}-pw-api-key \
+            --namespace ${{ inputs.k8s.namespace }} --ignore-not-found
+      - name: Apply Deployment
         run: kubectl apply -f app.yaml
         cleanup: |
           [[ "${DEBUG:-}" == "true" ]] && set -x
@@ -276,8 +318,8 @@ jobs:
           touch pod.running
       - name: Stream Logs
         early-cancel: any-job-failed
-        run: kubectl logs -f deployment/${{ needs.apply_k8s_deployment.outputs.app_name }} -n ${{ inputs.k8s.namespace }}
-  create_k8s_session:
+        run: kubectl logs -f deployment/${{ needs.apply_k8s_deployment.outputs.app_name }} -n ${{ inputs.k8s.namespace }} --all-containers
+  wait_for_endpoint_k8s:
     needs:
       - prepare_k8s_deployment
     steps:
@@ -292,24 +334,15 @@ jobs:
               echo "Pod is ready"
               break
             fi
-            sleep 2 
+            sleep 2
           done
-      - name: Get Service Name
+      - name: Wait for endpoint
         early-cancel: any-job-failed
-        run: |
-          source OUTPUTS
-          echo "service_name=${app_name}-lb" | tee -a $OUTPUTS
-      - name: Expose port
-        early-cancel: any-job-failed
-        uses: parallelworks/update-session
+        uses: github/parallelworks/workflows@canary
         with:
-          remotePort: ${{ inputs.service_k8s.image_port }}
-          name: ${{ sessions.session }}
-          targetInfo:
-            name: ${{ inputs.k8s.cluster }}
-            namespace: ${{ inputs.k8s.namespace }}
-            resourceType: services
-            resourceName: ${{ needs.create_k8s_session.outputs.service_name }}
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ inputs.service_k8s.name }}-${PW_RUN_SLUG}
+          budget: 300
 'on':
   execute:
     inputs:
@@ -328,7 +361,7 @@ jobs:
             type: group
             label: Volumes
             collapsed: true
-            tooltip: Specify storage settings for Persistent Volume Claims (PVCs), including size, storage class, and mount path.
+            tooltip: Specify storage settings for Persistent Volume Claims (PVCs), including size, storage class, and mount path. The tracking data (sqlite database and artifacts) is kept on this volume.
             items:
               pvc:
                 label: Persistent Volume Claim
@@ -390,7 +423,7 @@ jobs:
                   memory:
                     label: Memory
                     type: string
-                    default: 512Mi
+                    default: 1Gi
                     tooltip: Specify the minimum memory required for the pod (e.g., 512Mi, 1Gi).
                   cpu:
                     label: CPU
@@ -404,7 +437,7 @@ jobs:
                   memory:
                     label: Memory
                     type: string
-                    default: 1Gi
+                    default: 2Gi
                     tooltip: Set the maximum memory the pod can use (e.g., 1Gi, 2Gi).
                   cpu:
                     label: CPU
@@ -414,6 +447,7 @@ jobs:
                   select_gpu:
                     label: Select GPU Device
                     type: dropdown
+                    default: None
                     tooltip: Choose the type of GPU device for the deployment, if needed. Select "None" for CPU-only workloads or "Custom" to specify a custom GPU resource key.
                     options:
                       - value: None
@@ -452,12 +486,30 @@ jobs:
         type: group
         label: Service Settings
         items:
-          image:
-            label: MLFlow Image
+          name:
             type: string
-            default: ubuntu/mlflow:2.1.1_1.0-22.04
+            hidden: true
+            default: mlflow
+          image:
+            label: MLflow Image
+            type: string
+            default: ghcr.io/mlflow/mlflow:v3.17.0
+            tooltip: Any image with the mlflow command on its PATH, e.g. ghcr.io/mlflow/mlflow:<version> (the official image) or ubuntu/mlflow:2.1.1_1.0-22.04.
           image_port:
-            label: MLFlow Port
+            label: MLflow Port
             type: number
             default: 5000
-            tooltip: Define the port on which the MLFlow server runs inside the container.
+            tooltip: Define the port on which the MLflow server runs inside the container.
+          workers:
+            label: Worker Processes
+            type: number
+            min: 1
+            default: 2
+            tooltip: Request-handling processes (mlflow server --workers); each takes about 250 MB. Fit them to the pod's CPU and memory limits.
+          job_execution:
+            label: Enable server-side job execution?
+            type: boolean
+            default: false
+            tooltip: |
+              MLflow 3's job runner executes GenAI evaluation and scorer jobs on the server. It adds
+              about 1.8 GB of memory (seven worker processes); experiment tracking does not need it.

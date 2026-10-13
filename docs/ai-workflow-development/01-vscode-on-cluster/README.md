@@ -44,6 +44,10 @@ pattern + `script_submitter`, matching the deployment variant) → deliver code 
 - `--dry-run` every YAML before a real run; when done, delete test endpoints
   (`pw endpoints delete <name>`) and cancel lingering runs
   (`pw workflows runs cancel <slug>`).
+- Before the first run and before the PR, ask for a review: *Use the
+  workflow-reviewer subagent on `workflows/<name>`*. It reads only (the repo rules,
+  the skill's shape files and pitfalls, the recorded tests, a `--dry-run` per variant)
+  and reports; it is found when Claude Code's working directory is this repo.
 - The platform docs are the source of truth and may be newer than this skill:
   [workflows](https://parallelworks.com/docs/run/workflows/building-workflows)
   ([YAML fields](https://parallelworks.com/docs/run/workflows/building-workflows/yaml-fields) ·

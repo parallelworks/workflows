@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-08T08:02:09Z,warm,pass,ok,4980776,74bcc3d,0b74bc0,45df26c,45df26c,design-explorer,alvaro,central-anteater,48,

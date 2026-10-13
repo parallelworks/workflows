@@ -1,0 +1,4 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-09-23T14:27:47Z,,fail,ok,8302b04,572f319,b852cdd,5ea288c,5ea288c,ray-cluster,alvaro,magical-rhino,37,"run faulted before job complete completed: dispatch_workers > Dispatch workers to compute sites (error, 0s)"
+2026-09-23T14:32:23Z,,pass,ok,81b693e,572f319,4979618,81c3ca7,81c3ca7,ray-cluster,alvaro,sensible-squid,302,
+2026-09-23T14:56:55Z,,pass,ok,6142e63,572f319,4979618,c5cf2de,c5cf2de,ray-cluster,alvaro,wealthy-grizzly,85,

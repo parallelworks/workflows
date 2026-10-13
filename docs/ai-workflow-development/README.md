@@ -21,6 +21,7 @@ agent at the repo's own workflows and tutorials.
 | **Reference** — platform facts (YAML schema, the endpoint pattern, `script_submitter`, `pw` CLI, job-dir layout, deployment variants, code delivery) | [`/.claude/skills/activate-workflows/references/`](../../.claude/skills/activate-workflows/references/) | shared by every approach |
 | **Examples to learn from** — the real workflows (`workflows/`) and tutorials (`tutorials/`) in this repo | this repo | shared |
 | **Methodology** — the step-by-step process the agent follows | [`/.claude/skills/activate-workflows/SKILL.md`](../../.claude/skills/activate-workflows/SKILL.md) | shared (approaches may fork it) |
+| **Reviewer** — a read-only subagent that checks a workflow directory against the reference, the repo rules, the pitfalls and the recorded tests, before a test run or a PR | [`/.claude/agents/workflow-reviewer.md`](../../.claude/agents/workflow-reviewer.md) | shared (discovered when Claude Code runs inside this repo; `install.sh` does not copy it) |
 | **Setup guide + installer** — how to host/drive the agent | `<approach>/README.md` + `<approach>/install.sh` | per approach |
 
 The canonical skill lives **in this repo** at `.claude/skills/activate-workflows/`, so

@@ -1,0 +1,90 @@
+Run artistic-jaguar: error (5m33s)
+
+Error annotations:
+
+  Error: Endpoint mlflow-artistic-jaguar is unhealthy (HTTP 503 from https://still-fowl.activate.pw/ after 302s)
+    in wait_for_endpoint_k8s > wait_for_endpoint → Check endpoint health
+
+Failed jobs/steps:
+
+  wait_for_endpoint > Check endpoint health (error, 0s)
+    notice: Checking that https://still-fowl.activate.pw/ answers
+    Error: Endpoint mlflow-artistic-jaguar is unhealthy (HTTP 503 from https://still-fowl.activate.pw/ after 302s)
+    Wed Oct  7 11:38:40 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 51s; retrying in 5 seconds
+    Wed Oct  7 11:38:45 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 56s; retrying in 5 seconds
+    Wed Oct  7 11:38:51 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 62s; retrying in 5 seconds
+    Wed Oct  7 11:38:56 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 67s; retrying in 5 seconds
+    Wed Oct  7 11:39:01 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 72s; retrying in 5 seconds
+    Wed Oct  7 11:39:06 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 77s; retrying in 5 seconds
+    Wed Oct  7 11:39:11 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 82s; retrying in 5 seconds
+    Wed Oct  7 11:39:16 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 87s; retrying in 5 seconds
+    Wed Oct  7 11:39:21 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 92s; retrying in 5 seconds
+    Wed Oct  7 11:39:27 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 98s; retrying in 5 seconds
+    Wed Oct  7 11:39:32 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 103s; retrying in 5 seconds
+    Wed Oct  7 11:39:37 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 108s; retrying in 5 seconds
+    Wed Oct  7 11:39:42 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 113s; retrying in 5 seconds
+    Wed Oct  7 11:39:47 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 118s; retrying in 5 seconds
+    Wed Oct  7 11:39:52 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 123s; retrying in 5 seconds
+    Wed Oct  7 11:39:57 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 128s; retrying in 5 seconds
+    Wed Oct  7 11:40:02 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 133s; retrying in 5 seconds
+    Wed Oct  7 11:40:07 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 138s; retrying in 5 seconds
+    Wed Oct  7 11:40:13 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 144s; retrying in 5 seconds
+    Wed Oct  7 11:40:18 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 149s; retrying in 5 seconds
+    Wed Oct  7 11:40:23 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 154s; retrying in 5 seconds
+    Wed Oct  7 11:40:28 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 159s; retrying in 5 seconds
+    Wed Oct  7 11:40:33 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 164s; retrying in 5 seconds
+    Wed Oct  7 11:40:38 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 169s; retrying in 5 seconds
+    Wed Oct  7 11:40:43 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 174s; retrying in 5 seconds
+    Wed Oct  7 11:40:49 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 180s; retrying in 5 seconds
+    Wed Oct  7 11:40:54 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 185s; retrying in 5 seconds
+    Wed Oct  7 11:40:59 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 190s; retrying in 5 seconds
+    Wed Oct  7 11:41:04 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 195s; retrying in 5 seconds
+    Wed Oct  7 11:41:09 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 200s; retrying in 5 seconds
+    Wed Oct  7 11:41:14 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 205s; retrying in 5 seconds
+    Wed Oct  7 11:41:19 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 210s; retrying in 5 seconds
+    Wed Oct  7 11:41:24 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 215s; retrying in 5 seconds
+    Wed Oct  7 11:41:30 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 221s; retrying in 5 seconds
+    Wed Oct  7 11:41:35 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 226s; retrying in 5 seconds
+    Wed Oct  7 11:41:40 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 231s; retrying in 5 seconds
+    Wed Oct  7 11:41:45 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 236s; retrying in 5 seconds
+    Wed Oct  7 11:41:50 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 241s; retrying in 5 seconds
+    Wed Oct  7 11:41:55 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 246s; retrying in 5 seconds
+    Wed Oct  7 11:42:00 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 251s; retrying in 5 seconds
+    Wed Oct  7 11:42:05 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 256s; retrying in 5 seconds
+    Wed Oct  7 11:42:10 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 261s; retrying in 5 seconds
+    Wed Oct  7 11:42:15 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 266s; retrying in 5 seconds
+    Wed Oct  7 11:42:21 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 272s; retrying in 5 seconds
+    Wed Oct  7 11:42:26 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 277s; retrying in 5 seconds
+    Wed Oct  7 11:42:31 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 282s; retrying in 5 seconds
+    Wed Oct  7 11:42:36 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 287s; retrying in 5 seconds
+    Wed Oct  7 11:42:41 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 292s; retrying in 5 seconds
+    Wed Oct  7 11:42:46 UTC 2026 HTTP 503 from https://still-fowl.activate.pw/ after 297s; retrying in 5 seconds
+    ✗ Error: Endpoint mlflow-artistic-jaguar is unhealthy (HTTP 503 from https://still-fowl.activate.pw/ after 302s)
+
+Summary: 2 job(s) failed, 1 step(s) failed
+
+
+=== kubectl get events (last 40) ===
+LAST SEEN   TYPE      REASON                  OBJECT                                                MESSAGE
+5m39s       Normal    Scheduled               pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Successfully assigned alvarok8s/alvarojobsartistic-jaguar-5ccb89666f-ltc5t to gpu.parallel.works
+5m47s       Normal    WaitForFirstConsumer    persistentvolumeclaim/alvarojobsartistic-jaguar-pvc   waiting for first consumer to be created before binding
+5m46s       Normal    ExternalProvisioning    persistentvolumeclaim/alvarojobsartistic-jaguar-pvc   Waiting for a volume to be created either by the external provisioner 'rancher.io/local-path' or manually by the system administrator. If volume creation is delayed, please verify that the provisioner is running and correctly registered.
+5m46s       Normal    SuccessfulCreate        replicaset/alvarojobsartistic-jaguar-5ccb89666f       Created pod: alvarojobsartistic-jaguar-5ccb89666f-ltc5t
+5m46s       Normal    ScalingReplicaSet       deployment/alvarojobsartistic-jaguar                  Scaled up replica set alvarojobsartistic-jaguar-5ccb89666f from 0 to 1
+5m46s       Normal    Provisioning            persistentvolumeclaim/alvarojobsartistic-jaguar-pvc   External provisioner is provisioning volume for claim "alvarok8s/alvarojobsartistic-jaguar-pvc"
+5m41s       Normal    ProvisioningSucceeded   persistentvolumeclaim/alvarojobsartistic-jaguar-pvc   Successfully provisioned volume pvc-130ab122-7972-47b3-85ad-f086e208eefc
+5m39s       Normal    Pulling                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Pulling image "busybox"
+5m38s       Normal    Pulled                  pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Successfully pulled image "busybox" in 1.504s (1.504s including waiting). Image size: 2236767 bytes.
+5m38s       Normal    Created                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Created container: set-permissions
+5m38s       Normal    Started                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Started container set-permissions
+5m37s       Normal    Pulling                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Pulling image "ghcr.io/mlflow/mlflow:v3.17.0"
+5m27s       Normal    Pulled                  pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Successfully pulled image "ghcr.io/mlflow/mlflow:v3.17.0" in 10.266s (10.266s including waiting). Image size: 292797809 bytes.
+5m27s       Normal    Pulling                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Pulling image "ghcr.io/parallelworks/pw-cli:v7.79.0"
+5m24s       Normal    Pulled                  pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Successfully pulled image "ghcr.io/parallelworks/pw-cli:v7.79.0" in 2.497s (2.497s including waiting). Image size: 28348441 bytes.
+5m24s       Normal    Started                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Started container pw-endpoint
+5m24s       Normal    Created                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Created container: pw-endpoint
+3m21s       Normal    Started                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Started container alvarojobsartistic-jaguar
+3m21s       Normal    Created                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Created container: alvarojobsartistic-jaguar
+108s        Normal    Pulled                  pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Container image "ghcr.io/mlflow/mlflow:v3.17.0" already present on machine
+22s         Warning   BackOff                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Back-off restarting failed container alvarojobsartistic-jaguar in pod alvarojobsartistic-jaguar-5ccb89666f-ltc5t_alvarok8s(0b30847a-069b-4ac3-9474-20aae6cc68cb)
+16s         Normal    Killing                 pod/alvarojobsartistic-jaguar-5ccb89666f-ltc5t        Stopping container pw-endpoint

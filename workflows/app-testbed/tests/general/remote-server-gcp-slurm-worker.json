@@ -1,0 +1,46 @@
+{
+  "_test": {
+    "timeout_s": 1500,
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "endpoint_name": "apptest",
+    "leftover_patterns": [
+      "worker.py",
+      "worker-job.sh"
+    ]
+  },
+  "server": {
+    "resource": "pw://alvaro/a30gpuserver"
+  },
+  "services": {
+    "deploy_server": true,
+    "restart_server": true
+  },
+  "app": {
+    "workdir": "~/app-testbed",
+    "subdomain": "apptest",
+    "server_port": 8098,
+    "tunnel_method": "auto",
+    "wait_for_workers": true
+  },
+  "workers": [
+    {
+      "resource": "pw://alvaro/gcpsmall",
+      "worker_name": "",
+      "workdir": "~/app-testbed-worker",
+      "scheduler": true,
+      "slurm": {
+        "partition": "compute",
+        "account": "",
+        "qos": "",
+        "cpus_per_task": 1,
+        "time": "00:30:00",
+        "scheduler_directives": "##SBATCH --exclusive  # example; uncomment or replace with site-specific directives"
+      },
+      "pbs": {
+        "account": "",
+        "scheduler_directives": ""
+      }
+    }
+  ]
+}

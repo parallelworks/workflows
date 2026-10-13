@@ -1,0 +1,36 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "resource": "pw://alvaro/gcpsmall",
+    "scheduler": true,
+    "warm_marker": "${HOME}/pw/software/burst-render-demo/venv/bin/python",
+    "leftover_patterns": [
+      "uvicorn dashboard:app",
+      "pw endpoints run",
+      "dispatch_renders.sh",
+      "render_tiles.sh",
+      "renderer.py"
+    ]
+  },
+  "head": {
+    "resource": "pw://alvaro/gcpsmall"
+  },
+  "targets": [
+    {
+      "resource": "pw://alvaro/gcpsmall",
+      "scheduler": true,
+      "slurm": {
+        "partition": "compute",
+        "nodes": "1",
+        "time": "00:10:00",
+        "scheduler_directives": "##SBATCH --exclusive\n#SBATCH --comment=burst-render-regression\n"
+      }
+    }
+  ],
+  "render_settings": {
+    "grid_size": "4",
+    "image_size": "128",
+    "palette": "cosmic",
+    "parallelism": "auto"
+  }
+}

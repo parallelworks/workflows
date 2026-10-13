@@ -1,0 +1,64 @@
+Run credible-wildcat: faulted (10m37s)
+
+Error annotations:
+
+  Error: Endpoint metabase-credible-wildcat is unhealthy (HTTP 500 from https://intent-walrus.activate.pw/api/health after 604s)
+    in wait_for_endpoint > wait_for_endpoint → Check endpoint health
+
+Failed jobs/steps:
+
+  wait_for_endpoint > Check endpoint health (error, 0s)
+    notice: Checking that https://intent-walrus.activate.pw/api/health answers
+    Error: Endpoint metabase-credible-wildcat is unhealthy (HTTP 500 from https://intent-walrus.activate.pw/api/health after 604s)
+    Wed Oct  7 02:29:41 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 356s; retrying in 5 seconds
+    Wed Oct  7 02:29:46 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 361s; retrying in 5 seconds
+    Wed Oct  7 02:29:51 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 366s; retrying in 5 seconds
+    Wed Oct  7 02:29:56 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 371s; retrying in 5 seconds
+    Wed Oct  7 02:30:01 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 376s; retrying in 5 seconds
+    Wed Oct  7 02:30:06 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 381s; retrying in 5 seconds
+    Wed Oct  7 02:30:11 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 386s; retrying in 5 seconds
+    Wed Oct  7 02:30:16 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 391s; retrying in 5 seconds
+    Wed Oct  7 02:30:22 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 397s; retrying in 5 seconds
+    Wed Oct  7 02:30:27 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 402s; retrying in 5 seconds
+    Wed Oct  7 02:30:32 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 407s; retrying in 5 seconds
+    Wed Oct  7 02:30:37 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 412s; retrying in 5 seconds
+    Wed Oct  7 02:30:42 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 417s; retrying in 5 seconds
+    Wed Oct  7 02:30:47 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 422s; retrying in 5 seconds
+    Wed Oct  7 02:30:52 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 427s; retrying in 5 seconds
+    Wed Oct  7 02:30:57 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 432s; retrying in 5 seconds
+    Wed Oct  7 02:31:02 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 437s; retrying in 5 seconds
+    Wed Oct  7 02:31:07 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 442s; retrying in 5 seconds
+    Wed Oct  7 02:31:12 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 447s; retrying in 5 seconds
+    Wed Oct  7 02:31:17 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 452s; retrying in 5 seconds
+    Wed Oct  7 02:31:22 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 457s; retrying in 5 seconds
+    Wed Oct  7 02:31:27 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 462s; retrying in 5 seconds
+    Wed Oct  7 02:31:32 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 467s; retrying in 5 seconds
+    Wed Oct  7 02:31:37 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 472s; retrying in 5 seconds
+    Wed Oct  7 02:31:43 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 478s; retrying in 5 seconds
+    Wed Oct  7 02:31:48 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 483s; retrying in 5 seconds
+    Wed Oct  7 02:31:53 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 488s; retrying in 5 seconds
+    Wed Oct  7 02:31:58 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 493s; retrying in 5 seconds
+    Wed Oct  7 02:32:03 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 498s; retrying in 5 seconds
+    Wed Oct  7 02:32:08 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 503s; retrying in 5 seconds
+    Wed Oct  7 02:32:13 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 508s; retrying in 5 seconds
+    Wed Oct  7 02:32:18 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 513s; retrying in 5 seconds
+    Wed Oct  7 02:32:23 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 518s; retrying in 5 seconds
+    Wed Oct  7 02:32:28 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 523s; retrying in 5 seconds
+    Wed Oct  7 02:32:33 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 528s; retrying in 5 seconds
+    Wed Oct  7 02:32:38 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 533s; retrying in 5 seconds
+    Wed Oct  7 02:32:43 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 538s; retrying in 5 seconds
+    Wed Oct  7 02:32:49 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 544s; retrying in 5 seconds
+    Wed Oct  7 02:32:54 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 549s; retrying in 5 seconds
+    Wed Oct  7 02:32:59 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 554s; retrying in 5 seconds
+    Wed Oct  7 02:33:04 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 559s; retrying in 5 seconds
+    Wed Oct  7 02:33:09 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 564s; retrying in 5 seconds
+    Wed Oct  7 02:33:14 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 569s; retrying in 5 seconds
+    Wed Oct  7 02:33:19 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 574s; retrying in 5 seconds
+    Wed Oct  7 02:33:24 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 579s; retrying in 5 seconds
+    Wed Oct  7 02:33:29 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 584s; retrying in 5 seconds
+    Wed Oct  7 02:33:34 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 589s; retrying in 5 seconds
+    Wed Oct  7 02:33:39 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 594s; retrying in 5 seconds
+    Wed Oct  7 02:33:44 PM UTC 2026 HTTP 500 from https://intent-walrus.activate.pw/api/health after 599s; retrying in 5 seconds
+    ✗ Error: Endpoint metabase-credible-wildcat is unhealthy (HTTP 500 from https://intent-walrus.activate.pw/api/health after 604s)
+
+Summary: 1 job(s) failed, 1 step(s) failed

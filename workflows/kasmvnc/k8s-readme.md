@@ -7,4 +7,5 @@ This workflow launches KasmVNC on a Kubernetes cluster using a user-specified im
 - **Choose an Image:** Default is `kasmweb/desktop:1.16.0` from [this](https://hub.docker.com/r/kasmweb/desktop) DockerHub repository. Enter `kasm_user` when prompted for a user.
 - **Configure Resources:** Set CPU, memory, and optional GPU requests/limits.
 - **Run the Workflow:** Deploy KasmVNC and access it via a web interface.
+- **Stop it:** the run keeps running while the desktop serves; cancel the run to tear everything down (a new PVC included, unless you chose to persist it).
 

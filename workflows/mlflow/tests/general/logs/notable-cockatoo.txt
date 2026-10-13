@@ -1,0 +1,46 @@
+Run notable-cockatoo: error (3m41s)
+
+Error annotations:
+
+  Error: Session runner failed before the endpoint came online
+    in session_runner → Exit Workflow with Error
+  Error: Endpoint mlflow-notable-cockatoo is unhealthy (HTTP 403 from https://evident-polecat.activate.pw/ after 122s)
+    in wait_for_endpoint > wait_for_endpoint → Check endpoint health
+
+Failed jobs/steps:
+
+  session_runner > Exit Workflow with Error (error, 0s)
+    Error: Session runner failed before the endpoint came online
+    ✗ Error: Session runner failed before the endpoint came online
+
+  wait_for_endpoint > Check endpoint health (error, 0s)
+    notice: Checking that https://evident-polecat.activate.pw/ answers
+    Error: Endpoint mlflow-notable-cockatoo is unhealthy (HTTP 403 from https://evident-polecat.activate.pw/ after 122s)
+    i Notice: Checking that https://evident-polecat.activate.pw/ answers
+    Wed Oct  7 11:39:02 AM UTC 2026 HTTP 503 from https://evident-polecat.activate.pw/ after 0s; retrying in 5 seconds
+    Wed Oct  7 11:39:07 AM UTC 2026 HTTP 503 from https://evident-polecat.activate.pw/ after 5s; retrying in 5 seconds
+    Wed Oct  7 11:39:13 AM UTC 2026 HTTP 503 from https://evident-polecat.activate.pw/ after 11s; retrying in 5 seconds
+    Wed Oct  7 11:39:18 AM UTC 2026 HTTP 503 from https://evident-polecat.activate.pw/ after 16s; retrying in 5 seconds
+    Wed Oct  7 11:39:23 AM UTC 2026 HTTP 503 from https://evident-polecat.activate.pw/ after 21s; retrying in 5 seconds
+    Wed Oct  7 11:39:28 AM UTC 2026 HTTP 503 from https://evident-polecat.activate.pw/ after 26s; retrying in 5 seconds
+    Wed Oct  7 11:39:33 AM UTC 2026 HTTP 503 from https://evident-polecat.activate.pw/ after 31s; retrying in 5 seconds
+    Wed Oct  7 11:39:38 AM UTC 2026 HTTP 503 from https://evident-polecat.activate.pw/ after 36s; retrying in 5 seconds
+    Wed Oct  7 11:39:43 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 41s; retrying in 5 seconds
+    Wed Oct  7 11:39:48 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 46s; retrying in 5 seconds
+    Wed Oct  7 11:39:53 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 51s; retrying in 5 seconds
+    Wed Oct  7 11:39:58 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 56s; retrying in 5 seconds
+    Wed Oct  7 11:40:03 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 61s; retrying in 5 seconds
+    Wed Oct  7 11:40:08 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 66s; retrying in 5 seconds
+    Wed Oct  7 11:40:14 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 72s; retrying in 5 seconds
+    Wed Oct  7 11:40:19 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 77s; retrying in 5 seconds
+    Wed Oct  7 11:40:24 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 82s; retrying in 5 seconds
+    Wed Oct  7 11:40:29 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 87s; retrying in 5 seconds
+    Wed Oct  7 11:40:34 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 92s; retrying in 5 seconds
+    Wed Oct  7 11:40:39 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 97s; retrying in 5 seconds
+    Wed Oct  7 11:40:44 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 102s; retrying in 5 seconds
+    Wed Oct  7 11:40:49 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 107s; retrying in 5 seconds
+    Wed Oct  7 11:40:54 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 112s; retrying in 5 seconds
+    Wed Oct  7 11:40:59 AM UTC 2026 HTTP 403 from https://evident-polecat.activate.pw/ after 117s; retrying in 5 seconds
+    ✗ Error: Endpoint mlflow-notable-cockatoo is unhealthy (HTTP 403 from https://evident-polecat.activate.pw/ after 122s)
+
+Summary: 2 job(s) failed, 2 step(s) failed

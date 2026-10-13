@@ -1,0 +1,446 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+# One MPI or file system benchmark on a cluster: IMB-MPI1 PingPong or Alltoall
+# (Intel MPI Benchmarks) for the interconnect, IOR or mdtest for a file system's
+# bandwidth and metadata rates. Preprocessing, on the login node, prepares the
+# MPI environment (the form's load commands, the MPI the resource already has, or
+# OpenMPI from conda-forge), builds the benchmark against it once per MPI under
+# the install directory, and writes the job script. The submitter runs it as one
+# SLURM/PBS job of nodes x ranks per node (or on the login node) and streams its
+# output to the run log. The results job checks the exit status, writes the
+# result tables as CSV and publishes the headline figures as outputs. The run
+# completes when the benchmark does and fails when it fails.
+#
+# The NOAA (noaa.parallel.works) form: the resource is the top-level input, the job
+# goes through the noaa script submitter, the SLURM group adds the Account and QoS
+# fields (shown for on-prem `existing` resources), the layout also reaches the
+# submitter through its ntasks and nodes inputs (it writes them after the
+# directives there), and the install directory defaults to the cluster's shared
+# software tree when this account can write to it. On a cloud cluster it behaves
+# like general.yaml.
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/benchmarks/app
+            - tools/utils
+      - name: Create Inputs
+        run: |
+          set -e
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          cat <<'EOF' >> inputs.sh
+          service_parent_install_dir="${{ inputs.software.install_dir }}"
+          benchmark="${{ inputs.benchmark.name }}"
+          benchmark_preset="${{ inputs.benchmark.preset }}"
+          benchmark_imb_args="${{ inputs.benchmark.imb_args }}"
+          benchmark_ior_args="${{ inputs.benchmark.ior_args }}"
+          benchmark_mdtest_args="${{ inputs.benchmark.mdtest_args }}"
+          benchmark_io_dir="${{ inputs.benchmark.io_dir }}"
+          benchmark_nodes="${{ inputs.cluster.nodes }}"
+          benchmark_ntasks_per_node="${{ inputs.cluster.ntasks_per_node }}"
+          EOF
+          # a hidden or empty input renders as nothing or undefined: drop those lines
+          sed -i '/=\s*$\|=undefined\s*$\|=""\s*$\|="undefined"\s*$/d' inputs.sh
+          sed -i 's/^/export /' inputs.sh
+          source inputs.sh
+          case "${benchmark:-}" in
+            imb-pingpong|imb-alltoall|ior|mdtest) ;;
+            *) echo "::error::Unknown benchmark '${benchmark:-}'"; exit 1 ;;
+          esac
+          if ! [[ "${benchmark_ntasks_per_node:-}" =~ ^[0-9]+$ ]] || [ "${benchmark_ntasks_per_node}" -lt 1 ]; then
+            echo "::error::MPI ranks per node must be a positive integer, got '${benchmark_ntasks_per_node:-}'"
+            exit 1
+          fi
+          # nodes is hidden, so unset, when the job is not scheduled: one node then
+          if [ -n "${benchmark_nodes:-}" ] && { ! [[ "${benchmark_nodes}" =~ ^[0-9]+$ ]] || [ "${benchmark_nodes}" -lt 1 ]; }; then
+            echo "::error::Nodes must be a positive integer, got '${benchmark_nodes}'"
+            exit 1
+          fi
+          case "${benchmark}" in
+            ior|mdtest)
+              case "${benchmark_preset:-}" in
+                minimal|standard) ;;
+                custom)
+                  args_var="benchmark_${benchmark}_args"
+                  if [ -z "${!args_var:-}" ]; then
+                    echo "::error::The custom preset needs the ${benchmark} arguments"
+                    exit 1
+                  fi
+                  ;;
+                *) echo "::error::Unknown preset '${benchmark_preset:-}'"; exit 1 ;;
+              esac
+              ;;
+          esac
+          cat inputs.sh
+          # NOAA home directories are small: with no install directory given, the builds
+          # (and a conda-forge OpenMPI, 2 GB) go to the cluster's shared software tree if
+          # this account can write there. Probe by creating the directory rather than
+          # reading mode bits: the trees are group- or ACL-writable and list as root-owned.
+          if [ -z "${service_parent_install_dir:-}" ]; then
+            case "${{ inputs.resource.ip }}" in
+              hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
+              mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
+              ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
+              gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
+              *) shared="" ;;                                                    # PPAN, cloud clusters
+            esac
+            install_dir="${HOME}/pw/software"
+            if [ -n "${shared}" ] && mkdir -p "${shared}/benchmarks" 2> /dev/null; then
+              install_dir="${shared}"
+            fi
+            echo "export service_parent_install_dir=\"${install_dir}\"" >> inputs.sh
+            echo "::notice::Installing under ${install_dir}"
+          fi
+      # the environment is one file the build and the job script source; the heredoc
+      # carries the form's load commands verbatim, and an empty snippet makes
+      # prepare-env.sh run the installer, which detects or installs an MPI
+      - name: Prepare the MPI Environment
+        run: |
+          set -e
+          source inputs.sh
+          export MPI_PROVIDER="${{ inputs.software.mpi }}"
+          case "${MPI_PROVIDER}" in ''|undefined) MPI_PROVIDER=auto ;; esac
+          cat > mpi-load.txt <<'PW_LOAD_EOF'
+          ${{ inputs.software.mpi_load }}
+          PW_LOAD_EOF
+          if [ "${MPI_PROVIDER}" = commands ]; then
+            if [ -z "$(tr -d '[:space:]' < mpi-load.txt)" ] || grep -qx '[[:space:]]*undefined[[:space:]]*' mpi-load.txt; then
+              echo "::error::MPI is set to the environment commands but none were given"
+              exit 1
+            fi
+          else
+            : > mpi-load.txt
+          fi
+          bash tools/utils/prepare-env.sh mpi "${PWD}/mpi-env.sh" \
+            workflows/benchmarks/app/install-mpi.sh mpicc mpirun < mpi-load.txt
+      - name: Build the Benchmark
+        run: |
+          set -e
+          source inputs.sh
+          case "${benchmark}" in
+            imb-*) tool=imb ;;
+            *) tool=ior ;;
+          esac
+          bash workflows/benchmarks/app/install-benchmark.sh "${tool}" "${PWD}/mpi-env.sh" "${PWD}/benchmark-bin-dir.txt"
+          echo "BENCHMARK_BIN_DIR=$(cat benchmark-bin-dir.txt)" | tee -a $OUTPUTS
+      - name: Create the Benchmark Script
+        run: |
+          set -e
+          rm -f benchmark.exit
+          rm -rf results
+          # not named run.sh: the submitter writes its assembled job script under that name here
+          {
+            cat inputs.sh
+            echo "export benchmark_bin_dir=\"$(cat benchmark-bin-dir.txt)\""
+            echo "export benchmark_mpi_env=\"${PWD}/mpi-env.sh\""
+            cat workflows/benchmarks/app/run-template.sh
+          } > benchmark.sh
+          # a cancel before the script starts must find the cleanup script
+          echo '#!/bin/bash' > cancel.sh
+          chmod +x cancel.sh
+          echo "JOB_DIR=${PWD}" | tee -a $OUTPUTS
+
+  benchmark:
+    needs: [preprocessing]
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Run the Benchmark
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/script_submitter/v3.6/noaa.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          # the submitter cds into the run's job directory, where benchmark.sh and results/ are
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}
+          use_existing_script: true
+          script_path: ./benchmark.sh
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            account: ${{ inputs.cluster.slurm.account }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            qos: ${{ inputs.cluster.slurm.qos }}
+            # the noaa submitter writes --ntasks and --nodes for `existing` resources
+            # after the directives below, so the layout must reach it through these
+            # two; the directives cover every other resource
+            ntasks: ${{ inputs.cluster.nodes * inputs.cluster.ntasks_per_node }}
+            nodes: ${{ inputs.cluster.nodes }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: |
+              #SBATCH --nodes=${{ inputs.cluster.nodes }}
+              #SBATCH --ntasks-per-node=${{ inputs.cluster.ntasks_per_node }}
+              ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: |
+              #PBS -l select=${{ inputs.cluster.nodes }}:ncpus=${{ inputs.cluster.ntasks_per_node }}:mpiprocs=${{ inputs.cluster.ntasks_per_node }}
+              ${{ inputs.cluster.pbs.scheduler_directives }}
+
+  # the submitter never forwards the script's exit status: benchmark.sh records it,
+  # and the raw output is what the summary reads
+  results:
+    needs: [preprocessing, benchmark]
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Check the Exit Status
+        run: |
+          cd "${{ needs.preprocessing.outputs.JOB_DIR }}"
+          if [ ! -f benchmark.exit ]; then
+            echo "::error title=Error::No exit status in ${PWD}/benchmark.exit: the benchmark script did not run to its end (killed, walltime exceeded, node failure); the tail of its output follows"
+            tail -n 40 run.*.out 2>/dev/null
+            exit 1
+          fi
+          status=$(cat benchmark.exit)
+          if [ "${status}" != "0" ]; then
+            echo "::error title=Error::The benchmark exited with status ${status}; the tail of its output follows"
+            tail -n 40 run.*.out 2>/dev/null
+            exit 1
+          fi
+          echo "::notice::The benchmark exited with status 0"
+      - name: Summarize the Results
+        run: |
+          set -e
+          cd "${{ needs.preprocessing.outputs.JOB_DIR }}"
+          source inputs.sh
+          python3 workflows/benchmarks/app/summarize.py "${benchmark}" \
+            "results/${benchmark}.out" "results/${benchmark}.csv" results/outputs.txt
+          cat results/outputs.txt | tee -a $OUTPUTS
+          echo "RESULTS_DIR=${PWD}/results" | tee -a $OUTPUTS
+          echo "RESULTS_CSV=${PWD}/results/${benchmark}.csv" | tee -a $OUTPUTS
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: The cluster whose nodes, interconnect or file system is benchmarked
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          scheduler:
+            type: boolean
+            default: true
+            label: Schedule Job?
+            hidden: ${{ inputs.resource.schedulerType == '' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes → The benchmark runs on compute nodes as one SLURM or PBS job of Nodes x MPI ranks per node
+              No  → It runs on the controller or login node with MPI ranks per node ranks (a quick check)
+          nodes:
+            type: number
+            label: Nodes
+            default: 1
+            min: 1
+            max: 10000
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              --nodes (PBS select=N). With 2 or more nodes IMB-MPI1 numbers the ranks so that
+              PingPong runs between two nodes and measures the interconnect; with 1 node it
+              measures the node itself.
+          ntasks_per_node:
+            type: number
+            label: MPI ranks per node
+            default: 2
+            min: 1
+            max: 1024
+            tooltip: |
+              --ntasks-per-node (PBS ncpus=N:mpiprocs=N). Every rank takes part: set it to the
+              cores per node for Alltoall, IOR and mdtest. On the login node it is the total
+              rank count.
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+                tooltip: Select a partition from the drop down menu.
+              qos:
+                label: Quality of Service [QoS]
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              time:
+                label: Walltime
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --constraint=<feature>
+                  The workflow already sets --nodes and --ntasks-per-node from the fields above;
+                  a directive here repeating one of them takes precedence, except on NOAA
+                  systems, where --ntasks and --nodes come from the fields above.
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l walltime=01:00:00
+                  #PBS -q standard
+                  The workflow already sets -l select=N:ncpus=M:mpiprocs=M from the fields above.
+      benchmark:
+        type: group
+        label: Benchmark
+        items:
+          name:
+            type: dropdown
+            label: Benchmark
+            default: imb-pingpong
+            options:
+              - value: imb-pingpong
+                label: 'IMB-MPI1 PingPong: point-to-point latency and bandwidth'
+              - value: imb-alltoall
+                label: 'IMB-MPI1 Alltoall: collective time per message size'
+              - value: ior
+                label: 'IOR: parallel file system write and read bandwidth'
+              - value: mdtest
+                label: 'mdtest: parallel file system metadata rates'
+          imb_args:
+            type: string
+            label: Extra IMB-MPI1 arguments
+            optional: true
+            hidden: ${{ inputs.benchmark.name != 'imb-pingpong' && inputs.benchmark.name != 'imb-alltoall' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Appended to the IMB-MPI1 command, for example -msglog 0:22 -iter 1000 -npmin 8
+              (the message sizes, the repetitions, the smallest process count). See the
+              Intel MPI Benchmarks user guide.
+          preset:
+            type: dropdown
+            label: Arguments
+            default: standard
+            hidden: ${{ inputs.benchmark.name != 'ior' && inputs.benchmark.name != 'mdtest' }}
+            ignore: ${{ .hidden }}
+            options:
+              - value: standard
+                label: 'standard: IOR 1 GiB per rank in 64 MiB transfers, 3 iterations; mdtest 20840 files per rank with 4 KiB written and read, 3 iterations'
+              - value: minimal
+                label: 'minimal: a quick check, IOR 256 MiB per rank in 1 MiB transfers; mdtest 20840 empty files per rank; 1 iteration'
+              - value: custom
+                label: 'custom: the arguments typed below'
+            tooltip: |
+              standard: ior -w -r -i 3 -t 64m -b 64m -s 16 -F -C -e; mdtest -n 20840 -e 4096 -w 4096 -i 3 -u
+              minimal:  ior -w -r -i 1 -t 1m -b 16m -s 16 -F -C -e;  mdtest -n 20840 -i 1 -u
+              Every rank writes its own file (-F), reads back another rank's (-C) and fsyncs (-e).
+          ior_args:
+            type: string
+            label: IOR arguments
+            default: '-w -r -i 3 -t 64m -b 64m -s 16 -F -C -e'
+            hidden: ${{ inputs.benchmark.name != 'ior' || inputs.benchmark.preset != 'custom' }}
+            ignore: ${{ .hidden }}
+            tooltip: Everything but -o, the test file, which the workflow places in the I/O directory (ior -h lists the options)
+          mdtest_args:
+            type: string
+            label: mdtest arguments
+            default: '-n 20840 -e 4096 -w 4096 -i 3 -u'
+            hidden: ${{ inputs.benchmark.name != 'mdtest' || inputs.benchmark.preset != 'custom' }}
+            ignore: ${{ .hidden }}
+            tooltip: Everything but -d, the test directory, which the workflow places in the I/O directory (mdtest -h lists the options)
+          io_dir:
+            type: string
+            label: I/O directory
+            optional: true
+            hidden: ${{ inputs.benchmark.name != 'ior' && inputs.benchmark.name != 'mdtest' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              A directory on the file system to benchmark; the run works in a subdirectory
+              named after it, removed afterwards. Shell variables expand on the node
+              (${HOME}, ${SCRATCH}). Leave empty to benchmark the file system that holds
+              the run's job directory, in io/ under it.
+      software:
+        type: group
+        label: Software Environment
+        collapsed: true
+        items:
+          mpi:
+            type: dropdown
+            label: MPI
+            default: auto
+            options:
+              - value: auto
+                label: 'auto: the MPI on PATH, else a system module, else OpenMPI from conda-forge'
+              - value: conda-forge
+                label: OpenMPI from conda-forge
+              - value: commands
+                label: The environment commands below
+            tooltip: |
+              auto takes the mpicc and mpirun already on PATH, else a system MPI module
+              (mpi/openmpi-x86_64, mpi/mpich-x86_64, openmpi, mpich), else OpenMPI from
+              conda-forge. The conda-forge install goes under <install directory>/benchmarks
+              (no sudo, ~2 GB, once). The log says which MPI ran.
+          mpi_load:
+            type: editor
+            label: MPI environment commands
+            optional: true
+            hidden: ${{ inputs.software.mpi != 'commands' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Shell commands that put mpicc, mpicxx and mpirun on PATH, one per line, for
+              example `module load openmpi/4.1.6` or `source /opt/intel/oneapi/setvars.sh`.
+              The build and the job source them. `export MPIRUN="srun --mpi=pmix"` here
+              replaces the default launcher `mpirun -np N`.
+          install_dir:
+            type: string
+            label: Install directory
+            optional: true
+            tooltip: |
+              The benchmarks are built once per MPI under <install directory>/benchmarks/<mpi>/
+              and reused by later runs; the conda-forge OpenMPI, when used, goes under
+              <install directory>/benchmarks/miniforge. Leave empty for the cluster's shared
+              software tree when this account can write there (/contrib/pw on Hera, Mercury
+              and Ursa, /usw/rdhpcs/software/pw on Gaea), ${HOME}/pw/software otherwise.

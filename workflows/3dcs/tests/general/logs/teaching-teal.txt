@@ -1,0 +1,16 @@
+Run teaching-teal: error (2s)
+Reason: executorExitedEarly
+
+Failed jobs/steps:
+
+  workspace_preprocessing > Check 3DCS Allocation Balance (error, 0s)
+    Traceback (most recent call last):
+      File "/home/Weisheng.Gan/pw/jobs/teaching-teal/workflows/3dcs/app/get_group_allocation_balance.py", line 42, in <module>
+        main()
+      File "/home/Weisheng.Gan/pw/jobs/teaching-teal/workflows/3dcs/app/get_group_allocation_balance.py", line 28, in main
+        response.raise_for_status()
+      File "/usr/lib/python3.9/site-packages/requests/models.py", line 943, in raise_for_status
+        raise HTTPError(http_error_msg, response=self)
+    requests.exceptions.HTTPError: 401 Client Error: Unauthorized for url: https://cloud.parallel.works/api/organizations/honda/groups
+
+Summary: 1 job(s) failed, 1 step(s) failed

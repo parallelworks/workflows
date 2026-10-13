@@ -1,0 +1,2363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ray Cluster Dashboard</title>
+<script>
+  // Apply persisted theme before paint to avoid flash.
+  (function () {
+    try {
+      var saved = window.localStorage.getItem('ray-cluster-theme');
+      document.documentElement.dataset.theme = saved === 'dark' ? 'dark' : 'light';
+    } catch (e) {
+      document.documentElement.dataset.theme = 'light';
+    }
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    color-scheme: light dark;
+    /* Spacing — 4px base (Impeccable) */
+    --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem;
+    --space-4: 1rem;    --space-6: 1.5rem; --space-8: 2rem;
+    /* Type scale — Major Third (1.25) */
+    --text-xs: 0.75rem; --text-sm: 0.875rem; --text-base: 1rem;
+    --text-lg: 1.125rem; --text-xl: 1.25rem; --text-2xl: 1.5rem;
+    /* Radii */
+    --radius-sm: 0.375rem; --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;  --radius-full: 999px;
+    /* Motion */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    /* Site palette — same on both themes (vivid enough for either) */
+    --site1: #3b82f6;
+    --site2: #f59e0b;
+  }
+  /* Dark theme — tinted slate neutrals, teal accent (hpc_status). */
+  :root[data-theme="dark"] {
+    --bg: #0f1117;
+    --panel: #181c26;
+    --panel-alt: #1e2330;
+    --border: #2a3044;
+    --text: #e8eaf0;
+    --dim: #8890a4;
+    --accent: #3cc5c5;
+    --accent-soft: rgba(60, 197, 197, 0.14);
+    --green: #34a85c;
+    --danger: #d44e5c;
+    --warning: #d4952f;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.25);
+  }
+  /* Light theme — warm slate neutrals, deeper teal accent. */
+  :root[data-theme="light"] {
+    --bg: #f2f3f8;
+    --panel: #ffffff;
+    --panel-alt: #eceef5;
+    --border: #d4d8e4;
+    --text: #111827;
+    --dim: #5b6378;
+    --accent: #1a8a8a;
+    --accent-soft: rgba(26, 138, 138, 0.10);
+    --green: #1e8a47;
+    --danger: #b83d4a;
+    --warning: #b07a1e;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* Tabular figures for any number that benefits from monospaced digits. */
+  .stat-value, .site-count, .result-value, .progress-label, code, pre {
+    font-variant-numeric: tabular-nums;
+  }
+  .header-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    font-size: 0.85rem;
+    color: var(--dim);
+  }
+  .legend {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  /* Tabs */
+  .tab-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    padding: 0 var(--space-6);
+  }
+  .tab-btn {
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--dim);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.15s var(--ease-out), border-color 0.15s var(--ease-out);
+    font-family: inherit;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .tab-btn.hidden { display: none; }
+
+  /* Theme toggle — small ghost button in the tab bar */
+  .theme-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    margin-left: var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    font-family: inherit;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s var(--ease-out), background 0.15s var(--ease-out);
+  }
+  .theme-btn:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 0;
+    height: calc(100vh - 48px);
+    overflow: hidden;
+    position: relative;
+  }
+  .main > * {
+    min-height: 0;
+  }
+  .main.no-sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  /* Cluster view */
+  .cluster-view {
+    display: grid;
+    grid-template-rows: 3fr 2fr;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    overflow: hidden;
+  }
+  .cluster-view.no-throughput {
+    grid-template-rows: 1fr;
+  }
+  .cluster-view .chart-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .chart-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3) var(--space-4);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    box-shadow: var(--shadow-sm);
+  }
+  .chart-card .card-title {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    margin-bottom: var(--space-2);
+    flex-shrink: 0;
+    font-weight: 600;
+  }
+  .chart-card .chart-body {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .chart-card canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Fractal view */
+  .fractal-view {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+  #fractal-canvas {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    image-rendering: pixelated;
+    cursor: grab;
+  }
+  #fractal-canvas:active { cursor: grabbing; }
+  .zoom-hint {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.7rem;
+    color: var(--dim);
+    background: var(--panel);
+    padding: 0.3rem 0.8rem;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    pointer-events: none;
+    opacity: 0.7;
+  }
+
+  /* Ray iframe */
+  .ray-iframe-wrap {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 10;
+    background: var(--bg);
+  }
+  .ray-iframe-wrap iframe {
+    width: 100%; height: 100%; border: none;
+  }
+  /* Ray's built-in dashboard ships light. Invert it under our dark theme;
+     leave it untouched in light theme. */
+  :root[data-theme="dark"] .ray-iframe-wrap iframe {
+    filter: invert(0.9) hue-rotate(180deg);
+  }
+
+  .sidebar {
+    border-left: 1px solid var(--border);
+    padding: var(--space-6);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    background: var(--bg);
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-sm);
+  }
+  .card-title {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    margin-bottom: var(--space-3);
+    font-weight: 600;
+  }
+  .progress-bar-outer {
+    width: 100%;
+    height: 24px;
+    background: var(--panel-alt);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-bar-inner {
+    height: 100%;
+    border-radius: 12px;
+    background: linear-gradient(90deg, var(--site1), var(--accent));
+    transition: width 0.3s ease;
+    min-width: 0;
+  }
+  .progress-label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: white;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+  .stat {
+    text-align: center;
+    padding: var(--space-2);
+    background: var(--panel-alt);
+    border-radius: var(--radius-md);
+  }
+  .stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-label {
+    font-size: 0.65rem;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .site-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--panel-alt);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-2);
+  }
+  .site-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .site-info { flex: 1; }
+  .site-name { font-size: 0.85rem; font-weight: 600; }
+  .site-detail { font-size: 0.7rem; color: var(--dim); }
+  .site-count {
+    font-size: 1.2rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-2);
+    background: var(--panel-alt);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-1);
+  }
+  .result-label { color: var(--dim); }
+  .result-value { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--accent); }
+  .throughput-chart {
+    width: 100%;
+    height: 100px;
+    position: relative;
+  }
+  #throughput-mini-canvas {
+    width: 100%;
+    height: 100%;
+  }
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+  .status-badge.waiting {
+    background: var(--panel-alt);
+    color: var(--dim);
+  }
+  .status-badge.running {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .status-badge.complete {
+    background: rgba(52, 168, 92, 0.14);
+    color: var(--green);
+  }
+  .pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .view-hidden { display: none !important; }
+
+  /* Logs view — two-pane terminal: site list left, full output right */
+  .logs-view {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 0;
+    height: 100%;
+    min-height: 0;
+    background: var(--bg);
+  }
+  .logs-sites {
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    background: var(--panel);
+  }
+  .logs-sites-title {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    font-weight: 600;
+    margin-bottom: var(--space-2);
+  }
+  .logs-site-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s var(--ease-out), border-color 0.15s var(--ease-out);
+    color: var(--text);
+    background: transparent;
+  }
+  .logs-site-row:hover {
+    background: var(--panel-alt);
+  }
+  .logs-site-row.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .logs-site-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .logs-site-name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    font-size: var(--text-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .logs-site-count {
+    color: var(--dim);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+  .logs-terminal {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  .logs-terminal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-6);
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+  .logs-terminal-title {
+    font-weight: 600;
+    font-size: var(--text-base);
+  }
+  .logs-terminal-meta {
+    color: var(--dim);
+    font-size: var(--text-xs);
+  }
+  .logs-terminal-body {
+    flex: 1;
+    margin: 0;
+    padding: var(--space-4) var(--space-6);
+    overflow-y: auto;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .logs-terminal-body .ll-row {
+    display: flex;
+    gap: var(--space-3);
+  }
+  .logs-terminal-body .ll-ts {
+    color: var(--dim);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .logs-terminal-body .ll-msg { flex: 1; min-width: 0; }
+
+</style>
+</head>
+<body>
+<div class="tab-bar">
+  <button id="tab-cluster" class="tab-btn active" onclick="switchTab('cluster')">Cluster</button>
+  <button id="tab-cluster-only" class="tab-btn hidden" onclick="switchTab('cluster-only')">Connect</button>
+  <button id="tab-fractal" class="tab-btn hidden" onclick="switchTab('fractal')">Fractal</button>
+  <button id="tab-logs" class="tab-btn" onclick="switchTab('logs')">Logs</button>
+  <button id="tab-ray" class="tab-btn" onclick="switchTab('ray')">Ray Dashboard</button>
+  <div class="header-right">
+    <div class="legend" id="header-legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background:var(--dim)"></div>
+        <span>Waiting for nodes...</span>
+      </div>
+    </div>
+    <div id="status-badge" class="status-badge waiting">
+      <div class="pulse" style="background:currentColor"></div>
+      Waiting
+    </div>
+    <button id="theme-toggle" class="theme-btn" aria-label="Toggle color theme">
+      <span class="theme-icon" aria-hidden="true">🌙</span>
+      <span class="theme-label">Dark</span>
+    </button>
+  </div>
+</div>
+
+<div id="main-container" class="main">
+  <!-- Ray iframe overlay -->
+  <div id="ray-iframe-wrap" class="ray-iframe-wrap view-hidden">
+    <iframe id="ray-iframe" src="about:blank"></iframe>
+  </div>
+
+  <!-- Cluster view (main area) -->
+  <div id="cluster-view" class="cluster-view">
+    <div class="chart-row">
+      <div class="chart-card">
+        <div class="card-title">Cluster Topology</div>
+        <div class="chart-body">
+          <canvas id="topology-canvas"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="card-title" id="placement-title">Tasks by Site</div>
+        <div class="chart-body">
+          <canvas id="placement-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="chart-row" id="throughput-row">
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <div class="card-title" id="throughput-title">Throughput (tasks/sec)</div>
+        <div class="chart-body">
+          <canvas id="throughput-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fractal view (main area) -->
+  <div id="fractal-view" class="fractal-view view-hidden">
+    <canvas id="fractal-canvas"></canvas>
+    <div class="zoom-hint">Scroll to zoom &middot; Drag to pan &middot; Double-click to reset</div>
+  </div>
+
+  <!-- Cluster-only instructions view -->
+  <!-- Cluster-only instructions view -->
+  <div id="cluster-only-view" class="cluster-view view-hidden" style="padding: 2rem; overflow-y: auto;">
+    <div style="max-width: 900px; margin: 0 auto;">
+
+      <!-- Cluster status bar -->
+      <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem;">
+        <div style="flex: 1;">
+          <div class="card-title" style="font-size: 1.1rem; margin-bottom: 0.25rem;">Ray Cluster Ready</div>
+          <span style="color: var(--dim); font-size: 0.85rem;">
+            <span id="info-worker-count">0</span> workers &middot; <span id="info-gpu-count">0</span> GPUs &middot;
+            Head: <code id="info-ray-head-ip" style="color: var(--accent);">-</code>
+          </span>
+        </div>
+      </div>
+
+      <!-- Recommended: Ray Jobs API -->
+      <div style="background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; padding: 1.5rem 2rem; margin-bottom: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+          <div class="card-title" style="font-size: 1rem; margin: 0;">Submit via Ray Jobs API</div>
+          <span style="font-size: 0.7rem; background: var(--accent); color: var(--bg); padding: 0.15rem 0.5rem; border-radius: 3px; font-weight: 600;">RECOMMENDED</span>
+        </div>
+        <p style="color: var(--dim); font-size: 0.85rem; margin: 0 0 0.75rem 0;">
+          The Ray Jobs API is the standard way to submit work to a Ray cluster. It packages your script and dependencies, handles logging, and supports job management (status, stop, logs).
+        </p>
+        <p style="color: var(--dim); font-size: 0.85rem; margin: 0 0 0.5rem 0;">
+          Install the Ray CLI on your local machine (if not already installed):
+        </p>
+        <pre style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--text); overflow-x: auto; white-space: pre-wrap; margin: 0 0 0.75rem 0;">uv pip install "ray[default]"   # or: pip install "ray[default]"</pre>
+        <p style="color: var(--dim); font-size: 0.85rem; margin: 0 0 0.5rem 0;">
+          Open an SSH tunnel to the Ray dashboard:
+        </p>
+        <pre id="ray-jobs-tunnel-cmd" style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--accent); overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 0 0 0.75rem 0;">pw ssh -L 8265:localhost:8265 workspace</pre>
+        <p style="color: var(--dim); font-size: 0.85rem; margin: 0 0 0.5rem 0;">
+          Then submit jobs from your local machine:
+        </p>
+        <pre id="ray-jobs-cmd" style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--text); overflow-x: auto; white-space: pre-wrap; margin: 0;"># Submit a job
+ray job submit --address http://127.0.0.1:8265 --working-dir . -- python my_script.py
+
+# Check status and logs
+ray job list --address http://127.0.0.1:8265
+ray job logs --address http://127.0.0.1:8265 &lt;job-id&gt;</pre>
+
+        <details style="margin-top: 0.75rem;" open>
+          <summary style="cursor: pointer; color: var(--dim); font-size: 0.85rem; font-weight: 500; user-select: none; margin-bottom: 0.5rem;">
+            Example: my_script.py
+          </summary>
+          <pre style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--text); overflow-x: auto; white-space: pre-wrap; margin: 0;">import ray
+import socket
+import time
+
+ray.init()
+
+@ray.remote
+def compute(i):
+    """A sample task that runs on a worker node."""
+    time.sleep(1)
+    host = socket.gethostname()
+    return f"Task {i} completed on {host}"
+
+# Submit 10 tasks across the cluster
+futures = [compute.remote(i) for i in range(10)]
+results = ray.get(futures)
+
+for r in results:
+    print(r)</pre>
+        </details>
+
+        <details style="margin-top: 0.5rem;">
+          <summary style="cursor: pointer; color: var(--dim); font-size: 0.85rem; font-weight: 500; user-select: none; margin-bottom: 0.5rem;">
+            Example: Quick bash one-liner
+          </summary>
+          <pre id="ray-jobs-bash-cmd" style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--text); overflow-x: auto; white-space: pre-wrap; margin: 0;"># Run a quick command without a script file
+ray job submit --address http://127.0.0.1:8265 -- python -c "
+import ray; ray.init()
+print(ray.cluster_resources())
+print('Nodes:', len(ray.nodes()))
+"</pre>
+        </details>
+
+        <details style="margin-top: 0.5rem;">
+          <summary style="cursor: pointer; color: var(--dim); font-size: 0.85rem; font-weight: 500; user-select: none; margin-bottom: 0.5rem;">
+            Example: Install packages on workers
+          </summary>
+          <p style="color: var(--dim); font-size: 0.8rem; margin: 0 0 0.5rem 0; padding: 0 0.25rem;">
+            Install pip packages on every worker node using Ray tasks. Each worker installs into its own venv using uv. Only needs to run once — packages persist for the cluster lifetime.
+          </p>
+          <pre style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--text); overflow-x: auto; white-space: pre-wrap; margin: 0;"># Install packages on all worker nodes (run once)
+ray job submit --address http://127.0.0.1:8265 -- python -c "
+import ray, subprocess, sys, os, socket
+ray.init()
+
+@ray.remote(num_cpus=1)
+def install(packages):
+    host = socket.gethostname()
+    uv = os.path.join(os.path.dirname(sys.executable), 'uv')
+    print(f'[{host}] Installing: {\" \".join(packages)}', flush=True)
+    r = subprocess.run([uv, 'pip', 'install'] + packages, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f'Install failed on {host} (exit {r.returncode})')
+    print(f'[{host}] Done', flush=True)
+    return f'{host}: ok'
+
+workers = [n for n in ray.nodes() if n['Alive'] and n['Resources'].get('CPU', 0) > 0]
+print(f'Installing on {len(workers)} worker(s)...', flush=True)
+futures = [install.remote(['torch']) for _ in workers]
+for r in ray.get(futures):
+    print(r, flush=True)
+"</pre>
+        </details>
+
+        <details style="margin-top: 0.5rem;">
+          <summary style="cursor: pointer; color: var(--dim); font-size: 0.85rem; font-weight: 500; user-select: none; margin-bottom: 0.5rem;">
+            Example: GPU hello world (no dependencies)
+          </summary>
+          <pre style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--text); overflow-x: auto; white-space: pre-wrap; margin: 0;">import ray
+import socket
+import subprocess
+import os
+
+ray.init()
+
+total_gpus = int(ray.cluster_resources().get("GPU", 0))
+print(f"Cluster has {total_gpus} GPU(s) across {len(ray.nodes())} node(s)")
+
+@ray.remote(num_gpus=1)
+def gpu_task(task_id):
+    """Query GPU info via nvidia-smi (no pip packages required)."""
+    host = socket.gethostname()
+    gpu_ids = os.environ.get("CUDA_VISIBLE_DEVICES", "none")
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=name,memory.total",
+             "--format=csv,noheader,nounits",
+             f"--id={gpu_ids.split(',')[0]}"],
+            text=True, timeout=10,
+        ).strip()
+        name, mem_mb = [x.strip() for x in out.split(",")]
+        return f"Task {task_id} on {host} GPU {gpu_ids}: {name} ({float(mem_mb)/1024:.1f} GB)"
+    except Exception as e:
+        return f"Task {task_id} on {host} GPU {gpu_ids}: nvidia-smi failed ({e})"
+
+if total_gpus == 0:
+    print("No GPUs in cluster. Request GPUs via the 'GPUs per Node' option.")
+else:
+    futures = [gpu_task.remote(i) for i in range(total_gpus)]
+    for result in ray.get(futures):
+        print(result)</pre>
+        </details>
+
+        <details style="margin-top: 0.5rem;">
+          <summary style="cursor: pointer; color: var(--dim); font-size: 0.85rem; font-weight: 500; user-select: none; margin-bottom: 0.5rem;">
+            Example: GPU matmul benchmark (requires torch)
+          </summary>
+          <p style="color: var(--dim); font-size: 0.8rem; margin: 0 0 0.5rem 0; padding: 0 0.25rem;">
+            First install torch using the "Install packages" example above, then run this benchmark.
+          </p>
+          <pre style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--text); overflow-x: auto; white-space: pre-wrap; margin: 0;">import ray
+import socket
+import os
+import time
+
+ray.init()
+
+total_gpus = int(ray.cluster_resources().get("GPU", 0))
+print(f"Cluster has {total_gpus} GPU(s) across {len(ray.nodes())} node(s)")
+
+@ray.remote(num_gpus=1)
+def gpu_matmul(task_id):
+    """Run a matrix multiply benchmark on each GPU."""
+    import torch
+    host = socket.gethostname()
+    gpu_ids = os.environ.get("CUDA_VISIBLE_DEVICES", "none")
+    name = torch.cuda.get_device_name(0)
+    props = torch.cuda.get_device_properties(0)
+    mem_gb = (getattr(props, 'total_memory', 0) or getattr(props, 'total_mem', 0)) / 1e9
+
+    # 4096x4096 matmul benchmark
+    size = 4096
+    a = torch.randn(size, size, device="cuda")
+    b = torch.randn(size, size, device="cuda")
+    torch.cuda.synchronize()
+
+    t0 = time.perf_counter()
+    torch.mm(a, b)
+    torch.cuda.synchronize()
+    elapsed = time.perf_counter() - t0
+
+    tflops = 2 * size**3 / elapsed / 1e12
+    return f"Task {task_id} on {host} GPU {gpu_ids}: {name} ({mem_gb:.1f} GB) - {tflops:.2f} TFLOPS"
+
+if total_gpus == 0:
+    print("No GPUs in cluster. Request GPUs via the 'GPUs per Node' option.")
+else:
+    futures = [gpu_matmul.remote(i) for i in range(total_gpus)]
+    for result in ray.get(futures):
+        print(result)</pre>
+        </details>
+      </div>
+
+      <!-- Alternative methods (collapsible) -->
+      <details style="background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1rem;">
+        <summary style="padding: 1rem 1.5rem; cursor: pointer; color: var(--text); font-size: 0.95rem; font-weight: 500; user-select: none;">
+          Alternative: Connect via Python SDK
+        </summary>
+        <div style="padding: 0 1.5rem 1.25rem 1.5rem;">
+          <p style="color: var(--dim); font-size: 0.85rem; margin: 0 0 0.5rem 0;">
+            Forward the Ray GCS port and connect directly from Python:
+          </p>
+          <pre id="ssh-tunnel-cmd" style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--accent); overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 0 0 0.75rem 0;">pw ssh -L 6379:localhost:6379 workspace</pre>
+          <pre style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--text); overflow-x: auto; white-space: pre-wrap; margin: 0;">import ray
+
+ray.init(address="ray://127.0.0.1:6379")
+
+@ray.remote
+def my_task(x):
+    import time, socket
+    time.sleep(1)
+    return f"Result {x} from {socket.gethostname()}"
+
+futures = [my_task.remote(i) for i in range(10)]
+print(ray.get(futures))
+ray.shutdown()</pre>
+        </div>
+      </details>
+
+      <details style="background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1rem;">
+        <summary style="padding: 1rem 1.5rem; cursor: pointer; color: var(--text); font-size: 0.95rem; font-weight: 500; user-select: none;">
+          Alternative: Run Directly on Head Node
+        </summary>
+        <div style="padding: 0 1.5rem 1.25rem 1.5rem;">
+          <p style="color: var(--dim); font-size: 0.85rem; margin: 0 0 0.5rem 0;">
+            SSH into the head node and run scripts with Ray pre-configured. No tunnel needed.
+          </p>
+          <pre id="direct-cmd" style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; color: var(--text); overflow-x: auto; white-space: pre-wrap; margin: 0;"># SSH to the head node
+pw ssh workspace
+
+# Activate the Ray environment
+source ~/pw/software/ray-*/bin/activate
+
+# Set the Ray address
+export RAY_ADDRESS="&lt;RAY_HEAD_IP&gt;:6379"
+
+# Run your script
+python my_script.py</pre>
+        </div>
+      </details>
+
+      <!-- Ray Cluster Activity (live from Ray API) -->
+      <div style="background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem 2rem; margin-bottom: 1rem;">
+        <div class="card-title" style="font-size: 1rem; margin-bottom: 0.75rem;">Cluster Activity</div>
+
+        <!-- Nodes -->
+        <div style="margin-bottom: 1rem;">
+          <div style="color: var(--dim); font-size: 0.8rem; font-weight: 600; margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.05em;">Nodes</div>
+          <div id="ray-nodes-list" style="font-size: 0.82rem;">
+            <span style="color: var(--dim);">Waiting for cluster data...</span>
+          </div>
+        </div>
+
+        <!-- Jobs -->
+        <div>
+          <div style="color: var(--dim); font-size: 0.8rem; font-weight: 600; margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.05em;">Recent Jobs</div>
+          <div id="ray-jobs-list" style="font-size: 0.82rem;">
+            <span style="color: var(--dim);">No jobs submitted yet</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Logs view — full-width terminal for streaming worker dispatch output -->
+  <div id="logs-view" class="logs-view view-hidden">
+    <aside class="logs-sites" id="logs-sites">
+      <div class="logs-sites-title">Sites</div>
+      <div id="logs-sites-list">
+        <div style="color: var(--dim); font-size: var(--text-sm); padding: var(--space-3);">
+          No worker activity yet.
+        </div>
+      </div>
+    </aside>
+    <section class="logs-terminal">
+      <header class="logs-terminal-head">
+        <div class="logs-terminal-title" id="logs-terminal-title">Worker dispatch logs</div>
+        <div class="logs-terminal-meta" id="logs-terminal-meta"></div>
+      </header>
+      <pre id="logs-terminal-body" class="logs-terminal-body">
+<span style="color: var(--dim);">Pick a site on the left to see its dispatch output.
+Lines stream in as the worker progresses through Ray setup, tunnel
+verification, and registration.</span>
+      </pre>
+    </section>
+  </div>
+
+  <!-- Sidebar -->
+  <div id="sidebar" class="sidebar">
+    <!-- Progress -->
+    <div class="card">
+      <div class="card-title" id="progress-title">Progress</div>
+      <div class="progress-bar-outer">
+        <div id="progress-bar" class="progress-bar-inner" style="width:0%"></div>
+        <div id="progress-label" class="progress-label">0 / 0 tasks</div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="card">
+      <div class="card-title">Cluster Statistics</div>
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat-value" id="stat-elapsed">0s</div>
+          <div class="stat-label">Elapsed</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="stat-tps">0</div>
+          <div class="stat-label" id="stat-tps-label">Tasks/sec</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="stat-avg-ms">0</div>
+          <div class="stat-label" id="stat-avg-label">Avg ms/task</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-label" id="stat-total-label">Total Tasks</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sites -->
+    <div class="card">
+      <div class="card-title">Compute Sites</div>
+      <div id="sites-container">
+        <div class="site-card" style="opacity: 0.4;">
+          <div class="site-icon" style="background:rgba(59,130,246,0.15); color:var(--site1);">&#9729;</div>
+          <div class="site-info">
+            <div class="site-name">Waiting for nodes...</div>
+            <div class="site-detail">Sites appear as workers join</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- Ray Cluster Activity (polled from Ray API) -->
+    <div class="card" id="ray-activity-card">
+      <div class="card-title">Cluster Activity</div>
+      <div style="margin-bottom: 0.75rem;">
+        <div style="color: var(--dim); font-size: 0.72rem; font-weight: 600; margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.05em;">Nodes</div>
+        <div id="ray-nodes-sidebar" style="font-size: 0.8rem;">
+          <span style="color: var(--dim);">Polling...</span>
+        </div>
+      </div>
+      <div>
+        <div style="color: var(--dim); font-size: 0.72rem; font-weight: 600; margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.05em;">Recent Jobs</div>
+        <div id="ray-jobs-sidebar" style="font-size: 0.8rem;">
+          <span style="color: var(--dim);">No jobs yet</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Benchmark Results (hidden in fractal mode) -->
+    <div class="card" id="results-card" style="display:none">
+      <div class="card-title">Benchmark Results</div>
+      <div id="results-container"></div>
+    </div>
+
+    <!-- Throughput Mini -->
+    <div class="card" id="throughput-mini-card">
+      <div class="card-title" id="throughput-mini-title">Throughput (tasks/sec)</div>
+      <div class="throughput-chart">
+        <canvas id="throughput-mini-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SITE_COLORS = {};
+const COLOR_PALETTE = ['#3b82f6', '#f59e0b', '#22c55e', '#ef4444', '#a855f7', '#ec4899'];
+let colorIdx = 0;
+function getSiteColor(siteId) {
+  if (!SITE_COLORS[siteId]) {
+    SITE_COLORS[siteId] = COLOR_PALETTE[colorIdx % COLOR_PALETTE.length];
+    colorIdx++;
+  }
+  return SITE_COLORS[siteId];
+}
+
+function updateHeaderLegend() {
+  const legend = document.getElementById('header-legend');
+  const connectedIds = Object.keys(siteStats);
+  const pendingIds = Object.keys(pendingSites).filter(sid => !siteStats[sid]);
+  const allIds = [...connectedIds, ...pendingIds];
+  if (allIds.length === 0) return;
+  legend.innerHTML = allIds.map(siteId => {
+    const s = siteStats[siteId] || pendingSites[siteId];
+    const color = getSiteColor(siteId);
+    const label = s.cluster_name || siteId;
+    const isPending = !siteStats[siteId];
+    return `<div class="legend-item">
+      <div class="legend-dot" style="background:${isPending ? 'transparent' : color}; ${isPending ? 'border:1px dashed ' + color : ''}"></div>
+      <span${isPending ? ' style="opacity:0.6"' : ''}>${label}${isPending ? ' ...' : ''}</span>
+    </div>`;
+  }).join('');
+}
+
+// State
+let workloadType = 'benchmark';
+let gridSize = 0;
+let imageSize = 0;
+let activeTab = 'cluster';
+let phase = 'waiting';
+let totalCompleted = 0;
+let totalPlanned = 0;
+let startTime = null;
+const siteStats = {};
+const pendingSites = {}; // site_id -> {cluster_name, scheduler_type}
+const rayNodes = {};  // node_ip -> {site_id, num_cpus, ...}
+const workerLogs = {};  // site_id -> [{ts, msg}, ...] (bounded ~200)
+let topologyHits = [];  // [{site_id, x, y, r}] populated each drawTopology pass
+let headNode = {};    // {ip, cluster_name, scheduler_type} — coordinator hub
+let rayHeadIp = '';   // Ray head IP address
+const throughputHistory = [];
+let lastThroughputCheck = null;
+let lastTaskCounts = {};
+
+// Benchmark results
+let throughputResults = null;
+let computeResults = [];
+let scalingResults = null;
+
+function mergeSiteStats(incoming) {
+  for (const [siteId, data] of Object.entries(incoming || {})) {
+    if (!siteStats[siteId]) { siteStats[siteId] = data; }
+    else {
+      const prevName = siteStats[siteId].cluster_name;
+      const prevTaskCount = siteStats[siteId].task_count || 0;
+      const prevTotalMs = siteStats[siteId].total_ms || 0;
+      Object.assign(siteStats[siteId], data);
+      if (!data.cluster_name && prevName) siteStats[siteId].cluster_name = prevName;
+      // High-water mark: never let task_count or total_ms decrease
+      siteStats[siteId].task_count = Math.max(prevTaskCount, siteStats[siteId].task_count || 0);
+      siteStats[siteId].total_ms = Math.max(prevTotalMs, siteStats[siteId].total_ms || 0);
+    }
+  }
+}
+
+// Fractal canvas setup
+const canvas = document.getElementById('fractal-canvas');
+const ctx = canvas.getContext('2d');
+let offscreen = null;
+let offCtx = null;
+let tilePixels = 128;
+
+// Zoom/pan state
+let zoom = null;
+let panX = 0, panY = 0;
+let fitZoom = 1;
+let userHasZoomed = false;
+let isDragging = false;
+let dragStartX = 0, dragStartY = 0;
+let panStartX = 0, panStartY = 0;
+
+// --- Tab switching ---
+function switchTab(tab) {
+  activeTab = tab;
+  const clusterView = document.getElementById('cluster-view');
+  const fractalView = document.getElementById('fractal-view');
+  const clusterOnlyView = document.getElementById('cluster-only-view');
+  const logsView = document.getElementById('logs-view');
+  const sidebar = document.getElementById('sidebar');
+  const mainContainer = document.getElementById('main-container');
+  const throughputMini = document.getElementById('throughput-mini-card');
+  const resultsCard = document.getElementById('results-card');
+  const rayWrap = document.getElementById('ray-iframe-wrap');
+  const rayIframe = document.getElementById('ray-iframe');
+
+  // Tab button states
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+
+  // Hide all views
+  clusterView.classList.add('view-hidden');
+  fractalView.classList.add('view-hidden');
+  clusterOnlyView.classList.add('view-hidden');
+  if (logsView) logsView.classList.add('view-hidden');
+  rayWrap.classList.add('view-hidden');
+  sidebar.classList.remove('view-hidden');
+  mainContainer.classList.remove('no-sidebar');
+
+  if (tab === 'cluster') {
+    clusterView.classList.remove('view-hidden');
+    throughputMini.style.display = workloadType === 'cluster_only' ? 'none' : '';
+    document.getElementById('throughput-row').style.display = workloadType === 'cluster_only' ? 'none' : '';
+    clusterView.classList.toggle('no-throughput', workloadType === 'cluster_only');
+    if (workloadType === 'benchmark') resultsCard.style.display = '';
+    else resultsCard.style.display = 'none';
+    rayIframe.src = 'about:blank';
+    drawAll();
+  } else if (tab === 'cluster-only') {
+    clusterOnlyView.classList.remove('view-hidden');
+    throughputMini.style.display = 'none';
+    resultsCard.style.display = 'none';
+    rayIframe.src = 'about:blank';
+    updateClusterOnlyInfo();
+  } else if (tab === 'fractal') {
+    fractalView.classList.remove('view-hidden');
+    throughputMini.style.display = 'none';
+    resultsCard.style.display = 'none';
+    rayIframe.src = 'about:blank';
+    resizeFractalCanvas();
+    renderView();
+  } else if (tab === 'logs') {
+    sidebar.classList.add('view-hidden');
+    mainContainer.classList.add('no-sidebar');
+    if (logsView) logsView.classList.remove('view-hidden');
+    throughputMini.style.display = 'none';
+    resultsCard.style.display = 'none';
+    rayIframe.src = 'about:blank';
+    renderWorkerLogs();
+  } else if (tab === 'ray') {
+    sidebar.classList.add('view-hidden');
+    mainContainer.classList.add('no-sidebar');
+    rayWrap.classList.remove('view-hidden');
+    const basePath = location.pathname.replace(/\/$/, '');
+    rayIframe.src = basePath + '/ray/#/cluster';
+  }
+}
+
+function updateClusterOnlyInfo() {
+  const headIp = headNode.ip || rayHeadIp || '-';
+  const headResource = headNode.cluster_name || 'head-resource';
+  document.getElementById('info-ray-head-ip').textContent = headIp;
+  const workerCount = Object.keys(rayNodes).length;
+  document.getElementById('info-worker-count').textContent = workerCount;
+  let totalGpus = 0;
+  Object.values(rayNodes).forEach(n => { totalGpus += (n.num_gpus || 0); });
+  document.getElementById('info-gpu-count').textContent = totalGpus;
+
+  // Substitute real values into code blocks
+  const sshCmd = document.getElementById('ssh-tunnel-cmd');
+  if (sshCmd && headIp !== '-') {
+    sshCmd.textContent = `pw ssh -L 6379:localhost:6379 workspace`;
+  }
+  const rayJobsCmd = document.getElementById('ray-jobs-cmd');
+  if (rayJobsCmd && headIp !== '-') {
+    rayJobsCmd.textContent = `# Submit a job\nray job submit --address http://127.0.0.1:8265 --working-dir . -- python my_script.py\n\n# Check status and logs\nray job list --address http://127.0.0.1:8265\nray job logs --address http://127.0.0.1:8265 <job-id>`;
+  }
+  const directCmd = document.getElementById('direct-cmd');
+  if (directCmd && headIp !== '-') {
+    directCmd.textContent = `# SSH to the head node\npw ssh workspace\n\n# Activate the Ray environment\nsource ~/pw/software/ray-*/bin/activate\n\n# Set the Ray address\nexport RAY_ADDRESS="${headIp}:6379"\n\n# Run your script\npython my_script.py`;
+  }
+}
+
+// --- Ray cluster activity rendering ---
+function renderRayClusterActivity(nodes, jobs) {
+  const aliveNodes = (nodes || []).filter(n => n.alive);
+
+  const statusColor = s => {
+    if (s === 'SUCCEEDED') return 'var(--accent)';
+    if (s === 'RUNNING') return '#f0c040';
+    if (s === 'FAILED') return '#e06060';
+    if (s === 'PENDING') return 'var(--dim)';
+    return 'var(--dim)';
+  };
+
+  // Build nodes HTML (full table for main view, compact for sidebar)
+  const nodesTableHtml = aliveNodes.length === 0
+    ? '<span style="color: var(--dim);">No nodes detected</span>'
+    : '<table style="width: 100%; border-collapse: collapse;">' +
+      '<tr style="color: var(--dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">' +
+      '<td style="padding: 0.3rem 0.5rem;">Hostname</td><td style="padding: 0.3rem 0.5rem;">IP</td>' +
+      '<td style="padding: 0.3rem 0.5rem;">CPUs</td><td style="padding: 0.3rem 0.5rem;">GPUs</td></tr>' +
+      aliveNodes.map(n =>
+        '<tr style="border-top: 1px solid var(--border);">' +
+        '<td style="padding: 0.3rem 0.5rem; color: var(--text);">' + (n.hostname || '-') + '</td>' +
+        '<td style="padding: 0.3rem 0.5rem; color: var(--dim);">' + (n.ip || '-') + '</td>' +
+        '<td style="padding: 0.3rem 0.5rem; color: var(--text);">' + (n.cpus || 0) + '</td>' +
+        '<td style="padding: 0.3rem 0.5rem; color: var(--text);">' + (n.gpus || 0) + '</td></tr>'
+      ).join('') + '</table>';
+
+  const nodesSidebarHtml = aliveNodes.length === 0
+    ? '<span style="color: var(--dim);">No nodes</span>'
+    : aliveNodes.map(n =>
+        '<div style="padding: 0.15rem 0; color: var(--text);">' +
+        (n.hostname || n.ip || '-') +
+        ' <span style="color: var(--dim);">' + (n.cpus || 0) + ' CPU' + (n.gpus > 0 ? ', ' + n.gpus + ' GPU' : '') + '</span></div>'
+      ).join('');
+
+  // Build jobs HTML
+  const jobsTableHtml = (!jobs || jobs.length === 0)
+    ? '<span style="color: var(--dim);">No jobs submitted yet</span>'
+    : '<table style="width: 100%; border-collapse: collapse;">' +
+      '<tr style="color: var(--dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">' +
+      '<td style="padding: 0.3rem 0.5rem;">Job ID</td><td style="padding: 0.3rem 0.5rem;">Status</td>' +
+      '<td style="padding: 0.3rem 0.5rem;">Submitted</td></tr>' +
+      jobs.map(j => {
+        const status = j.status || 'UNKNOWN';
+        const jobId = j.submission_id || j.job_id || '-';
+        const shortId = jobId.length > 20 ? jobId.slice(0, 20) + '...' : jobId;
+        let timeStr = '-';
+        if (j.start_time) {
+          const ts = j.start_time > 1e12 ? j.start_time : j.start_time * 1000;
+          const d = new Date(ts);
+          if (!isNaN(d.getTime())) timeStr = d.toLocaleTimeString();
+        }
+        return '<tr style="border-top: 1px solid var(--border);">' +
+          '<td style="padding: 0.3rem 0.5rem; color: var(--text); font-family: monospace; font-size: 0.78rem;" title="' + jobId + '">' + shortId + '</td>' +
+          '<td style="padding: 0.3rem 0.5rem; color: ' + statusColor(status) + '; font-weight: 500;">' + status + '</td>' +
+          '<td style="padding: 0.3rem 0.5rem; color: var(--dim);">' + timeStr + '</td></tr>';
+      }).join('') + '</table>';
+
+  const jobsSidebarHtml = (!jobs || jobs.length === 0)
+    ? '<span style="color: var(--dim);">No jobs yet</span>'
+    : jobs.slice(0, 5).map(j => {
+        const status = j.status || 'UNKNOWN';
+        const jobId = j.submission_id || j.job_id || '-';
+        const shortId = jobId.length > 16 ? jobId.slice(0, 16) + '..' : jobId;
+        return '<div style="padding: 0.15rem 0; display: flex; justify-content: space-between;">' +
+          '<span style="color: var(--text); font-family: monospace; font-size: 0.75rem;">' + shortId + '</span>' +
+          '<span style="color: ' + statusColor(status) + '; font-size: 0.75rem; font-weight: 500;">' + status + '</span></div>';
+      }).join('');
+
+  // Update cluster-only view (full tables)
+  const nodesEl = document.getElementById('ray-nodes-list');
+  if (nodesEl) nodesEl.innerHTML = nodesTableHtml;
+  const jobsEl = document.getElementById('ray-jobs-list');
+  if (jobsEl) jobsEl.innerHTML = jobsTableHtml;
+
+  // Update sidebar (compact)
+  const nodesSb = document.getElementById('ray-nodes-sidebar');
+  if (nodesSb) nodesSb.innerHTML = nodesSidebarHtml;
+  const jobsSb = document.getElementById('ray-jobs-sidebar');
+  if (jobsSb) jobsSb.innerHTML = jobsSidebarHtml;
+}
+
+// --- Chart label updates ---
+function updateChartLabels() {
+  document.getElementById('placement-title').textContent = 'Tasks by Site';
+  document.getElementById('throughput-title').textContent = 'Throughput (tasks/sec)';
+  document.getElementById('throughput-mini-title').textContent = 'Throughput (tasks/sec)';
+  document.getElementById('stat-tps-label').textContent = 'Tasks/sec';
+  document.getElementById('stat-avg-label').textContent = 'Avg ms/task';
+  document.getElementById('stat-total-label').textContent = 'Total Tasks';
+}
+
+// --- Fractal offscreen ---
+function initOffscreen() {
+  if (gridSize <= 0 || imageSize <= 0) return;
+  tilePixels = imageSize;
+  offscreen = document.createElement('canvas');
+  offscreen.width = gridSize * tilePixels;
+  offscreen.height = gridSize * tilePixels;
+  offCtx = offscreen.getContext('2d');
+  const tcOff = themeColors();
+  offCtx.fillStyle = tcOff.bg;
+  offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+  offCtx.strokeStyle = tcOff.border;
+  offCtx.lineWidth = 1;
+  for (let i = 0; i <= gridSize; i++) {
+    const x = i * tilePixels;
+    offCtx.beginPath(); offCtx.moveTo(x, 0); offCtx.lineTo(x, offscreen.height); offCtx.stroke();
+    offCtx.beginPath(); offCtx.moveTo(0, x); offCtx.lineTo(offscreen.width, x); offCtx.stroke();
+  }
+}
+
+function resizeFractalCanvas() {
+  const needsInit = !offscreen || (gridSize > 0 && offscreen.width !== gridSize * imageSize);
+  if (needsInit) initOffscreen();
+
+  const area = canvas.parentElement;
+  if (!area || area.classList.contains('view-hidden')) return;
+  const maxW = area.clientWidth - 64;
+  const maxH = area.clientHeight - 64;
+  const fitSize = Math.max(Math.min(maxW, maxH), 100);
+  canvas.width = fitSize;
+  canvas.height = fitSize;
+
+  if (offscreen) {
+    fitZoom = fitSize / offscreen.width;
+    if (!userHasZoomed) {
+      zoom = fitZoom;
+      panX = 0;
+      panY = 0;
+    }
+  }
+  renderView();
+}
+
+function drawTileToOffscreen(tx, ty, png_b64, siteId) {
+  if (!offCtx) return;
+  const img = new Image();
+  img.onload = () => {
+    const x = tx * tilePixels;
+    const y = ty * tilePixels;
+    offCtx.drawImage(img, x, y, tilePixels, tilePixels);
+    const color = getSiteColor(siteId);
+    offCtx.strokeStyle = color;
+    offCtx.lineWidth = Math.max(2, tilePixels / 64);
+    offCtx.strokeRect(x + 1, y + 1, tilePixels - 2, tilePixels - 2);
+    if (activeTab === 'fractal') renderView();
+  };
+  img.src = 'data:image/png;base64,' + png_b64;
+}
+
+function renderView() {
+  if (!zoom || !offscreen) return;
+  ctx.fillStyle = themeColors().bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-offscreen.width / 2, -offscreen.height / 2);
+  ctx.imageSmoothingEnabled = zoom < 1;
+  ctx.drawImage(offscreen, 0, 0);
+  ctx.restore();
+}
+
+// Zoom with scroll wheel
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left - canvas.width / 2 - panX;
+  const my = e.clientY - rect.top - canvas.height / 2 - panY;
+  panX -= mx * (zoomFactor - 1);
+  panY -= my * (zoomFactor - 1);
+  zoom *= zoomFactor;
+  zoom = Math.max(0.1, Math.min(zoom, 20));
+  userHasZoomed = true;
+  renderView();
+}, { passive: false });
+
+// Pan with drag
+canvas.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  panStartX = panX;
+  panStartY = panY;
+});
+window.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  panX = panStartX + (e.clientX - dragStartX);
+  panY = panStartY + (e.clientY - dragStartY);
+  userHasZoomed = true;
+  renderView();
+});
+window.addEventListener('mouseup', () => { isDragging = false; });
+
+// Double-click to reset zoom
+canvas.addEventListener('dblclick', () => {
+  zoom = fitZoom; panX = 0; panY = 0;
+  userHasZoomed = false;
+  renderView();
+});
+
+// Read theme tokens at draw time so canvas tracks light/dark switches.
+function themeColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const get = (k, fallback) => (cs.getPropertyValue(k).trim() || fallback);
+  return {
+    bg: get('--bg', '#0f1117'),
+    panel: get('--panel', '#181c26'),
+    panelAlt: get('--panel-alt', '#1e2330'),
+    border: get('--border', '#2a3044'),
+    text: get('--text', '#e8eaf0'),
+    dim: get('--dim', '#8890a4'),
+    accent: get('--accent', '#3cc5c5'),
+    accentSoft: get('--accent-soft', 'rgba(60,197,197,0.14)'),
+  };
+}
+
+// --- Topology chart ---
+function drawTopology() {
+  const c = document.getElementById('topology-canvas');
+  const parent = c.parentElement;
+  const rect = parent.getBoundingClientRect();
+  const dpr = window.devicePixelRatio;
+  c.width = rect.width * dpr;
+  c.height = rect.height * dpr;
+  const g = c.getContext('2d');
+  g.scale(dpr, dpr);
+  const w = rect.width, h = rect.height;
+
+  const tc = themeColors();
+  g.fillStyle = tc.bg;
+  g.fillRect(0, 0, w, h);
+
+  const connectedIds = Object.keys(siteStats);
+  const pendingIds = Object.keys(pendingSites).filter(sid => !siteStats[sid]);
+  const siteIds = [...connectedIds, ...pendingIds];
+  const hasHead = headNode.ip || rayHeadIp;
+
+  if (siteIds.length === 0 && !hasHead) {
+    g.fillStyle = tc.dim;
+    g.font = "13px 'Plus Jakarta Sans', system-ui, sans-serif";
+    g.textAlign = 'center';
+    g.fillText('Waiting for Ray nodes to join...', w / 2, h / 2);
+    return;
+  }
+
+  // Draw head node hub — centered vertically if no workers, at top otherwise
+  const cx = w / 2;
+  const cy = siteIds.length === 0 ? h / 2 - 20 : 44;
+  const hubRadius = siteIds.length === 0 ? 36 : 28;
+  g.beginPath();
+  g.arc(cx, cy, hubRadius, 0, Math.PI * 2);
+  g.fillStyle = tc.accentSoft;
+  g.fill();
+  g.strokeStyle = tc.accent;
+  g.lineWidth = 2;
+  g.stroke();
+
+  // Head node label
+  const headName = (headNode.cluster_name || 'RAY HEAD');
+  const shortHead = headName.length > 18 ? headName.slice(0, 17) + '\u2026' : headName;
+  g.fillStyle = tc.accent;
+  g.font = siteIds.length === 0 ? "bold 11px 'Plus Jakarta Sans', system-ui, sans-serif" : "bold 9px 'Plus Jakarta Sans', system-ui, sans-serif";
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(shortHead, cx, cy - (siteIds.length === 0 ? 10 : 6));
+  g.fillStyle = tc.dim;
+  g.font = siteIds.length === 0 ? "9px 'Plus Jakarta Sans', system-ui, sans-serif" : "8px 'Plus Jakarta Sans', system-ui, sans-serif";
+  g.fillText('coordinator', cx, cy + (siteIds.length === 0 ? 4 : 7));
+
+  // Show head node details (from Ray API) when no workers
+  if (siteIds.length === 0) {
+    const headState = headNode.state || 'ALIVE';
+    const headCpus = headNode.num_cpus != null ? headNode.num_cpus : '?';
+    const headGpus = headNode.num_gpus || 0;
+    const headIpStr = headNode.ip || rayHeadIp || '';
+
+    g.save();
+    g.globalAlpha = 0.55;
+    g.fillStyle = tc.accent;
+    g.font = "9px 'Plus Jakarta Sans', system-ui, sans-serif";
+    let infoY = cy + hubRadius + 20;
+    g.fillText(headState + (headIpStr ? '  \u00b7  ' + headIpStr : ''), cx, infoY);
+    infoY += 16;
+    const resLabel = headCpus + ' CPU' + (headGpus > 0 ? ', ' + headGpus + ' GPU' : '') + '  \u00b7  --num-cpus=0';
+    g.fillText(resLabel, cx, infoY);
+    g.restore();
+    infoY += 22;
+    g.fillStyle = tc.dim;
+    g.font = "11px 'Plus Jakarta Sans', system-ui, sans-serif";
+    g.fillText('No worker sites connected', cx, infoY);
+    infoY += 16;
+    g.font = "10px 'Plus Jakarta Sans', system-ui, sans-serif";
+    g.fillText('Add workers via workflow or add_worker.yaml', cx, infoY);
+    return;
+  }
+
+  // Position site nodes below hub
+  const siteSpacing = Math.min(200, (w - 80) / siteIds.length);
+  const siteY = cy + 90;
+  topologyHits = [];
+
+  siteIds.forEach((siteId, i) => {
+    const isPending = !siteStats[siteId];
+    const s = siteStats[siteId] || pendingSites[siteId] || {};
+    const hasError = isPending && s.error;
+    const color = hasError ? '#e74c3c' : getSiteColor(siteId);
+    const nodeX = w / 2 + (i - (siteIds.length - 1) / 2) * siteSpacing;
+
+    // Connection line from hub to site
+    g.beginPath();
+    g.moveTo(cx, cy + hubRadius);
+    g.lineTo(nodeX, siteY - 26);
+    if (isPending) {
+      g.setLineDash([4, 4]);
+      g.strokeStyle = color + '33';
+    } else {
+      g.strokeStyle = color + '44';
+    }
+    g.lineWidth = 2;
+    g.stroke();
+    g.setLineDash([]);
+
+    // Animated data flow dots (not for failed sites)
+    const progress = (Date.now() % 2000) / 2000;
+    if (!hasError && (isPending || ((s.task_count || 0) > 0 && totalCompleted < totalPlanned))) {
+      const dotX = cx + (nodeX - cx) * progress;
+      const dotY = (cy + hubRadius) + (siteY - 26 - cy - hubRadius) * progress;
+      g.beginPath();
+      g.arc(dotX, dotY, 3, 0, Math.PI * 2);
+      g.fillStyle = isPending ? color + '88' : color;
+      g.fill();
+    }
+
+    // Site node circle — record as a clickable hit zone so the user can
+    // jump from a struggling node straight to its dispatch log.
+    topologyHits.push({ site_id: siteId, x: nodeX, y: siteY, r: 24 });
+    g.beginPath();
+    g.arc(nodeX, siteY, 24, 0, Math.PI * 2);
+    if (hasError) {
+      g.fillStyle = '#e74c3c10';
+      g.fill();
+      g.strokeStyle = '#e74c3c88';
+    } else if (isPending) {
+      g.fillStyle = color + '08';
+      g.fill();
+      g.setLineDash([4, 4]);
+      g.strokeStyle = color + '55';
+    } else {
+      g.fillStyle = color + '18';
+      g.fill();
+      g.strokeStyle = color;
+    }
+    g.lineWidth = 2;
+    g.stroke();
+    g.setLineDash([]);
+
+    // Site label
+    const name = s.cluster_name || siteId;
+    const shortName = name.length > 18 ? name.slice(0, 17) + '\u2026' : name;
+    g.fillStyle = isPending ? color + '88' : color;
+    g.font = 'bold 9px Inter, system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(shortName, nodeX, siteY - 6);
+
+    if (isPending) {
+      // Status label instead of task count
+      g.fillStyle = hasError ? '#e74c3c' : color + '66';
+      g.font = '8px Inter, system-ui, sans-serif';
+      g.fillText(hasError ? 'FAILED' : 'connecting...', nodeX, siteY + 9);
+      // No compute nodes drawn for pending/failed
+    } else {
+      // Task count in site circle
+      g.fillStyle = tc.text;
+      g.font = "bold 12px 'Plus Jakarta Sans', system-ui, sans-serif";
+      g.fillText(String(s.task_count || 0), nodeX, siteY + 9);
+
+      // Draw individual compute nodes below the site
+      const nodeIps = s.node_ips || [];
+      const numNodes = Math.max(nodeIps.length, 1);
+      const nodeRadius = 14;
+      const nodeSpacingH = Math.min(50, (siteSpacing - 20) / numNodes);
+      const nodesY = siteY + 60;
+
+      if (nodeIps.length > 0) {
+        nodeIps.forEach((ip, ni) => {
+          const nx = nodeX + (ni - (nodeIps.length - 1) / 2) * nodeSpacingH;
+          const nodeData = rayNodes[ip] || {};
+
+          // Line from site to node
+          g.beginPath();
+          g.moveTo(nodeX, siteY + 24);
+          g.lineTo(nx, nodesY - nodeRadius);
+          g.strokeStyle = color + '33';
+          g.lineWidth = 1.5;
+          g.stroke();
+
+          // Node circle
+          g.beginPath();
+          g.arc(nx, nodesY, nodeRadius, 0, Math.PI * 2);
+          g.fillStyle = color + '12';
+          g.fill();
+          g.strokeStyle = color + '88';
+          g.lineWidth = 1.5;
+          g.stroke();
+
+          // CPU and GPU count in node
+          const cpus = nodeData.num_cpus || '?';
+          const gpus = nodeData.num_gpus || 0;
+          const nodeLabel = gpus > 0 ? cpus + ' CPU, ' + gpus + ' GPU' : cpus + ' CPU';
+          g.fillStyle = color + 'cc';
+          g.font = '8px Inter, system-ui, sans-serif';
+          g.textAlign = 'center';
+          g.textBaseline = 'middle';
+          g.fillText(nodeLabel, nx, nodesY);
+        });
+
+        // Summary below nodes
+        g.fillStyle = tc.dim;
+        g.font = "9px 'Plus Jakarta Sans', system-ui, sans-serif";
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(nodeIps.length + (nodeIps.length === 1 ? ' node' : ' nodes') + ' \u00b7 ' + (s.task_count || 0) + ' tasks', nodeX, nodesY + nodeRadius + 14);
+      } else {
+        // No node data yet
+        g.fillStyle = tc.dim;
+        g.font = "9px 'Plus Jakarta Sans', system-ui, sans-serif";
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText((s.task_count || 0) + ' tasks', nodeX, siteY + 38);
+      }
+    }
+  });
+}
+
+// --- Placement bar chart ---
+function drawPlacement() {
+  const c = document.getElementById('placement-canvas');
+  const parent = c.parentElement;
+  const rect = parent.getBoundingClientRect();
+  const dpr = window.devicePixelRatio;
+  c.width = rect.width * dpr;
+  c.height = rect.height * dpr;
+  const g = c.getContext('2d');
+  g.scale(dpr, dpr);
+  const w = rect.width, h = rect.height;
+  const tc = themeColors();
+
+  g.fillStyle = tc.bg;
+  g.fillRect(0, 0, w, h);
+
+  const siteIds = Object.keys(siteStats);
+  if (siteIds.length === 0) {
+    g.fillStyle = tc.dim;
+    g.font = "13px 'Plus Jakarta Sans', system-ui, sans-serif";
+    g.textAlign = 'center';
+    g.fillText('No data yet', w / 2, h / 2);
+    return;
+  }
+
+  const pad = { top: 10, right: 20, bottom: 30, left: 120 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+  const maxVal = Math.max(1, ...siteIds.map(s => siteStats[s].task_count || 0));
+  const barH = Math.min(40, plotH / siteIds.length - 8);
+
+  siteIds.forEach((siteId, i) => {
+    const s = siteStats[siteId];
+    const color = getSiteColor(siteId);
+    const count = s.task_count || 0;
+    const y = pad.top + i * (plotH / siteIds.length) + (plotH / siteIds.length - barH) / 2;
+    const barW = (count / maxVal) * plotW;
+
+    // Bar
+    g.fillStyle = color + '88';
+    g.beginPath();
+    g.roundRect(pad.left, y, Math.max(barW, 2), barH, 4);
+    g.fill();
+
+    // Bar highlight
+    g.fillStyle = color + 'cc';
+    g.beginPath();
+    g.roundRect(pad.left, y, Math.max(barW, 2), barH / 3, [4, 4, 0, 0]);
+    g.fill();
+
+    // Label (left)
+    const name = s.cluster_name || siteId;
+    const shortName = name.length > 18 ? name.slice(0, 17) + '\u2026' : name;
+    g.fillStyle = color;
+    g.font = '11px Inter, system-ui, sans-serif';
+    g.textAlign = 'right';
+    g.textBaseline = 'middle';
+    g.fillText(shortName, pad.left - 6, y + barH / 2);
+
+    // Count (right of bar)
+    g.fillStyle = tc.text;
+    g.font = "bold 12px 'Plus Jakarta Sans', system-ui, sans-serif";
+    g.textAlign = 'left';
+    g.fillText(String(count), pad.left + barW + 8, y + barH / 2);
+  });
+
+  // X-axis label
+  g.fillStyle = tc.dim;
+  g.font = "10px 'Plus Jakarta Sans', system-ui, sans-serif";
+  g.textAlign = 'center';
+  g.fillText('tasks completed', w / 2, h - 6);
+}
+
+// --- Throughput chart (shared renderer for main + mini) ---
+function drawThroughputOn(canvasEl) {
+  const rect = canvasEl.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
+  canvasEl.width = rect.width * window.devicePixelRatio;
+  canvasEl.height = rect.height * window.devicePixelRatio;
+  const g = canvasEl.getContext('2d');
+  g.scale(window.devicePixelRatio, window.devicePixelRatio);
+  const w = rect.width, h = rect.height;
+  const pad = 4;
+  const plotH = h - pad;
+
+  g.fillStyle = themeColors().bg;
+  g.fillRect(0, 0, w, h);
+
+  if (throughputHistory.length < 1) return;
+
+  const points = throughputHistory.slice(-60);
+  const sites = Object.keys(SITE_COLORS);
+
+  let maxVal = 1;
+  points.forEach(p => {
+    let stacked = 0;
+    sites.forEach(s => { stacked += (p.perSite[s] || 0); });
+    if (stacked > maxVal) maxVal = stacked;
+  });
+
+  const barW = Math.max(Math.floor(w / Math.max(points.length, 1)) - 1, 3);
+  const gap = Math.max(Math.floor((w - barW * points.length) / Math.max(points.length, 1)), 1);
+
+  points.forEach((p, i) => {
+    const x = i * (barW + gap);
+    let yBottom = h;
+    sites.forEach(siteId => {
+      const val = p.perSite[siteId] || 0;
+      if (val <= 0) return;
+      const bH = Math.max((val / maxVal) * plotH, 1);
+      const color = getSiteColor(siteId);
+      g.fillStyle = color + 'aa';
+      g.fillRect(x, yBottom - bH, barW, bH);
+      yBottom -= bH;
+    });
+  });
+
+  if (points.length >= 2) {
+    sites.forEach(siteId => {
+      const color = getSiteColor(siteId);
+      g.beginPath();
+      points.forEach((p, i) => {
+        const x = i * (barW + gap) + barW / 2;
+        const val = p.perSite[siteId] || 0;
+        const y = h - (val / maxVal) * plotH;
+        if (i === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      });
+      g.strokeStyle = color;
+      g.lineWidth = 1.5;
+      g.stroke();
+    });
+  }
+}
+
+function drawThroughput() {
+  if (activeTab === 'cluster') {
+    drawThroughputOn(document.getElementById('throughput-canvas'));
+  }
+  const miniCard = document.getElementById('throughput-mini-card');
+  if (miniCard.style.display !== 'none') {
+    drawThroughputOn(document.getElementById('throughput-mini-canvas'));
+  }
+}
+
+// --- Draw all charts for current tab ---
+function drawAll() {
+  if (activeTab === 'cluster') {
+    drawTopology();
+    drawPlacement();
+    drawThroughput();
+  } else if (activeTab === 'fractal') {
+    resizeFractalCanvas();
+  }
+}
+
+function updateStats() {
+  if (workloadType === 'cluster_only') {
+    const workerCount = Object.keys(rayNodes).length;
+    document.getElementById('progress-bar').style.width = workerCount > 0 ? '100%' : '0%';
+    document.getElementById('progress-label').textContent =
+      workerCount > 0 ? `${workerCount} worker(s) connected` : 'Waiting for workers...';
+    document.getElementById('progress-title').textContent = 'Cluster Status';
+  } else {
+    const pct = totalPlanned > 0 ? (totalCompleted / totalPlanned * 100) : 0;
+    document.getElementById('progress-bar').style.width = Math.min(pct, 100) + '%';
+    document.getElementById('progress-label').textContent =
+      `${totalCompleted} / ${totalPlanned} tasks (${Math.round(pct)}%)`;
+    document.getElementById('progress-title').textContent = 'Progress';
+  }
+
+  const el = startTime ? (Date.now() / 1000 - startTime) : 0;
+  document.getElementById('stat-elapsed').textContent =
+    el < 60 ? Math.round(el) + 's' : (el / 60).toFixed(1) + 'm';
+
+  const tps = el > 0 ? (totalCompleted / el) : 0;
+  document.getElementById('stat-tps').textContent = tps.toFixed(1);
+
+  let totalMs = 0, totalCount = 0;
+  for (const s in siteStats) {
+    totalMs += siteStats[s].total_ms || 0;
+    totalCount += siteStats[s].task_count || 0;
+  }
+  document.getElementById('stat-avg-ms').textContent =
+    totalCount > 0 ? Math.round(totalMs / totalCount) : '0';
+  document.getElementById('stat-total').textContent = totalPlanned;
+
+  // Status badge
+  const badge = document.getElementById('status-badge');
+  const phaseLabels = {
+    waiting: 'Waiting',
+    throughput: 'Running Tasks',
+    compute: 'Running Tasks',
+    scaling: 'Running Tasks',
+    rendering: 'Running Tasks',
+    cluster_ready: 'Cluster Ready',
+    user_script: 'Running User Script...',
+    script_failed: 'Script Failed',
+    complete: 'Complete',
+  };
+  if (phase === 'waiting' && Object.keys(pendingSites).length > 0 && Object.keys(siteStats).length === 0) {
+    badge.className = 'status-badge running';
+    badge.innerHTML = '<div class="pulse" style="background:currentColor"></div> Connecting';
+  } else if (phase === 'waiting') {
+    badge.className = 'status-badge waiting';
+    badge.innerHTML = '<div class="pulse" style="background:currentColor"></div> ' + (phaseLabels[phase] || phase);
+  } else if (phase === 'complete') {
+    badge.className = 'status-badge complete';
+    badge.innerHTML = '<div class="pulse" style="background:currentColor"></div> ' + (phaseLabels[phase] || phase);
+  } else if (phase === 'cluster_ready') {
+    badge.className = 'status-badge running';
+    badge.innerHTML = '<div class="pulse" style="background:var(--green)"></div> ' + (phaseLabels[phase] || phase);
+  } else if (phase === 'user_script') {
+    badge.className = 'status-badge running';
+    badge.innerHTML = '<div class="pulse" style="background:currentColor"></div> ' + (phaseLabels[phase] || phase);
+  } else if (phase === 'script_failed') {
+    badge.className = 'status-badge error';
+    badge.innerHTML = '<div class="pulse" style="background:var(--red, #e74c3c)"></div> ' + (phaseLabels[phase] || phase);
+  } else {
+    badge.className = 'status-badge running';
+    badge.innerHTML = '<div class="pulse" style="background:currentColor"></div> ' + (phaseLabels[phase] || phase);
+  }
+
+  // Update site cards — show both connected and pending sites
+  const container = document.getElementById('sites-container');
+  const connectedIds = Object.keys(siteStats);
+  const pendingIds = Object.keys(pendingSites).filter(sid => !siteStats[sid]);
+  const allSiteIds = [...connectedIds, ...pendingIds];
+  if (allSiteIds.length > 0) {
+    container.innerHTML = '';
+    let idx = 0;
+    connectedIds.forEach(siteId => {
+      const s = siteStats[siteId];
+      const color = getSiteColor(siteId);
+      const name = s.cluster_name || siteId;
+      const scheduler = s.scheduler_type ? ` (${s.scheduler_type})` : '';
+      const nodeCount = (s.node_ips || []).length || 1;
+      const icon = '&#9900;';
+      const avgMs = (s.task_count || 0) > 0 ? Math.round(s.total_ms / s.task_count) : 0;
+      const nodeInfo = `${nodeCount} ${nodeCount === 1 ? 'node' : 'nodes'}`;
+      container.innerHTML += `
+        <div class="site-card">
+          <div class="site-icon" style="background:${color}20; color:${color};">${icon}</div>
+          <div class="site-info">
+            <div class="site-name">${name}${scheduler}</div>
+            <div class="site-detail">${siteId} &middot; ${nodeInfo} &middot; ${avgMs}ms avg</div>
+          </div>
+          <div class="site-count" style="color:${color}">${s.task_count || 0}</div>
+        </div>`;
+      idx++;
+    });
+    pendingIds.forEach(siteId => {
+      const p = pendingSites[siteId];
+      const color = p.error ? '#e74c3c' : getSiteColor(siteId);
+      const name = p.cluster_name || siteId;
+      const scheduler = p.scheduler_type ? ` (${p.scheduler_type})` : '';
+      if (p.error) {
+        container.innerHTML += `
+          <div class="site-card" style="opacity: 0.9; border: 1px solid #e74c3c44; background: #e74c3c08;">
+            <div class="site-icon" style="background:#e74c3c20; color:#e74c3c;">&#10006;</div>
+            <div class="site-info">
+              <div class="site-name" style="color:#e74c3c;">${name}${scheduler}</div>
+              <div class="site-detail" style="color:#e74c3cbb;">${p.error}</div>
+            </div>
+          </div>`;
+      } else {
+        container.innerHTML += `
+          <div class="site-card" style="opacity: 0.6; border: 1px dashed ${color}44;">
+            <div class="site-icon" style="background:${color}10; color:${color}88;">
+              <div class="pulse" style="background:${color}; width:10px; height:10px; border-radius:50%;"></div>
+            </div>
+            <div class="site-info">
+              <div class="site-name" style="color:${color}aa;">${name}${scheduler}</div>
+              <div class="site-detail" style="color:${color}88;">${siteId} &middot; connecting...</div>
+            </div>
+          </div>`;
+      }
+      idx++;
+    });
+    updateHeaderLegend();
+  }
+
+  // Benchmark results (only in benchmark mode)
+  if (workloadType === 'benchmark') {
+    const resultsCard = document.getElementById('results-card');
+    const resultsContainer = document.getElementById('results-container');
+    if (throughputResults || computeResults.length > 0 || scalingResults) {
+      if (activeTab === 'cluster') resultsCard.style.display = '';
+      let html = '';
+      if (throughputResults) {
+        html += `<div class="result-row"><span class="result-label">Throughput</span><span class="result-value">${throughputResults.tasks_per_sec} tasks/s</span></div>`;
+      }
+      if (computeResults.length > 0) {
+        const avgGflops = computeResults.reduce((a, b) => a + b.gflops, 0) / computeResults.length;
+        html += `<div class="result-row"><span class="result-label">Avg GFLOPS</span><span class="result-value">${avgGflops.toFixed(1)}</span></div>`;
+      }
+      if (scalingResults) {
+        html += `<div class="result-row"><span class="result-label">Speedup</span><span class="result-value">${scalingResults.speedup}x</span></div>`;
+        html += `<div class="result-row"><span class="result-label">1-site</span><span class="result-value">${scalingResults.single_site_tps} t/s</span></div>`;
+        html += `<div class="result-row"><span class="result-label">2-site</span><span class="result-value">${scalingResults.dual_site_tps} t/s</span></div>`;
+      }
+      resultsContainer.innerHTML = html;
+    }
+  }
+
+  // Record throughput
+  const now = Date.now() / 1000;
+  if (totalCompleted > 0) {
+    if (lastThroughputCheck === null) {
+      lastThroughputCheck = now;
+      siteIds.forEach(s => { lastTaskCounts[s] = siteStats[s].task_count || 0; });
+    } else if (now - lastThroughputCheck >= 1) {
+      const dt = now - lastThroughputCheck;
+      const perSite = {};
+      let total = 0;
+      siteIds.forEach(s => {
+        const current = siteStats[s].task_count || 0;
+        const prev = lastTaskCounts[s] || 0;
+        const rate = Math.max(0, (current - prev) / dt);
+        perSite[s] = rate;
+        total += rate;
+        lastTaskCounts[s] = current;
+      });
+      throughputHistory.push({ ts: now, total, perSite });
+      lastThroughputCheck = now;
+      drawThroughput();
+    }
+  }
+
+  // Redraw cluster charts if on cluster tab
+  if (activeTab === 'cluster') {
+    drawTopology();
+    drawPlacement();
+  }
+}
+
+// Logs tab — two-pane layout: site list on the left, terminal on the right.
+// Selected site persists across re-renders and across tab switches.
+let selectedLogSite = null;
+
+function renderLogsSiteList() {
+  const list = document.getElementById('logs-sites-list');
+  if (!list) return;
+  const siteIds = Object.keys(workerLogs).filter(sid => (workerLogs[sid] || []).length > 0);
+  if (siteIds.length === 0) {
+    list.innerHTML = '<div style="color: var(--dim); font-size: var(--text-sm); padding: var(--space-3);">No worker activity yet.</div>';
+    return;
+  }
+  // Stable sort by site_id (natural numeric order: site-2, site-3, site-10).
+  // Don't reorder based on recency — the active item jumping around as lines
+  // arrive makes the page confusing to read mid-debug.
+  siteIds.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  // Default selection: first site in list if nothing selected yet
+  if (!selectedLogSite || !workerLogs[selectedLogSite]) {
+    selectedLogSite = siteIds[0];
+  }
+  const escapeHtml = (s) => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  list.innerHTML = siteIds.map(sid => {
+    const name = (siteStats[sid] || pendingSites[sid] || {}).cluster_name || sid;
+    const count = workerLogs[sid].length;
+    const color = getSiteColor(sid);
+    const active = sid === selectedLogSite ? ' active' : '';
+    return `<button class="logs-site-row${active}" data-site-id="${sid}" onclick="selectLogSite('${sid}')">
+        <span class="logs-site-dot" style="background:${color}"></span>
+        <span class="logs-site-name">${escapeHtml(name)}</span>
+        <span class="logs-site-count">${count}</span>
+      </button>`;
+  }).join('');
+}
+
+function renderLogsTerminal() {
+  const title = document.getElementById('logs-terminal-title');
+  const meta = document.getElementById('logs-terminal-meta');
+  const body = document.getElementById('logs-terminal-body');
+  if (!body) return;
+  const sid = selectedLogSite;
+  if (!sid || !workerLogs[sid] || workerLogs[sid].length === 0) {
+    if (title) title.textContent = 'Worker dispatch logs';
+    if (meta) meta.textContent = '';
+    body.innerHTML = '<span style="color: var(--dim);">Pick a site on the left to see its dispatch output.</span>';
+    return;
+  }
+  const name = (siteStats[sid] || pendingSites[sid] || {}).cluster_name || sid;
+  const lines = workerLogs[sid];
+  const fmtTs = (ts) => {
+    try { return new Date(ts * 1000).toLocaleTimeString([], { hour12: false }); }
+    catch (e) { return ''; }
+  };
+  const escapeHtml = (s) => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  if (title) title.textContent = name;
+  if (meta) meta.textContent = lines.length + ' line' + (lines.length === 1 ? '' : 's') + '  ·  ' + sid;
+  // Was the user scrolled to the bottom? If so, keep them there.
+  const stickToBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 10;
+  body.innerHTML = lines.map(l =>
+    `<div class="ll-row"><span class="ll-ts">${fmtTs(l.ts)}</span><span class="ll-msg">${escapeHtml(l.msg)}</span></div>`
+  ).join('');
+  if (stickToBottom) body.scrollTop = body.scrollHeight;
+}
+
+function renderWorkerLogs() {
+  renderLogsSiteList();
+  renderLogsTerminal();
+}
+
+function selectLogSite(sid) {
+  selectedLogSite = sid;
+  renderWorkerLogs();
+}
+
+// WebSocket connection
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const basePath = location.pathname.replace(/\/$/, '');
+  const ws = new WebSocket(proto + '//' + location.host + basePath + '/ws');
+
+  ws.onopen = () => console.log('WS connected');
+
+  ws.onmessage = (evt) => {
+    const msg = JSON.parse(evt.data);
+
+    if (msg.type === 'worker_log') {
+      const sid = msg.site_id || 'unknown';
+      const buf = workerLogs[sid] || (workerLogs[sid] = []);
+      (msg.lines || []).forEach(l => buf.push(l));
+      // Bound on client side to match server cap
+      if (buf.length > 200) buf.splice(0, buf.length - 200);
+      renderWorkerLogs();
+      return;
+    }
+    if (msg.type === 'pending_site') {
+      pendingSites[msg.site_id] = {cluster_name: msg.cluster_name, scheduler_type: msg.scheduler_type};
+      getSiteColor(msg.site_id);
+      if (activeTab === 'cluster') drawTopology();
+      updateStats();
+      return;
+    }
+    if (msg.type === 'worker_error') {
+      // Server may have torn down a previously-connected site (raylet died
+      // post-connection) — drop its topology entries on the client too so we
+      // don't render both the dead node and the failure card.
+      if (msg.nodes) Object.keys(rayNodes).forEach(ip => { if (!msg.nodes[ip]) delete rayNodes[ip]; });
+      if (msg.site_stats) {
+        Object.keys(siteStats).forEach(sid => { if (!msg.site_stats[sid]) delete siteStats[sid]; });
+      }
+      const prev = pendingSites[msg.site_id] || {};
+      pendingSites[msg.site_id] = {
+        cluster_name: msg.cluster_name || prev.cluster_name || '',
+        scheduler_type: msg.scheduler_type || prev.scheduler_type || '',
+        error: msg.error,
+      };
+      getSiteColor(msg.site_id);
+      drawAll();  // site torn down — redraw placement bars too
+      updateStats();
+      renderWorkerLogs();
+      return;
+    }
+    if (msg.type === 'init') {
+      totalCompleted = msg.total_completed || 0;
+      totalPlanned = msg.total_planned || 0;
+      phase = msg.phase || 'waiting';
+      mergeSiteStats(msg.site_stats);
+      Object.assign(rayNodes, msg.nodes || {});
+      if (msg.head_node) { headNode = msg.head_node; if (headNode.ip) rayHeadIp = headNode.ip; }
+      if (msg.ray_head_ip) rayHeadIp = msg.ray_head_ip;
+      // Load pending sites
+      if (msg.pending_sites) {
+        Object.keys(msg.pending_sites).forEach(sid => {
+          if (!siteStats[sid]) {
+            pendingSites[sid] = msg.pending_sites[sid];
+            getSiteColor(sid);
+          }
+        });
+      }
+
+      if (msg.workload_type) {
+        workloadType = msg.workload_type;
+        gridSize = msg.grid_size || 0;
+        imageSize = msg.image_size || 0;
+        if (msg.ray_head_ip) rayHeadIp = msg.ray_head_ip;
+        updateChartLabels();
+        if (workloadType === 'fractal') {
+          document.getElementById('tab-fractal').classList.remove('hidden');
+          initOffscreen();
+        }
+        if (workloadType === 'cluster_only') {
+          document.getElementById('tab-cluster-only').classList.remove('hidden');
+          document.getElementById('throughput-row').style.display = 'none';
+          document.getElementById('throughput-mini-card').style.display = 'none';
+          document.getElementById('cluster-view').classList.add('no-throughput');
+        }
+      }
+
+      if (msg.ray_cluster_nodes || msg.ray_jobs) {
+        renderRayClusterActivity(msg.ray_cluster_nodes || [], msg.ray_jobs || []);
+      }
+      // Apply ray task counts on init
+      if (msg.ray_task_counts && msg.ray_task_counts.total > 0) {
+        const tc = msg.ray_task_counts;
+        if (tc.total > totalPlanned) totalPlanned = tc.total;
+        if (tc.finished > totalCompleted) totalCompleted = tc.finished;
+      }
+
+      if (totalCompleted > 0) {
+        fetch(basePath + '/api/state').then(r => r.json()).then(data => {
+          totalCompleted = Math.max(totalCompleted, data.total_completed || 0);
+          totalPlanned = Math.max(totalPlanned, data.total_planned || 0);
+          phase = data.phase;
+          mergeSiteStats(data.site_stats);
+          Object.assign(rayNodes, data.nodes || {});
+          if (data.head_node) headNode = data.head_node;
+          // Load pending sites for late-joiners
+          if (data.pending_sites) {
+            Object.keys(data.pending_sites).forEach(sid => {
+              if (!siteStats[sid]) {
+                pendingSites[sid] = data.pending_sites[sid];
+                getSiteColor(sid);
+              }
+            });
+          }
+
+          if (data.ray_head_ip) rayHeadIp = data.ray_head_ip;
+          if (data.workload_type === 'cluster_only') {
+            workloadType = 'cluster_only';
+            updateChartLabels();
+            document.getElementById('tab-cluster-only').classList.remove('hidden');
+            document.getElementById('throughput-row').style.display = 'none';
+            document.getElementById('throughput-mini-card').style.display = 'none';
+            document.getElementById('cluster-view').classList.add('no-throughput');
+            switchTab('cluster-only');
+          } else if (data.workload_type === 'fractal') {
+            workloadType = 'fractal';
+            gridSize = data.grid_size || gridSize;
+            imageSize = data.image_size || imageSize;
+            updateChartLabels();
+            document.getElementById('tab-fractal').classList.remove('hidden');
+            initOffscreen();
+            if (data.fractal_tiles) {
+              for (const [key, tile] of Object.entries(data.fractal_tiles)) {
+                if (tile.png_b64) {
+                  drawTileToOffscreen(tile.tile_x, tile.tile_y, tile.png_b64, tile.site_id);
+                }
+              }
+            }
+            switchTab('fractal');
+          } else {
+            throughputResults = data.throughput_results;
+            computeResults = data.compute_results || [];
+            scalingResults = data.scaling_results;
+          }
+
+          if (data.elapsed_s > 0 && !startTime) startTime = Date.now() / 1000 - data.elapsed_s;
+
+          if (data.throughput_history && data.throughput_history.length > 0) {
+            throughputHistory.length = 0;
+            const baseTs = startTime || (Date.now() / 1000 - data.elapsed_s);
+            data.throughput_history.forEach(b => {
+              throughputHistory.push({
+                ts: baseTs + b.ts_offset,
+                total: b.total,
+                perSite: b.perSite
+              });
+            });
+            lastThroughputCheck = Date.now() / 1000;
+            Object.keys(siteStats).forEach(s => { lastTaskCounts[s] = siteStats[s].task_count || 0; });
+            drawThroughput();
+          }
+
+          drawAll();
+          updateStats();
+        });
+      }
+    } else if (msg.type === 'head') {
+      headNode = msg.head_node || {};
+      if (headNode.ip) rayHeadIp = headNode.ip;
+      if (activeTab === 'cluster') drawTopology();
+      if (activeTab === 'cluster-only') updateClusterOnlyInfo();
+    } else if (msg.type === 'worker') {
+      Object.assign(rayNodes, msg.nodes || {});
+      mergeSiteStats(msg.site_stats);
+      // Use max() so ray_task_counts high-water marks are never overwritten
+      if (msg.total_completed !== undefined) totalCompleted = Math.max(totalCompleted, msg.total_completed);
+      if (msg.total_planned !== undefined) totalPlanned = Math.max(totalPlanned, msg.total_planned);
+      if (msg.phase) phase = msg.phase;
+      // Remove from pending — site is now connected
+      if (msg.site_id) delete pendingSites[msg.site_id];
+      if (msg.pending_sites) {
+        Object.keys(pendingSites).forEach(sid => {
+          if (!msg.pending_sites[sid]) delete pendingSites[sid];
+        });
+      }
+      drawAll();  // site_stats changed — redraw placement bars too
+      if (activeTab === 'cluster-only') updateClusterOnlyInfo();
+      updateStats();
+      renderWorkerLogs();  // keep Logs tab list counts fresh
+    } else if (msg.type === 'phase') {
+      phase = msg.phase;
+      if (phase === 'cluster_ready' && workloadType === 'cluster_only') {
+        document.getElementById('tab-cluster-only').classList.remove('hidden');
+        if (activeTab === 'cluster') switchTab('cluster-only');
+      }
+      updateStats();
+    } else if (msg.type === 'config') {
+      if (msg.workload_type) {
+        workloadType = msg.workload_type;
+        gridSize = msg.grid_size || gridSize;
+        imageSize = msg.image_size || imageSize;
+        if (msg.ray_head_ip) rayHeadIp = msg.ray_head_ip;
+        totalPlanned = msg.total_tasks || msg.total_tiles || totalPlanned;
+        updateChartLabels();
+        if (workloadType === 'fractal') {
+          document.getElementById('tab-fractal').classList.remove('hidden');
+          initOffscreen();
+        }
+        if (workloadType === 'cluster_only') {
+          document.getElementById('tab-cluster-only').classList.remove('hidden');
+          document.getElementById('throughput-row').style.display = 'none';
+          document.getElementById('throughput-mini-card').style.display = 'none';
+          document.getElementById('cluster-view').classList.add('no-throughput');
+          switchTab('cluster-only');
+        }
+      } else {
+        totalPlanned = msg.total_tasks || 0;
+      }
+      updateStats();
+    } else if (msg.type === 'task') {
+      if (!startTime) startTime = Date.now() / 1000;
+      totalCompleted = Math.max(totalCompleted, msg.total_completed || 0);
+      totalPlanned = Math.max(totalPlanned, msg.total_planned || 0);
+      phase = msg.phase;
+      mergeSiteStats(msg.site_stats);
+      updateStats();
+    } else if (msg.type === 'tile') {
+      if (!startTime) startTime = Date.now() / 1000;
+      const wasFirst = totalCompleted === 0;
+      totalCompleted = Math.max(totalCompleted, msg.completed || 0);
+      totalPlanned = Math.max(totalPlanned, msg.total || 0);
+      mergeSiteStats(msg.site_stats);
+      drawTileToOffscreen(msg.tile_x, msg.tile_y, msg.png_b64, msg.site_id);
+      if (wasFirst && activeTab === 'cluster') switchTab('fractal');
+      updateStats();
+    } else if (msg.type === 'results') {
+      if (msg.result_type === 'throughput') throughputResults = msg.data;
+      else if (msg.result_type === 'compute') computeResults.push(msg.data);
+      else if (msg.result_type === 'scaling') scalingResults = msg.data;
+      updateStats();
+    } else if (msg.type === 'ray_cluster') {
+      if (msg.head_node) {
+        headNode = msg.head_node;
+        if (headNode.ip) rayHeadIp = headNode.ip;
+        if (activeTab === 'cluster') drawTopology();
+        updateClusterOnlyInfo();
+      }
+      renderRayClusterActivity(msg.ray_cluster_nodes || [], msg.ray_jobs || []);
+      // Update task counts from Ray Tasks API (individual @ray.remote invocations)
+      if (msg.ray_task_counts && msg.ray_task_counts.total > 0) {
+        const tc = msg.ray_task_counts;
+        if (tc.finished > 0 && !startTime) startTime = Date.now() / 1000;
+        if (tc.total > totalPlanned) totalPlanned = tc.total;
+        if (tc.finished > totalCompleted) totalCompleted = tc.finished;
+        // Distribute task counts across sites proportionally to worker count
+        // Use high-water mark so counts never decrease (prevents chart resets)
+        const siteIds = Object.keys(siteStats);
+        if (siteIds.length > 0) {
+          const totalWorkers = siteIds.reduce((sum, s) => sum + (siteStats[s].num_workers || 1), 0);
+          siteIds.forEach(s => {
+            const proportion = (siteStats[s].num_workers || 1) / totalWorkers;
+            const newCount = Math.round(tc.finished * proportion);
+            siteStats[s].task_count = Math.max(siteStats[s].task_count || 0, newCount);
+          });
+        }
+        updateStats();
+        drawAll();  // task_count changed — placement bars must update too
+      }
+    }
+  };
+
+  ws.onclose = () => {
+    console.log('WS disconnected, reconnecting...');
+    setTimeout(connect, 2000);
+  };
+}
+
+// Topology canvas click — jump to the Logs tab with that site selected.
+(function wireTopologyClick() {
+  const c = document.getElementById('topology-canvas');
+  if (!c) return;
+  const hitTest = (evt) => {
+    const rect = c.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+    for (const h of topologyHits) {
+      const dx = x - h.x, dy = y - h.y;
+      if (dx * dx + dy * dy <= h.r * h.r) return h;
+    }
+    return null;
+  };
+  c.addEventListener('click', (evt) => {
+    const hit = hitTest(evt);
+    if (!hit) return;
+    selectedLogSite = hit.site_id;
+    switchTab('logs');
+  });
+  c.addEventListener('mousemove', (evt) => {
+    c.style.cursor = hitTest(evt) ? 'pointer' : 'default';
+  });
+})();
+
+// --- Topology animation loop ---
+let topoAnimFrame = null;
+function animateTopology() {
+  if (activeTab === 'cluster' && (Object.keys(pendingSites).length > 0 || (totalCompleted < totalPlanned && totalCompleted > 0))) {
+    drawTopology();
+  }
+  topoAnimFrame = requestAnimationFrame(animateTopology);
+}
+
+// Theme toggle — light/dark, persisted to localStorage.
+// The initial theme is set by the <script> in <head> before paint to
+// avoid FOUC; this just wires up the toggle button and indicator.
+(function initTheme() {
+  const THEME_KEY = 'ray-cluster-theme';
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  const icon = btn.querySelector('.theme-icon');
+  const label = btn.querySelector('.theme-label');
+  const render = () => {
+    const t = document.documentElement.dataset.theme || 'light';
+    if (icon) icon.textContent = t === 'dark' ? '🌙' : '☀️';
+    if (label) label.textContent = t === 'dark' ? 'Dark' : 'Light';
+  };
+  btn.addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+    render();
+    if (typeof drawAll === 'function') drawAll();
+  });
+  render();
+})();
+
+// Init
+window.addEventListener('resize', () => {
+  drawAll();
+});
+updateChartLabels();
+switchTab('cluster');
+connect();
+animateTopology();
+setInterval(() => updateStats(), 1000);
+
+// Seed workerLogs from /api/state so late-joining browsers see prior lines.
+(function seedWorkerLogs() {
+  const basePath = location.pathname.replace(/\/$/, '');
+  fetch(basePath + '/api/state')
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data || !data.worker_logs) return;
+      Object.keys(data.worker_logs).forEach(sid => {
+        workerLogs[sid] = data.worker_logs[sid];
+      });
+      renderWorkerLogs();
+    })
+    .catch(() => {});
+})();
+</script>
+</body>
+</html>

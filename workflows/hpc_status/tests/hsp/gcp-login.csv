@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-09-29T16:43:36Z,warm,pass,ok,7b4aa51,74bcc3d,e87c03d,df04c81,df04c81,hpc_status,alvaro,just-arachnid,36,

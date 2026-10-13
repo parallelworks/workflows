@@ -15,6 +15,7 @@ This workflow launches Code Server on a **Kubernetes Cluster** using a user-spec
 - **Choose an Image:** Default is `codercom/code-server:latest` from [this](https://hub.docker.com/r/codercom/code-server) DockerHub repository.
 - **Configure Resources:** Set CPU, memory, and optional GPU requests/limits.
 - **Run the Workflow:** Deploy Code Server and access it via a web interface.
+- **Stop it:** the run keeps running while Code Server serves; cancel the run to tear everything down (a new PVC included, unless you chose to persist it).
 
 
 

@@ -1,0 +1,27 @@
+Run vocal-magpie: error (42s)
+
+Error annotations:
+
+  Error: the Design Explorer server exited within 10 s of starting; its output follows
+    in preprocessing → Check the Design Explorer Server Is Alive
+
+Failed jobs/steps:
+
+  preprocessing > Check the Design Explorer Server Is Alive (error, 0s)
+    error: the Design Explorer server exited within 10 s of starting; its output follows
+    ✗ Error: the Design Explorer server exited within 10 s of starting; its output follows
+    2026-10-08T12:24:42Z [INFO] Creating endpoint...
+    Endpoint "design-explorer-vocal-magpie" serving localhost:40487
+      https://well-poodle.activate.pw/
+    Press Ctrl+C to stop.
+    
+    Tunnel transport: websocket
+    usage: design-explorer-server.py [-h] --cases-dir CASES_DIR --design-explorer
+                                     DESIGN_EXPLORER --port PORT [--title TITLE]
+                                     [--link LABEL=URL]
+    design-explorer-server.py: error: unrecognized arguments: front=https://flowing-flamingo.activate.pw/
+    
+    Endpoint "design-explorer-vocal-magpie" deleted.
+    2026-10-08T12:24:42Z [ERROR] exit status 2
+
+Summary: 1 job(s) failed, 1 step(s) failed

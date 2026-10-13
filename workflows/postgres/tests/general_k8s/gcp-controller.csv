@@ -1,0 +1,4 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-09T13:14:16Z,warm,pass,ok,2d5ffa1,74bcc3d,381d2b2,805784f,805784f,postgres,alvaro,apt-narwhal,38,
+2026-10-09T13:34:03Z,warm,pass,ok,d3a6e3f,74bcc3d,381d2b2,7ef1f2e,7ef1f2e,postgres,alvaro,charmed-wren,39,
+2026-10-09T13:52:46Z,warm,pass,ok,509c9d7,74bcc3d,381d2b2,1faef44,1faef44,postgres,alvaro,polite-foal,37,

@@ -1,0 +1,53 @@
+Run still-owl: error (21s)
+Reason: executorExitedEarly
+
+Error annotations:
+
+  Install failed: hermes not on PATH after install
+    in preprocessing → Controller Preprocessing
+
+Failed jobs/steps:
+
+  preprocessing > Controller Preprocessing (error, 0s)
+    notice: python3 Python 3.9.25
+    notice: agent venv present: /home/alvaro/pw/software/agent-venv (Python 3.9.25)
+    Install failed: hermes not on PATH after install
+    + cp inputs.sh controller-inline.still-owl-00001.sh
+    + cat workflows/hermes-agent/app/controller.sh
+    + bash controller-inline.still-owl-00001.sh
+    ── Prerequisites ──
+    i Notice: python3 Python 3.9.25
+    i Notice: agent venv present: /home/alvaro/pw/software/agent-venv (Python 3.9.25)
+    ──
+    ── Install Hermes Agent @ v2026.6.19 (2bd1977d8fad185c9b4be47884f7e87f1add0ce3) (this can take a few minutes) ──
+    
+    ┌─────────────────────────────────────────────────────────┐
+    │             ☤ Hermes Agent Installer                    │
+    ├─────────────────────────────────────────────────────────┤
+    │  An open source AI agent by Nous Research.              │
+    └─────────────────────────────────────────────────────────┘
+    
+    ✓ prerequisites ok (git, curl)
+    → Cloning https://github.com/NousResearch/hermes-agent.git (main) into /home/alvaro/.hermes/hermes-agent
+    Cloning into '/home/alvaro/.hermes/.hermes-clone-RZAmUe/tree'...
+    → Checking out 2bd1977d8fad185c9b4be47884f7e87f1add0ce3 (attempt 1 of 2)
+    HEAD is now at 2bd1977d8f chore: release v0.17.0 (2026.6.19)
+    ✓ Hermes Agent cloned
+    → Downloading uv 0.12.3 (linux-x64)
+    ✓ uv ready (uv 0.12.3 (x86_64-unknown-linux-gnu))
+    awk: fatal: cannot open file `/home/alvaro/.hermes/hermes-agent/pm/lock.json' for reading: No such file or directory
+    → Downloading Python 3.14
+    Downloading cpython-3.14.7-linux-x86_64-gnu (download) (34.3MiB)
+     Downloaded cpython-3.14.7-linux-x86_64-gnu (download)
+    Installed Python 3.14.7 in 968ms
+     + cpython-3.14.7-linux-x86_64-gnu
+    ✓ bootstrap Python ready; PM prepares the dependency environment
+    ✓ uv ready (uv 0.12.3 (x86_64-unknown-linux-gnu))
+    awk: fatal: cannot open file `/home/alvaro/.hermes/hermes-agent/pm/lock.json' for reading: No such file or directory
+    → Installing dependencies (hash-verified via uv.lock)
+    /home/alvaro/.local/share/uv/python/cpython-3.14-linux-x86_64-gnu/bin/python3.14: Error while finding module specification for 'pm.cli' (ModuleNotFoundError: No module named 'pm')
+    ✗ pm install failed
+    ──
+    ✗ Install failed: hermes not on PATH after install
+
+Summary: 1 job(s) failed, 1 step(s) failed

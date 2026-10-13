@@ -1,0 +1,23 @@
+Run ace-terrier: error (18m32s)
+Reason: executorExitedEarly
+
+Error annotations:
+
+  Error: The training exited with status 255; the tail of its output follows
+    in results → Check the Exit Status
+
+Failed jobs/steps:
+
+  results > Check the Exit Status (error, 0s)
+    Error: The training exited with status 255; the tail of its output follows
+    ✗ Error: The training exited with status 255; the tail of its output follows
+    Training    : example darcy_fno on the gpu, singularity runtime
+    Host        : alvaro-awsgpu-00042-mgmt
+    Started     : Fri Oct  9 16:18:46 UTC 2026
+    GPU         : 0, NVIDIA A10G, 0 MiB, 23028 MiB
+    
+    Command     : singularity exec --cleanenv --pwd /workspace -B /home/alvaro/pw/jobs/ace-terrier/work:/workspace -B /home/alvaro/pw/jobs/ace-terrier/workflows/physicsnemo/app:/opt/physicsnemo-workflow:ro -B /home/alvaro/pw/software/physicsnemo/src/physicsnemo-v1.1.0:/opt/physicsnemo-src:ro --env PHYSICSNEMO_MODE=example --env PHYSICSNEMO_EXAMPLE=darcy_fno --env PHYSICSNEMO_EPOCHS=2 --env PHYSICSNEMO_ITERATIONS= --env PHYSICSNEMO_BATCH_SIZE=0 --env PHYSICSNEMO_DEVICE=gpu --env PHYSICSNEMO_REF=v1.1.0 --env PHYSICSNEMO_SRC=/opt/physicsnemo-src --env PYTHONUNBUFFERED=1 --nv --env CUDA_VISIBLE_DEVICES=0 /home/alvaro/pw/software/physicsnemo/containers/physicsnemo-25.06.sif bash /opt/physicsnemo-workflow/run-example.sh
+    
+    FATAL:   container creation failed: mount /proc/self/fd/3->/usr/local/var/singularity/mnt/session/rootfs error: while mounting image /proc/self/fd/3: squashfs filesystem seems not enabled and/or supported by your kernel
+
+Summary: 1 job(s) failed, 1 step(s) failed

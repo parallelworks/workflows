@@ -1,13 +1,6 @@
 {
   "_test": {
     "timeout_s": 43200,
-    "http_expect": [
-      200,
-      302,
-      307,
-      401,
-      404
-    ],
     "warm_marker": [
       "${PROJECTS_HOME:-$HOME/pw}/hsp/containers/vllm.sif",
       "${PROJECTS_HOME:-$HOME/pw}/hsp/models/gpt-oss-20b/config.json"

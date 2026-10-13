@@ -80,7 +80,7 @@ Variant YAMLs land at `workflows/<new>/yamls/`, scripts at `workflows/<new>/`
 | `workflows/hermes-agent` | hermes-agent: general_v5 | v4 pair (only generation) + proxies | |
 | `workflows/lite-agent` | lite-agent: general_v5 | v4 pair → unsuffixed + .py files | |
 | `workflows/rag-service` | rag-service: general_v5 | v4 pair → unsuffixed + support files, `fixtures/` | checkout branch `rag-service` was deleted upstream → now `canary` (see "dead branches") |
-| `workflows/mlflow` | `workflow/k8s/mlflow/general.yaml` → `yamls/k8s.yaml` | none (self-contained) | k8s-only workflow |
+| `workflows/mlflow` | `workflow/k8s/mlflow/general.yaml` → `yamls/k8s.yaml` | none (self-contained) | k8s-only workflow at the time; the compute-cluster variants followed on 2026-10-07 (see "mlflow on compute clusters") |
 | `workflows/ollama-openwebui` | `workflow/k8s/ollama-openwebui/general.yaml` → `yamls/k8s.yaml` | none (self-contained) | k8s-only workflow |
 | `workflows/session_runner/v1.4` | copied + READMEs updated | — | internal `uses`/`$yaml` re-pointed; **removed later** with vncserver + langflow-host, its only consumers (review change 6) |
 | `workflows/script_submitter/v3.6` | copied as-is + READMEs | — | fully self-contained |
@@ -125,6 +125,368 @@ so beyond the global rules:
   is `rag_appdir="${rag_rundir}/workflows/rag-vllm"` — run artifacts, `cache/`, and
   `.run.env` target it, and it is exported in `inputs.sh`.
 - `start-template.sh`: launches `start_service.sh` from (and cancels via) `${rag_appdir}`.
+
+## ray-cluster (from parallelworks/ray-cluster)
+
+Migrated 2026-09-23/24 from `parallelworks/ray-cluster@main` (98bb3dd): a Ray head and
+FastAPI dashboard on one resource, workers dispatched to SLURM/PBS/SSH sites. The source
+served the dashboard through a platform **session** and kept its run alive for the
+cluster's life. Here one start script runs under `script_submitter`, the run completes once
+the workload step is done, and `pw endpoints delete` tears the whole cluster down. How that
+works: the workflow README (behaviour, limits) and the ray-cluster section of
+`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md` (the recipe).
+
+| Old | New |
+|---|---|
+| `scripts/*` | `workflows/ray-cluster/app/*`, plus `start-template.sh` and `teardown.sh` |
+| `scripts/diagnose.sh`, `scripts/generate_thumbnail.py` | `workflows/ray-cluster/diagnose.sh`, `generate-thumbnail.py` (dev tools, outside `app/`) |
+| `workflow.yaml` | `yamls/hsp.yaml` (the source form already had the HSP fields), `yamls/general.yaml`, `yamls/noaa.yaml` |
+| `add_worker.yaml` | `yamls/{general,hsp,noaa}_add_worker.yaml` |
+| `thumbnail.png` | `thumbnails/ray-cluster.png` |
+| checkout `ray-cluster@main`, sparse `scripts` | `workflows@canary`, sparse `workflows/ray-cluster/app` |
+| remote sites clone `ray-cluster.git` (`scripts`) | remote sites clone this repo (`workflows/ray-cluster/app`; `RAY_REPO_URL`/`RAY_REPO_BRANCH`, default `canary`) |
+
+**Code changes beyond the paths**, each found by a test:
+
+- **`start-template.sh` and `teardown.sh`** (new) and `start_ray_head.sh` implement that
+  recipe; the remote worker scripts in `dispatch_workers.sh` now exit through their cleanup
+  trap when their ssh session closes (upstream orphaned them whenever a dispatcher died).
+- **add_worker** copies the cluster's `RAY_VENV_DIR` (added workers died with
+  `ray: command not found`), stops tearing its workers down after a successful dispatch,
+  registers its SLURM jobs and remote sessions with the cluster's teardown, and detaches
+  remote dispatches (`set -m`, own log) so its run can complete.
+- **Dispatcher:** `-o ControlMaster=no -o ControlPath=none` on the site connections (the
+  workspace's `ControlPath` broke on `pw://` host names), no leaked `tail -f` streamers,
+  and a rejected `sbatch`/`qsub` reports the scheduler's message instead of ending the
+  script under `set -e`.
+- **Dashboard:** a node that just registered gets 60 s before the Ray poller may drop it
+  (remote workers were hidden for minutes).
+- **`setup.sh`** honours `RAY_SOFTWARE_DIR`; `noaa.yaml` sets it to `/contrib/pw` when that
+  is writable.
+
+**Judgment calls:**
+
+1. The endpoint pattern replaces the source's session.
+2. The test runner gained `_test.scheduler` and `_test.expect` (`tools/tests/README.md`).
+3. add_worker ships as `<variant>_add_worker.yaml` in the same directory (it shares `app/`).
+4. The form keeps its own groups (`head`, `workers`, `ray_settings`, `workload_settings`)
+   instead of `cluster`/`service`: a multi-resource form, and renaming would touch every
+   expression in the job graph.
+
+**Tests** (2026-09-23/24, `pw://alvaro/gcpsmall` and the workspace; rows in
+`workflows/ray-cluster/tests/*/*.csv`): general, hsp and noaa with a same-resource
+worker running the benchmark; the form defaults (workspace head, remote gcpsmall worker:
+the cluster still served 8 min after its run completed, and a `ray job submit` ran on the
+worker); the user-script batch mode; add_worker same-resource (all variants) and remote;
+failure paths (rejected partition, failing user script). Manual: cancel before the
+endpoint is up, cancel during the benchmark, `kill -9` of the head's GCS after the run
+(torn down 2.3 min later). Each ended with no endpoint, process or SLURM job left. Not
+exercised: PBS and SSH-mode remote sites, multi-node sites, GPUs, the fractal workload,
+and the noaa `/contrib/pw` and `existing`-only branches (no such resource here).
+
+## burst-render-demo (from parallelworks/burst-render-demo)
+
+Migrated 2026-09-23 from `parallelworks/burst-render-demo@main` (ae9ad9b), the
+multi-site burst demo: a FastAPI dashboard on one resource and Mandelbrot tiles rendered
+in parallel on N compute sites, which POST them back through reverse SSH tunnels. The
+source served the dashboard through a platform **session** (`sessions:` block +
+`parallelworks/update-session`, its own `wait_for_dashboard` poll of coordination
+files) and its remote sites cloned the source repo for the scripts. Here it follows the
+repository's endpoint pattern end to end: the run **completes** once the tiles are
+rendered and the dashboard outlives it behind `burst-render-<run-slug>`.
+
+| Old | New |
+|---|---|
+| `scripts/*` (runtime) | `workflows/burst-render-demo/app/*` (incl. `templates/index.html`) |
+| `scripts/setup.sh` + the dependency install in `scripts/start_dashboard.sh` | `app/controller.sh`: Python check, shared `uv` (`${service_parent_install_dir}/.uv/uv`), dashboard virtualenv at `${service_parent_install_dir}/burst-render-demo/venv`, idempotent, verified by importing the app |
+| `scripts/start_dashboard.sh` (port from `pw agent open-port`, `nohup uvicorn`, `HOSTNAME`/`SESSION_PORT`/`job.started` files, keep-alive loop) | `app/start-template.sh`: `pw endpoints run ${pw_endpoints_args} -- ./launch-dashboard.sh`; the launcher publishes the port `pw endpoints run` assigned (`PORT`) as `SESSION_PORT` and execs uvicorn |
+| `scripts/setup_tunnel.sh` (unused by the workflow) | dropped |
+| `workflow.yaml` (`sessions:`, jobs `checkout`, `start_dashboard`, `wait_for_dashboard`, `update_session`, `configure_dashboard`, `render`, `complete`) | `yamls/general.yaml`, `yamls/hsp.yaml`: `preprocessing` → `session_runner` (`script_submitter/v3.6/<variant>.yaml`, login node) + `wait_for_endpoint` (shared subworkflow) → `render` (configure, dispatch, summary) |
+| checkout `parallelworks/burst-render-demo@main`, sparse `scripts` | `parallelworks/workflows@burst-render-demo`, sparse `workflows/burst-render-demo/app` |
+| remote site: `git clone --sparse burst-render-demo.git` + `sparse-checkout set scripts` + `bash scripts/setup.sh` into `~/pw/jobs/burst_render_remote` | clone of this repo (`REPO_URL`/`REPO_BRANCH` from the YAML) + `sparse-checkout set workflows/burst-render-demo/app` into `~/pw/jobs/burst_render_remote/<run-slug>/`; a `python3` presence check replaces `setup.sh` (nothing on a render site needs `uv`) |
+| `thumbnail.png` | `thumbnails/burst-render-demo.png` |
+
+`renderer.py`, `post_tile.py`, `dashboard.py` and `templates/index.html` are verbatim.
+`render_tiles.sh` locates `renderer.py`/`post_tile.py` next to itself instead of under
+`${PW_PARENT_JOB_DIR}/scripts`. `dispatch_renders.sh` changes beyond the paths:
+
+- **Local mode.** A site on the dashboard host's own resource renders without a tunnel:
+  `render_tiles.sh` on the login node, or under `srun` with the dashboard reached on the
+  login node's hostname. The source always dispatched over `ssh -i ~/.ssh/pwcli`, which
+  a cloud cluster's login node does not have (only the workspace and `existing`
+  resources do; verified on gcpsmall, the workspace and `a30gpuserver`), so the demo
+  could not run with a cloud login node as its dashboard host.
+- **Remote mode** keeps the reverse tunnel, adds `-o ControlMaster=no -o ControlPath=none`
+  (the workspace's ssh config multiplexes connections; a tunnel-carrying connection must
+  not be shared, same fix as ray-cluster) and a clear error when `~/.ssh/pwcli` is
+  missing on the dashboard host.
+- **`#SBATCH` directives reach `srun`.** The form's Additional Directives were parsed
+  and never used (the source hid the field); they are now appended to the `srun` command
+  as options, which is how `general` takes an account or QoS and `hsp` its
+  `--constraint=mla` hint. Commented `##SBATCH` lines and trailing comments are dropped.
+- **Failures count.** Every site function ended in `| sed` (prefixing the output), so a
+  failed site returned 0 and `FAILED` never incremented; the script runs under
+  `pipefail` now, so a failed site fails the `render` job.
+- The `pkill -f render_tiles.sh` / `renderer.py` "stale process" sweep on remote sites is
+  gone: it would kill a concurrent run's renders on a shared login node. Remote work
+  dirs are per run instead.
+- `CLUSTER_NAME` is passed to every site (the dashboard labels sites by resource name;
+  the `pw cluster list` discovery in `render_tiles.sh` remains as the fallback).
+
+**Form.** The `head` / `targets` / `render_settings` groups are kept (multi-resource form,
+same reasoning as ray-cluster judgment call 4); the hidden `render_settings.name`
+(`burst-render`) is the endpoint prefix. The `pbs` group and the `is_disabled` markers
+are gone: the dispatcher only ever scheduled through `srun`, so a PBS (or any non-SLURM)
+site renders on its login node and the **Schedule Job?** toggle only shows for SLURM
+resources. `general.yaml` drops the per-site SLURM account/QoS dropdowns (they go in the
+directives editor, as in every `general` variant here); `hsp.yaml` keeps them, shown for
+`existing` resources like the other hsp forms, and pre-fills the DSRC constraint hint.
+The dashboard host has no scheduler option: the sites' tunnels terminate on the host
+that dispatches them, so the submitter runs the start script on the login node.
+
+**`noaa.yaml` (added 2026-09-24, no counterpart in the source repository).** The general
+form plus the three things a NOAA variant carries here: the `noaa` script submitter, the
+per-site SLURM **Account** and **QoS** dropdowns shown for `existing` resources (as in
+`hsp.yaml`), and a **Set Up Install Parent Directory** step. That step picks the install
+tree at run time because NOAA home quotas are small and this workflow builds a virtualenv
+there (and downloads a standalone python when the system one predates FastAPI's minimum):
+`/contrib/pw` on Hera, Mercury and Ursa, `/usw/rdhpcs/software/pw` on Gaea, `${HOME}/pw/software`
+on PPAN, cloud clusters and anything unrecognised. Unlike the staged-tarball workflows
+(`webshell`), which let a non-privileged account reuse a shared copy read-only, this one
+**must** be able to write to the tree it uses — the controller rebuilds the virtualenv
+whenever it fails to import — so the shared directory is taken only when a `mkdir` probe
+succeeds. `render_settings.parent_install_dir` therefore carries no default here; an
+explicit value still wins.
+
+**Cancel.** The `render` job runs the dispatcher in its own process group (`set -m`) and
+its step cleanup kills the group, so a cancel during the render stops the local renders,
+the `srun` allocation and the site SSH sessions (the remote `bash -s` trees get the
+hangup).
+
+**Test results (2026-09-23, `pw://alvaro/gcpsmall`, branch `burst-render-demo`):**
+pass = the run completed (its `wait_for_endpoint` saw the endpoint answer, then the
+`render` job reported every site `COMPLETED` with 0 tile errors) and
+`burst-render-<run-slug>` was listed; teardown = `pw endpoints delete`, after which no
+dashboard, endpoint wrapper, dispatcher or render process was left on the resource. Rows
+are in `workflows/burst-render-demo/tests/*/*.csv`; 4x4 grids of 128 px tiles.
+
+| Test | Result |
+|---|---|
+| `general/gcp-dashboard-gcp-login` (dashboard and site on the gcpsmall login node) | PASS `willing-hawk` (cold: `uv` already cached at `~/pw/software/.uv` from ray-cluster, venv built in seconds; 16 tiles OK; endpoint `HTTP 200` after 0 s; 37 s) |
+| `general/gcp-dashboard-gcp-compute` (site scheduled: `srun --partition=compute`) | PASS `included-ox` (warm, 38 s): tiles rendered on `gcpsmall-…-1-0001`, posted to the login node's hostname and port |
+| `hsp/gcp-dashboard-gcp-login` | PASS `adequate-hen` (warm, 38 s) through `script_submitter/v3.6/hsp.yaml` |
+| `hsp/gcp-dashboard-gcp-compute` | PASS `dynamic-dogfish` (warm, 38 s) |
+| `general/workspace-dashboard-gcp-compute` (dashboard on the user workspace, site gcpsmall over `pw ssh`) | PASS `pure-boxer` (38 s): SSH probe, reverse tunnel, sparse clone of this branch into `~/pw/jobs/burst_render_remote/pure-boxer/`, TCP proxy on the login node, `srun` on a compute node, 16 tiles OK; the probe ran from the workspace (`host` rendered empty) |
+
+**Cancel mid-render** (`easy-sunfish`, 16x16 grid of 512 px tiles, single worker, login
+node): with the dispatcher, `render_tiles.sh`, `xargs` and a `renderer.py` alive in the
+dispatcher's process group, `pw workflows runs cancel` left only the dashboard tree
+(`pw endpoints run` + uvicorn, released by the skip file as designed), `squeue` empty and
+the endpoint listed; the dashboard's `/api/state` held the 2 tiles finished before the
+cancel, and `pw endpoints delete` then removed the two remaining processes and the
+endpoint. The compute tests carry `"scheduler": true` in `_test` for the runner's
+`squeue` check (added with ray-cluster).
+
+Not exercised: a PBS or SSH-mode remote site, multi-node `srun` allocations, a dashboard
+host older than Python 3.8 (the `uv python install` path) and a site whose login shell is
+tcsh — the remote script transport for those is verbatim upstream.
+
+**Fixes after the first HSP run (2026-09-24, `jean.arl.hpc.mil`).** The merged workflow
+failed on jean at *Dispatch Renders* with
+`json.decoder.JSONDecodeError: Invalid control character at: line 1 column 357`:
+
+- **JSON must never be pasted into `python -c` source.** The dispatcher built its site
+  list with `json.loads('''${SITES_JSON}''')`, so python un-escaped the document before
+  json.loads saw it and the `\n` that `json.dumps` had written inside a value became a
+  real newline. The trigger is any multi-line form value: on jean that was the hsp
+  **SLURM directives default**, which ends in a newline — the form's own default, while
+  every gcpsmall test had passed `""` for that field and never saw it. Every `python -c`
+  in the script now reads its JSON from the environment and is single-quoted so the
+  shell cannot expand into it either; the two compute tests carry multi-line directives
+  so the shape stays covered.
+- **Remote sites are sent the scripts instead of cloning them.** `REPO_URL`/`REPO_BRANCH`
+  were hardcoded in the YAMLs, and the canary merge (#63–#65) flipped the checkout
+  `branch:` to canary while leaving `REPO_BRANCH: burst-render-demo`, so a remote site
+  would have cloned different code than the dashboard host was running. Deriving the
+  branch from the checkout does not work — **`parallelworks/checkout` leaves no `.git` in
+  the job directory** (verified on the workspace after run `engaging-eft`, which
+  therefore cloned canary while its dashboard host ran the dev branch). So the three
+  files a site needs (`render_tiles.sh`, `renderer.py`, `post_tile.py`) are now tarred
+  over the SSH connection the dispatcher already opens, into
+  `~/pw/jobs/burst_render_remote/<run-slug>/app/`. The site runs exactly what the
+  dashboard host checked out, needs no GitHub access (an HPC site's login node may have
+  none), and the workflow has one branch reference again — the checkout's.
+- **The endpoint name is built once** (tidy-up, not a fix). It was composed from
+  `${{ inputs.render_settings.name }}` in three places that had to stay in step. The jean
+  request sent `""` for that hidden field, as a rerun built from a past run's INPUTS tab
+  does; that turned out to be harmless — **the platform default-fills an empty group
+  item** (verified 2026-09-24 on `activate.parallel.works`: a request with
+  `"name": ""` produced `export service_name="burst-render"` in `inputs.sh`), so the
+  name was never malformed. Preprocessing now publishes `ENDPOINT_NAME`, computed once
+  with a `${service_name:-burst-render}` fallback, and the waiter and the summary read
+  that output. The hsp login test carries the empty-field request shape.
+
+**Re-tested after the HSP fixes (2026-09-24, `pw://alvaro/gcpsmall`):** all five tests
+pass with `cleanup=ok`. The two compute tests now carry multi-line SLURM directives (the
+hsp one carries jean's exact values, including the empty walltime), so the parse that
+broke there is covered; the hsp login test sends the hidden fields as `""` like a rerun
+built from a past run's INPUTS tab.
+
+| Test | Result |
+|---|---|
+| `hsp/gcp-dashboard-gcp-compute` | PASS `upright-fowl`, re-run `daring-sawfish` after the transfer change: the directives default parsed, and `srun --partition=compute --nodes=1 --ntasks=1` carried neither the commented `##SBATCH` line nor an empty `--time=` |
+| `hsp/gcp-dashboard-gcp-login` | PASS `many-hawk`: `"name": ""` and `"parent_install_dir": ""` were default-filled by the platform, endpoint `burst-render-many-hawk`, `HTTP 200` |
+| `general/gcp-dashboard-gcp-compute` | PASS `good-monkfish` (3 min: the compute node was powering up) |
+| `general/gcp-dashboard-gcp-login` | PASS `oriented-quetzal` |
+| `general/workspace-dashboard-gcp-compute` | PASS `engaging-eft`, re-run `giving-tahr` after the transfer change: the scripts were tarred to `~/pw/jobs/burst_render_remote/giving-tahr/app/` over the dispatcher's SSH connection and rendered under `srun` on a compute node |
+
+Three runs failed in between — `communal-wildcat`, `brave-marlin`, `probable-reindeer`,
+all `Dispatch Renders ... syntax error near unexpected token` — because the canary merge
+left conflict markers in `dispatch_renders.sh` and they were pushed. Their rows are in
+the CSVs.
+
+**noaa tests, 2026-09-24 (`pw://alvaro/gcpsmall`):** PASS `engaging-sunfish` (login node,
+37 s) and PASS `humble-robin` (`srun` on a compute node, 170 s), both `cleanup=ok`. As for
+the other `noaa` variants here, a cloud cluster exercises the form, the `noaa` submitter and
+the fallback branch of the install-directory step (`/home/alvaro/pw/software`); the
+per-cluster shared-directory branches and the `existing`-only account/QoS fields are
+static-only until the variant runs on a NOAA system.
+
+## hpc_status (from parallelworks/hpc_status)
+
+Migrated 2026-09-29 from `parallelworks/hpc_status@main` (30ce200), the HPC Status
+Monitor: a Python dashboard that sweeps every cluster `pw` reaches (plus the HPCMP status
+pages or the NOAA docs) and serves fleet, topology, queue, quota, storage and insight
+pages. The source already served through `pw endpoints run`, but from one workflow step
+that cloned the repository into `~/pw/src/hpc_status` and exec'd `scripts/serve-endpoint.sh`,
+which detached the endpoint under `setsid nohup` with a fixed name (`hpc-status`), a
+pidfile and its own readiness polling. Here it follows the repository's endpoint pattern
+end to end: the run completes once `wait_for_endpoint` saw the dashboard answer, and the
+dashboard outlives it behind the same fixed name, `hpc-status`.
+
+| Old | New |
+|---|---|
+| `src/`, `web/`, `configs/` | `app/src/`, `app/web/`, `app/configs/`, verbatim but for one log line in `src/server/main.py` that pointed at `scripts/run.sh` |
+| `scripts/run.sh` (uv by `curl \| sh` into `~/.local/bin`, venv `~/.venvs/hpc-status` with an editable install, port selection, server command) | kept for running by hand, from `app/` with `app/requirements.txt` instead of the editable install (its port tests came back with it); in a run, `app/controller.sh`: shared `uv` (`${service_parent_install_dir}/.uv/uv`), venv `${service_parent_install_dir}/hpc_status/venv` from `app/requirements.txt`, Python 3.12 through uv when the system one predates 3.10, idempotent, verified by importing the server; the server command is the `launch-dashboard.sh` the start template writes |
+| `scripts/serve-endpoint.sh` | `app/start-template.sh`: configuration, durable credential, subdomain, restart, subdomain fallback — the same behaviours, in the start-template contract; `scripts/serve-endpoint.sh` stays as a wrapper that runs `controller.sh` and `start-template.sh` by hand |
+| `scripts/stop-endpoint.sh`, `scripts/test.sh` | dropped: `pw endpoints delete` is the teardown, as everywhere here (the pidfile it also used existed only in detached mode); tests run with `cd dev && python -m pytest` |
+| `workflow.yaml`, `yamls/hsp.yaml`, `yamls/rdhpcs.yaml` | `yamls/general.yaml`, `yamls/hsp.yaml`, `yamls/noaa.yaml` |
+| `tests/` | `dev/tests/` (`dev/pytest.ini` puts `../app` on the path) |
+| `schemas/`, `scripts/build_openapi.py`, `scripts/build_basemap.py` | same paths (briefly `dev/schemas/`, `dev/scripts/`; moved back so the verbatim README's links and commands work) |
+| `docs/{api,configuration,glossary,rdhpcs-cluster-marketplace}.md`, `examples/` | `docs/`, `docs/examples/`; configuration.md's environment-variable tables described `run.sh` and now map the form to server arguments |
+| `docs/images/thumbnail-{general,hpcmp,noaa}.png` | `thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png` |
+| `README.md`, `docs/deployment.md` | `README.md` verbatim (what the marketplace listings show; every variant's registration uses it); `docs/deployment.md` rewritten for the workflow: jobs, inputs, variants, stopping, debugging, development |
+| `REFACTOR.md`, `pyproject.toml`, `.gitignore` | left behind: a planning log; packaging for an editable install nothing does any more (dependencies in `app/requirements.txt`, pytest options in `dev/pytest.ini`); repo-local |
+| `LICENSE` | `LICENSE`, the same Apache License 2.0 as this repository's; the README links it |
+
+**Behaviour, source → here.** The jobs follow the pattern; what a user sees does not
+change: the same form (labels, defaults, the collapsed **Settings** group), the same
+endpoint name and address, the same restart, fallback and stop behaviour.
+
+- **Lifecycle.** **Keep Serving After The Run Ends** (`service.detach`, default on) keeps
+  both modes. On: the run completes once `wait_for_endpoint` saw the dashboard answer (the
+  source: once the URL was announced and the port connected) and the dashboard outlives it.
+  Off: `wait_for_endpoint` marks a file the submitter does not read and the submitter is
+  not cancelled, so the run stays open while the dashboard serves and cancelling it is the
+  teardown (the submitter's cleanup kills the process group); a dashboard stopped by
+  deleting its session ends the run `completed`.
+- **Endpoint name.** `hpc-status` (`rdhpcs-status` on NOAA), the visible **Endpoint Name**
+  (`service.name`), as in the source; folded to `[a-z0-9-]` before it reaches `pw`.
+  "Starting again restarts": `controller.sh` deletes the endpoint with this name wherever
+  it runs (the source's `stop-endpoint.sh`) and waits until it is unlisted. That has to
+  happen in preprocessing: `wait_for_endpoint` looks the endpoint up by name, and would
+  otherwise find the previous dashboard answering and release the run on it. The start
+  script then deletes endpoints at `https://<subdomain>.` named `<name>-*` (dashboards
+  launched while the name carried the run slug, 2026-09-29 to 2026-10-02) and leaves
+  anything else there alone; the launch then falls back to an assigned address, as the
+  source did.
+- **Host.** `settings.host`, an optional `compute-resources` picker (blank = workspace), →
+  `cluster.resource`, `compute-clusters` with `include-workspace: true` and
+  `default: workspace` (as agent-orchestrator), labelled **Where To Run** in its own
+  collapsed group after Settings, so the form still opens on Platform and two collapsed
+  groups. `compute-resources` does not hydrate from the CLI and lists Kubernetes clusters,
+  where this cannot run. The submitter never schedules: the dashboard needs `pw`, its
+  credentials and internet access for as long as it serves, and an allocation would end at
+  its walltime.
+- **Health.** The source grepped its log for `Endpoint live at`, then waited for a TCP
+  connect to the port. Here `wait_for_endpoint` probes `/` through the platform with the
+  run's key, with a 900 s budget: a first start has no cached fleet and answers only after
+  one full sweep (`pw ssh` to every cluster, or the HPCMP pages).
+- **Inputs.** `platform` stays top level; `settings.*` → `service.*` (same keys and
+  labels), `settings.host` → `cluster.resource`. **Local Port** (`service.port`) is passed
+  to `pw endpoints run --port` when non-zero. Dropped: `repo_url`/`repo_branch` — the
+  dashboard comes from this repository's checkout now, and the subworkflow references are
+  fixed at `canary`. The `number` inputs are `integer` (the server parses them with
+  `int()`), the interval with `min: 60` (the server clamps to 60 anyway).
+- **Credentials:** the same order and effect as `serve-endpoint.sh` — the workspace key
+  from `/etc/profile.d/parallelworks-env.sh` when it works, then saved credentials when they
+  authenticate on their own — plus a warning in the run log when neither exists (the source
+  said nothing and the fleet went coreless after the run). `PW_PLATFORM_HOST` from
+  `inputs.sh` keeps saved credentials for another platform from qualifying.
+- **noaa:** `PW_CONTEXT: noaa` in the step's `env:` → the hidden `service.pw_context`,
+  exported by the start script; plus the **Set Up Install Parent Directory** step the other
+  noaa variants carry. With a key in the environment `pw` ignores both `PW_CONTEXT` and
+  `--context` (verified), so the pin only decides which saved identity qualifies.
+
+**Code changes beyond the paths:** the `run.sh` hint in `_create_server`'s busy-port
+message. The pytest suite lost `test_workflows.py` (67 tests pinning the three source
+YAMLs and the serve/stop scripts) and `TestLauncherPrefersDurableAuth` (3,
+`serve-endpoint.sh`), kept `TestRunScriptPortHandling` (7, `scripts/run.sh`), and gained
+`test_start_template.py` (32), which runs the new start script, and `serve-endpoint.sh`
+around it, against a fake `pw` for the same behaviours, `test_controller.py` (3, the
+restart by name) and `test_variants.py` (8: no run slug in the name, `canary`
+everywhere, the three forms aligned): 596 pass.
+
+**User experience restored (2026-10-02, branch `status-monitor`).** The move first
+shipped with the endpoint renamed `hpc-status-<run-slug>` (a new name every run, which
+users noticed), `detach`, `port` and a visible `name` dropped, the host picker promoted
+to a top group, Platform moved into the settings, an address held by another endpoint
+failing the run instead of falling back, and `general.yaml`/`noaa.yaml` still fetching
+from the deleted `hpc_status` branch. All of it is back to the source's behaviour above,
+inside the endpoint pattern.
+
+**Judgment calls:**
+
+1. The directory is `hpc_status` as requested (underscored like `script_submitter`), the
+   branch too.
+2. The development kit (pytest suite, OpenAPI and basemap builders, schemas, reference
+   docs) came along, outside `app/`, because development of the dashboard continues here.
+3. A launch deletes the user's own previous dashboard (by name, and `<name>-*` at its
+   address), where openvscode fails when its subdomain is taken: that is the source's
+   documented behaviour, and a dashboard has no unsaved state to lose.
+4. The server binds `127.0.0.1`, not `0.0.0.0`: only the tunnel on the same host reaches it,
+   and it has no login of its own to protect the allocation data on a shared login node.
+5. No `cancel.sh` (`define_cleanup_script: false`, as burst-render-demo): everything the
+   dashboard starts stays in the start script's process group.
+6. The test runner accepts `workspace` as a resource (`tools/tests/README.md`), so the
+   form's default is a recorded test; it was skipped as inactive before.
+
+**Test results (2026-09-29, `activate.parallel.works`, branch `hpc_status`):** pass = the
+run completed (its `wait_for_endpoint` got `HTTP 200` from `/` through the platform) and
+`<prefix>-<run-slug>` was listed at `https://status-alvaro.activate.pw/`; teardown =
+`pw endpoints delete`, after which no dashboard or `pw endpoints run` process was left.
+Rows are in `workflows/hpc_status/tests/*/*.csv`.
+
+| Test | Result |
+|---|---|
+| `general/workspace` (the form's defaults) | PASS `crisp-shepherd` (cold, 22 s: uv installed Python 3.12 because the step's `python3` is 3.9, venv built, first sweep of 2 clusters in 4 s, healthy on the first probe; the workspace key adopted) |
+| `general/workspace`, kept | PASS `safe-lab`: the dashboard collected both clusters again at 16:38 and 16:40, 2 and 4 minutes after its run completed, with queue and node data — the run key would have been revoked by then |
+| `general/gcp-login` (gcpsmall login node, dark theme, 300 s interval, 3 at once), kept | PASS `natural-midge` (cold on gcpsmall, 37 s: uv itself installed from GitHub): the saved `pw` credentials on the login node adopted, the flags reached the server, and `safe-lab`'s dashboard on the *workspace* was deleted first — its tree shut itself down (`Endpoint ... was deleted; shutting down`), no process left there. Deleted by hand afterwards, nothing left |
+| `hsp/workspace`, `hsp/gcp-login` | PASS `refined-mantis`, `just-arachnid` through `script_submitter/v3.6/hsp.yaml`, `config.hpcmp.yaml` loaded |
+| `noaa/workspace`, `noaa/gcp-login` | PASS `better-gannet`, `wondrous-escargot` through `script_submitter/v3.6/noaa.yaml`, `config.noaa.yaml` loaded, install directory `${HOME}/pw/software` (the fallback branch). On gcpsmall the saved credentials belong to the activate identity, not `noaa`, so they did not qualify and the run warned that collection would stop after it — the pin working as intended off-platform |
+
+Manual: **cancel during start-up** (`immense-lynx`, gcpsmall, cancelled while the
+dashboard ran its first sweep): run `canceled`, no process, no endpoint, no skip file.
+**Address held by something else** (`pleasant-shad`, a throwaway endpoint serving an empty
+directory at `status-alvaro-probe`): the run ended in `error` with the start script's
+explanation, the other endpoint untouched, nothing left on the workspace. (Since
+2026-10-02 the run falls back to an assigned address instead, as the source did; these
+results predate the fixed name and need re-running on `status-monitor`.)
+
+Not exercised: the `activate.hpc.mil` and `noaa.parallel.works` platforms themselves (the
+HPCMP scrape, the NOAA identity with saved credentials, the shared install trees and their
+`existing`-only paths), a platform that refuses the subdomain (covered by
+`test_start_template.py`), and a fleet large enough to test the 900 s budget.
 
 ## Dead branches (pre-existing breakage, now fixed)
 
@@ -239,6 +601,47 @@ Platform-side registrations still reference old repo paths. When re-pointing the
   stay on the old repo or the yaml bumped to v3.6).
 - Readme/thumbnail paths in registrations (`workflow/readmes/...`,
   `workflow/thumbnails/...`) → the files inside each `workflows/<name>/thumbnails/`.
+- The ray-cluster entries (cluster and Add Worker) pin `parallelworks/ray-cluster`'s
+  `workflow.yaml` / `add_worker.yaml` → `workflows/ray-cluster/yamls/<variant>.yaml` /
+  `<variant>_add_worker.yaml` here (`hsp` on `activate.hpc.mil`, `noaa` on
+  `noaa.parallel.works`, `general` elsewhere; thumbnail `workflows/ray-cluster/thumbnails/ray-cluster.png`).
+
+- The burst-render-demo entry pins `parallelworks/burst-render-demo`'s `workflow.yaml` →
+  `workflows/burst-render-demo/yamls/<variant>.yaml` here (`hsp` on `activate.hpc.mil`,
+  `general` elsewhere; thumbnail `workflows/burst-render-demo/thumbnails/burst-render-demo.png`).
+  The YAMLs and the remote-site clone reference branch `burst-render-demo` until the
+  branch lands on canary (`branch:` in the checkout and `REPO_BRANCH` in the `render` job).
+
+- The HPC Status entries (the source's deployment guide names `hpcmp_status`) pin
+  `parallelworks/hpc_status`'s `workflow.yaml`, `yamls/hsp.yaml` or `yamls/rdhpcs.yaml` →
+  `workflows/hpc_status/yamls/{general,hsp,noaa}.yaml` here (`hsp` on `activate.hpc.mil`,
+  `noaa` on `noaa.parallel.works`, `general` elsewhere; thumbnails
+  `workflows/hpc_status/thumbnails/{hpc-status,hpcmp-status,rdhpcs-status}.png`).
+
+- The marketplace item `app-testbed` (v1.0, `marketplace.app-testbed.v1.0` in accounts) pins
+  `parallelworks/activate-app-testbed`'s `workflow.yaml`, `README.md` and `thumbnail.png` →
+  `workflows/app-testbed/yamls/general.yaml`, `README.md` and `thumbnails/app-testbed.png`
+  here (one variant for every platform).
+
+- The marketplace item `pydio-cells` (v1.0.0) pins `parallelworks/activate-pydio-cells@main`'s
+  `workflow.yaml`, `README.md` and `thumbnail.png` → `workflows/pydio-cells/yamls/general.yaml`,
+  `README.md` and `thumbnails/pydio-cells.png` here. Its form changed (`cluster`/`service`
+  groups), so saved inputs of the old item do not carry over.
+
+- Any registration of `parallelworks/monte-carlo-pricing` (its `workflow.yaml`,
+  `README.md`, `thumbnail.png`) → `workflows/monte-carlo-pricing/yamls/general.yaml`,
+  `README.md` and `thumbnails/monte-carlo-pricing.png` here (one variant).
+
+- Any registration of `parallelworks/grafana-prometheus` (its `workflow.yaml`, `README.md`,
+  `grafana.png`) → `workflows/grafana-prometheus/yamls/general.yaml`, `README.md` and
+  `thumbnails/grafana-prometheus.png` here (one variant). Its form changed (`cluster`/`service`
+  groups, no repository inputs), so saved inputs of the old item do not carry over.
+
+- The marketplace item `physicsnemo` ("PhysicsNemo Training", v1.0.0, featured) pins
+  `parallelworks/activate-physicsnemo@main`'s `workflow.yaml`, `README.md` and
+  `thumbnail.png` → `workflows/physicsnemo/yamls/general.yaml`, `README.md` and
+  `thumbnails/physicsnemo.png` here. Its form changed (`cluster`/`service`/`software` groups,
+  three examples instead of five), so saved inputs of the old item do not carry over.
 
 ## Test results (2026-08-31, repo public, canary pushed)
 
@@ -288,15 +691,20 @@ were all run live on `cluster.einsteinmed.edu`, 2026-09-02: endpoints online, HT
 websocket verified through the platform; kasmvnc additionally had delete and cancel
 teardowns verified clean),
 `langflow-singularity/hsp.yaml` (its scripts were exercised live by general-all),
-and the k8s variants incl. `mlflow`/`ollama-openwebui` (no kubernetes cluster
-attached) — YAML parse + path-existence + reference checks only. n8n-docker and
+and, at the time, the k8s variants incl. `mlflow`/`ollama-openwebui` (no kubernetes
+cluster attached) — YAML parse + path-existence + reference checks only; all eight
+k8s YAMLs ran live on `k3sgpu` on 2026-09-16 (results in
+`.claude/skills/activate-workflows/references/k8s-workflows.md` §8). n8n-docker and
 ollama-gguf-container implementation paths not separately exercised.
 
 ## Open questions
 
 1. Keep `canary` as the long-lived default branch, or rename to `main` after the
    migration lands? (Mechanical find/replace either way.)
-2. Migrate `workflow/batch/` in a follow-up?
+2. Migrate `workflow/batch/` in a follow-up? **Partly (2026-09-23):** the standalone
+   `parallelworks/activate-batch` repo's hello-world batch submitter joined as
+   `workflows/activate-batch/`, re-pointed from `marketplace/job_runner/v4.0` to
+   `workflows/script_submitter/v3.6`; the helios/kestrel examples remain open.
 3. Thumbnail guesses in judgment call 6 — confirm against the actual registrations.
 4. Converting the left-behind legacy variants (emed etc.) to the endpoint pattern so
    they can join this repo — who/when? **emed done (2026-09-02):** kasmvnc (+ the
@@ -312,3 +720,995 @@ ollama-gguf-container implementation paths not separately exercised.
    the plain-desktop `vncserver/emed_v4.yaml` is replaced by a clean emed-only
    rewrite at `workflows/vncserver/yamls/emed.yaml` (host kasmvncserver + GNOME
    behind `pw endpoints https`, no noVNC/nginx/sudo; verified live 2026-09-03).
+
+## 3dcs (2026-09-30)
+
+`workflows/3dcs/` is the port of `parallelworks/dcs-workflow` (`honda-japan.yaml` at
+`v4-dev`, registered on the platform as `3dcsv4`): the same job graph (workspace
+balance check, login-node preprocessing, a 40-wide guarded worker matrix through
+`script_submitter`, merge, end-time estimate, usage metering), with the runtime files
+under `app/`, the `inputs.sh`/`controller.sh` contract, and `cluster`/`service` input
+groups. The behavior changes made in the port are listed in
+[workflows/3dcs/README.md](workflows/3dcs/README.md) ("Provenance"). Left behind in
+`dcs-workflow`: `honda-us.yaml` (the pre-v4 `main.sh` design for the `honda-us` metering
+user) and `plot-usage/` (the usage-plotting workflow that runs on the metering server).
+
+## probe (2026-10-05, from parallelworks/workflow-tester-tool)
+
+`workflows/probe/` is PROBE, moved from `parallelworks/workflow-tester-tool@dev`
+(a9a474d), renamed `parallelworks/probe-tests-activate-parallel-works` right after the move.
+That repository keeps only the test definitions for `activate.parallel.works`
+(`tests/<platform>/<user>/<workflow_name>/<name>.json`) and the two GitHub actions that
+deploy these YAMLs from here; the runner, the dashboards and the workflows live here.
+
+| workflow-tester-tool | here |
+|---|---|
+| `workflow/workflow.yaml` (the dashboards) | `workflows/probe/yamls/general.yaml` |
+| `workflow/run-tests.yaml` | `workflows/probe/yamls/general_run_tests.yaml` |
+| `probe/`, `web/` | `workflows/probe/app/probe/`, `workflows/probe/app/web/` (the sparse-checkout subtree) |
+| `selftest/` | `workflows/probe/selftest/` (`PYTHONPATH=app`) |
+| `tools/import_workflow_tests.py` | `workflows/probe/scripts/import_workflow_tests.py` |
+| `thumbnail.png` | `workflows/probe/thumbnails/probe.png` |
+| `README.md`, `DEVELOPER.md` | `workflows/probe/README.md`, `workflows/probe/DEVELOPER.md` |
+| `tests/`, `.github/workflows/` | stay in workflow-tester-tool, now probe-tests-activate-parallel-works |
+
+Changes made in the move: the YAMLs check out `workflows/probe/app` from this repository
+at `canary` like every other workflow (the `code` input group that chose the code's
+repository and branch is gone); the host input moved from `resource` to
+`cluster.resource`; the `tests` and `results` inputs get their defaults applied in the
+steps, since a CLI run leaves omitted inputs `undefined`. The end-to-end tests of PROBE's
+own YAMLs are under `workflows/probe/tests/`; the dashboards test fills its API key from
+the environment through the runner's new `_test.secrets` key.
+
+## marimo and h2o (2026-10-06, from interactive_session's legacy generation)
+
+`workflows/marimo/` and `workflows/h2o/` are the endpoint-pattern ports of the
+session-generation `marimo-host/` and `h2o-3/` of `interactive_session` (their v3
+scripts and `workflow/yamls/<name>/{general,hsp,noaa}.yaml`), converted per
+`.claude/skills/activate-workflows/references/session-to-endpoint-upgrade.md`. The
+`-host`/`-3` suffixes are dropped like the other renames; the endpoint names are
+`marimo-<run-slug>` and `h2o-<run-slug>`.
+
+| interactive_session | here |
+|---|---|
+| `marimo-host/controller-v3.sh`, `start-template-v3.sh` | `workflows/marimo/app/controller.sh`, `start-template.sh` (Miniforge + conda-forge through `tools/utils/miniforge.sh` instead of Miniconda; `marimo edit`/`run` under `pw endpoints run` on the loopback with `--headless --no-token`) |
+| `marimo-host/nov2025.yaml` | replaced by `workflows/marimo/app/marimo0.25.1-python3.14.7.yaml`, the export of the first tested install, bootstrapped with the Miniforge release it came from (`MINIFORGE_URL`, new in `tools/utils/miniforge.sh`) |
+| `marimo-host/kill-template.sh`, `transfer_files.sh`, Juice blocks | left behind (the generic cleanup trap, `parallelworks/checkout`, and nothing selected Juice) |
+| `h2o-3/controller-v3.sh`, `start-template-v3.sh` | `workflows/h2o/app/controller.sh`, `start-template.sh` (the zip is unpacked wherever its `h2o.jar` is; a Temurin 17 JRE is downloaded when no `java` is on the PATH; H2O binds `-ip`/`-web_ip` to the loopback with a per-run cloud name; `--slug flow/index.html`) |
+| `workflow/yamls/{marimo-host,h2o-3}/*.yaml` | `workflows/{marimo,h2o}/yamls/{general,hsp,noaa}.yaml`: the `cluster`/`service` groups of the jupyterlab variants; h2o noaa resolves the shared per-cluster install directory like webshell/openvscode noaa |
+
+Form changes: marimo's `script` also accepts a directory (marimo's home page there) or
+a new `.py`; the default marimo installation is the pinned environment, `latest` and a
+pasted YAML stay; the noaa form keeps jupyterlab's `use_conda`/`install_command` route
+(`pip install marimo` with the system `python` module) for the on-premise clusters. h2o
+gained optional `jvm_args` and `load_env` (e.g. `module load java`) inputs and defaults
+to the latest stable release (3.46.0.12). Tests: `workflows/{marimo,h2o}/tests/`, all
+variants exercised on `pw://alvaro/gcpsmall` (the `existing`-only form fields of hsp and
+noaa cannot be exercised from a cloud cluster).
+
+## benchmarks (from parallelworks/benchmarks)
+
+Migrated 2026-10-06 from `parallelworks/benchmarks@main` (2d90518), the cluster
+benchmark demo: one of six benchmarks (`ibm-mpi1-all-to-all`, `ping-pong`,
+`ior-standard`, `ior-minimal`, `mdtest-standard`, `mdtest-minimal`) run as a SLURM
+job, with the output streamed back to the user container. The source predated the
+shared submitter: a `workflow-utils` resource wrapper produced the SLURM header, the
+YAML's own jobs ran `sbatch`, polled `squeue`/`sacct` and tailed a log the benchmark
+scripts pushed over ssh to `usercontainer`. Here it is the repository's batch shape
+(`activate-batch`, `openfoam-naca`): preprocessing → `script_submitter` → a results
+job.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `validate_resource`, `submit_benchmark`, `wait_job`, `stream`) | `yamls/general.yaml` (`preprocessing`, `benchmark` = `script_submitter/v3.6/general.yaml`, `results`) |
+| `benchmarks/<name>/main.sh` × 6 (header + inputs + script concatenated per run, rsynced to the cluster) | `app/run-template.sh`, one script with the benchmark as a `case`; `app/install-mpi.sh`, `app/install-benchmark.sh` for the one-time setup on the login node |
+| `benchmarks/utils/plot-imb-mpi-benchmark.py` (pandas + plotly HTML, shown through a v2 `/me/3001/api/v1/display/` iframe) | `app/summarize.py` (standard library): CSV tables, `::notice` headline, `KEY=value` outputs |
+| form: `benchmark` dropdown of six, `pwrl_host` group with `_sch__dd_*` directive fields, `benchmark_root_dir`, `with_lustre`, `spack_install_intel_mpi`, `load_mpi` | `cluster` (resource, scheduler, `nodes`, `ntasks_per_node`, slurm, pbs), `benchmark` (`name` of four, `imb_args`, `preset` standard/minimal/custom, `ior_args`, `mdtest_args`, `io_dir`), `software` (`mpi` auto/conda-forge/commands, `mpi_load`, `install_dir`) |
+| `apirun/` (a `run_workflow.py` API client for a different demo) | left behind |
+| `benchmark.png` (a 120 px plotly screenshot) | replaced: `thumbnails/benchmarks.svg` (the drawing: a bandwidth curve over two nodes exchanging a ping-pong) rendered to `thumbnails/benchmarks.png` at 120 px like the other thumbnails |
+
+**Code changes beyond the paths:**
+
+- **The MPI.** Every run cloned Spack into its job directory and installed
+  `intel-oneapi-mpi intel-oneapi-compilers` (30+ minutes, never reused), unless the user
+  typed a load command. Now `install-mpi.sh` takes the MPI already on PATH, else a system
+  module (`mpi/openmpi-x86_64`, `mpi/mpich-x86_64`, `openmpi`, `mpich`), else installs
+  Open MPI from conda-forge once under `<install dir>/benchmarks/miniforge`; the form can
+  force the conda-forge install or give commands. The choice is a `::notice` and the job
+  log's `MPI :` line.
+- **The builds are cached per MPI** under `<install dir>/benchmarks/<mpi>/` (the MPI's
+  directory with `/`→`_`), with `MPI.txt` recording the compiler and MPI, under a lock.
+  IMB-MPI1 is built from source (the source relied on Intel MPI shipping the binary;
+  `-DOMPI_SKIP_MPICXX`, and `-Wno-error=template-id-cdtor` for GCC ≥ 14, against the
+  Makefile's `-Werror`); an `IMB-MPI1` on PATH is used instead. IOR 4.0.0 comes from the
+  release tarball (`configure` included: no `./bootstrap`, no `sudo yum install
+  automake`), with `-std=gnu17` for GCC 15; `--with-lustre` is auto-detected rather than
+  a form toggle whose default `true` fails `configure` without the Lustre headers.
+- **Rank layout from the allocation.** The source ran `mpirun -ppn $SLURM_CPUS_ON_NODE`
+  (an Intel MPI flag) and the form's `--ntasks-per-node`/`--nodes` directive fields.
+  The form asks for `nodes` and `ntasks_per_node`, written ahead of the user's directives
+  (so a repeated directive wins), and the script takes `SLURM_NTASKS`/`SLURM_JOB_NUM_NODES`
+  (PBS: the node file) to launch `mpirun -np N`; `MPIRUN` in the environment commands
+  replaces the launcher; Open MPI under PBS gets `--hostfile $PBS_NODEFILE`.
+- **PingPong across nodes.** With 2+ nodes IMB-MPI1 gets `-map <ppn>x<nodes>`, which
+  numbers the ranks so that the pair sits on two nodes; the source measured whatever two
+  ranks came first (both on the first node).
+- **Presets.** `ior-minimal`/`ior-standard`/`mdtest-minimal`/`mdtest-standard` became
+  the `minimal`/`standard` presets of `ior` and `mdtest`, plus `custom` arguments; IOR
+  reads back as well as writes (`-w -r`); `-o`/`-d` point into `<io_dir>/<run slug>`
+  (default `io/` under the job directory), removed afterwards and by `cancel.sh` on a
+  cancel; the source left `${benchmark_root_dir}/pw/jobs/<workflow>/<n>/` behind.
+- **Exit status and results.** The submitter does not forward the script's status, so
+  `benchmark.sh` records it in `benchmark.exit` and the results job fails the run with
+  the tail of the output when it is not `0` (the source's `wait_job` ended `completed`
+  whatever the job did). `summarize.py` writes `results/<benchmark>.csv` and the
+  headline figures as outputs (`latency_usec`, `bandwidth_mbytes_per_sec`,
+  `write_mib_per_sec_mean`, `file_creation_ops_per_sec_mean`, …).
+
+**Judgment calls:** the form's groups are `cluster`, `benchmark`, `software`
+(`benchmark` where the other workflows have `service`, since it is the benchmark); the
+`--with-lustre` toggle is gone rather than kept default-off; the plotly HTML page is
+gone rather than ported (no display route for it; the CSV is the plottable artifact);
+`scheduler` defaults to **Yes**, unlike the other workflows, because the compute nodes
+are what a benchmark measures; the `apirun/` API-client example is not migrated (it
+drove a different demo workflow). The shared `tools/utils/prepare-env.sh` notice now
+names the installer it runs instead of saying "conda-forge install".
+
+**Tests (2026-10-06, `pw://alvaro/gcpsmall`, branch `benchmarks`; rows in
+`workflows/benchmarks/tests/general/*.csv`):** all five pass with `cleanup=ok`.
+
+| Test | Result |
+|---|---|
+| `gcpsmall-pingpong-login` (login node, 2 ranks, `auto` MPI) | PASS `saving-boxer` (cold: the system module `mpi/openmpi-x86_64` was picked and IMB-MPI1 built, 38 s), re-run `liberal-mutt` (warm, 32 s): 0.18 µs, 9.4 GB/s on one node |
+| `gcpsmall-pingpong-2nodes` (2 nodes × 2 ranks) | PASS `informed-hedgehog` (3 min, nodes powering up): `-map 2x2` put the pair on two nodes, 20.9 µs and 2.6 GB/s |
+| `gcpsmall-ior-minimal` (1 node × 4 ranks, `io/` under the job directory) | PASS `national-pelican` (cold: IOR built, 47 s), re-run `cuddly-crawdad` (31 s); the I/O directory was removed |
+| `gcpsmall-mdtest-custom` (custom arguments, `io_dir` `${HOME}/pw/benchmarks-io`) | PASS `ready-goldfish` (63 s) |
+| `gcpsmall-alltoall-conda` (`conda-forge` MPI, 2 nodes × 4 ranks, `-npmin 8`) | PASS `daring-clam` (78 s cold: Miniforge + Open MPI 5.0.11 + compilers installed and IMB-MPI1 built with GCC 15 in about a minute; 8 ranks across the two nodes) |
+
+**Cancel mid-benchmark** (`unbiased-vervet`, then `square-egret` after the fix; IOR
+`standard`, 1 node × 4 ranks): `pw workflows runs cancel` while `ior` ran on the compute
+node left `squeue` empty (job `CANCELLED`), no `ior`/`mpirun` process on the node and no
+I/O directory. The first attempt recorded `benchmark.exit` = `0`: bash ran the exit trap
+with the status of the last command completed before the killed pipeline. The script now
+traps HUP/INT/TERM (`exit 129/130/143`) and removes the I/O directory from the exit trap,
+with `cancel.sh` as the fallback for a SIGKILL; `square-egret` recorded `143`
+(`references/pitfalls.md`). Not exercised: PBS, `MPIRUN` overrides, an Intel MPI with
+its own `IMB-MPI1`, the `commands` MPI mode (its path is `prepare-env.sh`'s, shared with
+`openfoam-naca`).
+
+**Variants and failure paths (2026-10-07).** `yamls/hsp.yaml` and `yamls/noaa.yaml`
+follow `openfoam-naca`'s: the resource is the top-level input and the job goes through
+the `hsp`/`noaa` submitter with their `account`/`qos` (and hsp's `node_type`, `pbs.account`)
+fields, shown for `existing` resources. The layout differs per submitter: `hsp` writes
+`--nodes` (and `--cpus-per-task=1`) before the form's directives, so the workflow's
+`--nodes`/`--ntasks-per-node` directives still win; `noaa` writes `--ntasks`/`--nodes`
+after them on `existing` resources, so the layout also goes through its `ntasks`
+(`nodes * ntasks_per_node`, an expression) and `nodes` inputs. `hsp.yaml` passes
+`define_cleanup_script`/`cleanup_script_path` although that form does not declare them
+(an undeclared input reaches the submitter's expressions as passed); on a SLURM job there
+the cleanup cannot reach the node anyway because that submitter writes `HOSTNAME` after
+the script, so a cancelled hsp job cleans up through `benchmark.sh`'s exit trap. `noaa.yaml`
+takes the install directory from the cluster's shared software tree when none is given and
+the account can write there (`/contrib/pw`, `/usw/rdhpcs/software/pw`), like `openfoam-naca`.
+The failure-path tests (`_test.expect: error`): `fail-mpi-commands` (the `commands` MPI
+mode with a module that does not exist fails in `prepare-env.sh` before any build),
+`fail-ior-bad-args` (IOR rejects `--no-such-option`, exit 1, the run fails with the
+status and the output tail; also under `hsp/` and `noaa/`) and `fail-bad-ranks`
+(`ntasks_per_node: 0` fails the input check). A first attempt at an "empty custom
+arguments" test could not fail: the platform default-fills an explicit `""` for a group
+item (`references/pitfalls.md`), so that check is unreachable from the API and the test was
+dropped. The README no longer says the workflow registers no endpoint (reviewer feedback).
+
+**Tests of the variants and failure paths (2026-10-07, `pw://alvaro/gcpsmall`, which had
+been recreated overnight, so every build started cold again):**
+
+| Test | Result |
+|---|---|
+| `hsp/gcpsmall-pingpong-login` | PASS `unique-grubworm` (cold, IMB rebuilt, 2 min) |
+| `hsp/gcpsmall-ior-minimal` | PASS `amused-leech` (27 min: the reused cloud node sat `NOT_RESPONDING+POWERING_UP` for 25 min before SLURM got it back; IOR itself took 12 s) |
+| `hsp/fail-ior-bad-args` | PASS `wired-boar` (run `error` in 38 s: "exited with status 1" and IOR's usage in the tail) |
+| `noaa/gcpsmall-pingpong-login` | PASS `knowing-serval` (48 s) |
+| `noaa/gcpsmall-ior-minimal` | PASS `assuring-sole` (32 s); `ntasks: nodes * ntasks_per_node` verified separately with a throwaway workflow (`2 * 4` rendered `8`, run `on-crappie`) because the job directory no longer keeps rendered step scripts |
+| `noaa/fail-ior-bad-args` | PASS `major-bat` (run `error` in 32 s) |
+| `general/fail-mpi-commands` | PASS `full-osprey` (run `error` in 43 s at *Prepare the MPI Environment*: "does not provide mpicc mpirun", with the module error in the annotation) |
+| `general/fail-ior-bad-args` | PASS `pro-opossum` (run `error` in 6 min, cold node) |
+| `general/fail-bad-ranks` | PASS `summary-bluegill` (run `error` in 16 s at *Create Inputs*) |
+| `general/fail-custom-empty` (withdrawn) | FAIL `obliging-sheep`: the run completed, see above |
+
+**Cancel, revisited.** The hsp cancel test (`helped-grub`) showed that the signal traps alone
+did not hold: `benchmark.exit` was never written and 4.4 GB of IOR files stayed behind.
+IOR's output had the ranks finishing their write phase 54 s after the cancel, past
+SLURM's 30 s `KillWait`: bash defers a trap until the foreground pipeline ends, so SIGKILL
+took it before any trap ran. Three changes, each checked with another cancel:
+`open-labrador` (the pipeline now runs in the background under `wait`, where bash runs the
+trap at once: exit `143` recorded, but `rm -rf` raced ranks still creating files),
+`alert-cow` (the trap also killed the benchmark's process group: still racing, the job
+lived 52 s, because `mpirun` gives each local rank a process group of its own, verified
+with `ps -o pid,pgid`), `ruling-fox` (the trap kills the process tree captured before the
+first signal: the ranks died at once, the job ended in 20 s, exit `143`; one killed rank
+stayed a zombie for two minutes draining 1.1 GB of dirty NFS pages, its file an `.nfs…`
+placeholder, so the directory removal now retries for up to two minutes and the README
+says a cancel on NFS can leave the empty per-run directory). The general variant's cancel
+test with the final script, `proper-jaguar`, ended clean: exit `143`, no SLURM job, no
+I/O directory (the retries outlasted the drain), after a 5-minute hang of the submitter's
+cleanup whose `ssh` to the fresh node 0002 was being refused (`Connection closed by … port
+22`, the node's sshd, not the workflow). On hsp the submitter's cleanup cannot run
+`cancel.sh` on the node (`HOSTNAME` is written after the script), so the trap is the only
+cleanup there; on general the cleanup ran it, racing the same ranks. With the final
+script, `general/gcpsmall-ior-minimal` (`literate-sheep`) and `general/fail-ior-bad-args`
+(`direct-rhino`) pass again: the success path through `wait` and the failure path's exit
+status from the subshell. The checkouts of the three YAMLs point at `canary` for the merge.
+
+## mlflow on compute clusters (2026-10-07, from interactive_session's legacy generation)
+
+`workflows/mlflow/` was k8s-only (above); the compute-cluster side is the
+endpoint-pattern port of `interactive_session`'s `mlflow/start-template-v3.sh` and
+`workflow/yamls/mlflow/{general,general_k8s}.yaml`, rewritten on the marimo port's
+shape rather than converted line by line. The endpoint name stays `mlflow-<run-slug>`
+on both paths.
+
+| interactive_session | here |
+|---|---|
+| `mlflow/start-template-v3.sh` (`eval` of a pip install or load command, then `mlflow server --port ${service_port} --host ${HOSTNAME} ${additional_flags}` with `./mlruns` wherever the job ran) | `workflows/mlflow/app/controller.sh` (Miniforge + conda-forge `mlflow` through `tools/utils/miniforge.sh`, pinned in `app/mlflow3.16.1-python3.14.7.yaml` and bootstrapped with the Miniforge release it was exported from; `latest`, a pasted YAML, a load command, or noaa's `install_command`) and `start-template.sh` (`mlflow server` behind `pw endpoints run` with `--backend-store-uri`, `--artifacts-destination` and `--serve-artifacts` from the form, local stores created when missing) |
+| form: `install_mlflow`, `mlflow_install_cmd`/`mlflow_load_cmd`, `port` (required, default 5000), `additional_flags` | `service`: `backend_store_uri` (default `sqlite:///${HOME}/mlflow/mlflow.db`), `artifacts_destination` (default `${HOME}/mlflow/artifacts`), optional `port`, `additional_flags`, and the marimo/jupyterlab installation group (`conda_install`, `install_instructions`, `load_env`, ...) |
+| `workflow/yamls/mlflow/general_k8s.yaml` (`targetType` dropdown: compute cluster or Kubernetes, `k8s.cluster` input) | `yamls/general_k8s.yaml`: the jupyterlab hybrid shape (`resource: compute-resources`, every job gated on `inputs.resource.type`) |
+
+The server binds every interface (the legacy `--host ${HOSTNAME}`) because jobs on the
+cluster log to it directly; `pw endpoints run` still picks the local port unless the
+form fixes one, so the launcher records `http://<node>:<port>` in the job directory's
+`tracking_uri` file. The Kubernetes path (`k8s.yaml` and the hybrid) now runs
+`mlflow server` with the sqlite store and the artifacts on the PVC mount instead of
+`mlflow ui` in the container's working directory, and defaults to the official
+`ghcr.io/mlflow/mlflow:v3.17.0` image (the `ubuntu/mlflow:2.1.1_1.0-22.04` default
+dated from January 2023; MLflow 3 clients need a MLflow 3 server for traces and logged
+models). Two MLflow 3 behaviours shaped the launch: the server rejects a `Host` header
+or an `Origin` outside its allow-lists with 403 (the proxied endpoint host is outside
+them), so the cluster launcher composes `--allowed-hosts`/`--cors-allowed-origins` from
+`PW_ENDPOINT_HOST` and the node's names and the containers open both lists; and its
+defaults, four 250 MB uvicorn workers plus a seven-process job runner (2.5 GB PSS
+measured), were `OOMKilled` at the k8s forms' 1Gi limit, so server-side job execution
+(GenAI evaluation jobs) is a form option that is off by default on every variant and the
+Kubernetes form adds a worker count (2) with 1Gi/2Gi memory defaults. Tests:
+`workflows/mlflow/tests/`, the compute-cluster variants on `pw://alvaro/gcpsmall` (login
+node and SLURM job; the `existing`-only form fields of hsp and noaa cannot be exercised
+from a cloud cluster), the Kubernetes lanes on `k3sgpu`.
+
+## filebrowser (2026-10-07, from parallelworks/filebrowser_workflow)
+
+`workflows/filebrowser/` is the endpoint-pattern port of `parallelworks/filebrowser_workflow@canary`
+(61d70c2): [File Browser](https://filebrowser.org) (`filebrowser/filebrowser:v2.50.0`) with
+Docker Compose. The source served it through a platform session (`sessions:` block,
+`pw agent open-port`, `parallelworks/update-session`, the run alive on `docker compose up`).
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `prep`, `filebrowser`, `create_session`; inputs `resource`, `rundir`) | `yamls/general.yaml` (preprocessing → `script_submitter` → `wait_for_endpoint`; `open-notebook`'s `cluster`/`service` groups) |
+| compose file and `docker compose up` inline in the YAML | `app/controller.sh` (mounted directories), `app/start-template.sh` (Docker detection and pull as `open-notebook`, database bootstrap, compose stack behind `pw endpoints run`, `cancel.sh` = `compose down`) |
+| `README.md` | rewritten: the source's text described the PHP "FileBrowser", a different project |
+| `thumbnail.png` | `thumbnails/filebrowser.png` |
+
+Changes beyond the paths:
+
+- `FB_BASE_URL` is `PW_ENDPOINT_PATH` without its trailing slash: empty on a subdomain
+  endpoint, the `/me/session/<user>/<name>` prefix on a path-based one.
+- The container runs as the workflow user (`user: <uid>:<gid>`) instead of uid 1000; the
+  source's `chown 1000:1000` needed root.
+- Authentication is a form choice applied on every start: *Platform login only*
+  (`noauth`, default) or *File Browser users* (`json`) with an optional admin password.
+  `--noauth`/`--password` only act when the database is created, so the launcher uses
+  the CLI (`config init`/`users add` the first time, `config set`/`users update`
+  afterwards).
+- The served directory (`<rundir>/data` in the source) is the visible **Root Directory**
+  with the same default; the image is an input.
+
+`general` only, as `open-notebook` (no Docker on the HPCMP and NOAA systems). No
+`restart:` policy: a File Browser that dies ends `compose logs -f`, the wrapper and the job.
+
+**Tests (2026-10-07, `pw://alvaro/gcpsmall`, branch `filebrowser`; rows in
+`workflows/filebrowser/tests/general/*.csv`):**
+
+| Test | Result |
+|---|---|
+| `gcp-controller` (login node, form defaults) | PASS `real-oyster` (cold, 37 s; recorded `leftover:proc:filebrowser` because the test's `leftover_commands` snippet contained the pattern verbatim, see `tools/tests/README.md`), `amusing-badger` (warm, 37 s, `cleanup=ok`) |
+| `gcp-controller-users` (File Browser users with a password, root `${HOME}`) | PASS `crack-duckling` (38 s: existing database switched to `json`, password updated; its log showed the password once, from a test under xtrace, fixed), `profound-mako` (32 s, kept for the manual checks) |
+| `gcp-compute` (SLURM job, `compute` partition) | PASS `distinct-cardinal` (163 s, node powering up) |
+
+Manual on `profound-mako`: anonymous GET → `307`; with the platform token `/` → `200`,
+`POST /api/login` → `200`/`403` with the right/wrong password, `/api/resources/` → `401`
+without File Browser's token and `200` with it; `pw endpoints delete` removed container
+and network, no process left. Cancel 11 s after launch (`novel-bass`, endpoint just
+registered): run `canceled`, endpoint deleted by the submitter's cleanup, container and
+network removed, no skip file. Not exercised: PBS, a path-based endpoint, a host without
+`sudo`. The checkout points at `canary` for the merge.
+
+## metabase (2026-10-07, from interactive_session's legacy generation)
+
+`workflows/metabase/` is the endpoint-pattern port of `interactive_session`'s
+`workflow/yamls/metabase/general_k8s.yaml` (hybrid: `targetType` dropdown, compute cluster
+or Kubernetes) and `metabase/start-template-v3.sh`, rewritten on the filebrowser (Docker
+Compose) and mlflow (hybrid k8s) shapes. The endpoint is `metabase-<run-slug>` on both paths.
+
+| interactive_session | here |
+|---|---|
+| `metabase/start-template-v3.sh`: the nginx-docker wrapper on `service_port` proxying `127.0.0.1:3000`, then `docker run --network=host` of `${service_image}` named `metabase` with `~/metabase-data:/metabase-data` (one instance per node) | `app/start-template.sh`: the image in a Docker Compose project named after the run, port `${PORT}:3000` behind `pw endpoints run`, data directory from the form, `MUID`/`MGID` set to the workflow user, optional `MB_*` variables from an editor input (`env_file`); `app/controller.sh` creates the data directory |
+| k8s Deployment with code-server's `args` (`--auth password --bind-addr 0.0.0.0:8080`), `containerPort: 80`, a `-lb` Service and `parallelworks/update-session` | the mlflow hybrid's k8s jobs: `MB_JETTY_PORT`/`MB_DB_FILE`/`MB_PLUGINS_DIR` on the PVC mount, `JAVA_OPTS=-XX:MaxRAMPercentage=75`, the `pw-endpoint` sidecar, no Service |
+| form: `pwrl_host`, `service.image` (`metabase/metabase`), `k8s`, `service_k8s.image` | `resource`/`cluster`/`service` (`data_dir`, `image` pinned to `metabase/metabase:v0.64.1`, `env`) and `k8s`/`service_k8s` (`image`, `image_port` 3000); memory defaults 1Gi/2Gi (were 512Mi/1Gi) |
+| `workflow/readmes/metabase/general_k8s.md`, `workflow/thumbnails/metabase.png` | `README.md` (rewritten), `thumbnails/metabase.png` |
+
+`general.yaml` (compute cluster only) is the hybrid's compute path on the standard
+`cluster.resource` form, as every other workflow here offers. The health probe is
+`/api/health` with a 600 s budget and `healthy: 2*|3*|500`: Metabase (v0.64.1 and
+v0.63.19.3 alike, before and after its setup wizard) answers HTTP 500 `Assert failed:
+(m/validate ProviderSetup config)` to any request carrying an `Authorization: Bearer`
+header, on every route, and the probe carries the run's key. It does so from the second
+its log says `Metabase Initialization COMPLETE` and answers 503 before (verified on both
+lanes), so 500 is the ready signal; the tunnel has no option to strip the header.
+Metabase has no URL-prefix mode, so only subdomain endpoints work.
+
+**Tests (2026-10-07, branch `metabase`; rows in `workflows/metabase/tests/*/*.csv`):**
+
+| Test | Result |
+|---|---|
+| `general/gcp-controller` (login node of `pw://alvaro/gcpsmall`, form defaults) | FAIL `credible-wildcat` with the plain `2*\|3*` probe (500 on `/api/health` for the whole 600 s budget; the submitter's cleanup removed the container, no skip file), then PASS `usable-tahr` (68 s, `cleanup=ok`) with `healthy: 2*\|3*\|500` |
+| `general_k8s/gcp-controller` (the hybrid's compute lane, same node) | PASS `present-stinkbug` (69 s) |
+| `general/gcp-compute` (SLURM job, `compute` partition) | PASS `legal-feline` (242 s, node powering up) |
+| `general_k8s/k3sgpu` (Kubernetes lane, namespace `alvarok8s`) | FAIL `wealthy-ibex` with the plain probe (same 500; the Deployment, Secret and PVC were deleted by the cleanups), then PASS `driven-mongrel` (34 s to the endpoint answering; cancel removed every object within the runner's wait) |
+
+Cancel 24 s after launch (`liberal-cricket`, endpoint registered, Metabase still
+initializing): run `canceled`, endpoint deleted by the submitter's cleanup, container and
+network removed by `cancel.sh` (`compose down`), no skip file, no process left. Not
+exercised: PBS, an existing PVC, a host without `sudo`. The checkout points at `canary`
+for the merge.
+
+## app-testbed (2026-10-07, from parallelworks/activate-app-testbed)
+
+`workflows/app-testbed/` is the multi-site client-server testbed from
+`parallelworks/activate-app-testbed@main` (9100bf7): a placeholder server behind an
+endpoint at a fixed address, workers dispatched to other resources over `pw ssh` through
+SSH tunnels, on login nodes or as SLURM/PBS jobs. The form and the run's behaviour are
+unchanged; the source was one self-contained YAML with the Python embedded in heredocs.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `setup`, `start_server`, `expose_session`, `dispatch_workers`) | `yamls/general.yaml` (`preprocessing`, `start_server`, `wait_for_endpoint`, `dispatch_workers`); the form is verbatim |
+| `server.py`/`worker.py` embedded in heredocs, re-embedded by `scripts/sync-app.py` | `app/server.py`, `app/worker.py` checked out; the dispatcher ships `worker.py` to each site with the bootstrap (base64 over `pw ssh`), so sites still need no GitHub access; no sync script |
+| `setup` job | `app/controller.sh` (workdir, plus a check for `python3`, `curl`, `setsid`, `pw`) |
+| bare `server.py` + `pw endpoints http PORT --subdomain S --name S` + a `session-watch` loop | `app/start-server.sh`: one detached `pw endpoints run --port PORT --subdomain S --name S -- sh -c "exec python3 server.py {port} >> server.log"`; deleting the endpoint takes the server down, as the watcher did. Restart deletes the endpoint (and kills a bare server, `pw endpoints http` or watcher left by the old generation) |
+| URL grep in `expose_session` | the shared `wait_for_endpoint` (fixed name, probe with the run's key) + a `Publish URL` step with the same `URL` output |
+| the inline dispatch step and its `BOOT_B64` bootstrap heredoc | `app/dispatch_workers.sh`, `app/worker-bootstrap.sh`, verbatim apart from their heads (`inputs.sh`, `workers.json`, files from `app/`) |
+| `scripts/programmatic/`, `scripts/manual/` (+ two READMEs) | `scripts/{launch-worker.py,run-worker.sh,worker-inputs.json}`; the READMEs folded into the workflow README |
+| `thumbnail.png` | `thumbnails/app-testbed.png` |
+
+**Judgment calls:** no script submitter (the server only runs on the login node and must
+outlive the run, as `dakota-openfoam`'s Pareto server; `wait_for_endpoint` without a skip
+file); the fixed name `apptest` is kept and a running instance is reused, only **Restart
+server** frees it (`hpc_status` frees its name every run); no `!completed` handler, since
+the source left the server up after a failed or cancelled run and workers-only runs rely
+on it; the form keeps its own groups (`server`, `services`, `app`, `workers`), which the
+launcher scripts and saved inputs address; one `general.yaml` (the form carries the
+account/QoS and PBS fields; there is no submitter variant to pick).
+
+**Tests (2026-10-07, `pw://alvaro/gcpsmall`, branch `activate-app-testbed`; rows in
+`workflows/app-testbed/tests/general/*.csv`).** Every test sets `_test.endpoint_name:
+apptest`; pass = the run completed (`wait_for_endpoint` saw `HTTP 200`, the workers
+connected) and `apptest` was listed; teardown = `pw endpoints delete apptest`, after which
+the server was gone at once and each worker exited at its next keep-alive ping (~30 s).
+
+| Test | Result |
+|---|---|
+| `gcp-server-gcp-login-worker` (server and worker on the gcpsmall login node) | PASS `witty-honeybee` (37 s). PASS `smart-flounder` (22 s) against a kept server: `server already running ... behind endpoint apptest`, `worker already running and connected` |
+| `gcp-server-remote-login-worker` (port 8097, **Restart server** on; worker on the `a30gpuserver` login node) | PASS `awake-krill` (27 s, row lost with its session): the restart deleted the kept endpoint and started on 8097; the site opened `ssh -i ~/.ssh/pwcli -o ProxyCommand="pw ssh --proxy-command %h" -N -L 8097:localhost:8097` and connected. PASS `popular-cat` (53 s), reusing that tunnel |
+| `remote-server-gcp-slurm-worker` (server on `a30gpuserver`, SLURM worker on gcpsmall, `compute`) | FAIL `composed-kite` on port 8097: the previous test's tunnel held that port on `a30gpuserver` (`Address already in use`); the test moved to 8098 and `start-server.sh` now fails within seconds when the wrapper is gone. PASS `precise-lobster` (178 s): tunnel bound to the login node's `10.128.0.19:8098`, job 67 `CONFIGURING` → `RUNNING`, the compute node connected; after the delete the job ended within two minutes |
+
+A workers-only run (`wired-baboon`, `deploy_server: false` against a kept server)
+skipped `start_server` and `wait_for_endpoint` and found the worker connected. Not
+exercised: PBS, `pw-forward`/`ssh` set explicitly, key adoption from the server host, a
+scheduled worker on the server host's own cluster (the placeholder binds loopback), and
+the launcher scripts. The tunnels the tests left were removed by hand.
+
+## pydio-cells (2026-10-09, from parallelworks/activate-pydio-cells)
+
+`workflows/pydio-cells/` is the endpoint-pattern port of `parallelworks/activate-pydio-cells@main`
+(b99edfe): [Pydio Cells](https://pydio.com/en/cells-overview) with MySQL in Docker Compose.
+The source served it through a platform session (`sessions:` block, `pw agent open-port`,
+`parallelworks/update-session`, the run alive on `docker compose up`) behind an nginx
+container whose `sub_filter` rules rewrote Cells' HTML and JSON for the
+`/me/session/<user>/<name>/` prefix.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `prep`, `pydio_cells`, `create_session`; inputs `resource`, `rundir`, `admin_password`, `data_dir`) | `yamls/general.yaml` (preprocessing → `script_submitter` → `wait_for_endpoint`; `filebrowser`'s `cluster`/`service` groups) |
+| install config, nginx config and compose file inline in the YAML; `docker compose up` | `app/controller.sh` (Run Directory must not be inside the Data Directory), `app/start-template.sh` (Docker detection and pulls as `open-notebook`, one-shot install, compose stack behind `pw endpoints run`, Data Directory workspace, `cancel.sh` = `compose down`) |
+| `README.md` | rewritten |
+| `thumbnail.png` | `thumbnails/pydio-cells.png` |
+
+Changes beyond the paths:
+
+- **No nginx.** A subdomain endpoint serves at the root, and every URL Cells' web client
+  builds is relative to it (`<base href="/">`, `/a`, `/io`, `/ws/event`), so the proxy and
+  its rewrites went. `CELLS_SITE_EXTERNAL` is `PW_ENDPOINT_URL` (share links), not
+  `http://localhost:8080`. Path-based endpoints would need the rewrites back.
+- **Pinned images**: `pydio/cells:5.1.0` and `mysql:8.4` as form inputs. The source's
+  `latest` had moved from 4.x to 5.1.0 since it was written; `mysql:8` resolves to 8.4.
+- **Both containers run as the workflow user**, so `mysql_data/`, `cells_data/` and the
+  files Cells writes into the Data Directory are the user's (the source ran Cells as root
+  and MySQL as uid 999). That needs the nested mount point
+  `cells_data/data/user_files` created first, or Docker makes `cells_data/data` root's
+  and the install fails. Run Directories of the source are refused with a `chown` hint.
+- **One-shot install** (`compose run` of the image's `cells configure`, which exits when
+  done) instead of `restart: unless-stopped`, which crash-looped on a failed install and
+  restarts the container without its database after a reboot. `compose logs -f cells`
+  is the liveness process: a Cells that stops ends the endpoint. The install config
+  holding the admin password exists only during the install.
+- **The Data Directory works.** The source mounted it at `/var/cells/data/user_files`, but
+  the installer only creates flat datasources over its own folders, so the files never
+  appeared. The launcher now creates a structured datasource (`userfiles`) and a
+  *Data Directory* workspace, read-write for all users, over REST once per Run Directory
+  (`cells_data/.data-workspace-created`). Its default moved from `$HOME` to
+  `${HOME}/pydio-cells/files`: structured storage writes a `.pydio` file into every folder
+  it indexes, and a Run Directory inside the Data Directory is now refused.
+- **Random database password** in `<rundir>/.mysql.env` (mode 600) and a random MySQL root
+  password, instead of `cells_db_pw`/`cells_root_pw`: the MySQL container answers on its
+  bridge address to every user on the host. Cells listens on `127.0.0.1` only.
+
+`general` only, as `filebrowser` and `open-notebook` (no Docker on the HPCMP and NOAA
+systems).
+
+**Tests (2026-10-09, `pw://alvaro/gcpsmall`, branch `activate-pydio-cells`; rows in
+`workflows/pydio-cells/tests/general/*.csv`):**
+
+| Test | Result |
+|---|---|
+| `gcp-controller` (login node, a file seeded into the Data Directory) | PASS `top-mongrel` (cold, 57 s: install, workspace created, the seeded file indexed; kept for the manual checks), `capital-boxer` (warm, 41 s, `cleanup=ok`) |
+| `gcp-controller-rundir-in-data-dir` (`data_dir: ${HOME}`, `_test.expect: error`) | PASS `relieved-hedgehog` (22 s): the controller refused the Run Directory, nothing started |
+| `gcp-compute` (SLURM job, `compute` partition) | PASS `quiet-pigeon` (289 s, node powering up; healthy 21 s after the endpoint registered) |
+
+Manual on `top-mongrel`: anonymous GET → `307`; with the platform token `/` → `200` with
+`<base href="/"/>`, the `/ws/event` upgrade → `101`; every file in the Run and Data
+Directories owned by the workflow user. `pw endpoints delete` removed both containers and
+the network, no process left. Cancel during the install (`liberal-stork`, cold Run
+Directory, MySQL just healthy): run `canceled`, endpoint deleted by the submitter's
+cleanup, containers (the install's one-off included) and network removed, no install
+config left; a new run on that Run Directory (`valued-dory`) redid the install and came
+up in 10 s. Earlier, on the same stack started by hand on gcpsmall: admin login over
+`/a/frontend/session`, the workspace listing a host file to the admin, a folder created
+through `/a/tree/create` landing in the Data Directory as the workflow user, and
+host-side changes appearing after a restart or `cells admin datasource resync -d
+userfiles`. Not exercised: a browser session through
+the endpoint (the proxy forwards `Authorization`, which the web client sets itself once
+signed in; scripted requests can only authenticate to the platform with that header),
+PBS, a path-based endpoint, a host without `sudo`. The checkout points at `canary` for
+the merge.
+
+## monte-carlo-pricing (2026-10-09, from parallelworks/monte-carlo-pricing)
+
+`workflows/monte-carlo-pricing/` is the multi-site Monte Carlo option pricing demo from
+`parallelworks/monte-carlo-pricing@main` (47d2df6): a FastAPI dashboard on one resource,
+and geometric Brownian motion paths simulated in batches on N compute sites, which POST
+each batch's mean, variance and payoff histogram back (through reverse SSH tunnels for
+other resources); the dashboard merges them live. The source is a fork of the
+burst-render-demo skeleton — `start_dashboard.sh` is byte-identical, and the dispatcher,
+the jobs and the form groups are the same with tiles swapped for batches — so it is
+migrated by the burst-render-demo recipe above, including the fixes the first HSP run
+taught (JSON read from the environment, scripts shipped to remote sites instead of
+cloned, the endpoint name built once). This section records what differs.
+
+| Old | New |
+|---|---|
+| `scripts/dashboard.py`, `scripts/simulator.py`, `scripts/templates/index.html` | `app/…`, verbatim |
+| `scripts/start_dashboard.sh`, install half | `app/controller.sh`: burst-render-demo's (shared `uv`, virtualenv at `${service_parent_install_dir}/monte-carlo-pricing/venv`, verified by importing the app), with `fastapi uvicorn websockets numpy` and a 3.9 minimum Python |
+| `scripts/start_dashboard.sh`, launch half | `app/start-template.sh` (`pw endpoints run` + the `SESSION_PORT` launcher) |
+| `scripts/setup.sh` (numpy via `pip --user`, else a venv in the job dir) | `app/setup_site.sh`, run on remote sites only |
+| `scripts/dispatch_simulations.sh` | `app/dispatch_simulations.sh`: burst-render-demo's dispatcher (local mode for sites on the dashboard host's resource, `#SBATCH` directives to `srun`, `pipefail`, no `pkill` sweep, per-run remote work dir `~/pw/jobs/monte_carlo_remote/<run-slug>/`) with the simulation parameters |
+| `scripts/run_simulation.sh` | `app/run_simulation.sh` (see below) |
+| `workflow.yaml` (`sessions:`, jobs `checkout`, `start_dashboard`, `wait_for_dashboard`, `update_session`, `configure_simulation`, `dispatch_simulations`, `complete`) | `yamls/general.yaml`: `preprocessing` → `session_runner` (`script_submitter/v3.6/general.yaml`, login node) + `wait_for_endpoint` → `simulate` (configure, dispatch, summary) |
+| checkout `parallelworks/monte-carlo-pricing@main`, sparse `scripts`; remote sites `git clone` it | `parallelworks/workflows@canary`, sparse `workflows/monte-carlo-pricing/app`; remote sites get `run_simulation.sh`, `simulator.py`, `setup_site.sh` tarred over the dispatcher's SSH connection |
+| `scripts/generate_thumbnail.py`, `thumbnail.png` | `generate_thumbnail.py` (now writes `thumbnails/monte-carlo-pricing.png`; it regenerates the source thumbnail byte for byte), `thumbnails/monte-carlo-pricing.png` |
+
+**What differs from burst-render-demo:**
+
+- **numpy.** The renderer needs only the standard library; the simulator wants numpy
+  (its pure Python fallback is ~20× slower: 1.7 s against 80 ms per 10,000-path batch
+  on gcpsmall's login node). The dashboard's
+  virtualenv carries numpy, and sites on the dashboard host's own resource run the
+  simulator with it (`LOCAL_PYTHON`; compute nodes see it through the shared home). A
+  remote site runs `setup_site.sh`, which takes the site's `python3` when it imports
+  numpy and otherwise builds `~/pw/software/monte-carlo-pricing/site-venv` once (built
+  beside the final path and renamed into place, so concurrent runs never see half an
+  install); when numpy cannot be installed it warns and the fallback runs.
+- **Python 3.9 on the dashboard host.** `dashboard.py` annotates a module-level
+  `list[WebSocket]`, which Python 3.8 cannot evaluate, so the controller's minimum (below
+  which `uv` installs 3.12) is 3.9 rather than burst-render-demo's 3.8.
+  `python-multipart` is not installed: `/api/config` takes JSON, not a form.
+- **Source bugs fixed.** A multi-node `srun` ran `run_simulation.sh` once per task on the
+  same batch range, so every batch was simulated and posted once per node (same seeds,
+  double-counted paths); the tasks now split the range by `SLURM_PROCID`, as
+  burst-render-demo's tiles do. `setup.sh` fell back to a venv when `pip --user` failed
+  but the simulator kept running the system `python3`, so that numpy was never used;
+  `run_simulation.sh` now takes its interpreter from the dispatcher (`PYTHON_CMD`). A
+  batch that never reached the dashboard was counted and ignored; it now fails its site.
+- **The run checks its result.** The summary reads `/api/state`, prints the price, its
+  standard error and 95% interval (plus the Black-Scholes reference and the distance to
+  it for European options) and fails the run if the dashboard holds a different number
+  of batches than planned. Sites that would get no batch (more sites than batches) are
+  skipped instead of allocated.
+
+**Form.** `simulation_settings` keeps every source field verbatim and gains the hidden
+`name` (`monte-carlo`, the endpoint prefix) and `parent_install_dir`; `head` and
+`targets` are burst-render-demo's `general` form (no `pbs` group or `is_disabled`
+markers, **Schedule Job?** only for SLURM resources, account/QoS through the directives
+editor). One variant: the source had a single `workflow.yaml`; `hsp`/`noaa` variants
+can be derived the way burst-render-demo's were if the demo is offered there.
+
+**Tests (2026-10-09, `pw://alvaro/gcpsmall`, branch `monte-carlo-pricing`; rows in
+`workflows/monte-carlo-pricing/tests/general/*.csv`).** Pass = the run completed (its
+`wait_for_endpoint` saw the endpoint answer, every site reported `COMPLETED` with 0
+batch errors and the summary found all planned batches on the dashboard) and
+`monte-carlo-<run-slug>` was listed; teardown = `pw endpoints delete`, after which no
+dashboard, endpoint wrapper, dispatcher or simulator process and no SLURM job was left.
+
+| Test | Result |
+|---|---|
+| `gcp-dashboard-gcp-login` (dashboard and one site on the gcpsmall login node, Asian call) | PASS `great-marmoset` (cold, 37 s: `uv` and the virtualenv with numpy built in ~15 s); 10 of 10 batches, 4 workers, price 5.7650 ± 0.0253 |
+| `gcp-dashboard-gcp-login-gcp-compute` (two sites: the login node and a 2-node `srun --partition=compute`, multi-line directives, European call) | PASS `proven-seagull` (255 s, compute nodes powering up): `srun ... --nodes=2 --ntasks=2 --comment=monte-carlo-regression` (the `##SBATCH --exclusive` line dropped); task 0 on `-1-0001` ran batches 10–14, task 1 on `-1-0002` 15–19; 20 of 20 batches; price 10.4850 ± 0.0467 against Black-Scholes 10.4506 (0.7 standard errors) |
+| `workspace-dashboard-gcp-compute` (dashboard on the user workspace, site gcpsmall over `pw ssh`, barrier at 130) | PASS `touched-jay` (53 s): SSH probe, reverse tunnel, scripts shipped to `~/pw/jobs/monte_carlo_remote/touched-jay/app/`, `site-venv` built with numpy 2.0.2, TCP proxy on the login node, `srun` on a compute node; 10 of 10 batches, price 3.5407 ± 0.0201 |
+
+**Cancel mid-simulation** (`alert-humpback`, two sites as in the second test, 10M paths
+in 2000 batches, one worker): with the dispatcher, the login-node `run_simulation.sh`,
+both `srun` processes and a `simulator.py` alive in the dispatcher's process group and
+SLURM job 24 running, `pw workflows runs cancel` left only the dashboard tree
+(`pw endpoints run` + uvicorn, released by the skip file as designed), `squeue` empty
+and the endpoint listed; `/api/state` held the 351 batches finished before the cancel,
+and `pw endpoints delete` removed the rest.
+
+Observed, not changed: **Worker Threads: Auto** counts the CPUs SLURM gives a task, one
+by default, so a scheduled site runs one simulator per node unless the directives carry
+`#SBATCH --cpus-per-task=<N>` (`nproc` under `srun` on gcpsmall: 1 by default, 4 with
+`--cpus-per-task=4`, still 1 with `--exclusive`); the README says so. The dashboard merges
+each batch's 50-bin payoff histogram by bin index while every batch picks its own bin
+edges, so the histogram is approximate (the price and its interval are exact merges).
+Not exercised: a PBS or SSH-mode remote site, a site without numpy access (the pure
+Python fallback ran only in a local test), a dashboard host older than Python 3.9, and a
+site whose login shell is tcsh.
+
+## postgres (2026-10-09, from interactive_session's legacy generation)
+
+`workflows/postgres/` is the endpoint-pattern port of `interactive_session`'s
+`workflow/yamls/postgres/general_k8s.yaml` (hybrid: `targetType` dropdown, compute cluster
+or Kubernetes) and `postgres/start-template-v3.sh`, on the metabase shapes: `general.yaml`
+plus the hybrid `general_k8s.yaml`. A `pw` endpoint carries HTTP only, so the endpoint
+`postgres-<run-slug>` serves the [pgweb](https://github.com/sosedoff/pgweb) SQL client and
+the database is reached over TCP: at `<node>:<port>` from the cluster, through `pw forward`
+from a laptop (the run prints both), and through a ClusterIP Service or `kubectl
+port-forward` on Kubernetes.
+
+| interactive_session | here |
+|---|---|
+| `postgres/start-template-v3.sh`: `sudo docker run -d --rm` of `${service_image}` with the form's Docker Flags (default `--network=host`, which discards the `-p ${service_port}:5432` mapping, so the server took the node's 5432), data in a root-created `/postgres-data` that every run on the node shared, `POSTGRES_PASSWORD` on the `docker run` command line; `postgres/kill-template.sh`, appended to the cancel script, had its `docker stop` commented out, so a cancel left the container running | `app/start-template.sh`: one Docker Compose project per run. PostgreSQL runs as the workflow user on **Data Directory** (`pgdata/`), published on **Database Port**; the password comes from mode-600 files written in preprocessing (compose `secrets`, pgweb's `--passfile`). Before the endpoint registers, the script takes a lock on the data directory, checks the port, and checks the login (creating a missing database); then pgweb runs on the node's loopback behind `pw endpoints run`. `cancel.sh` is `compose down`. `app/controller.sh` creates the data directory |
+| compute path: `create_session` found the port and hostname, but its `update-session` step was commented out, so the session pointed nowhere | the pgweb endpoint, probed on `/api/connection` (200 only while pgweb holds a database connection); a `Connection Details` step prints the connection string and the `pw forward` command |
+| k8s: a Deployment with the password in plaintext in `app.yaml`, a `chmod 777` init container, `containerPort: 80` and a `-lb` Service on 80 (PostgreSQL listens on 5432, so neither reached it), `parallelworks/update-session` on that Service; `${{ inputs.service_k8s.db}` (a stray `}`) in the database test | a Deployment (`strategy: Recreate`) of postgres (`PGDATA` on the PVC, the password from a Secret, `pg_isready` readiness), pgweb (loopback, `--open-retry`) and the `pw-endpoint` sidecar; a ClusterIP Service on 5432 for in-cluster clients; a login check once the pod is ready; no init container (the entrypoint owns `PGDATA`) |
+| form: `targetType`, `pwrl_host`, `service` (`image` `postgres:latest`, Docker Flags, user, password, db), `k8s` (with GPU limits), `service_k8s` (`image`, an unused Docker mount field, user, password, db) | `resource`/`cluster`/`service` (`user`, `password`, `db`, `port`, `data_dir`, `image` `postgres:18`, hidden `pgweb_image` `sosedoff/pgweb:0.17.0`) and `k8s` (without the GPU fields)/`service_k8s` |
+| `workflow/readmes/postgres/general_k8s.md`, `workflow/thumbnails/postgres.png` | `README.md` (rewritten), `thumbnails/postgres.png` |
+
+**Judgment calls:**
+
+1. pgweb is the endpoint: a database has no web page, and the pattern needs an HTTP
+   service to probe and to tear the server down with. pgweb has no login of its own, so it
+   listens on the loopback only; the endpoint's platform login is its access control.
+2. The default image is the major tag `postgres:18`, not a patch tag: minor releases open
+   the same data directory, majors do not (the tooltip says so).
+3. Docker only, as in the source, so there are no `hsp`/`noaa` variants; an Apptainer
+   implementation would add them.
+4. The password is required and never reaches `inputs.sh`, a script or a command line
+   (mode-600 files, a Secret). New clusters ask for it on every TCP connection
+   (`POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256`): the image's initdb trusts the
+   loopback, where `kubectl port-forward` arrives, and before this change a `wrong`
+   password logged in that way (run lenient-crane).
+5. One run per data directory, enforced with a lock: two containers on one data directory
+   both start, because each server is PID 1 and takes the other's `postmaster.pid` for a
+   stale lock of its own (reproduced on gcpsmall: crash recovery on the live files). The
+   start script fails with the name of the run that holds the directory.
+6. The login check connects to the container's own address, not `127.0.0.1`, because a
+   data directory initialized without `--auth-host` trusts the loopback. The first
+   wrong-password test checked through `127.0.0.1`, got through, and only failed when the
+   probe budget ran out (run cute-ray, 333 s); now it fails in seconds with the cause.
+7. The GPU fields left the Kubernetes form; the server gets `shm_size: 256m` (a memory
+   `emptyDir` on Kubernetes) and two minutes to shut down cleanly.
+
+**Tests (2026-10-09, `pw://alvaro/gcpsmall` and `k3sgpu`, branch `postgres`; rows in
+`workflows/postgres/tests/*/*.csv`).** The test password (`POSTGRES_TEST_PASSWORD`) holds
+`@ : $ " \ ' #`, so the password files, the pgpass escaping and the Secret are exercised
+on every run.
+
+| Test | Result |
+|---|---|
+| `general/gcp-controller` (login node) | FAIL `cheerful-kingfish`: the submitter runs the start script in its own directory, where the password files were not (now `${PW_PARENT_JOB_DIR}/...`; pitfalls.md). Then PASS `winning-baboon` (cold, 37 s), `open-guppy` (warm, kept), `refined-stallion` (cold, final auth settings), `whole-glowworm` (final commit), all `cleanup=ok` |
+| `general/gcp-compute` (SLURM job, `compute` partition) | PASS `sacred-ram` (68 s, `cleanup=ok`). On the final settings PASS `decent-vervet` and `brave-shepherd`, whose `leftover` marks are another session's workflows on the same cluster, started during the tests (`monte-carlo-montecarlopricing`, `tensorboard-fun-rattler` and its SLURM job). `brave-shepherd` shared its compute node with that job's image pull (containerd at 84% CPU), and its `compose down` took five minutes, but job 30 then ended and its containers and network were gone |
+| `general_k8s/gcp-controller` (the hybrid's compute lane) | PASS `apt-narwhal`, `charmed-wren`, `polite-foal` |
+| `general/gcp-wrong-password` (`_test.expect: error`) | PASS `cute-ray` (for the wrong reason, judgment call 6), then `classic-mackerel`, `natural-lemming` and `relieved-lab`, failing in about 30 s with `Cannot log in to PostgreSQL as postgres ...` and nothing left |
+| `general_k8s/k3sgpu` (namespace `alvarok8s`) | PASS `handy-cattle`, `welcomed-gator` (33 s to the endpoint answering; cancel removed Deployment, Service, Secrets and PVC) |
+
+By hand, on the kept instances: `pw forward -L 15432:<login node>:5432 pw://alvaro/gcpsmall`
+and a psycopg client from the laptop created a table that pgweb's `/api/query` then
+returned; the port answered from a compute node (`srun`); pgweb did not answer on the
+node's address; a second run on the same data directory (`viable-teal`, `supreme-chamois`)
+and one on a taken port (`pretty-serval`, `artistic-zebra`) failed in 12 s with those
+causes, leaving the running instance alone; a run with a database the data directory did
+not have (`enough-newt`, `analytics`) created it and opened pgweb on it; a cancel while
+PostgreSQL was starting (`liked-bass`) removed the container and network through
+`cancel.sh`; on Kubernetes (`sensible-gorilla`) `kubectl port-forward` accepted the right
+password and refused `wrong`, and a pod in the namespace reached
+`<deployment>.alvarok8s.svc.cluster.local:5432`. Not exercised: PBS, a host without
+`sudo` for Docker, and the pgvector/PostGIS images. The checkout points at `canary` for
+the merge.
+
+**Kubernetes, existing PVC (2026-10-09, k3sgpu).** `general_k8s/k3sgpu-persist` keeps its
+volume as `postgres-test-data` and `general_k8s/k3sgpu-existing` opens it. PASS
+`current-bluejay`, `endless-ghoul` (initialized the volume), `prime-turkey` (`Skipping
+initialization`, pgweb connected). A wrong password against the kept volume (`strong-gopher`,
+by hand: the k8s lane has no `expect: error`) then exposed an ordering bug. pgweb exits on
+a failed login instead of retrying, so its container crash-looped and the pod never turned
+Ready, the run waited out the Deployment's 600 s and ended in a generic timeout, and the
+login check, which ran after that wait, never reported the cause. The job now waits for the
+PostgreSQL container alone, checks the login, and only then waits for the Deployment. Then
+`delicate-skink` failed in 10 s with `Cannot log in to PostgreSQL as postgres ...` and only
+the kept PVC was left. PASS `relaxed-chimp`, `current-pelican` (fresh init),
+`fun-racer` (reuse) on the new order; the test PVC was deleted afterwards.
+
+## physicsnemo (2026-10-09, from parallelworks/activate-physicsnemo)
+
+`workflows/physicsnemo/` is the port of `parallelworks/activate-physicsnemo@main` (4318e27):
+NVIDIA PhysicsNeMo examples trained in the NGC container, with TensorBoard. The source
+cloned its own repository into a fixed run directory (`~/pw/activate-physicsnemo`, shared
+by every run), ran `marketplace/job_runner/v4.0`, and served TensorBoard through a platform
+session (`sessions:` block, `parallelworks/update-session`, a fixed port 6006, a `<base>`
+injecting proxy for the `/me/session/...` prefix) from a `sudo docker` container on the
+login node, kept alive by a polling step until 60 s after the training. Here it is the
+repository's batch shape (`benchmarks`): preprocessing → `script_submitter` → a results
+job, with TensorBoard started detached on the login node as an endpoint
+(`dakota-openfoam`'s Pareto page).
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `setup`, `preflight`, `pull_container`, `run_example`, `tensorboard_session`; inputs `resource`, `submit_to_scheduler`, `example`, `training`, `tensorboard`, `container`, `slurm`, `pbs`, `advanced_settings`) | `yamls/general.yaml` (`preprocessing`, `training` = `script_submitter/v3.6/general.yaml`, `results`, `stop_server_if_unhealthy`; groups `cluster`, `service`, `software`; saved inputs `cpu_smoke_test`) |
+| `start_service.sh`, `lib/functions.sh`, `clean.sh` | `app/train-template.sh` (GPU check, Docker or Singularity launch as the user, `cancel.sh`, `train.exit`) |
+| `scripts/run_example.sh`, `examples/*.sh` (one per example, each cloning PhysicsNeMo inside the container) | `app/run-example.sh` (copies the example from the tree `app/install-examples.sh` fetched once on the login node, patches it, trains) |
+| `scripts/tb_metrics_writer.py` (in the container, torch's SummaryWriter), `scripts/tb_proxy.py` | `app/tensorboard-server.py` + `app/metrics.py` (login node, scalars and figures from the log, TensorBoard in-process), `app/install-tensorboard.sh` |
+| — | `app/install-container.sh` (Singularity: the SIF built once), `app/summarize.py` (`results/metrics.csv`, outputs) |
+| `README.md`, `thumbnail.png` | `README.md` rewritten, `thumbnails/physicsnemo.png` |
+
+Changes beyond the paths:
+
+- **The examples.** Of the five, only `darcy_fno` ran as written: `ldc_pinns` died on its
+  Hydra overrides whenever epochs or batch size were set (`training.max_steps`,
+  `batch_size` are not in its config); `gray_scott_rnn` and `darcy_physics_informed` called
+  `train.py`/`train_fno_darcy.py`, which those examples do not have, and need a 22 GB Zenodo
+  dataset and a Google Drive one; `vortex_shedding_mesh_reduced` needs a 1.7 GB NGC dataset
+  and a second training stage. The curated set is now the three that need no data:
+  `darcy_fno`, `darcy_transolver` (new; patched to log without MLflow, absent from the
+  image) and `ldc_pinns` (patched to take an iteration count and report every 1 %). Anything
+  else runs as **My own script**, with the examples tree in `${PHYSICSNEMO_SRC}`.
+- **No internet on the training node**: the examples (`examples/` of the `v1.1.0` tag) are
+  fetched once on the login node into `<install dir>/physicsnemo/src/`; the source cloned the
+  whole repository inside the container on every run.
+- **Per-run directories**: everything lives in the run's job directory (`work/`, `results/`);
+  the source's shared run directory let two runs clobber each other, and its preflight and
+  `clean.sh` removed every container named `physicsnemo*` on the host, other users' included.
+  The container is `physicsnemo-<run slug>`, runs as the workflow user (the source's
+  `sudo docker` left root-owned files in the user's directory) and is removed on a cancel.
+- **Singularity/Apptainer** joins Docker, for clusters without it; the source's rootless
+  Docker mode was dropped. **CPU** joins GPU (Darcy2D is given the training device, it
+  defaulted to `cuda`); `device: gpu` fails the job at once with `nvidia-smi`'s message.
+  Scheduled jobs request `--gres=gpu:N` / `select=1:ngpus=N` ahead of the form's directives.
+- **TensorBoard** runs from a conda-forge env on the login node, not from the 31 GB image
+  (which the login node of a cluster may not have), on a subdomain endpoint (no base-path
+  proxy), and outlives the run until `pw endpoints delete`. The source's TensorBoard step
+  read `inputs.container.image`, an input its form does not define (`container.docker_image`).
+- **Exit status**: `train.exit` and the results job fail the run when the training fails;
+  the source never checked the training's exit status. Outputs: the last value of each metric.
+- **Length**: `epochs: 0` trains about half an hour on an A30 (20 pseudo-epochs for the
+  FNO, 4 for the Transolver, measured at 80 s and 350 s each); the LDC default stays at the
+  example's 10000 iterations (~12 min).
+
+`general` only (Docker is absent on the HPCMP and NOAA systems; their Singularity would need
+a staged SIF, which the form already accepts).
+
+**Tests (2026-10-09, branch `physicsnemo`; rows in `workflows/physicsnemo/tests/general/*.csv`).**
+Before testing, a30gpuserver's GPU was unusable (`Driver/library version mismatch` after an
+unattended NVIDIA upgrade); the module was reloaded with the owner's approval (pitfalls.md).
+
+| Test | Result |
+|---|---|
+| `a30-docker-gpu` (FNO, 4 pseudo-epochs, A30, Docker) | PASS `exciting-vervet` (cold: examples and TensorBoard installed; 427 s; validation figure, checkpoints, `train/loss` live in TensorBoard during the run) |
+| `a30-docker-transolver` (2 pseudo-epochs) | FAIL `alive-shepherd` (`No module named 'mlflow'`), fixed; PASS `elegant-moth` (803 s) |
+| `a30-docker-ldc-pinns` (1000 iterations) | PASS `cute-mackerel` (162 s, 11 flow-field figures) |
+| `a30-docker-custom` (the form's default script) | PASS `neat-bee` (427 s) |
+| `a30-singularity-gpu` (FNO, 2 pseudo-epochs, SIF built by the run) | PASS `supreme-leopard` (693 s; the 13 GB SIF built in 7 min) |
+| `gcp-compute-docker-cpu` (SLURM `compute` partition, CPU, `cpu_smoke_test` sizes) | FAIL `intent-crawdad` (TensorBoard needs `setuptools<81`), fixed; PASS `fun-rattler` (2051 s: node boot, then a 29 min image pull on the fresh node; 40 s per pseudo-epoch) |
+| `gcp-controller-no-gpu` (`device: gpu` on a login node without one, `_test.expect: error`) | PASS `mutual-piglet` (22 s, the job failed at the GPU check, nothing pulled) |
+| `a30-slurm-docker-gpu` (a SLURM job on a30's `debug` partition, no GRES there, so `gpus: 0`) | PASS `rapid-ant` (SLURM job 30 on node `gpu`, the A30 through Docker) |
+
+After the pre-merge review (a scheduler's GPU allocation is reported, not looked up by
+`nvidia-smi -i`; TensorBoard picks up figures written in the training's last seconds; an
+empty custom script fails), `a30-docker-ldc-pinns` (`cute-worm`), `a30-docker-gpu`
+(`vocal-marmot`), `a30-slurm-docker-gpu` and `gcp-controller-no-gpu` (`powerful-baboon`)
+passed again.
+
+Manual: cancelling mid-training on gcpsmall (`assuring-meerkat`, SLURM) and on a30
+(`sound-crayfish`, Docker on the login node, a Transolver with the default length, which
+ran `max_pseudo_epochs=4`) ended the job, removed the container (`docker ps -a` empty on the
+node, GPU memory freed) and left TensorBoard serving until `pw endpoints delete`, after which
+no process remained; cancelling during preprocessing (`intimate-chamois`) ran
+`stop_server_if_unhealthy`, which deleted the half-registered endpoint and killed the
+server. Not exercised: PBS, a SLURM GRES allocation (`SLURM_JOB_GPUS`), a multi-GPU node
+with `gpu_index` > 0. The checkout points at `canary` for the merge.
+
+**Follow-up after the merge (2026-10-09, awsgpu, branch `physicsnemo-docker-space`).** The
+first registered run on `pw://alvaro/awsgpu` (`physicsnemo-00001`, Docker on the login
+node's A10G) downloaded for minutes and failed with `no space left on device`, three times:
+Docker 29 keeps images in `/var/lib/containerd`, a 15 GB `/var` partition there (13 GB
+free), and the 25.06 image needs ~48 GB in that store. Three fixes in `train.sh`:
+
+- **Docker space check before the pull**: the free space of the image store (containerd's
+  when `docker info` shows `io.containerd.snapshotter`, else `DockerRootDir`) against 50 GB
+  (35 GB for the classic store) for the NGC PhysicsNeMo images; below it the job fails at
+  once and names Singularity and the install directory's free space. A pull that still runs
+  out of space is not retried. The pull log keeps one `Pull complete` line per layer
+  instead of several hundred progress lines.
+- **Singularity in a user namespace where squashfs is disabled**: awsgpu's login node
+  blacklists the module (`install squashfs /bin/false`), so setuid singularity-ce cannot
+  mount the SIF; the job probes it and runs it with `--userns` (FUSE) there.
+- **FIPS hosts**: the login node runs in FIPS mode, and the image's Ubuntu OpenSSL then
+  fails every SSL context (`import physicsnemo` dies); the container gets
+  `OPENSSL_FORCE_FIPS_MODE=0` when `/proc/sys/crypto/fips_enabled` is 1.
+
+awsgpu's compute nodes (g5.2xlarge, `gpu` partition) need neither workaround, which is why
+both are probed on the node that trains.
+
+| Test | Result |
+|---|---|
+| `aws-controller-docker-no-space` (`_test.expect: error`) | PASS `genuine-chimp` (55 s, refused before downloading) |
+| `aws-controller-singularity-gpu` (login node A10G) | FAIL `ace-terrier` (squashfs; the 13 GB SIF built in 17 min), fixed; PASS `central-gar` (`--userns` and the FIPS override in the log; 120 s per pseudo-epoch) |
+| `aws-compute-singularity-gpu` (SLURM `gpu` partition, `gpus: 0`) | PASS `enhanced-chow` (the first node start raced a stop and SLURM requeued the job after its 20 min ResumeTimeout; then 4 min boot, plain SIF mount) |
+
+The new pull pipeline (status of `docker pull`, not of the filter) was checked by hand on
+gcpsmall's login node with a small image and a missing tag; `a30-docker-gpu` (`magnetic-quail`) and
+`a30-singularity-gpu` (`kind-goblin`) passed again on the new `train.sh`.
+
+## cwl-mpi-hello-world (2026-10-12, from parallelworks/cwlmpihelloworld)
+
+Migrated from `parallelworks/cwlmpihelloworld@main` (d08ff56), the Common Workflow
+Language demo: an MPI Hello World compiled and run as a SLURM job by a four-step CWL
+workflow (compile, generate the batch script, `sbatch` it, poll `squeue`/`sacct`)
+that cwltool executes on the cluster's login node. The CWL workflow submitting its
+own SLURM job is the point of the demo, so it keeps that role: `script_submitter`
+runs cwltool itself with `scheduler: false` (the submitter is there for its cancel
+cleanup, not to schedule); the ACTIVATE YAML is preprocessing (checkout, installs,
+the CWL input file and run script), the submitter job, a `results` job (the exit
+file, then the SLURM state) and an error-path `cancel_slurm_job` handler. The
+source was a
+registered workflow whose files lived in the registration bundle and were rsynced
+from the user workspace; here the login node sparse-checks-out
+`workflows/cwl-mpi-hello-world/app` like every other workflow.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `install_intel_mpi`, `install_cwltool`, `run_cwl`, each step `ssh`-ing from the workspace to the cluster) | `yamls/general.yaml` (`preprocessing`, `run_cwl` = `script_submitter/v3.6/general.yaml` with `scheduler: false`, `results`, `cancel_slurm_job`), every step on the login node via `ssh.remoteHost` |
+| `install_intel_mpi_with_spack.sh`, `install_cwltool_with_miniconda.sh` | `app/install-mpi.sh`, `app/install-cwltool.sh` |
+| `cwl_workflow/` (five `.cwl` files, `wait_for_slurm_job.sh`, `mpitest.c`) | `app/cwl/`, verbatim |
+| form: flat `install_mpi`, `load_mpi`, `install_cwltool`, `load_cwltool`, `np`, `resource`, `scheduler_directives`, hidden unused `wait_for_job` | `resource` + groups `cwl` (`np`, `scheduler_directives`) and `software` (the install/load pairs); `wait_for_job` dropped |
+| `cwl-logo.png` | `thumbnails/cwl-logo.png` |
+
+**Code changes beyond the paths:**
+
+- **The form values are used.** The source hardcoded `load_mpi:
+  "source /home/alvaro/pw/software/load-intel-oneapi-mpi.sh"` and `np: 4` into the
+  CWL input file, ignoring the form; `inputs.yaml` is now built from the form values.
+- **The run fails when the SLURM job does.** The CWL workflow completes whatever
+  final state `sacct` reports, and the submitter never forwards the script's exit
+  status: `run-cwl.sh` records it in `cwl.exit`, and the `results` job fails the
+  run unless that is `0`, `job_status.txt` says `COMPLETED` and
+  `slurm-output/mpitest.out` holds MPI output.
+- **A cancel cleans up.** A cancel kills cwltool on the login node but not a SLURM
+  job it already submitted, and nothing YAML-side runs after a user cancel
+  (pitfalls, 2026-10-12: a job-level `cleanup:` list, a step `if: canceled` and a
+  handler job were all skipped — three attempts). That is why cwltool runs under
+  `script_submitter`: its cleanup runs `cancel.sh`, which scancels any job id
+  recorded in the `cwl-tmp` staging dirs that `squeue` still lists (verified: a
+  running 10-node job ended `CANCELLED`, nothing left). A `cancel_slurm_job`
+  handler (`if: ${{ !completed }}`) keeps the error path covered.
+- **Installs are idempotent and absolute.** `install-mpi.sh` writes the load file
+  last (a failed install never looks complete), clones spack `--depth 1`, installs
+  under `service_parent_install_dir` (default `${HOME}/pw/software`) instead of
+  `pw/software` relative to the ssh cwd, and drops the unused lmod module refresh
+  (the load file uses `spack load`); `install-cwltool.sh` keys idempotency on the
+  cwltool binary, not the directory the script itself creates.
+- **cwltool's staging dirs stay in the job dir**: `--tmpdir-prefix <job
+  dir>/cwl-tmp/` instead of `~/tmp/`, so `--leave-tmpdir` (needed: the batch script
+  references staged files the SLURM job reads after the staging step finished)
+  no longer accumulates debris in the home directory.
+
+**Judgment calls:** SLURM-only stays SLURM-only (the CWL steps call `sbatch` and
+`squeue`; the resource keeps the `*-slurm` provider filter, one `general.yaml`); the
+install jobs became preprocessing steps (same login node, no gain from parallel
+jobs); `np` defaults to 4, matching the default directives' 2 nodes x 2 tasks (the
+source's form default 2 disagreed with the hardcoded 4).
+
+**Tests (2026-10-12, `pw://alvaro/gcpsmall`, branch `cwl`; rows in
+`workflows/cwl-mpi-hello-world/tests/general/gcpsmall.csv`; installs pre-warmed by
+hand on the login node, where the transient spack download failure of
+`intel-oneapi-compilers` surfaced and a rerun of the idempotent installer fixed it):**
+
+| Test | Result |
+|---|---|
+| `gcpsmall` (4 ranks, 2 nodes x 2 tasks) | FAIL `modest-bass` (cwltool overrides `HOME`, so the load command's `~` resolved into the staging dir — the bug behind the source's hardcoded `/home/alvaro`; expanded at preprocessing), then PASS `needed-dory` (4 min, nodes booting) and PASS `upright-clam` (2m43s, the final submitter-based YAML), both `cleanup=ok`, 4 ranks over 2 nodes `COMPLETED` |
+| cancel path (by hand, 8–10 nodes so the job pends) | `giving-silkworm` and `smashing-asp`: every YAML-side hook skipped on the user cancel, SLURM job survived (pitfalls); `clever-blowfish` on the submitter-based YAML: the running 10-node job ended `CANCELLED` by `cancel.sh`, `cwl.exit` 143, no leftovers |
+
+The checkout points at `canary` for the merge.
+
+## grafana-prometheus (2026-10-12, from parallelworks/grafana-prometheus)
+
+`workflows/grafana-prometheus/` is the endpoint-pattern port of
+`parallelworks/grafana-prometheus@main` (e5dae72): Grafana over Prometheus with
+node-exporter and dcgm-exporter in Docker Compose. The source served Grafana through a
+platform session (`sessions:` block, `parallelworks/update-session`) behind an nginx
+container that proxied `/me/session/<user>/<name>/` to Grafana's sub path
+(`GF_SERVER_SERVE_FROM_SUB_PATH`), cloned its own repository into the Run Directory, ran
+the stack with `sudo docker compose up` from `run.sh` and kept the run alive on `docker
+compose logs -f` until a `CANCEL` file; a parallel `run_agent` job ran `pw agent
+start-existing --experimental-prometheus-exporter` on the login node for the run's life.
+
+| Old | New |
+|---|---|
+| `workflow.yaml` (jobs `run_agent`, `prepare_job_directory`, `wait_and_run_cleanup`, `start_service`, `stream_docker_logs`, `create_session`; inputs `resource`, `rundir`, `admin_password`, `advanced_settings.repository*`) | `yamls/general.yaml` (preprocessing → `script_submitter` → `wait_for_endpoint`; `pydio-cells`'s `cluster`/`service` groups) |
+| `run.sh`, `docker-compose.yml.template`, `env.sample`, `nginx/nginx.conf.template`, `prometheus/prometheus.yml` (and an unused root `prometheus.yml`) | `app/controller.sh` (form checks), `app/start-template.sh` (Docker detection and pulls as `pydio-cells`; the Prometheus configuration and the compose files written at start; the stack behind `pw endpoints run`; `cancel.sh` = `compose down`) |
+| `grafana/provisioning/` | `app/grafana/provisioning/`, copied into the Run Directory on every start |
+| `README.md` | rewritten |
+| `grafana.png` | `thumbnails/grafana-prometheus.png` |
+
+Changes beyond the paths:
+
+- **No nginx.** A subdomain endpoint serves at the root; `GF_SERVER_ROOT_URL` is
+  `PW_ENDPOINT_URL`, for the links Grafana builds. A path-based endpoint would need
+  `GF_SERVER_SERVE_FROM_SUB_PATH` and the `{path}` token back.
+- **No host ports.** The source published Prometheus on 9090, dcgm-exporter on 9400 and
+  nginx on 8080 of the host: one stack per node, open to everyone on it. Here only Grafana is
+  published, on the loopback port the endpoint assigned, and Prometheus is reached through
+  Grafana (Explore, the datasource proxy). One compose project per run (`grafana_<run-slug>`).
+- **The containers run as the workflow user** (the source `chown`ed `data/grafana` to 472 and
+  `data/prometheus` to 65534), so the data directories are yours; a source Run Directory is
+  refused with a `chown` hint. A `flock` on the Run Directory makes a second run on it fail
+  in seconds: two Grafanas on one SQLite file.
+- **Host metrics.** The source's node-exporter ran as a plain container and reported its own
+  view of the node. Here it has `pid: host`, the host root at `/host` and
+  `--path.rootfs/procfs/sysfs`, without a host port (the network interfaces are still the
+  container's).
+- **GPU metrics are conditional.** The source's compose file reserved an NVIDIA GPU for
+  dcgm-exporter unconditionally, so `compose up` failed on a node without the driver
+  (gcpsmall: the nvidia runtime, no driver). dcgm-exporter is an override file added when
+  `nvidia-smi -L` succeeds and Docker lists the `nvidia` runtime, with the `gpu` scrape job.
+- **Pinned images** as form inputs (`grafana/grafana:13.2.3`, `prom/prometheus:v3.15.0`;
+  node-exporter and dcgm-exporter hidden): the source pulled `latest` for all but
+  dcgm-exporter. The GPU dashboard, exported from 12.2.1, loads unchanged in 13.2.3.
+- **The platform agent's exporter is opt-in** (`agent_metrics`, default off). The source's
+  `run_agent` job ran a second controller agent of the user for the run's life; here it is a
+  background child of the start script, in the endpoint's process tree, with its pid in
+  `cancel.sh`, on the login node only. Tested on gcpsmall: it serves 15 `pw_agent_*` families
+  (CPU, memory, storage of the node), never authenticates inside a run (it ignores the run's
+  key: "no platform credentials available", "Pool not found"), and opens an SSH server and a
+  proxy port of its own plus port files under `~/pw` and `~/.ssh`
+  (`.claude/skills/activate-workflows/references/software/grafana-prometheus.md`). node-exporter
+  reports the same in more detail, so the default is off.
+- **Extra scrape targets** (`extra_targets`, one `host:port` per line, checked in the
+  controller) and **Prometheus retention** (`retention`, a fixed `15d` in the source) are form
+  inputs. The dropped `juice-agent:9101` target pointed at a container the compose file never
+  had; the `exported-by` label became `exported_by` (Prometheus 2 rejects the dash, 3 accepts it).
+- **The admin password** comes from a mode-600 file (`GF_SECURITY_ADMIN_PASSWORD__FILE`,
+  compose `secrets`) instead of the Run Directory's `.env`. Anonymous access as Admin is kept
+  from the source: the platform login protects the endpoint.
+- The `advanced_settings` repository inputs went: the code is the checkout.
+
+`general` only, as `pydio-cells` and `postgres` (Docker).
+
+**Tests (2026-10-12, `pw://alvaro/gcpsmall`, branch `grafana`; rows in
+`workflows/grafana-prometheus/tests/general/*.csv`):**
+
+| Test | Result |
+|---|---|
+| `gcp-controller` (login node, `agent_metrics: true`) | PASS `fine-boxer` (cold, 68 s, kept for the manual checks), `suitable-bee` (warm, 37 s, `cleanup=ok`) |
+| `gcp-compute` (SLURM job, `compute` partition, `agent_metrics: true`, an extra target) | PASS `evident-stinkbug` (348 s, node powering up; healthy 26 s after the endpoint registered, `cleanup=ok`, no SLURM job left). On the compute node the start script skipped the agent with a warning and the `extra` job carried the form's target |
+
+Manual on `fine-boxer`: the four targets up (`prometheus`, `node`, `grafana`, `pw-agent`)
+through Grafana's datasource proxy, `node_memory_MemTotal_bytes` equal to `free -b` on the
+node; anonymous `GET /` → `307`; with the platform token `/`, `/login`, `/api/search`, the
+dashboard page and the datasource proxy → `200`; through the local port, anonymously, `/`
+and the dashboard → `200` and `/api/user` → `401`; the admin login with the form's
+password → `200`, with a wrong one → `401`; every file under the Run Directory owned by the
+workflow user. A second run on the Run Directory (`summary-jay`) ended in `error` in 14 s
+through the submitter's failure path and left the running stack alone. `pw endpoints delete`
+removed the three containers, the network, the agent and its four ports. A cancel while the
+containers were starting (`happy-ghost`, 17 s after launch, its own Run Directory): run
+`canceled`, containers and network removed, no process, port or endpoint record left. Not
+exercised: a GPU node (dcgm-exporter and the GPU dashboard's data), PBS, a path-based
+endpoint, a host without `sudo`. The checkout points at `canary` for the merge.
+
+## pgadmin4 (2026-10-12, from interactive_session's legacy generation)
+
+`workflows/pgadmin4/` is the endpoint-pattern port of `interactive_session`'s
+`workflow/yamls/pgadmin4/general_k8s.yaml` (hybrid: `targetType` dropdown, compute cluster
+or Kubernetes) and `pgadmin4/start-template-v3.sh`, on the metabase shapes: `general.yaml`
+plus the hybrid `general_k8s.yaml`. The endpoint `pgadmin4-<run-slug>` serves pgAdmin
+itself, which keeps its own login.
+
+| interactive_session | here |
+|---|---|
+| `pgadmin4/start-template-v3.sh`: `sudo docker run -d` of `${service_image}` (`dpage/pgadmin4`, no tag) named `pgadmin4-${service_port}`, `-p ${service_port}:80`, the form's Docker mount volumes, `PGADMIN_DEFAULT_EMAIL` and `PGADMIN_DEFAULT_PASSWORD` on the `docker run` command line (so in the job's `set -x` log), no data volume, so the account, servers and settings died with the container; `pgadmin4/kill-template.sh` ran the `docker-kill-<job>.sh` the start script wrote | `app/start-template.sh`: one Docker Compose project per run. The container runs as the workflow user (in the image's root group) on **Data Directory**; the password comes from a mode-600 file written in preprocessing (compose `secrets`, `PGADMIN_DEFAULT_PASSWORD_FILE`); the form can register one server (`PGADMIN_SERVER_JSON_FILE`). The script picks a free loopback port, starts the container on it, waits for `/misc/ping`, logs in through the login page, and only then runs `pw endpoints run --port` on that port. `cancel.sh` is `compose down`. `app/controller.sh` creates the data directory |
+| k8s: a Deployment with the password in plaintext in `app.yaml`, `containerPort: 80`, a `-lb` Service and `parallelworks/update-session`, no volume | a Deployment (`strategy: Recreate`) of pgAdmin (data on the PVC's `pgadmin4/`, given to the image's uid 5050 by an init container; the password from a Secret; `/misc/ping` readiness) and the `pw-endpoint` sidecar. Not run yet (judgment call 7) |
+| form: `targetType`, `pwrl_host`, `service` (`image` `dpage/pgadmin4`, Docker mount volumes, email, password), `k8s` (with GPU limits), `service_k8s` (`image`, email, password) | `resource`/`cluster`/`service` (`email` default `admin@example.com`, `password`, `data_dir`, a `server` group, `image` pinned to `dpage/pgadmin4:9.18`) and `k8s` (without the GPU fields and the mount path)/`service_k8s` (`email`, `password`, `image`) |
+| `workflow/readmes/pgadmin4/general_k8s.md`, `workflow/thumbnails/pgadmin.png` | `README.md` (rewritten), `thumbnails/pgadmin4.png` |
+
+**Judgment calls:**
+
+1. The login is checked before the endpoint registers. pgAdmin creates the account only
+   with an empty data directory, so a reused one with another password would come up as a
+   completed run nobody can log in to; and once `pw endpoints run` starts, the probe sees
+   `/misc/ping` answer and completes the run, so the check cannot follow it. The script
+   therefore picks the port itself (`pw endpoints run --port`), starts and checks the
+   container, then registers (pitfalls.md, "Endpoints and the service"; the login flow is
+   in the skill's `references/software/pgadmin4.md`).
+2. The container runs as the workflow user in group 0, which the image supports for
+   OpenShift, rather than as the image's uid 5050 on a chowned directory or through
+   `PUID`/`PGID` (9.18's entrypoint, container started as root): the files belong to the
+   user and older tags work the same way.
+3. The Docker mount volumes field is gone: pgAdmin's file dialogs only see
+   `storage/<email>/` under the data directory, so a directory mounted elsewhere was
+   unreachable from the UI.
+4. One server from four form fields instead of a `servers.json` editor: a composed
+   workflow can wire a postgres run's node and port into them. It is imported with a new
+   data directory only; `PGADMIN_REPLACE_SERVERS_ON_STARTUP` would re-import on every start
+   but drop the servers added in the UI.
+5. The email defaults to `admin@example.com`; pgAdmin rejects reserved domains (`.local`,
+   `.test`) and the start script checks the email's shape before it lands in the compose
+   file. No minimum password length: the image enforces none at setup (a 3-character
+   password logged in), so the workflow does not invent one.
+6. The port is published on the node's loopback only: pgAdmin has a login, but nothing
+   outside the node needs the port, and the endpoint reaches it there.
+7. The Kubernetes lane is the metabase hybrid's with the pgAdmin container, kept minimal
+   (no server registration, no login check) because no Kubernetes cluster was reachable to
+   run it: `pw kube auth` succeeds for k3sgpu and cloudinfra but the API proxy answers
+   404 to every `kubectl` call, and `pw kube ls` shows k3sgpu with 0 CPUs. It validates
+   with `--dry-run`; `tests/general_k8s/k3sgpu.json` is ready for when the cluster is back.
+
+Before the YAML existed, on gcpsmall's login node by hand (the skill's step 1): the image
+runs as `<uid>:0` on a user-owned bind mount; `admin@pgadmin.local` is rejected and
+`admin@example.com` accepted; the login page carries its CSRF token as `"csrfToken"` in a
+JSON blob and `POST /authenticate/login` with the `csrf_token` form field redirects to
+`/browser/` (right password) or `/login` (wrong one, wrong email, or the new password of a
+restarted container on the same data directory, while the old password still logs in);
+`/misc/ping` answers 200 with and without a Bearer header; a compose stack with a
+`secrets` file holding `: $ " \ ' # @` logged in and imported one server.
+
+**Tests (2026-10-12, `pw://alvaro/gcpsmall`, branch `pgadmin4`; rows in
+`workflows/pgadmin4/tests/*/*.csv`).** The test password (`PGADMIN_TEST_PASSWORD`) holds
+`: $ " \ ' # @`, so the password file, the compose secret and the login form are exercised
+on every run.
+
+| Test | Result |
+|---|---|
+| `general/gcp-controller` (login node, registers `postgres@localhost:5432`) | PASS `one-satyr` (cold, 78 s, `cleanup=ok`): the probe saw 200 after 0 s; the service log shows the login and `Added 0 Server Group(s) and 1 Server(s)` |
+| `general/gcp-wrong-password` (`_test.expect: error`) | PASS `known-sturgeon` (53 s): `Cannot log in to pgAdmin 4 as admin@example.com with the password given ...` and nothing left |
+| `general/gcp-compute` (SLURM job, `compute` partition) | PASS `mature-crab` (84 s, `cleanup=ok`, on a node another session had already powered up; the SLURM job ended 40 s after the endpoint was deleted) |
+| `general_k8s/gcp-controller` (the hybrid's compute lane) | PASS `dear-toad` (53 s, `cleanup=ok`) |
+| `general_k8s/k3sgpu` (Kubernetes lane) | not run (judgment call 7) |
+
+Cancel 28 s after launch on a new data directory (`ideal-ape`, container just started,
+account being created): run `canceled`, the cleanup trap ran `cancel.sh` (`compose down`
+removed the container and the network), no skip file, no process, no endpoint. A cancel
+33 s after launch on the warm data directory (`upward-gnu`) landed in the second the
+health check released the submitter (endpoint live 22 s after launch): the run ended
+`canceled` while the service stayed up behind its registered endpoint, which is how every
+endpoint workflow here leaves a run once the probe has passed; `pw endpoints delete
+pgadmin4-upward-gnu` then killed the tree and the trap removed the container. Not
+exercised: PBS, a host without `sudo` for Docker, two runs on one data directory (no lock
+is taken; pgAdmin's SQLite database tolerates two servers). The checkout points at
+`canary` for the merge.

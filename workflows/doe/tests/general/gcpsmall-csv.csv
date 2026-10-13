@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-08T15:55:44Z,,pass,ok,dcb9a0f,74bcc3d,0b74bc0,ca4fe9f-dirty,3793a52,general-only-subworkflows,alvaro,modest-fox,17,

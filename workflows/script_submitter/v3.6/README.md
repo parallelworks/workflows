@@ -64,12 +64,11 @@ Use the scheduler agent for single-node jobs:
 jobs:
   run_my_script:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - uses: marketplace/script_submitter/v3.6
         with:
-          resource: ${{ inputs.cluster.resource }}
-          rundir: ${PW_JOB_DIR}
+          resource: ${{ inputs.resource }}
           script: |
             echo "Running on $(hostname) at $(date)"
             python my_analysis.py --input data.csv
@@ -93,12 +92,11 @@ Write your script directly in the workflow YAML:
 jobs:
   run_my_script:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - uses: marketplace/script_submitter/v3.6
         with:
-          resource: ${{ inputs.cluster.resource }}
-          rundir: ${PW_JOB_DIR}
+          resource: ${{ inputs.resource }}
           script: |
             echo "Running on $(hostname) at $(date)"
             echo "Working directory: $(pwd)"
@@ -124,11 +122,11 @@ Reference a script that was created in a previous job step:
 jobs:
   prepare:
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Create script
         run: |
-          cat <<'EOF' > ${PW_JOB_DIR}/my-script.sh
+          cat <<'EOF' > ${PW_PARENT_JOB_DIR}/my-script.sh
           echo "Running simulation..."
           ./run_simulation --config config.yaml
           EOF
@@ -136,14 +134,14 @@ jobs:
   submit:
     needs: [prepare]
     ssh:
-      remoteHost: ${{ inputs.cluster.resource.ip }}
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
       - uses: marketplace/script_submitter/v3.6
         with:
-          resource: ${{ inputs.cluster.resource }}
-          rundir: ${PW_JOB_DIR}
+          resource: ${{ inputs.resource }}
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}
           use_existing_script: true
-          script_path: ${PW_JOB_DIR}/my-script.sh
+          script_path: ${PW_PARENT_JOB_DIR}/my-script.sh
           scheduler: ${{ inputs.cluster.scheduler }}
           slurm:
             is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
@@ -160,7 +158,7 @@ jobs:
 | Input | Description | Required |
 |-------|-------------|----------|
 | `resource` | The compute cluster resource | Yes |
-| `rundir` | Working directory for script execution | Yes |
+| `rundir` | Directory the script runs in; leave unset to use the job's own directory. The platform resolves it itself, so write `${{ env.PW_PARENT_JOB_DIR }}/x`, never `${PW_PARENT_JOB_DIR}/x` (a shell variable there becomes a literal directory) | No |
 | `script` | Script content (when `use_existing_script: false`) | No |
 | `use_existing_script` | Use a script file instead of inline content | No |
 | `script_path` | Path to existing script (when `use_existing_script: true`) | No |

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Queue Health | HPC Status Dashboard</title>
+  <script>
+    (function () {
+      function deriveBasePath(pathname) {
+        var path = pathname;
+        return path;
+      }
+      var path = deriveBasePath(window.location.pathname || "/");
+      var base = document.createElement("base");
+      base.href = window.location.origin + path;
+      document.documentElement.setAttribute("data-base-path", path);
+      document.head.appendChild(base);
+    })();
+  </script>
+  <script src="app-config.js"></script>
+  <script>
+    (function () {
+      try {
+        const saved = window.localStorage.getItem("hpc-status-theme");
+        const fallback = (window.APP_CONFIG && window.APP_CONFIG.defaultTheme) || "dark";
+        const initial = saved || fallback || "dark";
+        document.documentElement.dataset.theme = initial;
+      } catch (err) {
+        document.documentElement.dataset.theme = (window.APP_CONFIG && window.APP_CONFIG.defaultTheme) || "dark";
+      }
+      document.documentElement.dataset.platform = (window.APP_CONFIG && window.APP_CONFIG.platform) || "generic";
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="icon" type="image/png" href="assets/img/favicon-generic.png" />
+  <link rel="apple-touch-icon" href="assets/img/favicon-generic.png" />
+  <link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+
+<body>
+  <div class="page">
+    <header class="hero">
+      <div>
+        <p class="eyebrow" id="header-eyebrow">HPC STATUS</p>
+        <h1>Queue health</h1>
+        <p class="lede">
+          Visualize queue depth and node availability for each cluster in the fleet.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <a class="ghost-btn" href="index.html">← Fleet dashboard</a>
+        <button id="refresh-btn" class="ghost-btn">
+          <span class="btn-icon" aria-hidden="true">↻</span>
+          <span>Refresh</span>
+        </button>
+        <button id="theme-toggle" class="theme-btn" aria-label="Toggle color theme">
+          <span class="theme-icon" aria-hidden="true">🌙</span>
+          <span class="theme-label">Dark</span>
+        </button>
+      </div>
+    </header>
+
+    <nav class="subnav" data-cluster-nav>
+      <a href="index.html">Fleet status</a>
+      <a href="topology.html">Topology</a>
+      <a href="queues.html" aria-current="page">Queue health</a>
+      <a href="quota.html">Quota usage</a>
+      <a href="storage.html">Storage</a>
+      <a href="insights.html">Insights</a>
+      <a href="api.html">API</a>
+    </nav>
+
+    <p id="queue-status" class="status-banner" role="status" hidden></p>
+
+    <section class="cards">
+      <article class="card">
+        <p>Connected clusters</p>
+        <h2 id="connected-count">--</h2>
+        <span class="card-tooltip" title="Clusters with active queue data collection">ⓘ</span>
+      </article>
+      <article class="card">
+        <p>Queues observed</p>
+        <h2 id="queue-count">--</h2>
+        <span class="card-tooltip" title="Total scheduler queues/partitions across all clusters. Each queue has policies for walltime, node limits, and access.">ⓘ</span>
+      </article>
+      <article class="card">
+        <p>Running jobs</p>
+        <h2 id="running-jobs">--</h2>
+        <span class="card-tooltip" title="Jobs currently executing on compute nodes">ⓘ</span>
+      </article>
+      <article class="card">
+        <p>Pending jobs</p>
+        <h2 id="pending-jobs">--</h2>
+        <span class="card-tooltip" title="Jobs waiting in queue for resources. High pending counts may indicate system congestion.">ⓘ</span>
+      </article>
+    </section>
+
+    <section class="panel fleet-overview-grid">
+      <div class="panel-block">
+        <p class="eyebrow">Backlog severity <span class="eyebrow-help" title="Each queue is bucketed by pending÷running cores. Heavy = pending is 2× or more of running (avoid scheduling here). Light = some pending but less. Open = no jobs waiting.">ⓘ</span></p>
+        <div id="fleet-queue-tags" class="queue-chip-collection muted-text">Refresh to populate queue stats.</div>
+      </div>
+      <div class="panel-block">
+        <p class="eyebrow">Fleet core utilization <span class="eyebrow-help" title="Running cores ÷ total cluster capacity, summed across all connected clusters. Tells you how loaded the fleet is overall.">ⓘ</span></p>
+        <div id="fleet-core-donut" class="donut-chart placeholder">Awaiting data…</div>
+      </div>
+      <div class="panel-block">
+        <p class="eyebrow">GPU availability <span class="eyebrow-help" title="Free vs. used cores on accelerator nodes across all GPU-equipped clusters.">ⓘ</span></p>
+        <div id="fleet-gpu-donut" class="donut-chart placeholder">Awaiting data…</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h3>Most available systems <span class="panel-help" title="Clusters ranked by current utilization (lowest first). The bar shows running cores, pending cores, and free cores as proportions of each cluster's total capacity. Click a row to jump to that cluster's details.">ⓘ</span></h3>
+        <p class="muted-text">Sorted by utilization — clusters with the most idle capacity appear first.</p>
+      </div>
+      <div id="availability-ranking" class="availability-ranking">
+        <div class="placeholder">Awaiting capacity data…</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="cluster-picker" id="queue-cluster-select" role="tablist" aria-label="Select cluster"></div>
+      <div class="cluster-focus-header">
+        <div>
+          <h3 id="queue-cluster-title">Select a cluster</h3>
+          <p id="queue-cluster-meta" class="muted-text"></p>
+        </div>
+        <p id="queue-cluster-note" class="muted-text"></p>
+      </div>
+      <div class="cluster-stats-row">
+        <div class="metric-card" title="Jobs currently executing on compute nodes">
+          <p>Running jobs</p>
+          <strong id="cluster-running-jobs">--</strong>
+        </div>
+        <div class="metric-card" title="Jobs waiting in queue for available resources">
+          <p>Pending jobs</p>
+          <strong id="cluster-pending-jobs">--</strong>
+        </div>
+        <div class="metric-card" title="CPU cores currently allocated to running jobs">
+          <p>Cores in use</p>
+          <strong id="cluster-running-cores">--</strong>
+        </div>
+        <div class="metric-card" title="CPU cores requested by jobs still waiting in the queue">
+          <p>Cores waiting</p>
+          <strong id="cluster-pending-cores">--</strong>
+        </div>
+        <div class="donut-chart cluster-donut" id="cluster-core-donut" title="Cores in use ÷ total cluster capacity from node inventory">
+          <div class="placeholder">Select a cluster</div>
+        </div>
+      </div>
+      <div class="capacity-strip" id="cluster-capacity-strip" aria-label="Capacity at a glance">
+        <div class="placeholder">Select a cluster</div>
+      </div>
+    </section>
+
+    <section class="table-panel">
+      <div class="table-head">
+        <h3>Node availability <span class="panel-help" title="Breakdown of compute resources by node type. Nodes are individual servers; cores are CPU processors within each node.">ⓘ</span></h3>
+        <p id="node-meta" class="muted-text"></p>
+      </div>
+      <div class="table-scroll">
+        <table class="quota-table">
+          <thead>
+            <tr>
+              <th>Node type <span class="th-help" title="Category of compute node (e.g., standard, GPU, bigmem)">ⓘ</span></th>
+              <th>Nodes available <span class="th-help" title="Number of nodes ready to accept jobs">ⓘ</span></th>
+              <th>Cores per node <span class="th-help" title="CPU cores on each node of this type (per-partition average — heterogeneous partitions show the mean)">ⓘ</span></th>
+              <th>Cores available <span class="th-help" title="Total cores that could be allocated. For partitions with multiple node sizes this is the actual sum of CPUTot, which may not equal nodes × cores-per-node">ⓘ</span></th>
+              <th>Cores running <span class="th-help" title="Cores currently executing jobs">ⓘ</span></th>
+              <th>Cores free <span class="th-help" title="Cores available for new jobs">ⓘ</span></th>
+              <th>GPUs <span class="th-help" title="Total GPUs in this partition (from Slurm Gres). Type and per-node count appear in a tooltip on the value.">ⓘ</span></th>
+            </tr>
+          </thead>
+          <tbody id="node-body">
+            <tr>
+              <td colspan="7" class="placeholder">Loading node data…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="panel-head">
+        <h3>Queue activity <span class="panel-help" title="One card per scheduler queue. The bar shows the queue's footprint as a fraction of total cluster cores (running + waiting). The badge tells you whether new jobs face a backlog.">ⓘ</span></h3>
+        <p id="queue-depth-meta" class="muted-text"></p>
+      </div>
+      <div id="queue-grid" class="queue-grid">
+        <div class="placeholder card">Loading queue data…</div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <small>Queue metrics collected from connected clusters</small>
+      <small>HPC Status Monitor v2.1</small>
+    </footer>
+  </div>
+
+  <script type="module" src="assets/js/queues.js"></script>
+</body>
+
+</html>

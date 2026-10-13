@@ -1,0 +1,4 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-11T10:48:58Z,,pass,ok,2e7f8f1,74bcc3d,c6c3dbb,f411e77,f411e77,explorer-ux-test,mshaxted,harmless-osprey,75,
+2026-10-11T11:28:35Z,,fail,,bd558e3,74bcc3d,c6c3dbb,df1eb49,df1eb49,explorer-ux-test,mshaxted,,13,"launch failed: 2026-10-11T11:28:48Z [ERROR] executing request: Post ""https://activate.hpc.mil/api/workflow-runs"": read tcp 207.229.167.29:44346->136.212.39.116:443: read: connection reset by peer"
+2026-10-11T11:43:00Z,,pass,ok,8ffc6b0,74bcc3d,c6c3dbb,ef9f9f3,ef9f9f3,explorer-ux-test,mshaxted,grand-minnow,77,

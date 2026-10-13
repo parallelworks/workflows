@@ -1,0 +1,89 @@
+Run wealthy-ibex: error (10m36s)
+
+Error annotations:
+
+  Error: Endpoint metabase-wealthy-ibex is unhealthy (HTTP 500 from https://driven-rabbit.activate.pw/api/health after 604s)
+    in wait_for_endpoint_k8s > wait_for_endpoint → Check endpoint health
+
+Failed jobs/steps:
+
+  wait_for_endpoint > Check endpoint health (error, 0s)
+    notice: Checking that https://driven-rabbit.activate.pw/api/health answers
+    Error: Endpoint metabase-wealthy-ibex is unhealthy (HTTP 500 from https://driven-rabbit.activate.pw/api/health after 604s)
+    Wed Oct  7 14:29:32 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 353s; retrying in 5 seconds
+    Wed Oct  7 14:29:37 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 358s; retrying in 5 seconds
+    Wed Oct  7 14:29:42 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 363s; retrying in 5 seconds
+    Wed Oct  7 14:29:48 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 369s; retrying in 5 seconds
+    Wed Oct  7 14:29:53 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 374s; retrying in 5 seconds
+    Wed Oct  7 14:29:58 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 379s; retrying in 5 seconds
+    Wed Oct  7 14:30:03 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 384s; retrying in 5 seconds
+    Wed Oct  7 14:30:08 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 389s; retrying in 5 seconds
+    Wed Oct  7 14:30:13 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 394s; retrying in 5 seconds
+    Wed Oct  7 14:30:18 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 399s; retrying in 5 seconds
+    Wed Oct  7 14:30:24 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 405s; retrying in 5 seconds
+    Wed Oct  7 14:30:29 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 410s; retrying in 5 seconds
+    Wed Oct  7 14:30:34 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 415s; retrying in 5 seconds
+    Wed Oct  7 14:30:39 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 420s; retrying in 5 seconds
+    Wed Oct  7 14:30:44 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 425s; retrying in 5 seconds
+    Wed Oct  7 14:30:49 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 430s; retrying in 5 seconds
+    Wed Oct  7 14:30:54 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 435s; retrying in 5 seconds
+    Wed Oct  7 14:30:59 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 440s; retrying in 5 seconds
+    Wed Oct  7 14:31:04 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 445s; retrying in 5 seconds
+    Wed Oct  7 14:31:10 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 451s; retrying in 5 seconds
+    Wed Oct  7 14:31:15 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 456s; retrying in 5 seconds
+    Wed Oct  7 14:31:20 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 461s; retrying in 5 seconds
+    Wed Oct  7 14:31:25 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 466s; retrying in 5 seconds
+    Wed Oct  7 14:31:30 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 471s; retrying in 5 seconds
+    Wed Oct  7 14:31:35 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 476s; retrying in 5 seconds
+    Wed Oct  7 14:31:40 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 481s; retrying in 5 seconds
+    Wed Oct  7 14:31:45 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 486s; retrying in 5 seconds
+    Wed Oct  7 14:31:51 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 492s; retrying in 5 seconds
+    Wed Oct  7 14:31:56 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 497s; retrying in 5 seconds
+    Wed Oct  7 14:32:01 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 502s; retrying in 5 seconds
+    Wed Oct  7 14:32:06 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 507s; retrying in 5 seconds
+    Wed Oct  7 14:32:11 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 512s; retrying in 5 seconds
+    Wed Oct  7 14:32:16 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 517s; retrying in 5 seconds
+    Wed Oct  7 14:32:21 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 522s; retrying in 5 seconds
+    Wed Oct  7 14:32:26 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 527s; retrying in 5 seconds
+    Wed Oct  7 14:32:32 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 533s; retrying in 5 seconds
+    Wed Oct  7 14:32:37 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 538s; retrying in 5 seconds
+    Wed Oct  7 14:32:42 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 543s; retrying in 5 seconds
+    Wed Oct  7 14:32:47 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 548s; retrying in 5 seconds
+    Wed Oct  7 14:32:52 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 553s; retrying in 5 seconds
+    Wed Oct  7 14:32:57 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 558s; retrying in 5 seconds
+    Wed Oct  7 14:33:02 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 563s; retrying in 5 seconds
+    Wed Oct  7 14:33:07 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 568s; retrying in 5 seconds
+    Wed Oct  7 14:33:13 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 574s; retrying in 5 seconds
+    Wed Oct  7 14:33:18 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 579s; retrying in 5 seconds
+    Wed Oct  7 14:33:23 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 584s; retrying in 5 seconds
+    Wed Oct  7 14:33:28 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 589s; retrying in 5 seconds
+    Wed Oct  7 14:33:33 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 594s; retrying in 5 seconds
+    Wed Oct  7 14:33:38 UTC 2026 HTTP 500 from https://driven-rabbit.activate.pw/api/health after 599s; retrying in 5 seconds
+    ✗ Error: Endpoint metabase-wealthy-ibex is unhealthy (HTTP 500 from https://driven-rabbit.activate.pw/api/health after 604s)
+
+Summary: 2 job(s) failed, 1 step(s) failed
+
+
+=== kubectl get events (last 40) ===
+LAST SEEN   TYPE     REASON                  OBJECT                                             MESSAGE
+10m         Normal   Scheduled               pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Successfully assigned alvarok8s/alvarojobswealthy-ibex-66bb7cd8c-dz2pn to gpu.parallel.works
+10m         Normal   WaitForFirstConsumer    persistentvolumeclaim/alvarojobswealthy-ibex-pvc   waiting for first consumer to be created before binding
+10m         Normal   SuccessfulCreate        replicaset/alvarojobswealthy-ibex-66bb7cd8c        Created pod: alvarojobswealthy-ibex-66bb7cd8c-dz2pn
+10m         Normal   ScalingReplicaSet       deployment/alvarojobswealthy-ibex                  Scaled up replica set alvarojobswealthy-ibex-66bb7cd8c from 0 to 1
+10m         Normal   Provisioning            persistentvolumeclaim/alvarojobswealthy-ibex-pvc   External provisioner is provisioning volume for claim "alvarok8s/alvarojobswealthy-ibex-pvc"
+10m         Normal   ExternalProvisioning    persistentvolumeclaim/alvarojobswealthy-ibex-pvc   Waiting for a volume to be created either by the external provisioner 'rancher.io/local-path' or manually by the system administrator. If volume creation is delayed, please verify that the provisioner is running and correctly registered.
+10m         Normal   ProvisioningSucceeded   persistentvolumeclaim/alvarojobswealthy-ibex-pvc   Successfully provisioned volume pvc-4209f6df-7d0e-45f2-9602-4edc1304249e
+10m         Normal   Pulling                 pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Pulling image "busybox"
+10m         Normal   Pulled                  pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Successfully pulled image "busybox" in 1.351s (1.351s including waiting). Image size: 2236767 bytes.
+10m         Normal   Created                 pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Created container: set-permissions
+10m         Normal   Started                 pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Started container set-permissions
+10m         Normal   Pulling                 pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Pulling image "metabase/metabase:v0.64.1"
+10m         Normal   Pulling                 pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Pulling image "ghcr.io/parallelworks/pw-cli:v7.79.0"
+10m         Normal   Started                 pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Started container alvarojobswealthy-ibex
+10m         Normal   Created                 pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Created container: alvarojobswealthy-ibex
+10m         Normal   Pulled                  pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Successfully pulled image "metabase/metabase:v0.64.1" in 11.556s (11.556s including waiting). Image size: 828325890 bytes.
+10m         Normal   Created                 pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Created container: pw-endpoint
+10m         Normal   Pulled                  pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Successfully pulled image "ghcr.io/parallelworks/pw-cli:v7.79.0" in 2.006s (2.006s including waiting). Image size: 28348441 bytes.
+10m         Normal   Started                 pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Started container pw-endpoint
+16s         Normal   Killing                 pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Stopping container alvarojobswealthy-ibex
+16s         Normal   Killing                 pod/alvarojobswealthy-ibex-66bb7cd8c-dz2pn         Stopping container pw-endpoint

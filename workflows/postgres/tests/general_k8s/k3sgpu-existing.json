@@ -1,0 +1,42 @@
+{
+  "_test": {
+    "timeout_s": 1200,
+    "secrets": {
+      "service_k8s.password": "POSTGRES_TEST_PASSWORD"
+    },
+    "leftover_kinds": [
+      "deployments",
+      "services",
+      "pods",
+      "secrets"
+    ]
+  },
+  "resource": {
+    "name": "k3sgpu",
+    "type": "kubernetes"
+  },
+  "k8s": {
+    "namespace": "alvarok8s",
+    "volumes": {
+      "pvc": "Existing",
+      "pvc_mount_path": "/mnt",
+      "pvc_existing": "postgres-test-data"
+    },
+    "resources": {
+      "requests": {
+        "memory": "512Mi",
+        "cpu": "1"
+      },
+      "limits": {
+        "memory": "1Gi",
+        "cpu": "2"
+      }
+    }
+  },
+  "service_k8s": {
+    "name": "postgres",
+    "user": "postgres",
+    "db": "postgres",
+    "image": "postgres:18"
+  }
+}

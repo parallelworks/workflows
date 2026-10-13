@@ -1,13 +1,6 @@
 {
   "_test": {
     "timeout_s": 2400,
-    "http_expect": [
-      200,
-      302,
-      307,
-      401,
-      404
-    ],
     "warm_marker": [
       "${HOME}/pw/software/containers/vllm.sif",
       "${HOME}/pw/models/Qwen2.5-0.5B-Instruct/config.json"
@@ -18,8 +11,8 @@
     ]
   },
   "runtype": "vllm",
+  "resource": "pw://alvaro/a30gpuserver",
   "cluster": {
-    "resource": "pw://alvaro/a30gpuserver",
     "scheduler": false
   },
   "model": {

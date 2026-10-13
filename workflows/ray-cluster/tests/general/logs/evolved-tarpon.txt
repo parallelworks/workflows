@@ -1,0 +1,52 @@
+Run evolved-tarpon: canceled (40m7s)
+Reason: canceledByUser
+
+Failed jobs/steps:
+
+  dispatch_workers > Dispatch workers to compute sites (error, 0s)
+    ==========================================
+    Dispatch Workers: Wed Sep 23 01:39:23 PM UTC 2026
+    ==========================================
+    Worker sites:  1
+    Parsed config: [
+      {
+        "index": 0,
+        "name": "gcpsmall",
+        "ip": "35.223.134.56",
+        "user": "alvaro",
+        "scheduler_type": "slurm",
+        "use_scheduler": true,
+        "is_local": true,
+        "slurm_partition": "compute",
+        "slurm_account": "",
+        "slurm_qos": "",
+        "slurm_time": "00:30:00",
+        "slurm_nodes": 1,
+        "slurm_gres": "",
+        "slurm_directives": "",
+        "pbs_queue": "",
+        "pbs_account": "",
+        "pbs_nodes": "1",
+        "pbs_select": "",
+        "pbs_walltime": "01:00:00",
+        "pbs_directives": ""
+      }
+    ]
+    Head resource: gcpsmall
+    Dashboard:     localhost:34545
+    Ray head:      10.128.0.20:6379
+    Python:        3.12.14
+    Ray version:   2.40.0
+    
+    [site-1] Local worker site: gcpsmall (1 node(s))
+    [site-1] Pending notification: {"status":"ok"}
+    [gcpsmall] Dispatching 1 local SLURM worker(s) on gcpsmall
+    [gcpsmall] Submitted batch job 7
+    [gcpsmall] SLURM job ID: 7 (saved to /home/alvaro/pw/jobs/evolved-tarpon/slurm_jobids)
+    
+    All 1 worker site(s) dispatched, waiting...
+    [gcpsmall] 2026-09-23 13:39:28,483	INFO scripts.py:1242 -- Did not find any active Ray processes.
+    [gcpsmall] Starting Ray worker on alvaro-gcpsmall-00304-1-0001 (10.128.0.21), connecting to 10.128.0.20:6379...
+    Terminated
+
+Summary: 1 job(s) failed, 1 step(s) failed

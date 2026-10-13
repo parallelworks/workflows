@@ -1,7 +1,6 @@
 {
   "_test": {
     "timeout_s": 2400,
-    "http_expect": [200, 302, 307, 401, 404],
     "warm_marker": [
       "${HOME}/pw/software/containers/vllm.sif",
       "${HOME}/pw/software/containers/rag.sif",
@@ -12,8 +11,8 @@
     "leftover_commands": {"singularity_instances": "singularity instance list 2>/dev/null | tail -n +2 | wc -l"}
   },
   "runtype": "all",
+  "resource": "pw://alvaro/a30gpuserver",
   "cluster": {
-    "resource": "pw://alvaro/a30gpuserver",
     "scheduler": false
   },
   "model": {

@@ -1,0 +1,3 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-07T14:23:09Z,,fail,ok,29e07f6,74bcc3d,0b74bc0,2d29f9d,2d29f9d,metabase,alvaro,wealthy-ibex,645,"run error before the endpoint came online: wait_for_endpoint > Check endpoint health (error, 0s)"
+2026-10-07T14:34:42Z,,pass,ok,29e07f6,74bcc3d,0b74bc0,2d29f9d-dirty,2d29f9d,metabase,alvaro,driven-mongrel,34,

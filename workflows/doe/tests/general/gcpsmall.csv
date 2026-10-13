@@ -1,0 +1,4 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-08T14:10:13Z,,pass,ok,861ec14,74bcc3d,0b74bc0,78e05dd,78e05dd,design-explorer,alvaro,infinite-eel,18,
+2026-10-08T14:56:42Z,,pass,ok,3b704c0,74bcc3d,0b74bc0,0c9b3ee,0c9b3ee,design-explorer,alvaro,humane-oryx,17,
+2026-10-12T12:08:54Z,,pass,ok,eeab3b4,74bcc3d,c6c3dbb,b1ce74d-dirty,403af2f,variantes,alvaro,probable-tiger,22,

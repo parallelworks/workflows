@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-01T08:04:40Z,warm,pass,ok,18858d6,74bcc3d,7c7ffa7,be235e0,be235e0,dakota-demo,alvaro,apparent-ghost,459,

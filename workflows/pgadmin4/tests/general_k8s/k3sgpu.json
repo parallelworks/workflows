@@ -1,0 +1,35 @@
+{
+  "_test": {
+    "timeout_s": 1200,
+    "secrets": {
+      "service_k8s.password": "PGADMIN_TEST_PASSWORD"
+    }
+  },
+  "resource": {
+    "name": "k3sgpu",
+    "type": "kubernetes"
+  },
+  "k8s": {
+    "namespace": "alvarok8s",
+    "volumes": {
+      "pvc": "New",
+      "pvc_storage_size": "1Gi",
+      "pvc_persist": false
+    },
+    "resources": {
+      "requests": {
+        "memory": "512Mi",
+        "cpu": "500m"
+      },
+      "limits": {
+        "memory": "1Gi",
+        "cpu": "1"
+      }
+    }
+  },
+  "service_k8s": {
+    "name": "pgadmin4",
+    "email": "admin@example.com",
+    "image": "dpage/pgadmin4:9.18"
+  }
+}

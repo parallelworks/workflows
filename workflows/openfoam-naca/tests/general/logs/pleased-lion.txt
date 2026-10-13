@@ -1,0 +1,9 @@
+Run pleased-lion: error (27s)
+Reason: executorExitedEarly
+
+Failed jobs/steps:
+
+  results > Read the Coefficients (error, 0s)
+    2026-10-01T07:54:02Z [ERROR] Error parsing step. error="Expression Parser Error: job preprocessing not in needs (the list of dependencies for this job)" step={"early-cancel":"","env":null,"if":null,"ignore-errors":null,"linkedStep":"","name":"Read the Coefficients","retry":null,"run":"case_dir=\"${{ needs.preprocessing.outputs.CASE_DIR $}}\"\nif [ ! -f \"${case_dir}/results.out\" ]; then\n  rc=$(cat \"${case_dir}/exit_code\" 2>/dev/null || echo \"none: the case never ran\")\n  echo \"::error::no results.out in ${case_dir} (simulator exit code: ${rc}); log tails follow\"\n  tail -n 20 \"${case_dir}\"/case/log.* 2>/dev/null\n  tail -n 30 \"${case_dir}\"/run.*.out 2>/dev/null\n  exit 1\nfi\ncd_=$(awk '$2 == \"drag_coefficient\" {print $1}' \"${case_dir}/results.out\")\ncl=$(awk '$2 == \"neg_lift_coefficient\" {printf \"%.10f\", -$1}' \"${case_dir}/results.out\")\necho \"DRAG_COEFFICIENT=${cd_}\" | tee -a $OUTPUTS\necho \"LIFT_COEFFICIENT=${cl}\" | tee -a $OUTPUTS\necho \"RESULTS_FILE=${case_dir}/results.out\" | tee -a $OUTPUTS\necho \"PARAVIEW_FILE=${case_dir}/case/case.foam\" | tee -a $OUTPUTS\necho \"::notice::Cd = ${cd_}, Cl = ${cl} for the design in ${case_dir}/params.in (5 deg, mesh_scale 1); open ${case_dir}/case/case.foam in ParaView to see the fields\"\n","shell":"","subworkflow":null,"timeout":"","uses":"","with":null} svc=workflow-executor
+
+Summary: 1 job(s) failed, 1 step(s) failed

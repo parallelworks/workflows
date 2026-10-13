@@ -37,8 +37,9 @@ them. preprocessing reads the number of designs back from `cases/doe.env`.
 
 **Sampling method**, **Number of cases**, **Random seed** and **Design
 variables** go to [`workflows/doe`](../doe/README.md), whose README has the
-methods and the rules for pasting your own cases. A pasted table runs up to 32
-cases, the width of the workers matrix.
+methods and the rules for pasting your own cases. **Number of cases** is also
+the width of the workers matrix, so with your own cases set it to at least the
+table's row count; surplus slots are skipped for free.
 
 **The names connect the pieces.** Each line of **Design variables** names one of
 openfoam-naca's case fields: `max_camber`, `camber_position`, `thickness` or

@@ -293,8 +293,8 @@ use. The job graph gives you sequencing, data flow, conditionals, and parallelis
   with `Could not expand matrix jobs`, whether it reaches the matrix as a
   `needs.*.outputs` value or as a subworkflow `list` input fed from `with:`. To fan
   out over a computed set, use a **guarded static matrix**
-  (`parallelworks/dcs-workflow@v4` honda-japan.yaml `workers` job): a literal matrix
-  list of the max width (`job_id: [1..N]`) plus a job-level
+  (`parallelworks/dcs-workflow@v4` honda-japan.yaml `workers` job): a matrix list
+  concrete at submission (`job_id: ${{ 1 range inputs.n + 1 }}`, or a literal `[1..N]`) plus a job-level
   `if: ${{ matrix.job_id <= <width> }}` guard, optionally `max-parallel`. The guard's
   width can be a form input (honda) **or a runtime output** —
   `if: ${{ matrix.job_id <= needs.gen.outputs.N_CASES }}` compares numerically and
@@ -304,12 +304,13 @@ use. The job graph gives you sequencing, data flow, conditionals, and parallelis
   fine into script_submitter's `with:`). Worked, tested example:
   `tutorials/optimization/iteration.yaml` (`workers` job — computed case set from an
   optimizer, all of the above in one place). **A form input is concrete at submission,
-  so a matrix can be sized by one:** `job_id: ${{ [1, 2, 3, 4, 5, 6, 7, 8] get
-  0:(inputs.batch_size) }}` slices a literal list to the input's value (the `get`
-  operator with a `start:end` range), so the run shows exactly `batch_size` workers
-  instead of a fixed 8 with skipped slots; it also works on a subworkflow input fed from
-  the parent's `with:` (verified 2026-10-01, that tutorial and
-  `workflows/dakota-openfoam`). Keep the runtime guard for the count actually produced.
+  so a matrix can be sized by one:** `job_id: ${{ 1 range inputs.batch_size + 1 }}`
+  expands to `[1, ..., batch_size]` (`range inputs.n` alone is `[0, ..., n-1]`), so the
+  run shows exactly `batch_size` workers with no ceiling in the YAML; it also works on a
+  subworkflow input fed from the parent's `with:` (verified 2026-10-13, that tutorial,
+  `workflows/dakota-openfoam` and `workflows/doe-openfoam`; before `range` reached the
+  platform the same was done by slicing a literal list, `[1, ..., 8] get
+  0:(inputs.batch_size)`). Keep the runtime guard for the count actually produced.
   Fallback when the matrix must live in a
   separate workflow: a step can submit it as a **fresh run** with the in-run client —
   `pw workflows run <abs yaml> -i '<json>'` (or `-i <file>`) under

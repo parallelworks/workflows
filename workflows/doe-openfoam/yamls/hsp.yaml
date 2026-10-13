@@ -13,8 +13,8 @@
 # and lift coefficients, lift-to-drag) as brushable axes, the rendered fields of
 # every design as thumbnails. The page picks up the cases as they finish, and
 # the endpoint keeps serving after the run until `pw endpoints delete` removes
-# it. The matrix mechanics (a literal list sliced to the form's case count,
-# guarded by the count the sampler produced) come from tutorials/optimization.
+# it. The matrix mechanics (a matrix over the form's case count, guarded by the
+# count the sampler produced) come from tutorials/optimization.
 #
 # The HSP (activate.hpc.mil) variant of general.yaml: the same jobs, with the HSP
 # form (SLURM account, QoS and node type for on-prem `existing` resources, the
@@ -76,10 +76,8 @@ jobs:
         run: |
           set -e
           n="${{ inputs.doe.n_cases }}"
-          # 32 = the literal list the workers matrix below is sliced from; a
-          # matrix cannot expand over runtime values, so the ceiling is a literal
-          if ! [[ "${n}" =~ ^[0-9]+$ ]] || [ "${n}" -lt 1 ] || [ "${n}" -gt 32 ]; then
-            echo "::error::n_cases ${n} is out of range 1-32. To raise the cap, extend the literal job_id list of the workers matrix and the n_cases max."
+          if ! [[ "${n}" =~ ^[0-9]+$ ]] || [ "${n}" -lt 1 ]; then
+            echo "::error::n_cases must be a positive integer, got '${n}'"
             exit 1
           fi
           cores="${{ inputs.cluster.cores_per_case }}"
@@ -140,15 +138,14 @@ jobs:
           cases="${{ needs.preprocessing.outputs.CASES_DIR }}"
           tee -a $OUTPUTS < "${cases}/doe.env"
           n=$(awk -F= '$1 == "N_CASES" {print $2}' "${cases}/doe.env")
-          # a pasted table takes all 32 slots of the matrix below: its size is
-          # only known now, and a matrix is sized at submission
-          if [ "${{ inputs.doe.method }}" = csv ]; then
-            if [ "${n}" -gt 32 ]; then
-              echo "::error::the table has ${n} cases; the workers matrix takes at most 32. Split the table over several runs, or extend the literal job_id list of the workers matrix."
-              exit 1
+          # a pasted table's size is only known now, and the matrix below was
+          # sized at submission from n_cases: the form must have left room for it
+          if [ "${n}" -gt "${{ inputs.doe.n_cases }}" ]; then
+            if [ "${{ inputs.doe.method }}" = csv ]; then
+              echo "::error::the table has ${n} cases but the workers matrix has ${{ inputs.doe.n_cases }} slots: set Number of cases to at least ${n}"
+            else
+              echo "::error::the sampler proposed ${n} cases but the workers matrix has ${{ inputs.doe.n_cases }} slots (n_cases); fix the sampler"
             fi
-          elif [ "${n}" -gt "${{ inputs.doe.n_cases }}" ]; then
-            echo "::error::the sampler proposed ${n} cases but the workers matrix has ${{ inputs.doe.n_cases }} slots (n_cases); fix the sampler"
             exit 1
           fi
       # the page: Design Explorer over cases/, served by its own workflow,
@@ -176,9 +173,9 @@ jobs:
           fi
 
   # The guarded matrix: a matrix can only expand over values that are concrete
-  # at submission, so the list below is a literal of the maximum width sliced
-  # to n_cases (a form input; all 32 for a pasted table, whose size the form
-  # cannot know), and the job-level if: compares each slot against the runtime
+  # at submission, so it ranges over n_cases (a form input; for a pasted table,
+  # whose size the form cannot know, the room left for its rows): slots
+  # 1..n_cases, and the job-level if: compares each slot against the runtime
   # output N_CASES: a structured design or a table that produced fewer cases
   # skips the surplus slots for free. max-parallel caps how many cases run at
   # once (a login node has only so many cores). Each live slot is one call of
@@ -190,7 +187,7 @@ jobs:
       fail-fast: false
       max-parallel: ${{ inputs.doe.max_parallel }}
       matrix:
-        job_id: "${{ [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] get 0:(inputs.doe.method == 'csv' ? 32 : inputs.doe.n_cases) }}"
+        job_id: ${{ 1 range inputs.doe.n_cases + 1 }}
     if: ${{ matrix.job_id <= needs.preprocessing.outputs.N_CASES }}
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
@@ -473,9 +470,9 @@ jobs:
               0.02,0.40,0.09,4
               0.02,0.40,0.15,4
             tooltip: |
-              One row per case under a header naming the variables, up to 32
-              cases. Paste from a spreadsheet (tabs) or type it with commas,
-              semicolons or spaces. A variable without a column is held at the
+              One row per case under a header naming the variables, at most
+              Number of cases rows. Paste from a spreadsheet (tabs) or type it
+              with commas, semicolons or spaces. A variable without a column is held at the
               middle of its bounds in Design variables; a value outside the
               bounds runs with a warning. Columns a study table also carries
               (case, generation, status, the coefficients, Design Explorer's
@@ -486,19 +483,18 @@ jobs:
             label: Number of cases
             default: 8
             min: 1
-            max: 32
-            hidden: ${{ inputs.doe.method == 'csv' }}
             tooltip: |
-              Designs to sample and solve. Sizes the workers matrix (sliced from a
-              literal list of 32 at submission); a full factorial or one-at-a-time
-              design rounds down to its own size and the surplus slots are
-              skipped for free.
+              Designs to sample and solve: the width of the workers matrix, one
+              slot per case, expanded at submission. A full factorial or
+              one-at-a-time design rounds down to its own size and the surplus
+              slots are skipped for free. With your own cases, the slots the
+              table's rows run in: at least the number of rows (a longer table
+              stops the run before any case is spent).
           max_parallel:
             type: number
             label: Cases at a time
             default: 8
             min: 1
-            max: 32
             tooltip: |
               How many cases run at once. On the login node, each case takes
               Cores per case cores, so keep max_parallel x cores within the node;

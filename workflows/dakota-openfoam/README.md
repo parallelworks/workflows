@@ -34,7 +34,7 @@ The two subworkflows only share files under `state/`:
    `state_dir`; the step ingests `iter_<N-1>/case_*/{results.out,exit_code}`
    and writes `iter_<N>/case_<j>/params.in` plus `proposal.env`, which the next
    step publishes as outputs.
-2. `workers` is a matrix of `batch_size` slots (a literal list of 8 sliced at
+2. `workers` is a matrix of `batch_size` slots (the form input, expanded at
    submission); slot *j* runs when `j <= N_CASES` and calls the OpenFOAM workflow
    with `case.params_file = ITER_DIR/case_j/params.in` and
    `case.case_dir = ITER_DIR/case_j`; the cluster, mesh, angle and environment

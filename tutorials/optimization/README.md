@@ -119,12 +119,15 @@ for how that ends).
 ### The `workers` job — a matrix sized at submission, with a guard
 
 A matrix cannot expand over runtime values — submission itself fails with
-`Could not expand matrix jobs` if the list comes from another job's output. Matrix
-lists must be concrete when the run is submitted. A form input *is* concrete
-then, so the matrix can be sized by one: a **literal list of the maximum batch
-width, sliced to `batch_size`** with the expression language's `get` operator.
-The number of cases the optimizer actually proposes is a runtime output, which
-no matrix can take, so a job-level `if:` compares each slot against it:
+`Could not expand matrix jobs` if the list comes from another job's output, even
+when that output reaches the matrix as a subworkflow input (the subworkflow's
+matrix is expanded when the parent is submitted, before any step has run).
+Matrix lists must be concrete when the run is submitted. A form input *is*
+concrete then, so the matrix can be sized by one: the expression language's
+`range` operator turns `batch_size` into the list `1..batch_size` (`1 range n + 1`
+is `[1, ..., n]`; `range n` alone would be `[0, ..., n-1]`). The number of cases
+the optimizer actually proposes is a runtime output, which no matrix can take,
+so a job-level `if:` compares each slot against it:
 
 ```yaml
 workers:
@@ -132,7 +135,7 @@ workers:
   strategy:
     fail-fast: false
     matrix:
-      job_id: ${{ [1, 2, 3, 4, 5, 6, 7, 8] get 0:(inputs.batch_size) }}
+      job_id: ${{ 1 range inputs.batch_size + 1 }}
   if: ${{ matrix.job_id <= needs.optimize.outputs.N_CASES }}
 ```
 
@@ -148,8 +151,9 @@ rundir: ${{ needs.optimize.outputs.ITER_DIR }}/case_${{ matrix.job_id }}
 so the case directory becomes the working directory, `./run.sh` runs there, and
 the form's scheduler settings (run on the login node, or one SLURM/PBS job per
 case) pass straight through. `fail-fast: false` lets the other cases finish when
-one fails. To allow bigger batches, extend the literal list and the `batch_size`
-caps — the literal is a deliberate, validated ceiling, not a magic number.
+one fails. There is no ceiling to extend: a wider batch is a bigger `batch_size`
+in the form, and the optimizer itself cannot widen it (its proposal is a runtime
+value), which is why the guard step above fails loudly instead.
 
 ### The `decide` job — an exit code as the loop signal
 
@@ -189,8 +193,8 @@ optimization_loop
 (B = `batch_size`. The run page numbers the matrix workers from 0, so `job_id: 1`
 shows up as `workers-0`.)
 
-The `preprocessing` job checks out `app/` from this repo, validates `batch_size`
-against the matrix ceiling, creates `state/` in its own job directory and publishes
+The `preprocessing` job checks out `app/` from this repo, checks that `batch_size`
+is a positive integer, creates `state/` in its own job directory and publishes
 the two absolute paths:
 
 ```yaml
@@ -283,7 +287,7 @@ systematic breakage would only burn budget) and `Report` turns it into a run
 Open **Workflows** in the ACTIVATE UI, select this workflow, and fill the two form
 groups: pick the compute resource, and set the optimizer knobs — `max_iterations`
 (the generation *and* loop budget), `batch_size` (parallel cases per iteration,
-capped by the matrix width), and `stall_generations` (declare convergence when the
+the width of the workers matrix), and `stall_generations` (declare convergence when the
 front's hypervolume improves by less than 0.001 over that many consecutive
 generations). Leave **Schedule Cases?** off to run every case on the login node,
 or turn it on to give each case its own SLURM/PBS job with the walltime and
@@ -297,10 +301,9 @@ job or process tree), skipped workers never start, and the loop keeps no daemons
 
 ### Scaling and tuning
 
-- **Wider batches** — extend the literal `job_id` list in `iteration.yaml` and
-  the `batch_size` caps in both forms; the matrix itself follows `batch_size`.
-  To limit how many cases run at the same time, add `max-parallel: <n>` under
-  `strategy`.
+- **Wider batches** — raise `batch_size`: the matrix ranges over it, so the
+  YAMLs hold no ceiling. To limit how many cases run at the same time, add
+  `max-parallel: <n>` under `strategy`.
 - **More iterations** — every platform iteration adds scheduling overhead (roughly
   a minute at small scale), so budget accordingly; the loop is restartable state,
   so a deeper search is just a bigger `max_iterations`.

@@ -67,17 +67,20 @@
   `pw endpoints run`, the liveness check and the `wait_for_endpoint` call) when the form said
   `false`, and the steps after them ran. That is how a `uses:` step is made optional: a bash
   guard cannot skip a subworkflow call.
-- **`range` and `fromJSON` are not on activate.parallel.works yet** (checked 2026-10-08, CLI
-  v7.105.0): core PR #20674, merged into core's canary, adds `range` (`${{ 1 range inputs.n + 1 }}`
-  gives 1..n) and `fromJSON`, which would size a matrix straight from a form input. On
-  activate.parallel.works a dry-run of `range inputs.count` fails with `Expression Parser Error:
-  max recursion exceeded`; a run renders `${{ range(inputs.count) }}` as the text `range3` and
-  `${{ fromJSON(inputs.json) }}` as ``fromJSON`[1, 2, 4]` `` (the keyword glued to its argument,
-  the old parser), and a matrix over `fromJSON` fails with `Could not expand matrix jobs`. Keep
-  the sliced literal list (`[1, ..., N] get 0:(inputs.n)`) until a run renders
-  `${{ range(3) }}` as `[0,1,2]`; then `job_id: ${{ 1 range inputs.n + 1 }}` replaces it in
-  `workflows/doe-openfoam` and `workflows/dakota-openfoam/yamls/iteration-naca*.yaml`, and
-  the n_cases and batch_size caps can go.
+- **`range` sizes a matrix straight from a form input** (verified 2026-10-13, runs on
+  activate.parallel.works): `job_id: ${{ 1 range inputs.n + 1 }}` expands to `[1, ..., n]`
+  and `${{ range inputs.n }}` to `[0, ..., n-1]` (the `+ 1` binds to the end operand;
+  `1 range (inputs.n + 1)` is the same list), in a top-level workflow and in a subworkflow
+  whose `n` arrives through `with:` from the parent's form. It replaced the sliced literal
+  list (`[1, ..., N] get 0:(inputs.n)`) in `tutorials/optimization`, `workflows/doe-openfoam`
+  and `workflows/dakota-openfoam`, and the `n_cases`/`batch_size` caps went with it. What a
+  matrix still cannot take is a runtime value, however it travels: a parent that passes
+  `workers: ${{ needs.main.steps.pick.outputs.workers }}` to a subworkflow whose matrix
+  ranges over `workers` fails at submission with `Could not expand matrix jobs`, because
+  the subworkflow's matrix is expanded when the parent is submitted, before any step has
+  run. Until 2026-10-08 (CLI v7.105.0) a dry-run of `range inputs.count` failed with
+  `Expression Parser Error: max recursion exceeded` (core PR #20674 brought `range` and
+  `fromJSON`; `fromJSON` not re-checked since).
 - **List-template `default:`s do not fill explicit empty strings (probable platform
   bug — verified July 2026).** Three paths behave differently for a field passed as
   `""`: a **top-level input** is default-filled; a value passed **directly to a
@@ -96,21 +99,22 @@
 - **A matrix over a computed list fails at submission** (`Could not expand matrix
   jobs`, dry-run and real run alike): matrix expansion is static — form inputs and
   literals only. Fan out over a runtime-computed set with a **guarded static
-  matrix**: a literal list of max width + `if: ${{ matrix.job_id <=
-  needs.<job>.outputs.N }}` on the matrix job (the dcs-workflow honda-japan pattern;
-  guard-vs-output verified). Fallback: submit the matrix workflow as a fresh run
-  from a step (`pw workflows run <abs yaml> -i '<json>'`, then poll the slug) —
-  reference §3.
-- **A matrix can follow a form input** (verified 2026-10-01): `matrix: { job_id: ${{ [1,
-  2, 3, 4, 5, 6, 7, 8] get 0:(inputs.batch_size) }} }` slices a literal list at submission,
-  in a top-level workflow and in a subworkflow whose `batch_size` arrives through `with:`
-  from the parent's form. What a matrix still cannot take is a runtime value
-  (`needs.*.outputs`), so the per-slot `if: ${{ matrix.job_id <= needs.<job>.outputs.N }}`
-  guard stays for the count the run actually produces. Extend the literal to raise the
-  ceiling; the guard step that compares N against it should compare against the input,
-  not the literal (`tutorials/optimization/iteration.yaml`).
+  matrix**: a matrix over the form's width (`job_id: ${{ 1 range inputs.n + 1 }}`, or a
+  literal list) + `if: ${{ matrix.job_id <= needs.<job>.outputs.N }}` on the matrix job
+  (the dcs-workflow honda-japan pattern; guard-vs-output verified). Fallback: submit the
+  matrix workflow as a fresh run from a step (`pw workflows run <abs yaml> -i '<json>'`,
+  then poll the slug) — reference §3.
+- **A matrix can follow a form input** (verified 2026-10-01 with the sliced literal list
+  `${{ [1, 2, 3, 4, 5, 6, 7, 8] get 0:(inputs.batch_size) }}`, 2026-10-13 with
+  `${{ 1 range inputs.batch_size + 1 }}`), in a top-level workflow and in a subworkflow
+  whose `batch_size` arrives through `with:` from the parent's form. What a matrix still
+  cannot take is a runtime value (`needs.*.outputs`), so the per-slot
+  `if: ${{ matrix.job_id <= needs.<job>.outputs.N }}` guard stays for the count the run
+  actually produces, and the guard step that compares N against the width compares it
+  against the input (`tutorials/optimization/iteration.yaml`).
 - **A matrix can be sized by a ternary over form inputs, but quote the whole value**
-  (verified 2026-10-08, `workflows/doe-openfoam`, run holy-worm): `job_id: "${{ [1, ..., 32]
+  (verified 2026-10-08, run holy-worm, when `workflows/doe-openfoam` still sliced a literal
+  list): `job_id: "${{ [1, ..., 32]
   get 0:(inputs.doe.method == 'csv' ? 32 : inputs.doe.n_cases) }}"` expanded to 32 slots
   when the form said `csv` (5 ran, the rest skipped by the runtime guard). Unquoted, the
   ternary's `: ` makes the line invalid YAML and the platform answers only `Invalid YAML`.

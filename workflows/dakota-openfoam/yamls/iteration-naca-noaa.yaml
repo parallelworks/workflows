@@ -60,19 +60,19 @@ jobs:
           fi
 
   # The guarded matrix: a matrix can only expand over values that are concrete
-  # at submission, so the list below is a literal of the maximum batch width
-  # sliced to batch_size (a form input), and the job-level if: compares each
-  # slot against the runtime output N_CASES — surplus workers are skipped (Dakota
-  # often proposes fewer than batch_size new points per generation), and when
-  # the optimizer stops (N_CASES=0) every worker is skipped, so convergence costs
-  # nothing. Each live slot is one call of the standalone OpenFOAM workflow,
-  # exactly as it runs from the platform by itself.
+  # at submission, so it ranges over batch_size (a form input): slots
+  # 1..batch_size, and the job-level if: compares each slot against the runtime
+  # output N_CASES — surplus workers are skipped (Dakota often proposes fewer
+  # than batch_size new points per generation), and when the optimizer stops
+  # (N_CASES=0) every worker is skipped, so convergence costs nothing. Each live
+  # slot is one call of the standalone OpenFOAM workflow, exactly as it runs
+  # from the platform by itself.
   workers:
     needs: [optimize]
     strategy:
       fail-fast: false
       matrix:
-        job_id: ${{ [1, 2, 3, 4, 5, 6, 7, 8] get 0:(inputs.batch_size) }}
+        job_id: ${{ 1 range inputs.batch_size + 1 }}
     if: ${{ matrix.job_id <= needs.optimize.outputs.N_CASES }}
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
@@ -197,7 +197,6 @@ jobs:
         label: Cases per iteration
         default: 4
         min: 1
-        max: 8
       max_iterations:
         type: number
         label: Generation budget

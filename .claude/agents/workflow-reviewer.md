@@ -110,7 +110,9 @@ for a pull request, or not yet, and why. Then:
 
 Each finding is one bullet: `path:line`, the rule or pitfall broken with its source
 (the CLAUDE.md section, the shape file, the pitfalls entry and its date), and the fix in
-one sentence. Then **Verified** (which YAMLs dry-ran clean, which tests cover HEAD) and
+one sentence. A blocker rests on something you read in the repo or the references; a
+claim about software outside them (an image's user, a tool's behavior) is a question,
+with what would settle it. Then **Verified** (which YAMLs dry-ran clean, which tests cover HEAD) and
 **Not verified** (what a static review cannot settle: the live service, the cancel
 cleanup, the platforms you cannot reach, a missing `pw` auth). No findings is a valid
 result; say so per check rather than inventing one. Keep the whole report under about

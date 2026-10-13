@@ -65,21 +65,27 @@ conclusions.
    evidence, fails loud without it, whatever outlives it has a teardown, and a cancel
    leaves nothing behind.
 2. **CLAUDE.md rules.** Apply every bullet under "Critical rules and conventions"
-   (scripts, workflow YAMLs, comments) and "Versioning" to the changed files. Read the
-   scripts the way the run assembles them: `inputs.sh` first, then `controller.sh`,
-   then the cleanup trap and `start-template.sh`; follow every path a YAML or a script
-   composes to reach repo files.
+   (scripts, workflow YAMLs, comments), "Versioning" and the shape's own subsection of
+   "Workflow shapes" to the changed files. Read the scripts the way the run assembles
+   them: `inputs.sh` first, then `controller.sh`, then whatever preprocessing appends
+   for the submitter (the cleanup trap and `start-template.sh` of a service, the
+   exit-recording wrapper and the run template of a batch job); follow every path a
+   YAML or a script composes to reach repo files.
 3. **Pitfalls.** List the constructs the change uses (`retry`, `matrix`,
    `needs.*.outputs`, `if:` keywords, `pw endpoints run` flags, `--no-subdomain`,
    heredocs, traps, `set -e`, `python -c`, docker, singularity, conda, oras, module
    loads, ...) and grep `references/pitfalls.md` and `references/software/` for each.
    Compare the code with every entry that matches, and cite the entry.
 4. **Variants.** For each `yamls/<variant>.yaml`, compare the `cluster` form group and
-   the `script_submitter` `with:` block with the same variant of a sibling workflow
-   (`workflows/webshell` for `general` and `noaa`, `workflows/jupyterlab` for `emed`
-   and `hsp`, `workflows/mlflow/yamls/k8s.yaml` and
-   `workflows/openvscode/yamls/general_k8s.yaml` for Kubernetes). `emed`, `hsp` and
-   `noaa` can only be checked this way from here; say so.
+   the `script_submitter` `with:` block with the same variant of a sibling of the same
+   shape: an endpoint service against `workflows/webshell` (`general`, `noaa`) and
+   `workflows/jupyterlab` (`emed`, `hsp`); a batch job against
+   `workflows/activate-batch` (`general`, `hsp`) and `workflows/benchmarks` (`noaa`),
+   whose block has no `skip_cleanups_file`; Kubernetes against
+   `workflows/mlflow/yamls/k8s.yaml` and `workflows/openvscode/yamls/general_k8s.yaml`.
+   A callable step keeps one `general.yaml` with no `cluster` group: a second variant
+   or scheduler fields there are a finding. `emed`, `hsp` and `noaa` can only be
+   checked this way from here; say so.
 5. **Dry-run.** For each `tests/<variant>/<test>.json`, emit its inputs and dry-run the
    variant YAML with them:
 
@@ -96,8 +102,13 @@ conclusions.
    context is not the variant's platform, report the dry-run as not verified rather
    than skipping it silently.
 6. **Test evidence.** Every variant YAML has at least one test under
-   `tests/<variant>/`; a batch workflow's test sets `_test.endpoint: false`; a fixed
-   endpoint name is in `_test.endpoint_name`. In the latest row of each CSV, `result`
+   `tests/<variant>/` (the variant is the YAML's basename), with `_test` keys that
+   match the shape: `_test.endpoint: false` when the run registers no endpoint (a
+   batch job, a sampler, an add-worker variant), `_test.endpoint_name` for a fixed
+   endpoint name, `_test.expect: error` for a failure-path test (a workflow with a
+   failure path should record one), a Kubernetes test under `tests/k8s/` or
+   `tests/general_k8s/`. An `emed`-only variant cannot be tested from here: say so
+   rather than asking for a test. In the latest row of each CSV, `result`
    is `pass` and `cleanup` is `ok`. Then ask whether that row still covers the current
    runtime content: when its `fetched` commit exists locally
    (`git cat-file -e <fetched>^{commit}`), the trees of `app/` (or the implementation

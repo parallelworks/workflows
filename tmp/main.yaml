@@ -1,16 +1,30 @@
+permissions:
+  - '*'
+
 jobs:
-  pick:
-    steps:
-      - run: echo "workers=$(( RANDOM % 9 + 2 ))" | tee -a $OUTPUTS
   subworkflow:
-    needs:
-      - pick
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
-      - uses: github/parallelworks/workflows@tmp
-        with:
-          $yaml: tmp/subworkflow.yaml
-          resource: ${{ inputs.resource }}
-          workers: ${{ needs.pick.outputs.workers }}
+      # A uses: call cannot hand a runtime value to the subworkflow's matrix: it expands
+      # when this workflow is submitted. So the subworkflow is launched as its own run.
+      - name: Run the subworkflow with a random number of workers
+        run: |
+          set -eo pipefail
+          workers=$(( RANDOM % 9 + 2 ))
+          echo "workers=${workers}"
+          slug=$(pw workflows run github.com/parallelworks/workflows/tmp/subworkflow.yaml@tmp -o json \
+            -i "{\"resource\": \"${{ inputs.resource.uri }}\", \"workers\": ${workers}}" \
+            | python3 -c "import json, sys; print(json.load(sys.stdin)['run']['slug'])")
+          echo "subworkflow run: ${slug}"
+          while true; do
+            status=$(pw workflows runs view "${slug}" -o json | python3 -c "import json, sys; print(json.load(sys.stdin)['status'])")
+            case "${status}" in
+              completed) break ;;
+              error|canceled) echo "::error::subworkflow run ${slug} ended ${status}"; exit 1 ;;
+            esac
+            sleep 5
+          done
 'on':
   execute:
     inputs:

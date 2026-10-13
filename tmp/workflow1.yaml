@@ -1,0 +1,21 @@
+jobs:
+  worker:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    strategy:
+      matrix:
+        worker_id: ${{ range inputs.workers }}
+    steps:
+      - run: echo ${{ matrix.worker_id }}
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Resource
+        optional: false
+      workers:
+        type: number
+        label: Number of workers
+        default: 3
+        min: 1

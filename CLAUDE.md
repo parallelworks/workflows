@@ -72,8 +72,10 @@ docs/                        # developer + AI docs
 - **One version only — the latest.** No version suffixes in filenames or references:
   `general.yaml`, `controller.sh`, `start-template.sh`. Git tags version the repo.
   (Where older versions live: MIGRATION.md.)
-- `script_submitter` keeps its explicit version directory (`v3.6`) because platform
-  marketplace registrations reference that path.
+- `script_submitter` keeps an explicit version directory (`v3.6`) because almost every
+  workflow calls it: a change that is not backward compatible ships as a new directory
+  (`v3.7`, `v4.0`) beside it, the callers move over one by one, and the old directory
+  is removed once none is left on it. Marketplace registrations reference the path too.
 
 ## Workflow shapes
 
@@ -87,6 +89,15 @@ through `$OUTPUTS`. What follows is the shape. Each shape's jobs, what "done" an
 "clean" mean for it, and what its test checks are in one file under
 `.claude/skills/activate-workflows/references/shapes/`; read it before building or
 reviewing one.
+
+Apart from Kubernetes, the mechanics are the same for every shape: the controller
+installs into a shared directory on the login node (`service_parent_install_dir`,
+visible from the compute nodes), and the script that does the work is handed to the
+`script_submitter` subworkflow, which runs it on the login node (`scheduler: false`) or
+submits it to SLURM/PBS (`scheduler: true`). **Call subworkflows; compose, never
+copy.** `script_submitter`, `wait_for_endpoint`, `doe`, `dakota`, `openfoam-naca` and
+`design-explorer` exist to be called; never hand-write job submission, port allocation
+or tunnel logic; write a new workflow so it can be called in turn.
 
 | Shape | The run ends when | After preprocessing | Examples | Read |
 |---|---|---|---|---|
@@ -252,8 +263,11 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
 ## No build system
 
 No build system or linter. Deployment happens by the ACTIVATE platform cloning this
-repo and executing scripts directly. `emed`/`hsp`/`noaa` variants can only run from
-those platforms — validate them statically.
+repo and executing scripts directly. `emed`/`hsp`/`noaa` variants are meant for
+`cluster.einsteinmed.edu`, `activate.hpc.mil` and `noaa.parallel.works`; they also run
+on the cloud clusters of `activate.parallel.works`, which is how they are tested. What
+a test from here cannot check is the target platform itself (its modules, partitions,
+paths): validate that statically.
 
 ## Testing and debugging
 
@@ -312,8 +326,8 @@ those platforms — validate them statically.
 - Primary branch: **canary** (`git@github.com:parallelworks/workflows.git`) — the
   branch the YAMLs reference at runtime. Branch rules require changes to land **via
   pull request**; work on a side branch and merge (squash) into canary.
-- Large binaries stay out of this repo. A few controllers fetch prebuilt binaries
-  from an external `legacy` git tag at run time — leave those clone blocks alone
-  (background: MIGRATION.md).
+- Large binaries stay out of this repo. `webshell`'s controller fetches its ttyd/noVNC
+  tarball from the old `interactive_session` repo's `legacy` tag at run time — leave
+  that clone block alone (background: MIGRATION.md).
 - Marketplace registrations pin repo paths; renaming a path here without re-pointing
   the registration breaks the entry (registration notes: MIGRATION.md).

@@ -3,22 +3,38 @@
 The home of the Parallel Works / ACTIVATE platform workflows.
 
 **One workflow = one directory** under [`workflows/`](workflows/): the variant YAMLs
-(in `yamls/`), the runtime files (`controller.sh`/`start-template.sh` + support files,
-in `app/` or an implementation subdir — the only subtree checked out at run time),
-README, build tooling, and marketplace thumbnails (in `thumbnails/`) all live together. There are **no
-version suffixes** — every file is the latest version; git tags version the repo.
-Every workflow but [activate-batch](workflows/activate-batch/), [3dcs](workflows/3dcs/)
-and [benchmarks](workflows/benchmarks/) serves through the **`pw` endpoint pattern**;
-those three run batch jobs to completion, as does [probe](workflows/probe/)'s
-`general_run_tests.yaml`; [physicsnemo](workflows/physicsnemo/) runs its training to
-completion and serves TensorBoard beside it.
+(in `yamls/`), the runtime files (scripts + support files, in `app/` or an
+implementation subdir — the only subtree checked out at run time), README, build
+tooling, marketplace thumbnails (in `thumbnails/`) and the recorded tests (in `tests/`)
+all live together. There are **no version suffixes** — every file is the latest
+version; git tags version the repo.
+
+A workflow runs code on a resource and leaves something behind, and that is its
+**shape**: most serve a web app through a **`pw` endpoint** that outlives the run
+([webshell](workflows/webshell/) is the smallest); a **batch job** runs to completion
+and fails when it fails ([activate-batch](workflows/activate-batch/),
+[benchmarks](workflows/benchmarks/), [openfoam-naca](workflows/openfoam-naca/)); a
+**callable step** runs on the login node for other workflows to call
+([doe](workflows/doe/), [dakota](workflows/dakota/),
+[design-explorer](workflows/design-explorer/)); a **composed** workflow is a YAML with
+no code of its own that calls them ([doe-openfoam](workflows/doe-openfoam/),
+[dakota-openfoam](workflows/dakota-openfoam/)); `*k8s*` variants serve the same endpoint
+from a pod. The shapes, their rules and their combinations: [CLAUDE.md](CLAUDE.md)
+("Workflow shapes").
+
+Apart from Kubernetes, they all work the same way: a controller script installs the
+software into a shared directory on the login node, and the script that does the work
+(a service, a batch job) is handed to the
+[`script_submitter`](workflows/script_submitter/) subworkflow, which runs it on the
+login node or submits it to the SLURM/PBS scheduler. Workflows call each other as
+subworkflows rather than copying code.
 
 How this repo was assembled, and where anything older lives, is recorded in
 [MIGRATION.md](MIGRATION.md).
 
 ## Workflow index
 
-| Workflow | What it serves | Variants |
+| Workflow | What it does | Variants |
 |---|---|---|
 | [3dcs](workflows/3dcs/) | 3DCS Monte Carlo / contributor analysis split over N SLURM workers, merged and uploaded to a bucket, with node-hour metering (no endpoint) | general |
 | [activate-batch](workflows/activate-batch/) | Batch job: a list of commands run on the login node or via SLURM/PBS (no endpoint) | general, hsp |
@@ -26,6 +42,9 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [app-testbed](workflows/app-testbed/) | Multi-site client-server pattern: a placeholder server behind a fixed endpoint, workers on other sites through SSH tunnels (login node or SLURM/PBS job) | general |
 | [benchmarks](workflows/benchmarks/) | MPI and file system benchmarks: IMB-MPI1 PingPong and Alltoall, IOR, mdtest, one per run as a SLURM/PBS job, with the figures as outputs | general, hsp, noaa |
 | [burst-render-demo](workflows/burst-render-demo/) | Multi-site burst demo: Mandelbrot tiles rendered on N sites in parallel, assembled live in a dashboard | general, hsp, noaa |
+| [cwl-mpi-hello-world](workflows/cwl-mpi-hello-world/) | CWL demo: an MPI Hello World compiled and run as a SLURM job, submitted and monitored by cwltool on the login node (no endpoint) | general |
+| [dakota](workflows/dakota/) | One Dakota optimizer step: reads the last generation's results and proposes the next batch of designs or ends the study, for any evaluator (no endpoint) | general |
+| [dakota-openfoam](workflows/dakota-openfoam/) | NACA airfoil shape optimization as a loop of `dakota` and `openfoam-naca` calls, with Design Explorer over the study as an endpoint | general-naca, hsp-naca, noaa-naca (+ the `iteration-naca*` YAMLs the loop calls) |
 | [dask-slurm](workflows/dask-slurm/) | Dask cluster on SLURM: adaptive dask-jobqueue workers, the Dask dashboard as endpoint, demo workloads | general, hsp, noaa |
 | [design-explorer](workflows/design-explorer/) | Design Explorer's parallel coordinates over a design study, any directory of evaluated cases (`params.in`, `results.out`, images), such as a doe-openfoam or dakota-openfoam run: inputs and outputs as brushable axes, each design's images as thumbnails | general |
 | [doe](workflows/doe/) | Design of experiments sampler (Latin hypercube, Sobol, random, full factorial, one at a time, or your own cases as CSV): one `params.in` case directory per design, for any evaluator (no endpoint) | general |
@@ -49,6 +68,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [ollama](workflows/ollama/) | Ollama GGUF model server (native/container) | general, hsp, noaa |
 | [ollama-openwebui](workflows/ollama-openwebui/) | Ollama + OpenWebUI on Kubernetes | k8s |
 | [open-notebook](workflows/open-notebook/) | Open Notebook (Docker) | general |
+| [openfoam-naca](workflows/openfoam-naca/) | One OpenFOAM case of a NACA 4-digit airfoil: C-grid mesh, `simpleFoam`, lift and drag coefficients, optional ParaView images; the evaluator of doe-openfoam and dakota-openfoam (no endpoint) | general, hsp, noaa |
 | [openvscode](workflows/openvscode/) | OpenVSCode Server | general, emed, hsp, noaa, general_k8s, k8s |
 | [pgadmin4](workflows/pgadmin4/) | pgAdmin 4 web client for PostgreSQL (Docker) on a compute cluster or Kubernetes, with a server registered from the form | general, general_k8s |
 | [physicsnemo](workflows/physicsnemo/) | NVIDIA PhysicsNeMo training in the NGC container (Docker or Singularity, GPU or CPU) on the login node or as a SLURM/PBS job: Darcy FNO, Darcy Transolver, LDC PINN or your own script, with TensorBoard live as an endpoint | general |
@@ -65,11 +85,19 @@ How this repo was assembled, and where anything older lives, is recorded in
 `librechat-singularity-manager` is a component of the librechat `-all` workflows
 ([workflows/librechat/librechat-singularity-manager/](workflows/librechat/librechat-singularity-manager/)).
 
-**Shared subworkflow** (referenced by the workflow YAMLs via
+**Shared subworkflows** (referenced by the workflow YAMLs via
 `uses: github/parallelworks/workflows@canary` + `$yaml:`):
 
 - [workflows/script_submitter/v3.6/](workflows/script_submitter/) — SLURM/PBS/SSH
-  script submission used by every workflow
+  script submission, used by every workflow that runs a script on a cluster
+- [workflows/wait_for_endpoint/](workflows/wait_for_endpoint/) — waits until an
+  endpoint is listed and its URL answers, then releases the submitter; the health
+  check every endpoint workflow owns
+
+The sampler, the optimizer step, the case runner and the study page
+([doe](workflows/doe/), [dakota](workflows/dakota/),
+[openfoam-naca](workflows/openfoam-naca/), [design-explorer](workflows/design-explorer/))
+are called the same way by the composed workflows.
 
 **Shared tools** — [`tools/`](tools/) (`tools/oras`, `tools/utils`) are sparse-checked-out
 next to `workflows/<name>` at runtime; scripts reference them as `tools/...` relative
@@ -83,15 +111,20 @@ small demo app ([`demo-app/`](tutorials/demo-app/)) into a full workflow:
 [`endpoint-workflows/`](tutorials/endpoint-workflows/) (the current `pw endpoints`
 pattern, stages 1–7 incl. matrix fan-out, first-start-wins, and failover) and
 [`session-workflows-hsp/`](tutorials/session-workflows-hsp/) (the same journey, HSP-flavored,
-in the older form the upgrade playbook converts). [`if-conditions/`](tutorials/if-conditions/)
+in the older form the upgrade playbook converts). [`optimization/`](tutorials/optimization/)
+builds an iterative loop — propose designs, evaluate them in parallel, decide, repeat
+until convergence — behind a file contract that `dakota-openfoam` fills with real tools.
+[`if-conditions/`](tutorials/if-conditions/)
 is a short standalone lesson on the `if:` status keywords (`always`, `never`, `completed`,
 `error`, `canceled` and their negations) on steps and on jobs.
 
 ## Variants
 
 `general` targets standard cloud/on-prem SLURM & PBS clusters. `emed`, `hsp`, and
-`noaa` are platform-deployment variants with their own schedulers, defaults, and
-network constraints — they can only be run from those platforms. `*k8s*` variants
+`noaa` are the variants for the `cluster.einsteinmed.edu`, `activate.hpc.mil` and
+`noaa.parallel.works` platforms, with their schedulers, defaults, and network
+constraints; they also run on the cloud clusters of `activate.parallel.works`, which is
+how they are tested (`tests/hsp/`, `tests/noaa/`). `*k8s*` variants
 target Kubernetes clusters ([.claude/skills/activate-workflows/references/k8s-workflows.md](.claude/skills/activate-workflows/references/k8s-workflows.md)).
 
 ## Running a workflow
@@ -99,7 +132,7 @@ target Kubernetes clusters ([.claude/skills/activate-workflows/references/k8s-wo
 From a machine with the [`pw` CLI](https://parallelworks.com/docs/cli) authenticated:
 
 ```bash
-pw workflows run "$PWD/workflows/webshell/yamls/general.yaml" -i '{"cluster":{"resource":"<cluster-name>","scheduler":false}}'
+pw workflows run "$PWD/workflows/webshell/yamls/general.yaml" -i '{"resource":"<cluster-name>","cluster":{"scheduler":false}}'
 ```
 
 (Pass the YAML as an **absolute path** — the CLI parses relative paths as git hosts.)
@@ -108,8 +141,10 @@ When testing a workflow, also verify cleanup: cancel a run mid-flight and confir
 nothing is left behind (processes, scheduler jobs, containers), and delete test
 endpoints when done — see [DeveloperGuide.md](DeveloperGuide.md).
 
-Every endpoint workflow registers a **`pw` endpoint** (check `pw endpoints list`);
-`activate-batch`, `3dcs` and `benchmarks` run their batch jobs to completion instead.
+What the run leaves behind depends on the shape: an endpoint workflow registers a
+**`pw` endpoint** (`pw endpoints list`) that keeps serving after the run completes,
+until `pw endpoints delete <name>`; a batch workflow runs its job to completion and
+fails when it fails; a Kubernetes run stays alive and is torn down by cancelling it.
 Note that workflow YAMLs pull this repo from GitHub at runtime
 (`parallelworks/checkout` + subworkflow `uses:`), so local YAML edits only take full
 effect once pushed to the referenced branch (**canary**).
@@ -117,7 +152,7 @@ effect once pushed to the referenced branch (**canary**).
 ## Developing
 
 - [DeveloperGuide.md](DeveloperGuide.md) — how to add or change a workflow
-- [CLAUDE.md](CLAUDE.md) — repo conventions (also read by AI agents)
+- [CLAUDE.md](CLAUDE.md) — repo conventions and the workflow shapes (also read by AI agents)
 - [docs/ai-workflow-development/](docs/ai-workflow-development/) — building workflows
   with AI agents; the `activate-workflows` Claude Code skill lives at
   [.claude/skills/activate-workflows/](.claude/skills/activate-workflows/)

@@ -84,8 +84,10 @@ conclusions.
    whose block has no `skip_cleanups_file`; Kubernetes against
    `workflows/mlflow/yamls/k8s.yaml` and `workflows/openvscode/yamls/general_k8s.yaml`.
    A callable step keeps one `general.yaml` with no `cluster` group: a second variant
-   or scheduler fields there are a finding. `emed`, `hsp` and `noaa` can only be
-   checked this way from here; say so.
+   or scheduler fields there are a finding. An `emed`, `hsp` or `noaa` variant dry-runs
+   and tests on an `activate.parallel.works` cloud cluster like any other; what no
+   check from here settles is the target platform itself (its modules, partitions,
+   paths): say so.
 5. **Dry-run.** For each `tests/<variant>/<test>.json`, emit its inputs and dry-run the
    variant YAML with them:
 
@@ -98,17 +100,15 @@ conclusions.
    `with:` block: diff the block against the subworkflow's form and name the field.
    The dry-run resolves the resource, so it needs an active one: when the test's
    resource is not `active` in `pw cluster ls`, substitute an active cluster of the
-   same scheduler type and say which. When `pw` is not authenticated, or its current
-   context is not the variant's platform, report the dry-run as not verified rather
-   than skipping it silently.
+   same scheduler type and say which. When `pw` is not authenticated, report the
+   dry-run as not verified rather than skipping it silently.
 6. **Test evidence.** Every variant YAML has at least one test under
    `tests/<variant>/` (the variant is the YAML's basename), with `_test` keys that
    match the shape: `_test.endpoint: false` when the run registers no endpoint (a
    batch job, a sampler, an add-worker variant), `_test.endpoint_name` for a fixed
    endpoint name, `_test.expect: error` for a failure-path test (a workflow with a
    failure path should record one), a Kubernetes test under `tests/k8s/` or
-   `tests/general_k8s/`. An `emed`-only variant cannot be tested from here: say so
-   rather than asking for a test. In the latest row of each CSV, `result`
+   `tests/general_k8s/`. In the latest row of each CSV, `result`
    is `pass` and `cleanup` is `ok`. Then ask whether that row still covers the current
    runtime content: when its `fetched` commit exists locally
    (`git cat-file -e <fetched>^{commit}`), the trees of `app/` (or the implementation

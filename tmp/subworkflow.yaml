@@ -1,13 +1,10 @@
 jobs:
   worker:
-    # The matrix expands when the caller is submitted, before a runtime `workers` from the
-    # caller exists: a fixed 10 slots, the ones past `workers` skipped when they start.
-    if: ${{ matrix.worker_id < inputs.workers }}
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     strategy:
       matrix:
-        worker_id: ${{ range 10 }}
+        worker_id: ${{ range inputs.workers }}
     steps:
       - run: echo ${{ matrix.worker_id }}
 'on':
@@ -22,4 +19,3 @@ jobs:
         label: Number of workers
         default: 3
         min: 1
-        max: 10

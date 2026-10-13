@@ -52,7 +52,7 @@ workflows/wait_for_endpoint/      # shared subworkflow: wait for an endpoint, pr
 workflows/doe/, workflows/dakota/, workflows/openfoam-naca/, workflows/design-explorer/
                              # building blocks: a sampler, an optimizer step, a case runner, a study
                              # page; composed by doe-openfoam and dakota-openfoam, which have no code
-                             # of their own (dakota-openfoam's single-app original: backup-no-subworkflow/)
+                             # of their own
 workflows/probe/             # PROBE: runs a platform's workflow tests (definitions in a tests repository,
                              # parallelworks/probe-tests-activate-parallel-works for activate.parallel.works)
                              # and serves the results dashboards; app/ holds its Python code

@@ -65,8 +65,8 @@ listed, the runner's default lane.
   publish the counts the matrix guard reads.
 - **A matrix of evaluators**, one `openfoam-naca` call per design, needs a static size:
   a range over a form input (`job_id: ${{ 1 range inputs.doe.n_cases + 1 }}`, slots
-  `1..n_cases`; no ceiling in the YAML, the platform's 1000-reference budget per run
-  allows a few hundred cases: pitfalls), a job-level guard against
+  `1..n_cases`; the form's `max: 256` keeps it inside the platform's 1000-reference
+  budget per run: pitfalls), a job-level guard against
   the runtime count (`if: ${{ matrix.job_id <= needs.preprocessing.outputs.N_CASES }}`),
   `fail-fast: false` so one failed design does not cancel the others, `max-parallel`
   from the form. Per-slot data reaches the callee as paths built from `matrix.job_id`

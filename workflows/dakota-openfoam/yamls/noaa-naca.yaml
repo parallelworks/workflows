@@ -5,8 +5,7 @@
 # iteration of the loop below runs iteration-naca.yaml, which calls the first as
 # its `optimize` job and the second once per proposed design as its `workers`
 # matrix; the loop mechanics (retry-as-loop, guarded static matrix, state files,
-# failure semantics) come from tutorials/optimization and are unchanged from the
-# single-app version kept in backup-no-subworkflow/. Before the loop starts,
+# failure semantics) come from tutorials/optimization. Before the loop starts,
 # preprocessing calls workflows/design-explorer over the study directory, which
 # serves it as the pw endpoint design-explorer-<run slug> from the first
 # generation on: the objective space with the Pareto front as of any generation
@@ -354,6 +353,7 @@ jobs:
             label: Cases per iteration
             default: 4
             min: 1
+            max: 256
             tooltip: |
               OpenFOAM cases evaluated in parallel each iteration (Dakota MOGA's
               population size). Sizes the workers matrix of iteration-naca.yaml:

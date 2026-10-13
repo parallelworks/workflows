@@ -306,8 +306,8 @@ use. The job graph gives you sequencing, data flow, conditionals, and parallelis
   optimizer, all of the above in one place). **A form input is concrete at submission,
   so a matrix can be sized by one:** `job_id: ${{ 1 range inputs.batch_size + 1 }}`
   expands to `[1, ..., batch_size]` (`range inputs.n` alone is `[0, ..., n-1]`), so the
-  run shows exactly `batch_size` workers with no ceiling in the YAML (the platform's
-  1000-reference budget per run is the ceiling: pitfalls); it also works on a
+  run shows exactly `batch_size` workers, capped only by the form's `max:` (256 there,
+  inside the platform's 1000-reference budget per run: pitfalls); it also works on a
   subworkflow input fed from the parent's `with:` (verified 2026-10-13, that tutorial,
   `workflows/dakota-openfoam` and `workflows/doe-openfoam`; before `range` reached the
   platform the same was done by slicing a literal list, `[1, ..., 8] get

@@ -73,7 +73,7 @@
   `1 range (inputs.n + 1)` is the same list), in a top-level workflow and in a subworkflow
   whose `n` arrives through `with:` from the parent's form. It replaced the sliced literal
   list (`[1, ..., N] get 0:(inputs.n)`) in `tutorials/optimization`, `workflows/doe-openfoam`
-  and `workflows/dakota-openfoam`, and the `n_cases`/`batch_size` caps went with it. What a
+  and `workflows/dakota-openfoam`; `n_cases`/`batch_size` now cap at a form `max: 256`. What a
   matrix still cannot take is a runtime value, however it travels: a parent that passes
   `workers: ${{ needs.main.steps.pick.outputs.workers }}` to a subworkflow whose matrix
   ranges over `workers` fails at submission with `Could not expand matrix jobs`, because
@@ -88,7 +88,8 @@
   case is `openfoam-naca`, which calls `script_submitter`: two references per slot, plus
   the page's), all with `[ERROR] workflow run exceeds total YAML reference limit (1000)` at
   submission. Dry-run the widest form value a workflow is meant to take; a form `max:` is
-  the place to say what fits.
+  the place to say what fits (those three cap `batch_size`, `n_cases` and `max_parallel`
+  at 256).
 - **List-template `default:`s do not fill explicit empty strings (probable platform
   bug — verified July 2026).** Three paths behave differently for a field passed as
   `""`: a **top-level input** is default-filled; a value passed **directly to a

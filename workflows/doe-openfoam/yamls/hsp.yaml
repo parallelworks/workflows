@@ -483,6 +483,7 @@ jobs:
             label: Number of cases
             default: 8
             min: 1
+            max: 256
             tooltip: |
               Designs to sample and solve: the width of the workers matrix, one
               slot per case, expanded at submission. A full factorial or
@@ -495,6 +496,7 @@ jobs:
             label: Cases at a time
             default: 8
             min: 1
+            max: 256
             tooltip: |
               How many cases run at once. On the login node, each case takes
               Cores per case cores, so keep max_parallel x cores within the node;

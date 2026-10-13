@@ -277,6 +277,7 @@ jobs:
             label: Cases per iteration
             default: 8
             min: 1
+            max: 256
             tooltip: |
               Simulations submitted in parallel each iteration (the EA population).
               Sizes the workers matrix of iteration-hsp.yaml: one worker slot

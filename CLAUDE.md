@@ -56,6 +56,7 @@ tools/tests/                 # the test runner (run-workflow-test.py) and its RE
 tutorials/                   # staged, runnable lessons on the workflow system
 docs/                        # developer + AI docs
 .claude/skills/activate-workflows/  # Claude Code skill for building workflows here
+.claude/agents/              # Claude Code subagents: workflow-reviewer (read-only review of a workflow directory)
 ```
 
 ## Versioning
@@ -189,6 +190,12 @@ those platforms — validate them statically.
   `python3 tools/tests/run-workflow-test.py <test.json>`. The layout, keys, pass
   criteria and result columns are documented once, in `tools/tests/README.md`. Commit
   the test and the rows the runner appends with the change; never edit a CSV by hand.
+- **Review before the first test run and before the PR** with the `workflow-reviewer`
+  subagent (`.claude/agents/workflow-reviewer.md`): a read-only pass over a workflow
+  directory against these rules, the skill's shape files and pitfalls, the recorded
+  tests, and a `--dry-run` of each variant with its test inputs. Hand it the
+  directories and the base ref, not your conclusions. It is optional, and it never
+  edits or runs anything.
 - **Push before testing** anything the run fetches (`app/` scripts, subworkflows):
   checkout and `uses:` steps pull this repo from GitHub at run time. The YAML itself
   is read from the absolute path you pass, so a YAML-only edit tests without a push.

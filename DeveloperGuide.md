@@ -27,7 +27,9 @@ unclear or behaves differently:
 Working with an AI assistant? The repo ships a Claude Code skill —
 `.claude/skills/activate-workflows/` — that encodes this process plus the platform
 reference. In Claude Code: *"Using the activate-workflows skill, create a new
-interactive session workflow for [deployment] that [does X]."*
+interactive session workflow for [deployment] that [does X]."* Before the first test
+run or the PR, *"Use the workflow-reviewer subagent on `workflows/<name>`"* gets a
+read-only review against this guide's rules (`.claude/agents/workflow-reviewer.md`).
 
 ## 1. The controller script
 

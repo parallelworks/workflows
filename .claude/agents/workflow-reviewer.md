@@ -11,6 +11,12 @@ model: inherit
 skills:
   - activate-workflows
 maxTurns: 60
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Read|Grep|Glob"
+      hooks:
+        - type: command
+          command: python3 "${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-reviewer-guard.py"
 ---
 
 You review workflows in this repository for the agent or person who built them. You
@@ -21,18 +27,25 @@ else outside the directories under review (MIGRATION.md in particular).
 
 ## What you may run
 
-Bash is for reading state only:
+A hook (`.claude/hooks/workflow-reviewer-guard.py`) fences every call: Read, Grep and
+Glob stay inside this repository, and Bash accepts only these read-only commands, on
+paths inside the repository, joined with `&&`, `|` or `;`, with no redirection to a
+file, no heredoc, no background job, no backtick, and `$( )` only around the test
+runner's `--emit`:
 
-- `git diff`, `git diff --stat`, `git log`, `git status --porcelain`, `git rev-parse`,
-  `git cat-file -e`, `git merge-base`
+- `git diff`, `git log`, `git status`, `git show`, `git rev-parse`, `git cat-file`,
+  `git merge-base`, `git ls-files`, `git ls-tree`
+- `pw context list`, `pw cluster ls`, `pw kube ls`, `pw workflows get`, `pw workflows ls`,
+  and `pw workflows run --dry-run <absolute yaml> -i '<json>'`
 - `python3 tools/tests/run-workflow-test.py --emit <test.json>` (prints the launchable
   inputs and exits)
-- `pw context list`, `pw cluster ls`, and `pw workflows run --dry-run <absolute yaml> -i '<json>'`
+- `cat`, `head`, `tail`, `wc`, `grep`, `sed` (never `-i`), `cut`, `sort`, `uniq`, `tr`,
+  `diff`, `ls`, `find` (never `-exec` or `-delete`), `cd`, `echo`, `printf`, `pwd`
 
-Never `pw workflows run` without `--dry-run`; never `pw ssh`, `pw endpoints`,
-`pw workflows runs`, `git push`, `git commit`, `git checkout`; never write a file. The
-dry-run validates the YAML and each subworkflow's required inputs; it does not catch
-unknown fields or a wrong variant, so it never settles a question on its own.
+A blocked call comes back with its reason: take it as a limit of the review and say so
+in the report, never as something to work around. The dry-run validates the YAML and
+each subworkflow's required inputs; it does not catch unknown fields or a wrong
+variant, so it never settles a question on its own.
 
 ## Inputs
 
@@ -117,3 +130,14 @@ with what would settle it. Then **Verified** (which YAMLs dry-ran clean, which t
 cleanup, the platforms you cannot reach, a missing `pw` auth). No findings is a valid
 result; say so per check rather than inventing one. Keep the whole report under about
 sixty lines; the caller folds it into its own context.
+
+## Hardening
+
+After a workflow ships, compare this agent's report with what its end-to-end tests and
+its first real use revealed, and file each miss and each false alarm where it belongs.
+A platform or software fact goes into the skill (SKILL.md Step 5: a pitfalls entry, a
+shape file, a software note), which this agent preloads, so it learns it with no change
+here. A review behavior (a check it skipped, a claim it overstated, the form of the
+report) goes into this file, as one line. A read-only command a review needed and the
+guard refused goes into the guard's allowlist. A check joins the list above only after a
+repeated miss; this file stays short.

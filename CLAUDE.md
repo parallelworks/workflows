@@ -57,6 +57,7 @@ tutorials/                   # staged, runnable lessons on the workflow system
 docs/                        # developer + AI docs
 .claude/skills/activate-workflows/  # Claude Code skill for building workflows here
 .claude/agents/              # Claude Code subagents: workflow-reviewer (read-only review of a workflow directory)
+.claude/hooks/               # the scripts those agents' frontmatter hooks run (workflow-reviewer-guard.py)
 ```
 
 ## Versioning

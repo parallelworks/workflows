@@ -1,0 +1,410 @@
+# One OpenFOAM case of the planar-expansion problem (studies/expansion): a
+# structured blockMesh is generated for the design typed in the form
+# (transition length, wall roundings) — or for the sharp backward-facing step
+# used as the baseline and the Gartling validation — the laminar flow at the
+# given Reynolds number is solved with simpleFoam, and the total-pressure loss
+# coefficient K between the two fixed loss planes comes back as the objective,
+# with the separation/reattachment diagnostics OpenFOAM's wall shear reports.
+# The solved case stays in the case directory with a case.foam file, so it
+# opens directly in ParaView. Preprocessing prepares one sourceable OpenFOAM
+# environment file: the load commands typed in the form (module load,
+# source .../bashrc) or, when none are given, the conda-forge install made by
+# the app's idempotent installer.
+#
+# The same YAML is the per-design evaluator of the expansion study: a driver
+# (doe-openfoam-expansion, dakota-openfoam-expansion) calls it once per design
+# with case.params_file pointing at the params file of the case (its values
+# override the form's) and case.case_dir at the case directory, so the results
+# land where the driver reads them. The design names it reads are published in
+# app/design-parameters.txt.
+#
+# With the Gartling placement (inlet_length 0, the inflow plane on the step
+# lip) there is no inlet loss plane, so the case reports the validation
+# diagnostics (reattachment, upper eddy, recirculation area) and no K.
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout OpenFOAM Expansion App
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          # dev branch until openfoam-expansion is merged, then canary
+          branch: expansion
+          sparse_checkout:
+            - workflows/openfoam-expansion/app
+            - tools/utils
+      # the environment is one file every later step and the case source; the
+      # heredoc carries the form's load commands verbatim (empty -> conda-forge
+      # install). The case is serial, so no mpirun/decomposePar is required.
+      - name: Prepare the OpenFOAM Environment
+        run: |
+          set -e
+          bash tools/utils/prepare-env.sh openfoam "${PWD}/openfoam-env.sh" \
+            workflows/openfoam-expansion/app/install-openfoam.sh blockMesh topoSet simpleFoam << 'PW_LOAD_EOF'
+          ${{ inputs.software.openfoam_load }}
+          PW_LOAD_EOF
+      # the case directory gets the design (params.in) and the script the
+      # submitter runs there; a stale verdict from an earlier run of the same
+      # directory is removed so a missing results.out always means this run's
+      # solver failed
+      - name: Create the Case
+        run: |
+          set -e
+          case_dir="${{ inputs.case.case_dir }}"
+          case "${case_dir}" in
+            ''|undefined) case_dir="${PWD}/case" ;;
+          esac
+          mkdir -p "${case_dir}"
+          params_file="${{ inputs.case.params_file }}"
+          case "${params_file}" in
+            ''|undefined) params_file="" ;;
+            *)
+              if [ ! -f "${params_file}" ]; then
+                echo "::error::params_file ${params_file} does not exist"
+                exit 1
+              fi
+              ;;
+          esac
+          # the file may only name this runner's design parameters, the ones
+          # app/design-parameters.txt publishes: a misspelled name would
+          # otherwise be dropped silently and the case solved with the form's value
+          if [ -n "${params_file}" ]; then
+            bash tools/utils/check-params.sh workflows/openfoam-expansion/app/design-parameters.txt "${params_file}"
+          fi
+          # the loss planes must sit inside the mesh: fail here, not in the job
+          il="${{ inputs.case.inlet_length }}"; ol="${{ inputs.case.outlet_length }}"
+          pin="${{ inputs.case.plane_in }}";  pout="${{ inputs.case.plane_out }}"
+          tl="${{ inputs.case.transition_length }}"
+          if [ "${{ inputs.case.sharp_step }}" != "true" ]; then
+            awk -v il="$il" -v pin="$pin" -v pout="$pout" -v ol="$ol" -v tl="$tl" 'BEGIN {
+              exit !(-il < pin && pin < 0 && 0 < pout && pout < ol && 0 < tl && tl < pout) }' \
+              || { echo "::error::need -inlet_length < plane_in < 0 and 0 < transition_length < plane_out < outlet_length (got inlet_length ${il}, plane_in ${pin}, transition_length ${tl}, plane_out ${pout}, outlet_length ${ol})"; exit 1; }
+          else
+            awk -v il="$il" -v pin="$pin" -v pout="$pout" -v ol="$ol" 'BEGIN {
+              exit !(il >= 0 && (il == 0 || (-il < pin && pin < 0)) && 0 < pout && pout < ol) }' \
+              || { echo "::error::need inlet_length >= 0, -inlet_length < plane_in < 0 when inlet_length > 0, and 0 < plane_out < outlet_length (got inlet_length ${il}, plane_in ${pin}, plane_out ${pout}, outlet_length ${ol})"; exit 1; }
+          fi
+          sharp=0; [ "${{ inputs.case.sharp_step }}" = "true" ] && sharp=1
+          # the file's lines win over the form's values of the same name, and the
+          # form fills in whatever the file does not list (first occurrence wins);
+          # the run settings are form-only, so every design of a study is solved
+          # with the same mesh planes
+          {
+            if [ -n "${params_file}" ]; then
+              cat "${params_file}"
+              echo
+            fi
+            printf '%s transition_length\n%s top_rounding\n%s bottom_rounding\n' \
+              "${{ inputs.case.transition_length }}" "${{ inputs.case.top_rounding }}" \
+              "${{ inputs.case.bottom_rounding }}"
+            printf '%s reynolds\n%s inlet_length\n%s outlet_length\n%s plane_in\n%s plane_out\n%s mesh_scale\n%s sharp_step\n' \
+              "${{ inputs.case.reynolds }}" "${{ inputs.case.inlet_length }}" "${{ inputs.case.outlet_length }}" \
+              "${{ inputs.case.plane_in }}" "${{ inputs.case.plane_out }}" \
+              "${{ inputs.case.mesh_scale }}" "${sharp}"
+          } | awk 'NF >= 2 && !seen[$2]++' > "${case_dir}/params.in.tmp"
+          mv "${case_dir}/params.in.tmp" "${case_dir}/params.in"
+          rm -f "${case_dir}/results.out" "${case_dir}/exit_code"
+          # the submitter inlines the script body, so the absolute paths are baked in;
+          # it is not named run.sh because the submitter writes its assembled job
+          # script under that name in the same directory. The exit_code file is the
+          # evidence that the case ran (and how it ended) when no results.out came back.
+          cat > "${case_dir}/case.sh" << PW_CASE_EOF
+          #!/bin/bash
+          cd "${case_dir}"
+          MESH_SCALE="${{ inputs.case.mesh_scale }}" \\
+            OPENFOAM_ENV="${PWD}/openfoam-env.sh" \\
+            bash "${PWD}/workflows/openfoam-expansion/app/simulator.sh"
+          rc=\$?
+          echo "\${rc}" > exit_code
+          exit "\${rc}"
+          PW_CASE_EOF
+          echo "--- ${case_dir}/params.in"
+          cat "${case_dir}/params.in"
+          echo "CASE_DIR=${case_dir}" | tee -a $OUTPUTS
+
+  run_case:
+    needs: [preprocessing]
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Run OpenFOAM
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          # the submitter cds into the case dir, so case.sh's relative paths resolve there
+          rundir: ${{ needs.preprocessing.outputs.CASE_DIR }}
+          use_existing_script: true
+          script_path: ./case.sh
+          define_cleanup_script: false
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: |
+              #SBATCH --ntasks=1
+              ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: |
+              #PBS -l select=1:ncpus=1:mpiprocs=1
+              ${{ inputs.cluster.pbs.scheduler_directives }}
+
+  # the submitter never forwards the script's exit status, so the verdict comes
+  # from the files the case left behind: results.out (the objective and
+  # diagnostics) or none
+  results:
+    needs: [preprocessing, run_case]
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Read the Results
+        run: |
+          case_dir="${{ needs.preprocessing.outputs.CASE_DIR }}"
+          if [ ! -f "${case_dir}/results.out" ]; then
+            rc=$(cat "${case_dir}/exit_code" 2>/dev/null || echo "none: the case never ran")
+            echo "::error::no results.out in ${case_dir} (simulator exit code: ${rc}); log tails follow"
+            tail -n 20 "${case_dir}"/case/log.* 2>/dev/null
+            tail -n 30 "${case_dir}"/run.*.out 2>/dev/null
+            exit 1
+          fi
+          k=$(awk '$2 == "loss_coefficient" {print $1}' "${case_dir}/results.out")
+          ra=$(awk '$2 == "reattachment_point" {print $1}' "${case_dir}/results.out")
+          us=$(awk '$2 == "upper_eddy_start" {print $1}' "${case_dir}/results.out")
+          ue=$(awk '$2 == "upper_eddy_end" {print $1}' "${case_dir}/results.out")
+          area=$(awk '$2 == "recirculation_area" {print $1}' "${case_dir}/results.out")
+          echo "RESULTS_FILE=${case_dir}/results.out" | tee -a $OUTPUTS
+          echo "PARAVIEW_FILE=${case_dir}/case/case.foam" | tee -a $OUTPUTS
+          echo "REATTACHMENT_POINT=${ra}" | tee -a $OUTPUTS
+          echo "RECIRCULATION_AREA=${area}" | tee -a $OUTPUTS
+          if [ -n "${k}" ]; then
+            echo "LOSS_COEFFICIENT=${k}" | tee -a $OUTPUTS
+            echo "::notice::K = ${k}, reattachment ${ra} h, recirculation area ${area} h^2 for the design in ${case_dir}/params.in (mesh_scale ${{ inputs.case.mesh_scale }}); open ${case_dir}/case/case.foam in ParaView to see the fields"
+          else
+            # inlet_length 0 (Gartling placement) has no inlet loss plane: no K,
+            # and the run is a validation one that lives on its diagnostics
+            echo "::notice::no loss_coefficient (inlet on the step): reattachment ${ra} h, upper eddy ${us}-${ue} h, recirculation area ${area} h^2; open ${case_dir}/case/case.foam in ParaView to see the fields"
+          fi
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: Resource where the OpenFOAM case runs
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule the Case?
+            hidden: ${{ inputs.resource.schedulerType == '' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes → The case is submitted to the scheduler using sbatch, qsub, etc
+              No  → The case runs on the controller or login node instead
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+                tooltip: Select a partition from the drop down menu.
+              time:
+                label: Walltime
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the case'
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+                  The workflow already sets --ntasks=1 (the case solves serially).
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  The workflow already sets -l select=1:ncpus=1:mpiprocs=1.
+      case:
+        type: group
+        label: Expansion Case
+        items:
+          transition_length:
+            type: number
+            label: Transition length l/h
+            default: 2
+            min: 0.5
+            max: 10
+            tooltip: |
+              Length of the lower-wall transition from h to 0 in units of h: the
+              mean wall angle is atan(h/l). 2 is the default ramp; the study's
+              stage 1 sweeps this from 0.5 to 10. Ignored by the sharp step.
+          top_rounding:
+            type: number
+            label: Top rounding a
+            default: 0
+            min: 0
+            max: 0.9
+            tooltip: |
+              How long the transition wall stays level before dropping (the
+              first Bezier control point at a*l): rounds the top corner.
+              0 keeps the wall straight to the corner; the mesh generator was
+              validated up to 0.9. Ignored by the sharp step.
+          bottom_rounding:
+            type: number
+            label: Bottom rounding b
+            default: 0
+            min: 0
+            max: 0.9
+            tooltip: |
+              How gently the wall lands on the outlet floor (the second control
+              point at (1-b)*l): rounds the bottom corner. 0 is a straight
+              landing. Ignored by the sharp step.
+          sharp_step:
+            type: boolean
+            label: Sharp step? (baseline / validation geometry)
+            default: false
+            tooltip: |
+              Yes → the vertical backward-facing step instead of the contoured
+              wall: the baseline of the study and the geometry of the Gartling
+              validation (set Reynolds 800 and Inlet length 0 to reproduce it;
+              then there is no inlet loss plane and the case reports the
+              diagnostics without K).
+          reynolds:
+            type: number
+            label: Reynolds number
+            default: 300
+            min: 50
+            max: 800
+            tooltip: |
+              Re = U_b·2h/ν with the bulk velocity U_b = 1 (nu = 2/Re). 300 is
+              the study's operating point: the flow stays 2D below ~400. 800 is
+              the Gartling benchmark value (a 2D-code benchmark only); it needs
+              the softer p relaxation the case template already carries.
+          inlet_length:
+            type: number
+            label: Inlet length (h)
+            default: 5
+            min: 0
+            max: 20
+            tooltip: |
+              Length of the inlet channel upstream of the transition. The inlet
+              velocity is the exact parabolic profile, so 5 is already
+              insensitive (10 moves K by 0.65%). 0 puts the inflow plane on the
+              step lip — Gartling's placement, for the validation runs.
+          outlet_length:
+            type: number
+            label: Outlet length (h)
+            default: 60
+            min: 10
+            max: 120
+            tooltip: |
+              Length of the outlet channel downstream of the transition; must
+              exceed the outlet loss plane. The zero-gradient outlet sits here.
+          plane_in:
+            type: number
+            label: Inlet loss plane (h)
+            default: -2
+            min: -20
+            max: -0.1
+            tooltip: |
+              x of the inlet total-pressure plane. Fixed at -2 for every design
+              of the study, so every design is charged the same inlet length.
+          plane_out:
+            type: number
+            label: Outlet loss plane (h)
+            default: 40
+            min: 1
+            max: 119
+            tooltip: |
+              x of the outlet total-pressure plane. Fixed at 40 for every design
+              of the study: K is defined only at these planes (a plane further
+              downstream measures more channel friction, ~0.02 K per h), so
+              never compare K values between runs with different planes.
+          mesh_scale:
+            type: number
+            label: Mesh resolution multiplier
+            default: 1
+            min: 1
+            max: 6
+            tooltip: |
+              The cost dial: multiplies every cell count of the block mesh
+              (~13k cells at 1 for the default ramp, ~83k at 3 on the Gartling
+              step). Roughly ~1-2 min per case at 1 and >10 min at 3 on one
+              core. The validation table in the README compares mesh scales 1
+              and 3 against Gartling.
+          case_dir:
+            type: string
+            label: Case directory
+            optional: true
+            tooltip: |
+              Absolute path where the case is built and solved. Leave empty for
+              case/ under this run's job directory. A study driver passes the
+              case directory it proposed, so the results land where the driver
+              reads them.
+          params_file:
+            type: string
+            label: Design from a params file
+            optional: true
+            default: ''
+            tooltip: |
+              Absolute path of a Dakota-style parameters file, one "<value> <name>"
+              line per entry. Its values override the form fields of the same
+              name (transition_length, top_rounding, bottom_rounding); a field
+              the file does not list keeps the form's value. Any other name, or
+              a value that is not a number, fails the case. A study driver
+              passes the file of the design it proposed here.
+      software:
+        type: group
+        label: Software Environment
+        collapsed: true
+        items:
+          openfoam_load:
+            type: editor
+            label: OpenFOAM environment commands
+            optional: true
+            tooltip: |
+              Shell commands that put blockMesh, topoSet and simpleFoam on PATH,
+              one per line, e.g. `module load openfoam/2412` or `source
+              /opt/openfoam2412/etc/bashrc`. Leave empty to install OpenFOAM
+              v2412 from conda-forge (no sudo, ~5 min once) under
+              ${service_parent_install_dir:-$HOME/pw/software}/openfoam-expansion.

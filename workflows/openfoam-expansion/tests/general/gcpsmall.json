@@ -1,0 +1,19 @@
+{
+  "_test": {
+    "timeout_s": 3000,
+    "endpoint": false,
+    "warm_marker": "${HOME}/pw/software/openfoam-expansion/miniforge/envs/openfoam",
+    "leftover_patterns": ["simpleFoam", "blockMesh", "topoSet"]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cluster": {
+    "scheduler": false
+  },
+  "case": {
+    "transition_length": 2,
+    "top_rounding": 0,
+    "bottom_rounding": 0,
+    "reynolds": 300,
+    "mesh_scale": 1
+  }
+}

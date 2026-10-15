@@ -1,0 +1,24 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "endpoint": true,
+    "warm_marker": [
+      "${HOME}/pw/software/openfoam-expansion/miniforge/envs/openfoam",
+      "${HOME}/pw/software/dakota/miniforge/envs/dakota"
+    ],
+    "leftover_patterns": ["pw endpoints", "design-explorer-server.py", "bin/dakota", "app/driver.py", "simpleFoam", "blockMesh", "topoSet"]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cluster": {
+    "scheduler": false
+  },
+  "optimizer": {
+    "max_iterations": 2,
+    "batch_size": 4,
+    "stall_generations": 3,
+    "mesh_scale": 1
+  },
+  "problem": {
+    "reynolds": 300
+  }
+}

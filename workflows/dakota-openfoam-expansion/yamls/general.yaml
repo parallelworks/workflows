@@ -1,0 +1,428 @@
+# Dakota-driven OpenFOAM optimization of the planar-expansion study
+# (studies/expansion), assembled from two standalone workflows: workflows/dakota
+# (the optimizer step: Dakota's MOGA proposes batches of wall-transition designs
+# — transition length and the two wall roundings — and decides when to stop) and
+# workflows/openfoam-expansion (the evaluator: one laminar OpenFOAM case per
+# design, reporting the total-pressure loss coefficient K and
+# neg_min_wall_shear, the attachment margin above reversed flow; both
+# minimized). Each iteration of the loop below runs iteration.yaml, which calls
+# the first as its `optimize` job and the second once per proposed design as its
+# `workers` matrix; the loop mechanics (retry-as-loop, guarded static matrix,
+# state files, failure semantics) come from tutorials/optimization. Before the
+# loop starts, preprocessing calls workflows/design-explorer over the study
+# directory, which serves it as the pw endpoint design-explorer-<run slug> from
+# the first generation on: the objective space with the Pareto front as of any
+# generation and the convergence per generation, every design as a line of
+# parallel coordinates over the generation, the variables and the objectives.
+# It keeps serving after the run completes until `pw endpoints delete` removes
+# it.
+#
+# The expansion workflows live on the dev branch `expansion` until the study
+# merges, so every checkout and call that needs openfoam-expansion (or this
+# loop's own iteration.yaml) fetches that branch instead of canary.
+permissions:
+  - '*'
+
+# Saved inputs, offered under "Load saved inputs" on the Execute page. The form
+# defaults are the demo: login node, mesh_scale 1 (~13k cells, 1-2 min per case
+# on one core), 4 x 10 generations, well under an hour on a 16-core login node.
+# This configuration is the converged-mesh study: mesh_scale 3 (~83k cells,
+# >10 min per case), the scale the Gartling validation table in the
+# openfoam-expansion README shows is converged.
+configurations:
+  mesh3_study:
+    inputs:
+      optimizer:
+        max_iterations: 10
+        batch_size: 6
+        stall_generations: 3
+        mesh_scale: 3
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      # this workflow has no app of its own: the optimizer, the evaluator and
+      # Design Explorer check out theirs inside their subworkflows. Checked out
+      # here: the installers, for the environment check below. Branch expansion
+      # because workflows/openfoam-expansion does not exist on canary yet
+      - name: Checkout the Installers
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: expansion
+          sparse_checkout:
+            - workflows/dakota/app
+            - workflows/openfoam-expansion/app
+            - tools/utils
+      - name: Validate Inputs and Initialize State
+        run: |
+          set -e
+          batch="${{ inputs.optimizer.batch_size }}"
+          if ! [[ "${batch}" =~ ^[0-9]+$ ]] || [ "${batch}" -lt 1 ]; then
+            echo "::error::batch_size must be a positive integer, got '${batch}'"
+            exit 1
+          fi
+          ms="${{ inputs.optimizer.mesh_scale }}"
+          if ! [[ "${ms}" =~ ^[0-9]+$ ]] || [ "${ms}" -lt 1 ]; then
+            echo "::error::mesh_scale must be a positive integer, got '${ms}'"
+            exit 1
+          fi
+          # the loss planes must sit inside the channel, and the loop fixes the
+          # outlet channel at the evaluator's default outlet_length 60 (the
+          # form does not carry it): fail here, in seconds, before a generation
+          # is spent — left to the workers, every case would fail and Dakota
+          # would carry FAILs through the whole run
+          il="${{ inputs.problem.inlet_length }}"
+          pin="${{ inputs.problem.plane_in }}"
+          pout="${{ inputs.problem.plane_out }}"
+          awk -v il="$il" -v pin="$pin" -v pout="$pout" 'BEGIN {
+            exit !(-il < pin && pin < 0 && 0 < pout && pout < 60) }' \
+            || { echo "::error::need -inlet_length < plane_in < 0 and 0 < plane_out < 60, the outlet channel's length (got inlet_length ${il}, plane_in ${pin}, plane_out ${pout})"; exit 1; }
+          mkdir -p state
+          echo "STATE_DIR=${PWD}/state" | tee -a $OUTPUTS
+      # the check every worker and the optimizer step make, made once here, before
+      # the page starts and before a generation is spent: environment commands
+      # that do not deliver the tools (a site module that only sets a variable, a
+      # typo) fail the run with the tools' own output. Left to the workers, the
+      # loop re-proposes the generation once and ends FAILED with nothing but "no
+      # case ran" at the top level. With no commands given, the conda-forge
+      # installs happen here once, not under batch_size workers.
+      - name: Check the Software Environments
+        run: |
+          set -e
+          bash tools/utils/prepare-env.sh openfoam "${PWD}/openfoam-env.sh" \
+            workflows/openfoam-expansion/app/install-openfoam.sh blockMesh topoSet simpleFoam << 'PW_LOAD_EOF'
+          ${{ inputs.software.openfoam_load }}
+          PW_LOAD_EOF
+          bash tools/utils/prepare-env.sh dakota "${PWD}/dakota-env.sh" \
+            workflows/dakota/app/install-dakota.sh dakota << 'PW_LOAD_EOF'
+          ${{ inputs.software.dakota_load }}
+          PW_LOAD_EOF
+      # the page: Design Explorer over the study directory, served by its own
+      # workflow, which reads state/iter_<N>/case_<j>/ directly (a case shows as
+      # soon as it solved) with the optimizer's problem.json and state.json (the
+      # objectives, the bounds, the hypervolume), waits until its endpoint
+      # answers and removes a server that never did. Preprocessing only
+      # completes once the page is served, so a server that cannot start fails
+      # the run before any case is spent
+      - name: Design Explorer (Serve the Study)
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/design-explorer/yamls/general.yaml
+          resource: ${{ inputs.resource }}
+          study:
+            cases_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
+            title: Planar expansion optimization
+
+  optimization_loop:
+    needs: [preprocessing]
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      # retry-as-loop: iteration.yaml exits 1 while Dakota wants another
+      # generation, and each retry attempt re-invokes it fresh. max-retries is the
+      # loop budget: max_iterations proposal cycles + the final converging call.
+      # Attempt != iteration — a crashed attempt re-runs the same iteration off the
+      # state files and consumes budget. Only the LAST attempt's logs surface here;
+      # per-iteration history lives under state/ and on the Design Explorer page.
+      - name: Iterate
+        retry:
+          max-retries: ${{ inputs.optimizer.max_iterations }}
+          interval: 10s
+          # retry.timeout defaults to 30s (docs: building-workflows/yaml-fields)
+          # and cancels the whole attempt — every job of the iteration
+          # subworkflow, mid-simulation — when it expires. One generation
+          # (propose + node boot + queue + solve + decide) must fit in it.
+          timeout: ${{ inputs.optimizer.iteration_timeout }}
+        uses: github/parallelworks/workflows@expansion
+        with:
+          $yaml: workflows/dakota-openfoam-expansion/yamls/iteration.yaml
+          # the retry counter (0 on the first attempt), so the iteration can say
+          # which attempt it is; the true iteration is the generation in state/
+          attempt: ${{ env.PW_WORKFLOW_STEP_CURRENT_RETRY }}
+          resource: ${{ inputs.resource }}
+          scheduler: ${{ inputs.cluster.scheduler }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+          batch_size: ${{ inputs.optimizer.batch_size }}
+          max_iterations: ${{ inputs.optimizer.max_iterations }}
+          stall_generations: ${{ inputs.optimizer.stall_generations }}
+          mesh_scale: ${{ inputs.optimizer.mesh_scale }}
+          reynolds: ${{ inputs.problem.reynolds }}
+          inlet_length: ${{ inputs.problem.inlet_length }}
+          plane_in: ${{ inputs.problem.plane_in }}
+          plane_out: ${{ inputs.problem.plane_out }}
+          variables: ${{ inputs.problem.variables }}
+          objectives: ${{ inputs.problem.objectives }}
+          seed: ${{ inputs.problem.seed }}
+          openfoam_load: ${{ inputs.software.openfoam_load }}
+          dakota_load: ${{ inputs.software.dakota_load }}
+          state_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
+      # if: always — the run's verdict comes from the state files, not from how the
+      # Iterate step ended: CONVERGED is the only success, whether the loop stopped
+      # by decision (Iterate succeeded) or by exhausting its retries (Iterate failed).
+      - name: Report
+        if: ${{ always }}
+        run: |
+          state="${{ needs.preprocessing.outputs.STATE_DIR }}"
+          command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"
+          url=$(pw endpoints list 2>/dev/null | awk -F'\t' -v name="design-explorer-${PW_RUN_SLUG}" '$1 == name {print $3}')
+          if [ -n "${url}" ]; then
+            echo "::notice::Design Explorer keeps serving the study at ${url} (the Pareto front as of any generation, every design and its values); remove it with: pw endpoints delete design-explorer-${PW_RUN_SLUG}"
+          else
+            echo "::warning::the endpoint design-explorer-${PW_RUN_SLUG} is no longer listed; the front is still in ${state}/pareto.csv and ${state}/pareto.svg"
+          fi
+          status=$(cat "${state}/status" 2>/dev/null || echo MISSING)
+          case "${status}" in
+            CONVERGED)
+              n=$(($(wc -l < "${state}/pareto.csv") - 1))
+              echo "::notice::optimization converged: ${n} non-dominated designs in ${state}/pareto.csv, plotted in ${state}/pareto.svg; every evaluation in ${state}/evaluations.csv"
+              head -15 "${state}/pareto.csv"
+              ;;
+            FAILED)
+              echo "::error::the optimizer declared FAILED: no case of a generation ran twice in a row, every case failed before any design succeeded or for three generations running, or Dakota exited without proposing or converging. Check the last attempt's worker logs, ${state}/iter_*/case_*/{run.*.out,case/log.*} and ${state}/dakota/dakota.log"
+              exit 1
+              ;;
+            CONTINUE)
+              echo "::error::loop budget exhausted before convergence: all retries of the Iterate step were used while the optimizer still wanted to continue. Raise max_iterations (crashed attempts also consume budget) or loosen the convergence knobs."
+              exit 1
+              ;;
+            *)
+              echo "::error::no ${state}/status file: the first iteration never reached its optimize step. Read the Iterate attempt logs."
+              exit 1
+              ;;
+          esac
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: Resource where Dakota, Design Explorer and all OpenFOAM cases run
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule Cases?
+            hidden: ${{ inputs.resource.schedulerType == '' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes → Each OpenFOAM case is submitted to the scheduler using sbatch, qsub, etc
+              No  → Cases run on the controller or login node instead
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+                tooltip: Select a partition from the drop down menu.
+              time:
+                label: Walltime per case
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for each case'
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+                  The workflow already sets --ntasks=1 (the case solves serially);
+                  a directive here repeating it takes precedence.
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+                  The workflow already sets -l select=1:ncpus=1:mpiprocs=1.
+      optimizer:
+        type: group
+        label: Optimizer Settings
+        items:
+          max_iterations:
+            type: number
+            label: Maximum iterations
+            default: 10
+            min: 1
+            max: 50
+            tooltip: |
+              Generation budget: the loop stops with the front found so far after
+              this many evaluated generations, even if Dakota wants to continue.
+              Also the loop's retry budget, so a crashed-and-retried iteration
+              consumes one.
+          batch_size:
+            type: number
+            label: Cases per iteration
+            default: 4
+            min: 1
+            max: 8
+            tooltip: |
+              OpenFOAM cases evaluated in parallel each iteration (Dakota MOGA's
+              population size). Sizes the workers matrix of iteration.yaml:
+              one worker slot per case, expanded at submission. Dakota may
+              propose fewer new points in a generation; surplus worker slots are
+              skipped for free. The cases solve serially, one core each, and the
+              cap of 8 keeps half of a 16-core login node free.
+          stall_generations:
+            type: number
+            label: Stagnation window
+            default: 3
+            min: 1
+            max: 20
+            tooltip: |
+              Declare convergence when the Pareto front's normalized hypervolume
+              improves by less than 0.001 over this many consecutive generations.
+              Dakota's own MOGA convergence criteria also end the loop.
+          mesh_scale:
+            type: number
+            label: Mesh resolution multiplier
+            default: 1
+            min: 1
+            max: 6
+            tooltip: |
+              The cost dial: multiplies every cell count of the block mesh
+              (~13k cells at 1 for the default ramp, ~83k at 3 on the sharp
+              step), so cost grows roughly with the square: ~1-2 min per case at
+              1, >10 min at 3 (one core). The mesh is converged by 3; the
+              openfoam-expansion README has the validation table against the
+              Gartling benchmark.
+          iteration_timeout:
+            type: string
+            label: Time budget per iteration
+            default: 2d
+            tooltip: |
+              Maximum wall time for one generation: propose + evaluate every case
+              (including scheduler queue and node boot) + decide. Units like 30s,
+              10m, 12h, 2d. The generous default means it only trips on a genuinely
+              stuck iteration, which is then canceled and retried (consuming
+              budget); tighten it if you want faster failure detection.
+      problem:
+        type: group
+        label: Design Problem
+        collapsed: true
+        items:
+          reynolds:
+            type: number
+            label: Reynolds number
+            default: 300
+            min: 50
+            max: 800
+            tooltip: |
+              Re = U_b·2h/ν every case is solved at (the study's operating
+              point, 2D below ~400; 800 is the Gartling benchmark value). Not a
+              design variable: every design of every generation sees it.
+          inlet_length:
+            type: number
+            label: Inlet length (h)
+            default: 5
+            min: 1
+            max: 20
+            tooltip: |
+              Length of the inlet channel upstream of the transition, which the
+              inlet loss plane must sit inside (plane_in > -inlet_length). 5 is
+              already insensitive (10 moves K by 0.65%).
+          plane_in:
+            type: number
+            label: Inlet loss plane (h)
+            default: -2
+            min: -20
+            max: -0.1
+            tooltip: |
+              x of the inlet total-pressure plane, fixed for every design of the
+              study so every design is charged the same inlet length.
+          plane_out:
+            type: number
+            label: Outlet loss plane (h)
+            default: 40
+            min: 1
+            max: 59
+            tooltip: |
+              x of the outlet total-pressure plane, fixed for every design: K is
+              defined only at these planes (a plane further downstream measures
+              more channel friction, ~0.02 K per h), so never compare K values
+              between runs with different planes. Must stay inside the 60 h
+              outlet channel.
+          variables:
+            type: editor
+            label: Design variables and bounds
+            default: |
+              transition_length  0.5  10
+              top_rounding       0.0  0.9
+              bottom_rounding    0.0  0.9
+            tooltip: |
+              One line per design variable: <name> <lower> <upper>. Keep the
+              three names (the OpenFOAM case reads them by name); narrow the
+              bounds to focus the search — the defaults are the full box of the
+              study's spec, the range stage 1 (a DOE sweep) would narrow.
+          objectives:
+            type: string
+            label: Objectives
+            hidden: true
+            default: loss_coefficient neg_min_wall_shear
+          seed:
+            type: number
+            label: Dakota seed
+            default: 4242
+            min: 1
+            tooltip: Fixed for the run (Dakota's restart replay requires a deterministic method); change it to get a different search.
+      software:
+        type: group
+        label: Software Environment
+        collapsed: true
+        items:
+          openfoam_load:
+            type: editor
+            label: OpenFOAM environment commands
+            optional: true
+            tooltip: |
+              Shell commands that put blockMesh, topoSet and simpleFoam on PATH,
+              one per line, e.g. `module load openfoam/2412` or `source
+              /opt/openfoam2412/etc/bashrc`. Leave empty to install OpenFOAM
+              v2412 from conda-forge (no sudo, ~5 min once) under
+              ${service_parent_install_dir:-$HOME/pw/software}/openfoam-expansion.
+          dakota_load:
+            type: editor
+            label: Dakota environment commands
+            optional: true
+            tooltip: |
+              Shell commands that put `dakota` on PATH, e.g. `module load dakota`.
+              Leave empty to install Dakota 6.16 from conda-forge under
+              ${service_parent_install_dir:-$HOME/pw/software}/dakota.

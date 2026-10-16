@@ -181,12 +181,12 @@ user-set `MPIRUN` carries its own rank count and is only warned about.
 
 ## Resubmitting an interrupted case: the restart variants
 
-A case longer than its walltime is killed and resubmitted until it completes,
-each attempt picking up from the latest checkpoint. A preempted or lost node,
-or an attempt that overruns its time budget, is handled the same way.
-[`yamls/general-restart.yaml`](yamls/general-restart.yaml) is the loop
-(`hsp-restart.yaml` and `noaa-restart.yaml` run it over those platforms'
-variants) and the example to copy for a simulation tool of your own.
+If a case is longer than its walltime, you can use the `<variant>-restart.yaml`
+of your platform ([`general-restart.yaml`](yamls/general-restart.yaml),
+`hsp-restart.yaml` or `noaa-restart.yaml`): it resubmits the case until it
+completes, and each attempt picks up from the latest checkpoint. A preempted or
+lost node, or an attempt that overruns its time budget, is handled the same
+way. The loop is also the example to copy for a simulation tool of your own.
 
 ![The Solve step of general-restart.yaml retries general.yaml whole on a shared case directory; the case directory holds the attempts log, the stage markers and the checkpoints; the Report step ends the run as solved, failed on its own or out of attempts](thumbnails/restart-loop.svg)
 

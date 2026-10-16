@@ -351,8 +351,11 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
     ssh "${TARGET_IP}" nvidia-smi   # exit code drives the retry
 ```
 - **`exit <code>` drives it:** zero = success (stop), non-zero = retry. A step that
-  exhausts its retries ends the run as **error** — pair it with a later
-  `if: ${{ always }}` step to report a clean result.
+  exhausts its retries ends the run as **error**, and a later `if: ${{ always }}`
+  step that exits 0 does not change that (verified 2026-10-16, probe run
+  settling-hedgehog: the step failed after its retries, the `if: always` step ran and
+  exited 0, the job and the run ended `error`). Use that step to report what happened,
+  never to turn the run green.
 - **Per-attempt env vars:** `PW_WORKFLOW_STEP_CURRENT_RETRY` (0 on the first try) and
   `PW_WORKFLOW_STEP_MAX_RETRIES` are exported each attempt. `index % N` over a list turns
   the retry counter into a **round-robin selector** (fail over to the next resource).
@@ -384,7 +387,7 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   (run dear-crow, 2026-09-28) — is `tutorials/optimization/` (staged README);
   `retry.max-retries: ${{ inputs.<group>.<n> }}` from a form input also verified there.
 - **`ignore-errors: true` works on a `uses:` step** (verified 2026-10-16, run finer-bunny:
-  a subworkflow ending in error, the next step ran, the job and the run completed). It
+  a subworkflow ending in error, the next step ran, the job and the run completed). It is
   one way to give a retried call a verdict of its own when the callee cannot be
   changed: a thin attempt workflow calls it with `ignore-errors`, then a step reads the
   files it left and exits 0 (over) or 1 (retry). When the callee is yours, a hidden

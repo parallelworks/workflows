@@ -269,7 +269,8 @@ attempt budget, a diverged design, bad load commands) and the walltime tests of
 - uses: github/parallelworks/workflows@canary
   with:
     $yaml: workflows/openfoam-naca/yamls/general.yaml
-    cluster: { resource: ..., scheduler: ..., cores_per_case: ..., slurm: {...}, pbs: {...} }
+    resource: ...
+    cluster: { scheduler: ..., cores_per_case: ..., slurm: {...}, pbs: {...} }
     case:
       params_file: <iter dir>/case_<j>/params.in    # the proposed design
       case_dir: <iter dir>/case_<j>                  # solve it there

@@ -206,6 +206,13 @@
   `tutorials/optimization/general.yaml`'s Iterate step has this latent bug
   (its ~15 s test waves win the race; any real solver loses it).
 
+- **An `if: ${{ always }}` step cannot undo a step that failed before it** (verified
+  2026-10-16, probe run settling-hedgehog): after a retried step ran out of retries,
+  the `if: always` step ran and exited 0, and the job and the run still ended `error`.
+  A loop's verdict therefore has to be the status of the retried step itself (the
+  openfoam-naca restart variants' `restart.attempt`). The comment above
+  `tutorials/optimization/general.yaml`'s Report step, which counts a loop that ran out
+  of retries as success when its state says CONVERGED, does not hold.
 - **A job that `needs` a skipped job still runs; one that `needs` a failed job does
   not** (verified 2026-10-16, probe runs rational-beetle, coherent-mongoose,
   lucky-amoeba): with the default `if:`, `needs: [check]` ran after `check` was skipped

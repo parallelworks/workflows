@@ -50,25 +50,29 @@ jobs:
             openfoam_load: ${{ inputs.openfoam_load }}
       # the verdict comes from what the simulator left behind, never from how the
       # call above ended: a case that failed on its own and a solved case are
-      # over (exit 0, the loop stops); anything else was interrupted (exit 1, the
-      # parent retries). A start line missing for this attempt means the
-      # simulator never ran: the call failed before it, and the parent retries
-      # that too, within its budget of attempts
+      # over (exit 0, the loop stops); anything else is exit 1 and the parent
+      # retries: an attempt the log ends with as interrupted, one it ends with
+      # as started (killed outright, no end line yet), or one the simulator
+      # never ran (the log's last line is older: the call failed before it),
+      # which is retried too, within the budget of attempts
       - name: Over or Interrupted
         run: |
           case_dir="${{ inputs.case_dir }}"
-          n=$(( ${{ inputs.attempt }} + 1 ))
-          started=$(awk '$2 == "attempt" && $4 == "start" {n = $3} END {print n + 0}' "${case_dir}/attempts.log" 2>/dev/null)
-          last=$(tail -n 1 "${case_dir}/attempts.log" 2>/dev/null)
+          log="${case_dir}/attempts.log"
+          n="retry ${{ inputs.attempt }}"
+          last=$(tail -n 1 "${log}" 2>/dev/null)
           if [ -f "${case_dir}/case/restart/failed" ]; then
-            echo "::notice::attempt ${n}: over, the case failed on its own and is not retried: $(cat "${case_dir}/case/restart/failed")"
+            echo "::notice::${n}: over, the case failed on its own and is not retried: $(cat "${case_dir}/case/restart/failed")"
           elif [ -f "${case_dir}/results.out" ] && [ -f "${case_dir}/case/restart/simpleFoam.done" ]; then
-            echo "::notice::attempt ${n}: over, the case is solved: ${last}"
-          elif [ "${started:-0}" -lt "${n}" ]; then
-            echo "::notice::attempt ${n}: the simulator did not start (${started:-0} attempts recorded in ${case_dir}/attempts.log); read the OpenFOAM call's logs above. Exit 1 so the parent retries"
+            echo "::notice::${n}: over, the case is solved: ${last}"
+          elif [ "$(echo "${last}" | awk '{print $4, $5}')" = "end interrupted" ]; then
+            echo "::notice::${n}: interrupted: ${last}. Exit 1 so the parent retries from the latest complete checkpoint"
+            exit 1
+          elif [ "$(echo "${last}" | awk '{print $4}')" = "start" ]; then
+            echo "::notice::${n}: killed outright, no end line yet: ${last}. Exit 1 so the parent retries from the latest complete checkpoint"
             exit 1
           else
-            echo "::notice::attempt ${n} interrupted: ${last}. Exit 1 so the parent retries from the latest complete checkpoint"
+            echo "::notice::${n}: the simulator did not run in this attempt (the log's last line: ${last:-none}); read the OpenFOAM call's logs above. Exit 1 so the parent retries"
             exit 1
           fi
 

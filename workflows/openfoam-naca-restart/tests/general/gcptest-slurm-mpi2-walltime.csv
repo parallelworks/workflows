@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-16T08:37:10Z,warm,pass,ok,a59558e,e0cda99,e8105a3,ce289b6,ce289b6,restart-simulation,alvaro,sweet-bass,431,

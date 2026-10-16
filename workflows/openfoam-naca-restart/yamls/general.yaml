@@ -66,13 +66,11 @@ jobs:
       - name: Validate Inputs and Prepare the Case Directory
         run: |
           set -e
-          for name in max_restarts checkpoint_every keep_checkpoints; do
-            value=$(python3 -c "import json, sys; print(json.load(sys.stdin)['${name}'])" << 'PW_JSON_EOF'
-          {"max_restarts": "${{ inputs.restart.max_restarts }}", "checkpoint_every": "${{ inputs.restart.checkpoint_every }}", "keep_checkpoints": "${{ inputs.restart.keep_checkpoints }}"}
-          PW_JSON_EOF
-          )
-            if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
-              echo "::error::restart.${name} must be a non-negative integer, got '${value}'"
+          for pair in "max_restarts=${{ inputs.restart.max_restarts }}" \
+                      "checkpoint_every=${{ inputs.restart.checkpoint_every }}" \
+                      "keep_checkpoints=${{ inputs.restart.keep_checkpoints }}"; do
+            if ! [[ "${pair#*=}" =~ ^[0-9]+$ ]]; then
+              echo "::error::restart.${pair%%=*} must be a non-negative integer, got '${pair#*=}'"
               exit 1
             fi
           done

@@ -164,7 +164,7 @@ fi
 
 python3 "${APP_DIR}/naca_blockmesh.py" \
     --camber "${max_camber}" --camber-pos "${camber_position}" \
-    --thickness "${thickness}" --scale "${MESH_SCALE}" > case/system/blockMeshDict || exit 1
+    --thickness "${thickness}" --scale "${MESH_SCALE}" > case/system/blockMeshDict || f_failed naca_blockmesh 1
 
 # finer meshes converge more slowly (information travels cell by cell) and are
 # less forgiving of aggressive relaxation: scale the iteration cap with the mesh
@@ -239,6 +239,18 @@ foam_step() {
     (cd case && "$@" 2>&1 | tee "log.${name}")
 }
 
+# a stage that did not return 0: an interruption ends the attempt here (exit
+# 128 + signal, for the next attempt to continue); a tool failing on its own is
+# recorded as final and the case fails. Every deterministic failure after
+# restart_begin goes through here, or the loop would retry it as an interruption
+f_failed() {
+    restart_failed "$1" "$2"
+    echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness} (${RANKS:-${CORES_PER_CASE}} rank(s)); log tails:"
+    # -n: coreutils rejects the short `tail -8 f1 f2` form with several files
+    tail -n 20 case/log.blockMesh case/log.decomposePar case/log.potentialFoam case/log.simpleFoam 2>/dev/null
+    exit 1
+}
+
 # the solver's log runs to thousands of iterations: keep it whole in
 # case/log.simpleFoam and stream a progress line every STREAM_EVERY iterations
 # (the forceCoeffs function object logs Cd/Cl each iteration), plus anything
@@ -260,17 +272,6 @@ foam_solve() {
         /^ExecutionTime/ { if (t % every == 0) { printf("iter %6d  p residual %-12s Cd %-10s Cl %s\n", t, p, cd, cl); fflush() } next }
         /converged in|FOAM FATAL|FOAM Warning|sigFpe|Floating point|BAD TERMINATION|^End$/ { print; fflush() }
     ')
-}
-
-# a stage that did not return 0: an interruption ends the attempt here (exit
-# 128 + signal, for the next attempt to continue); a tool failing on its own is
-# recorded as final and the case fails
-f_failed() {
-    restart_failed "$1" "$2"
-    echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness} (${RANKS:-${CORES_PER_CASE}} rank(s)); log tails:"
-    # -n: coreutils rejects the short `tail -8 f1 f2` form with several files
-    tail -n 20 case/log.blockMesh case/log.decomposePar case/log.potentialFoam case/log.simpleFoam 2>/dev/null
-    exit 1
 }
 
 # every tool runs through run_interruptible, in the background, so a signal
@@ -330,7 +331,7 @@ EOF
         n_proc=$(ls -d case/processor[0-9]* 2>/dev/null | wc -l)
         if [ "${n_proc}" -ne "${RANKS}" ]; then
             echo "the case is decomposed into ${n_proc} parts but ${RANKS} ranks were settled from the same inputs; remove ${PWD}/case to start over"
-            exit 1
+            f_failed decomposePar 1
         fi
         echo "--- decomposePar: kept (done on $(stage_by decomposePar), ${RANKS} parts)"
     else
@@ -420,7 +421,7 @@ restart_log "${ATTEMPT}" end "solved: $(awk 'NR == 1 {cd = $1} NR == 2 {cl = -$1
 # directories too, as a "Decomposed Case") and leave the empty .foam file the
 # OpenFOAM reader keys on
 if [ "${RANKS}" -gt 1 ]; then
-    if ! foam_step reconstructPar reconstructPar -latestTime; then
+    if ! run_interruptible foam_step reconstructPar reconstructPar -latestTime; then
         echo "::warning::reconstructPar failed; open case/case.foam in ParaView as a Decomposed Case (tail of case/log.reconstructPar follows)"
         tail -n 10 case/log.reconstructPar
     fi

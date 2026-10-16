@@ -114,7 +114,9 @@ restart_begin() {
 
 # Prints the latest complete checkpoint, 0 when there is none, after discarding
 # the incomplete ones and all but the last KEEP_CHECKPOINTS: where simpleFoam
-# restarts from (startFrom latestTime). Messages go to stderr.
+# restarts from (startFrom latestTime). Complete: every field of 0/ is there,
+# and every file there (phi included, which the solver reads back when present)
+# ends with OpenFOAM's closing line. Messages go to stderr.
 restart_checkpoints() {
     local dirs=(case) d t f fields ok complete=()
     [ -d case/processor0 ] && dirs=(case/processor[0-9]*)
@@ -123,7 +125,13 @@ restart_checkpoints() {
         ok=1
         for d in "${dirs[@]}"; do
             for f in ${fields}; do
-                if ! tail -n 1 "${d}/${t}/${f}" 2>/dev/null | grep -q '^// \*'; then
+                if [ ! -f "${d}/${t}/${f}" ]; then
+                    ok=0
+                    break 2
+                fi
+            done
+            for f in $(ls -p "${d}/${t}" | grep -v '/$'); do
+                if ! tail -n 1 "${d}/${t}/${f}" | grep -q '^// \*'; then
                     ok=0
                     break 2
                 fi

@@ -37,18 +37,26 @@ whole history is `attempts.log` in the case directory, which the `Report`
 step prints:
 
 ```
-2026-10-16T08:17:34Z  attempt 1  start  from scratch: no case yet
-2026-10-16T08:17:59Z  attempt 1  end    interrupted (SIGTERM) in simpleFoam; solver log at iteration 810; checkpoints: 700 800
-2026-10-16T08:18:00Z  attempt 2  start  resume; done: blockMesh, potentialFoam; solver log at iteration 810; checkpoints: 700 800
-2026-10-16T08:18:24Z  attempt 2  end    solved: Cd 0.019338 Cl 0.718103 at iteration 1600 (1610 solved over all attempts); simpleFoam done on attempt 2
+2026-10-16T08:31:46Z  attempt 1  start  from scratch: no case yet
+2026-10-16T08:32:51Z  attempt 1  end    interrupted (SIGTERM) in simpleFoam; solver log at iteration 853; checkpoints: 700 800
+2026-10-16T08:33:12Z  attempt 2  start  resume; done: blockMesh, potentialFoam; solver log at iteration 853; checkpoints: 700 800
+2026-10-16T08:34:17Z  attempt 2  end    interrupted (SIGTERM) in simpleFoam; solver log at iteration 1643; checkpoints: 700 800 1500 1600
+2026-10-16T08:34:38Z  attempt 3  start  resume; done: blockMesh, potentialFoam; solver log at iteration 1643; checkpoints: 700 800 1500 1600
+2026-10-16T08:35:41Z  attempt 3  end    solved: Cd 0.018992 Cl 0.706550 at iteration 2400 (2496 solved over all attempts); simpleFoam done on attempt 3
+2026-10-16T08:36:04Z  attempt 4  start  resume; done: blockMesh, potentialFoam, simpleFoam; solver log at iteration 2400; checkpoints: 2300 2400
+2026-10-16T08:36:04Z  attempt 4  end    solved: Cd 0.018992 Cl 0.706550 at iteration 2400 (2496 solved over all attempts); simpleFoam done on attempt 3
 ```
 
-Attempt 1 was killed at iteration 810 with checkpoints at 700 and 800; attempt
-2 kept the mesh and the initialization, restarted the solver at 800 and solved
-the ten iterations again. The `Report` step then says:
+(the recorded login-node test, run smashing-guppy). Attempt 1 was killed at
+iteration 853 with checkpoints at 700 and 800; attempt 2 kept the mesh and the
+initialization, restarted the solver at 800, and was killed at 1643; attempt 3
+restarted at 1600 and solved the case at 2400, 96 iterations solved twice in
+all. Then the budget cut attempt 3 too, during its post-processing, so attempt
+4 found the case solved and only extracted the results again: the "never solve
+a finished case again" rule at work. The `Report` step then says:
 
 ```
-::notice::solved in 2 attempt(s), 1 of them interrupted and resumed from a checkpoint: Cd = 0.0193380393, Cl = 0.7181032547 (mesh_scale 2). The history is .../case/attempts.log; open .../case/case/case.foam in ParaView to see the fields
+::notice::solved in 4 attempt(s), 2 of them interrupted and resumed from a checkpoint: Cd = 0.0189923490, Cl = 0.7065502600 (mesh_scale 3). The history is .../case/attempts.log; open .../case/case/case.foam in ParaView to see the fields
 ```
 
 and publishes `DRAG_COEFFICIENT`, `LIFT_COEFFICIENT`, `ATTEMPTS`,
@@ -234,7 +242,11 @@ directory to resume from). The run's outputs come from the same files.
 | `software` | `openfoam_load` | commands that put OpenFOAM on PATH; empty installs it from conda-forge in preprocessing |
 
 Images are not offered here; open `case/case/case.foam` in ParaView as the
-`openfoam-naca` README describes.
+`openfoam-naca` README describes. There is one variant, `general`:
+`attempt.yaml` calls `openfoam-naca/yamls/general.yaml`, so a scheduled run on
+an `existing` HPCMP or NOAA resource (SLURM account, QoS, node type) would need
+an attempt YAML calling the `hsp` or `noaa` variant, the way `dakota-openfoam`
+ships `iteration-naca-hsp.yaml` and `iteration-naca-noaa.yaml`.
 
 ## What a run leaves
 

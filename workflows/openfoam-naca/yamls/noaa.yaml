@@ -29,6 +29,7 @@
 # load commands or, when none are given, from the official binaries the app's
 # installer downloads once; a case whose images fail to render is still a solved
 # case (the coefficients are on disk first).
+#
 # Checkpoints and resuming (the restart group): the solver can write its fields
 # every N iterations and, with resume on, a case found in the case directory
 # that was built from the same design and settings is continued instead of

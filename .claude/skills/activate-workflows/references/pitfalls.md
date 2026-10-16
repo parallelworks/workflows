@@ -331,7 +331,13 @@
   trap at once only while it waits on a *background* job (`wait $!`); a foreground
   command defers it until the command ends, so run every long tool in the background.
   The platform's cancel of a retried attempt goes through the submitter's cleanup
-  (`scancel`, or `kill -- -<pgid>` on the login node) and arrives the same way.
+  (`scancel`, or `kill -- -<pgid>` on the login node) and arrives the same way. Both
+  paths recorded end to end (2026-10-16): under a 2-minute walltime the SLURM job ended
+  `TIMEOUT` at 2:00 and the simulator logged `interrupted (SIGTERM) in simpleFoam` with
+  its checkpoints (run sweet-bass); under a 75 s attempt budget on the login node the
+  cancel arrived the same way and the runner's leftover check found nothing (run
+  smashing-guppy, where the budget also cut an attempt *after* it had solved, and the
+  next attempt only extracted the results again).
 
 ## Endpoints and the service
 

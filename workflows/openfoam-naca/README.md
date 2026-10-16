@@ -26,6 +26,8 @@ design and shows the images in Design Explorer.
 | | `case_dir` | where to build and solve; empty = `case/` under the run's job directory |
 | | `params_file` | a Dakota-style params file (`<value> <name>` per line): **its values override the form fields of the same name**, fields it does not list keep the form's values ([Design names](#design-names)) |
 | `postprocessing` | `generate_images` | off by default; on, the solved case is rendered to PNG images with ParaView ([below](#images-of-the-results)) |
+| `restart` | `checkpoint_every`, `keep_checkpoints` | 0 by default (only the last iteration is written); N > 0 writes the fields every N iterations and keeps the last `keep_checkpoints` (2) of them |
+| | `resume` | off by default (`case/` is removed and the case solved from scratch); on, a case in the case directory built from the same design and settings is continued ([Checkpoints and resuming](#checkpoints-and-resuming)) |
 | `software` | `openfoam_load` | commands that put OpenFOAM on PATH (`module load openfoam/2412`, `source .../etc/bashrc`); empty installs v2412 from conda-forge under `${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca` (~5 min once) |
 | | `paraview_load` | shown with images on: commands that put `pvpython` on PATH (`module load paraview/5.13`); empty downloads the official ParaView 6.1.1 binaries under `.../openfoam-naca/paraview` (x86_64, ~830 MB once, 2.7 GB on disk) |
 
@@ -67,9 +69,12 @@ In the case directory (`CASE_DIR` in the log):
 ```
 params.in        the design the case was solved with (file values merged over the form's)
 results.out      "<Cd> drag_coefficient" and "<-Cl> neg_lift_coefficient"
-exit_code        the simulator's exit status, written even when it failed
+exit_code        the simulator's exit status, written even when it failed (128 + signal when
+                 a signal ended it)
+attempts.log     one start and one end line per attempt of the simulator on this directory
 run.<job>.out    the streamed log: every OpenFOAM step, one solver progress line per 50 iterations
 case/            the OpenFOAM case, final time step included; case/case.foam opens it in ParaView
+case/restart/    the state a resumed case continues from (below)
 images/          with images on: pressure, velocity, streamlines, turbulence, wake, mesh (PNG),
                  manifest.json and render.log (the full pvpython output)
 ```
@@ -78,6 +83,42 @@ The `results` job publishes `DRAG_COEFFICIENT`, `LIFT_COEFFICIENT`,
 `PARAVIEW_FILE` and, with images on, `IMAGES_DIR` as outputs and fails the run
 when there is no `results.out` (a diverged solver), printing the log tails.
 Reference: NACA 2412 at 5°, `mesh_scale` 1 gives Cd ≈ 0.0222, Cl ≈ 0.722.
+
+### Checkpoints and resuming
+
+The **Checkpoints and Resume** group makes the case survive an interruption.
+`checkpoint_every` N makes `simpleFoam` write its fields every N iterations
+(`writeInterval`), keeping the last `keep_checkpoints` of them (`purgeWrite`);
+left at 0, only the last iteration is written, as before. `resume` continues
+the case found in the case directory instead of removing it:
+
+- the case is only continued when `case/restart/inputs` (the design, `mesh_scale`,
+  `cores_per_case` and the other settings that decide the solution) matches; any
+  other case there starts over;
+- the stages done are skipped (`case/restart/<stage>.done`: `blockMesh`,
+  `decomposePar`, `potentialFoam`, `simpleFoam`), and `simpleFoam` restarts from
+  its latest **complete** checkpoint (`startFrom latestTime`): a checkpoint a
+  kill cut short, one whose fields lack OpenFOAM's closing line in any
+  processor directory, is discarded first, and so are all but the last
+  `keep_checkpoints`;
+- a solved case is not solved again (its results are extracted again), and
+  neither is a case whose solver stopped on its own with a non-zero status
+  (`case/restart/failed`: a diverged solver is final, not an interruption);
+- every run of the simulator is one attempt in `attempts.log`, with a start
+  line (from scratch, or what is resumed) and an end line (solved; interrupted
+  by which signal at which iteration; failed and why). The solver's log of each
+  attempt is kept as `case/log.simpleFoam.<attempt>`.
+
+An interruption is a signal: `case.sh` runs the simulator in the background and
+forwards the SIGTERM the scheduler's walltime sends to the batch script alone,
+and the simulator (`app/restart.sh`) forwards it to the solver's process tree,
+records the interruption and exits 128 + signal. A node lost outright leaves no
+record; the next attempt notes that. The attempts hold a `flock` on
+`attempt.lock`, so a new attempt waits for the previous one to die.
+
+[`workflows/openfoam-naca-restart`](../openfoam-naca-restart/) builds on this
+group: it calls this workflow from a retried step until the case completes, and
+its README walks through the pieces.
 
 ### Images of the results
 
@@ -203,7 +244,8 @@ concurrent calls on a cold cluster install once. Worked example:
 | `install-openfoam.sh` | idempotent conda-forge install, the `lib/sys-mpich` link that makes `-parallel` runs load the MPI Pstream, the activation file for `tools/utils/prepare-env.sh` |
 | `naca_blockmesh.py` | NACA 4-digit parameters → structured C-grid `blockMeshDict` |
 | `openfoam-case/` | the case template: boundary conditions, schemes, solver settings |
-| `simulator.sh` | `params.in` → case → `blockMesh` (+ `decomposePar`) → `potentialFoam` → `simpleFoam` → `results.out` → `reconstructPar` + `case.foam`; env contract `MESH_SCALE`, `CORES_PER_CASE`, `MIN_CELLS_PER_RANK`, `OPENFOAM_ENV`, `MPIRUN` |
+| `simulator.sh` | `params.in` → case → `blockMesh` (+ `decomposePar`) → `potentialFoam` → `simpleFoam` → `results.out` → `reconstructPar` + `case.foam`; env contract `MESH_SCALE`, `CORES_PER_CASE`, `MIN_CELLS_PER_RANK`, `OPENFOAM_ENV`, `MPIRUN`, and for checkpoints and resuming `CHECKPOINT_EVERY`, `KEEP_CHECKPOINTS`, `RESUME` |
+| `restart.sh` | sourced by `simulator.sh`: the attempts log, the inputs check, the stage markers, the checkpoint check and pruning, the signal trap that stops the solver and records an interruption, the final failure record |
 | `install-paraview.sh` | idempotent download of the official ParaView binaries (`PARAVIEW_VERSION`, `PARAVIEW_URL`), with an offscreen render check, and the activation file for `tools/utils/prepare-env.sh` |
 | `render-images.sh` | `pvpython` wrapper: the ParaView environment (`PARAVIEW_ENV`), the backend fallbacks, the timeout, `render.log` |
 | `render-case.py` | the pvpython script: `case.foam` (reconstructed or decomposed) → the six images + `manifest.json` |

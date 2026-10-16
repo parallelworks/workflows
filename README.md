@@ -69,6 +69,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [ollama-openwebui](workflows/ollama-openwebui/) | Ollama + OpenWebUI on Kubernetes | k8s |
 | [open-notebook](workflows/open-notebook/) | Open Notebook (Docker) | general |
 | [openfoam-naca](workflows/openfoam-naca/) | One OpenFOAM case of a NACA 4-digit airfoil: C-grid mesh, `simpleFoam`, lift and drag coefficients, optional ParaView images; the evaluator of doe-openfoam and dakota-openfoam (no endpoint) | general, hsp, noaa |
+| [openfoam-naca-restart](workflows/openfoam-naca-restart/) | A long `openfoam-naca` case interrupted again and again (walltime, attempt budget, lost node) and resubmitted from its latest checkpoint until it completes: the example of checkpoints, a resumable run script and a retried subworkflow step for a simulation tool of your own (no endpoint) | general (+ the `attempt.yaml` the loop calls) |
 | [openvscode](workflows/openvscode/) | OpenVSCode Server | general, emed, hsp, noaa, general_k8s, k8s |
 | [pgadmin4](workflows/pgadmin4/) | pgAdmin 4 web client for PostgreSQL (Docker) on a compute cluster or Kubernetes, with a server registered from the form | general, general_k8s |
 | [physicsnemo](workflows/physicsnemo/) | NVIDIA PhysicsNeMo training in the NGC container (Docker or Singularity, GPU or CPU) on the login node or as a SLURM/PBS job: Darcy FNO, Darcy Transolver, LDC PINN or your own script, with TensorBoard live as an endpoint | general |

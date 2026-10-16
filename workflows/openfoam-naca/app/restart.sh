@@ -49,7 +49,11 @@ restart_times() {
 }
 
 restart_iteration() {
-    awk '/^Time = / {t = $3} END {print t + 0}' case/log.simpleFoam 2>/dev/null
+    if [ -f case/log.simpleFoam ]; then
+        awk '/^Time = / {t = $3} END {print t + 0}' case/log.simpleFoam
+    else
+        echo 0
+    fi
 }
 
 # where the case stands, for the log lines
@@ -195,7 +199,9 @@ restart_failed() {
         restart_log "${ATTEMPT}" end "interrupted (SIG${INTERRUPTED}) in ${stage}; solver log at iteration $(restart_iteration); checkpoints: $(restart_times)"
         exit $(( 128 + $(kill -l "${INTERRUPTED}") ))
     fi
-    reason=$(grep -m 1 -E 'FOAM FATAL|sigFpe|Floating point' "case/log.${stage}" 2>/dev/null | head -c 120)
+    # every OpenFOAM log opens with a "trapFpe: Floating point exception trapping
+    # enabled" banner: not the crash
+    reason=$(grep -E 'FOAM FATAL|sigFpe|Floating point exception' "case/log.${stage}" 2>/dev/null | grep -v trapFpe | head -n 1 | head -c 120)
     case "${stage}" in
         simpleFoam|potentialFoam) [ -z "${reason}" ] || reason="diverged: ${reason}" ;;
     esac

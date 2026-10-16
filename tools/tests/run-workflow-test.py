@@ -61,8 +61,9 @@ output (plus the namespace events on the k8s lane) saved under
 tests/<variant>/logs/<slug>.txt.
 
 Version columns are tree hashes of the content the run fetched from GitHub (the
-branch named in the YAML), plus the local commit; the commit gets a "-dirty"
-suffix when the local YAML differs from that branch. The k8s lane fetches
+branch of the YAML's checkout step or, in a YAML without one, the ref of its
+`uses: github/parallelworks/workflows@<ref>` calls), plus the local commit; the
+commit gets a "-dirty" suffix when the local YAML differs from that branch. The k8s lane fetches
 nothing (the YAML is read locally and its manifests are inline), so it stamps
 the local HEAD and is "-dirty" when the YAML has uncommitted changes.
 
@@ -303,7 +304,11 @@ def stamp(test):
     if test.k8s:
         fetched, ref = True, "HEAD"
     else:
-        m = re.search(r"^\s*branch:\s*['\"]?([\w./-]+)", test.yaml.read_text(), re.M)
+        text = test.yaml.read_text()
+        # a YAML that checks nothing out (a loop that only calls this repo's
+        # workflows) still fetches the ref its uses: lines name
+        m = (re.search(r"^\s*branch:\s*['\"]?([\w./-]+)", text, re.M)
+             or re.search(r"^\s*uses:\s*['\"]?github/parallelworks/workflows@([\w./-]+)", text, re.M))
         branch = m.group(1) if m else "canary"
         fetched = sh("git", "-C", str(REPO), "fetch", "-q", "origin", branch, timeout=120).returncode == 0
         ref = "FETCH_HEAD" if fetched else "HEAD"

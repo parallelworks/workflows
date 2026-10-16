@@ -138,7 +138,7 @@ teardown (why, and everything else k8s: `.claude/skills/activate-workflows/refer
 | `result` | `pass` or `fail` |
 | `cleanup` | `ok`, `leftover:<what>`, `unknown` (check failed), `kept` |
 | `http` | retired 2026-09-21: the status code the runner used to get from the endpoint URL. Older CSVs keep the column (empty in new rows); new CSVs do not have it |
-| `workflow_tree`, `submitter_tree`, `tools_tree` | git tree hashes of `workflows/<name>`, `workflows/script_submitter/v3.6`, `tools` at the commit the run fetched (the branch named in the YAML; the local HEAD on the k8s lane). Same content → same hash, across squash merges |
+| `workflow_tree`, `submitter_tree`, `tools_tree` | git tree hashes of `workflows/<name>`, `workflows/script_submitter/v3.6`, `tools` at the commit the run fetched (the branch of the YAML's checkout step, or else the ref of its `uses: github/parallelworks/workflows@<ref>` calls; the local HEAD on the k8s lane). Same content → same hash, across squash merges |
 | `commit` | local HEAD; `-dirty` when the local YAML differs from the fetched branch |
 | `fetched` | the fetched commit; `?` when the fetch failed and local HEAD was used |
 | `branch` | local branch |

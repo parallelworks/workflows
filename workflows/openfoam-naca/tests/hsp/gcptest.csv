@@ -4,3 +4,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-16T11:16:17Z,warm,pass,ok,8e1b9a2,e0cda99,e8105a3,936e440,936e440,restart-simulation,alvaro,proper-husky,38,
 2026-10-16T12:20:02Z,warm,fail,ok,e631718,e0cda99,e8105a3,f5d2335-dirty,88e8d58,restart-simulation,alvaro,endless-ray,23,"run error, expected completed: preprocessing > Create the Case (error, 0s)"
 2026-10-16T12:47:29Z,warm,pass,ok,61c99b3,e0cda99,907e448,02596ce,02596ce,restart-simulation,alvaro,arriving-mosquito,37,
+2026-10-16T13:54:01Z,warm,pass,ok,cad1810,e0cda99,280ff44,c11eec9,c11eec9,restart-simulation,alvaro,deciding-drake,37,

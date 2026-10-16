@@ -2,3 +2,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-16T12:18:51Z,warm,fail,ok,e631718,e0cda99,e8105a3,f5d2335-dirty,88e8d58,restart-simulation,alvaro,smooth-drum,23,"run error, expected completed: preprocessing > Validate Inputs and Prepare the Case Directory (error, 0s)"
 2026-10-16T12:42:10Z,warm,pass,ok,61c99b3,e0cda99,907e448,02596ce,02596ce,restart-simulation,alvaro,sound-stinkbug,257,
 2026-10-16T13:48:11Z,warm,pass,ok,cb8865f,e0cda99,e8105a3,9a91332-dirty,0a6b4d9,restart-simulation,alvaro,trusted-cod,272,
+2026-10-16T14:28:02Z,warm,pass,ok,c801f0e,e0cda99,a60fa58,44e3e3f,44e3e3f,restart-simulation,alvaro,true-dingo,256,

@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-16T14:09:02Z,warm,pass,ok,c801f0e,e0cda99,a60fa58,44e3e3f,44e3e3f,restart-simulation,alvaro,model-scorpion,198,

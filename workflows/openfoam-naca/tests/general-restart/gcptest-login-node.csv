@@ -6,3 +6,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-16T12:01:03Z,warm,pass,ok,cb8865f,e0cda99,e8105a3,88e8d58-dirty,0a6b4d9,restart-simulation,alvaro,classic-opossum,290,
 2026-10-16T12:24:44Z,warm,pass,ok,61c99b3,e0cda99,907e448,02596ce,02596ce,restart-simulation,alvaro,related-barnacle,288,
 2026-10-16T13:28:35Z,warm,pass,ok,cb8865f,e0cda99,e8105a3,42cce20-dirty,0a6b4d9,restart-simulation,alvaro,valued-mastiff,288,
+2026-10-16T14:04:01Z,warm,pass,ok,c801f0e,e0cda99,a60fa58,44e3e3f,44e3e3f,restart-simulation,alvaro,natural-boar,288,

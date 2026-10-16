@@ -59,7 +59,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: restart-simulation
+          branch: canary
           sparse_checkout:
             - workflows/openfoam-naca/app
             - tools/utils
@@ -129,7 +129,7 @@ jobs:
           max-retries: ${{ inputs.restart.max_restarts }}
           interval: 10s
           timeout: ${{ inputs.restart.attempt_timeout }}
-        uses: github/parallelworks/workflows@restart-simulation
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/openfoam-naca-restart/yamls/attempt.yaml
           # the retry counter (0 on the first attempt), so the attempt can say

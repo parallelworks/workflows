@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: OpenFOAM (Resume the Case)
         ignore-errors: true
-        uses: github/parallelworks/workflows@restart-simulation
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/openfoam-naca/yamls/general.yaml
           resource: ${{ inputs.resource }}

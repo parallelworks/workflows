@@ -282,7 +282,12 @@ python3 tools/tests/run-workflow-test.py workflows/openfoam-naca-restart/tests/g
 ```
 
 The verdict of each attempt, and of the run, is in `attempts.log` and the
-`Report` step; `pw workflows runs errors <slug>` shows the failures.
+`Report` step; `pw workflows runs errors <slug>` shows the failures. A
+`pw workflows runs cancel` of a scheduled run mid-solve was checked by hand as
+well: the submitter's cleanup `scancel`s the job, the simulator records the
+interruption with its checkpoints, nothing is left on either node, and a later
+run given the case directory (`case.case_dir`) resumes from the last checkpoint
+and solves it.
 
 ## Bringing your own simulation tool
 

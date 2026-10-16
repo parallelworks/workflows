@@ -78,7 +78,7 @@ jobs:
           max-retries: ${{ inputs.restart.max_restarts }}
           interval: 10s
           timeout: ${{ inputs.restart.attempt_timeout }}
-        uses: github/parallelworks/workflows@restart-simulation
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/openfoam-naca/yamls/general.yaml
           resource: ${{ inputs.resource }}

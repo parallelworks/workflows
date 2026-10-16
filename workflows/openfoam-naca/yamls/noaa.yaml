@@ -54,7 +54,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: restart-simulation
+          branch: canary
           sparse_checkout:
             - workflows/openfoam-naca/app
             - tools/utils

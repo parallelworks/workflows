@@ -319,6 +319,19 @@
   cleanup script stays the belt and braces (and on `hsp` it cannot reach the node: that
   submitter writes `HOSTNAME` after the script). `activate-batch`'s `commands.exit` has
   the same latent `0`; harmless there because a cancelled run never reads it.
+- **SLURM's walltime SIGTERM reaches the batch script alone, not its children** (verified
+  2026-10-16 on gcptest with a 1-minute job: the script's `trap` fired at the limit, a
+  `sleep` it had started lived on until the SIGKILL 30 s later, `KillWait`, and the
+  batch step ended `CANCELLED` after 1:29). A solver started by the script therefore
+  runs on, unrecorded, until the SIGKILL, mid-write or not. Forward the signal down:
+  the batch script runs the real script in the background with a `trap` that forwards
+  TERM/INT/HUP to it, and that script forwards to the solver's process tree (walk
+  `pgrep -P` recursively: `mpirun` → proxies → ranks) and records the interruption
+  (`workflows/openfoam-naca/yamls/*.yaml` `case.sh`, `app/restart.sh`). bash runs a
+  trap at once only while it waits on a *background* job (`wait $!`); a foreground
+  command defers it until the command ends, so run every long tool in the background.
+  The platform's cancel of a retried attempt goes through the submitter's cleanup
+  (`scancel`, or `kill -- -<pgid>` on the login node) and arrives the same way.
 
 ## Endpoints and the service
 
@@ -528,6 +541,13 @@
   `unrecognized arguments` and the liveness check failed the run (2026-10-08,
   `workflows/dakota-openfoam`, run vocal-magpie). Build the argument before the heredoc
   with `printf -v arg -- '--link %q' "Pareto front=${url}"` and write `${arg}`.
+
+- **bash 5.1 reads a bare `case` inside `$( )` as the keyword** and fails the whole script
+  at parse time with `unexpected EOF while looking for matching` (gcptest, bash 5.1.8,
+  2026-10-16: `echo "$(list_times case)"` broke a test driver; `case/log.x` as a path is
+  fine, the bare word is not). Write `./case` or `case/`. A function named like a
+  builtin (`times`) has the same effect inside `$( )`. macOS bash 3.2 accepts both, so
+  `bash -n` locally proves nothing: run it on the target.
 
 ## Software, sites and figures
 

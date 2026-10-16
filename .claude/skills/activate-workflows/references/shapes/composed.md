@@ -91,6 +91,14 @@ listed, the runner's default lane.
   design-parameter names, the runner writes `results.out` and `exit_code`
   ([../design-parameters.md](../design-parameters.md)).
 
+- **A loop whose callee cannot say "stop"**: a runner that fails whenever it leaves no
+  result (openfoam-naca) cannot tell a retried step whether to go on. Put the retry on
+  a thin attempt YAML that calls the runner whole with `ignore-errors: true`, then reads
+  the files it left and exits 0 when the case is over (solved, or failed on its own) and
+  1 when it was interrupted; the parent's `Report` step (`if: always`) reads the same
+  files for the verdict (`workflows/openfoam-naca-restart`: `attempt.yaml`,
+  `general.yaml`). Depth: restart → attempt → runner → script_submitter, four.
+
 ## Tests
 
 The variant is the YAML's basename (`tests/general-naca/` for `general-naca.yaml`).

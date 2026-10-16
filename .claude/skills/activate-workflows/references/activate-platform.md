@@ -383,6 +383,14 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   retry-as-loop + guarded static matrix + results-file protocol, tested end-to-end
   (run dear-crow, 2026-09-28) — is `tutorials/optimization/` (staged README);
   `retry.max-retries: ${{ inputs.<group>.<n> }}` from a form input also verified there.
+- **`ignore-errors: true` works on a `uses:` step** (verified 2026-10-16, run finer-bunny:
+  a subworkflow ending in error, the next step ran, the job and the run completed). It
+  is how a retried attempt workflow maps a callee's failure to a verdict of its own: a
+  thin `attempt.yaml` calls the whole case workflow with `ignore-errors`, then a step
+  reads the state files the case left and exits 0 (over: solved, or failed on its own)
+  or 1 (interrupted: the parent's retry fires the next attempt). Retrying the case
+  workflow directly would retry a diverged case too, a scheduler job each time
+  (`workflows/openfoam-naca-restart/yamls/attempt.yaml`).
 - **`max-retries` can be computed:** `max-retries: ${{ needs.<job>.outputs.N - 1 }}` —
   arithmetic is evaluated in the expression layer. An upstream step writing `N` to
   `$OUTPUTS` lets a later step in the **same job** size its own retries
@@ -672,6 +680,7 @@ to your task.
 | **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/endpoint-workflows/05-matrix.yaml` |
 | **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` |
 | **Iterative loop over computed cases** (retry-as-loop + guarded static matrix) | `tutorials/optimization/` |
+| **Resubmit an interrupted simulation until it completes** (checkpoints, a run script that resumes, the walltime signal forwarded, retry-as-loop with the verdict read from files) | `workflows/openfoam-naca-restart/` (README is the walkthrough; the resume logic in `workflows/openfoam-naca/app/restart.sh`) |
 | **`if:` status keywords on steps and jobs** (`always`, `error`, `canceled`, `!completed`) | `tutorials/if-conditions/` |
 | **Compose standalone workflows** (sampler or optimizer → matrix of evaluators → a live page; files as the only coupling) | `workflows/doe-openfoam/`, `workflows/dakota-openfoam/` (READMEs show the wiring); the file contract in [design-parameters.md](design-parameters.md) |
 | **A workflow others can call** (form as the interface, paths as inputs, one `general.yaml` for every platform) | `workflows/doe/`, `workflows/design-explorer/`, `workflows/wait_for_endpoint/` |

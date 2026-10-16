@@ -92,6 +92,38 @@
   `hydra_pmi_proxy` or rank behind even though hydra puts them in their own process
   groups: the proxies exit when their control connection drops (verified 2026-09-30).
 
+## Checkpoints and restarts (`workflows/openfoam-naca-restart`, 2026-10-16)
+
+- `writeControl timeStep; writeInterval N; purgeWrite K` keeps the last K time
+  directories **written by this run only**: a restart starts with an empty purge stack,
+  so earlier attempts' checkpoints survive it; prune them yourself
+  (`restart.sh`, `restart_checkpoints`). `startFrom latestTime` resumes a decomposed case
+  too (each `processor*/` has the same times).
+- **A torn write has no closing line.** Fields are written one after another into
+  `<time>/` (and `uniform/time` first, so it proves nothing); a kill mid-write leaves a
+  field missing or truncated. A checkpoint is complete when every field of `0/` is in it
+  ending with `// ****` (checked in every processor directory); keep `purgeWrite` ≥ 2 so
+  a torn latest checkpoint still leaves a complete one (verified by truncating `600/U`:
+  discarded, resumed from 500).
+- `forceCoeffs` writes a new `postProcessing/forceCoeffs1/<startTime>/coefficient.dat`
+  per start: merge the files in start order, later values winning for the iterations
+  solved twice (`sorted(glob)[-1]` sorts "1000" before "200").
+- `potentialFoam` rewrites `0/U` in place: a kill during it leaves a broken initial
+  field. Rewrite `0/` from the template (and redo the decomposition) unless potentialFoam
+  finished on them.
+- OpenFOAM handles SIGINT/SIGQUIT/SIGSEGV/SIGFPE, not SIGTERM: a SIGTERM ends the solver
+  at once with no `FOAM FATAL` in the log, so "non-zero and no signal seen" is the
+  solver's own failure. A rank's SIGFPE under hydra shows as `Foam::sigFpe::sigHandler`
+  in the stack trace, `Caught signal 8`, then `BAD TERMINATION ... EXIT CODE: 9` and
+  `mpirun` exiting 137 (the other ranks are killed). Every log opens with
+  `trapFpe: Floating point exception trapping enabled (FOAM_SIGFPE).`: a grep for
+  "Floating point" must skip that banner.
+- The over-decomposition divergence reproduces on gcptest's login node: camber 0.05,
+  mesh_scale 1, 16 ranks with `MIN_CELLS_PER_RANK=0` dies of SIGFPE in seconds, while
+  serial it converges (Cd 0.0276, Cl 1.040); the restart workflow's failure-path test
+  uses it. Camber 0.06 at 12° with thickness 0.08 or 0.18, and even thickness 0.6,
+  converged serially: the serial solver is hard to break on purpose.
+
 ## Numerics that bit
 
 - **The same design can converge on one node type and diverge on another** (SIGFPE in

@@ -75,10 +75,12 @@ user can.
   matching `workflows/<name>/yamls/<variant>.yaml`; `--dry-run` does not catch a
   mismatch. A workflow that only runs on the login node keeps one `general.yaml`
   (`wait_for_endpoint`, `doe`, `dakota`, `design-explorer`); a site difference a
-  hostname can decide is runtime logic inside it. A step body the variants share
-  goes into a script under `app/`, called with its inputs as environment variables
-  (`openfoam-naca/app/read-results.sh`), so the variants differ only where the
-  platform does and a change lands once.
+  hostname can decide is runtime logic inside it. Code the variants share is
+  written once, so the variants differ only where the platform does and a change
+  lands once: a step body only this workflow runs goes into a script under `app/`,
+  called with its inputs as environment variables (`openfoam-naca/app/read-results.sh`);
+  logic many workflows call, or that takes several steps or jobs, is a subworkflow
+  they call (`wait_for_endpoint`, `script_submitter`).
 - **Pass every required subworkflow input, and `--dry-run` first.** Dry-run validates
   the YAML and each subworkflow's required inputs; a missing one fails with the terse
   `Could not parse subworkflow` (the field is never named: diff your `with:` block

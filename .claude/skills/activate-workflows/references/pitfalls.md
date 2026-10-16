@@ -273,6 +273,19 @@
   rss`, or PSS from `/proc/<pid>/smaps_rollup`) before trusting the shared 512Mi/1Gi
   defaults, and probe the image in a pod with the same limits first (k8s reference §3).
 
+- **A cloud node that never finishes booting holds the job in `CONFIGURING` for the
+  whole `ResumeTimeout`, then fails it and SLURM requeues it** (verified 2026-10-16 on
+  gcptest, `ResumeTimeout = 1200 sec`: job 62 of a doe-openfoam run sat `CF` on a node
+  shown `mixed#` for 20 min, ended `NODE_FAIL`, and ran on another node after the
+  automatic requeue, `Requeue=1 Restarts=1`; the submitter's monitor followed it and the
+  run completed 20 min late). A retried attempt whose `timeout` is shorter than queue +
+  `ResumeTimeout` + walltime is cancelled before such a requeue gets to run
+  (`workflows/openfoam-naca/yamls/general-restart.yaml`, `restart.attempt_timeout`).
+- **The test runner counts every queued job of the user after a scheduled test**
+  (`squeue -h -u $USER`), not only the test's own: an interactive `srun bash` running
+  meanwhile makes the row read `cleanup=leftover:squeue` (2026-10-16). Check with
+  `sacct` that every job named `inline.<slug>-…` completed before reading it as a leak.
+
 ## `script_submitter` and scheduler jobs
 
 - **`script_submitter` with `use_existing_script` and `script_path: ./run.sh` wraps its own

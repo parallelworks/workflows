@@ -420,10 +420,12 @@ platform host):
 | anything else | `general` |
 | unclear | **ask the user** |
 
-Keep the variants' shared step bodies in one script under `app/` (a one-line step
-calls it with its inputs as environment variables, `OUTPUTS` included:
-`workflows/openfoam-naca/app/read-results.sh`), so the YAMLs differ only where the
-platform does and a change lands once.
+Write what the variants share once, so the YAMLs differ only where the platform
+does and a change lands once. A step body only this workflow runs goes into one
+script under `app/`: a one-line step calls it with its inputs as environment
+variables, `OUTPUTS` included (`workflows/openfoam-naca/app/read-results.sh`). Logic
+many workflows call, or that takes several steps or jobs, is a subworkflow they call
+(`workflows/wait_for_endpoint`, `workflows/script_submitter`; §3).
 
 The same choice applies to **`script_submitter`** (§5) and to the **resource form
 section** of your YAML: the `resource`, `scheduler`, `slurm`, and `pbs` input groups and

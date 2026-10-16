@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-16T15:20:58Z,warm,pass,leftover:squeue,053f081,e0cda99,a60fa58,18c3fcf,18c3fcf,restart-simulation,alvaro,electric-rodent,534,

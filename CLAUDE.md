@@ -257,10 +257,12 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
   paths. Support both SLURM and PBS (`scheduler: true` submits; `false` runs on the
   login node). Copy the `cluster` form and the submitter's `with:` block from the same
   variant of a sibling workflow; `--dry-run` does not catch a mismatch.
-- **A step body that several variants share lives in a script under `app/`**, called
-  from a one-line step with its inputs as environment variables
-  (`openfoam-naca`'s `read-results.sh`, `OUTPUTS` passed through), so a change lands
-  once and the variants differ only where the platform does.
+- **Code that several variants share is written once**, so a change lands once and
+  the variants differ only where the platform does. A step body only this workflow
+  runs lives in a script under `app/`, called from a one-line step with its inputs as
+  environment variables (`openfoam-naca`'s `read-results.sh`, `OUTPUTS` passed
+  through). Logic many workflows call, or that takes several steps or jobs, is a
+  subworkflow they call (`wait_for_endpoint`, `script_submitter`).
 - Multi-implementation workflows select their script subdir via a runtime input
   (`container_runtime`, `service.container_runtime`, `service.name`): the input
   **values must match the impl subdirectory names** under `workflows/<name>/`.

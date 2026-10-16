@@ -10,9 +10,13 @@
 - Bootstrap Miniforge from its GitHub release (`Miniforge3-Linux-x86_64.sh -b -p
   <prefix>`); it defaults to conda-forge and avoids repo.anaconda.com's terms of
   service. Check every download and installer's exit status.
-- Idempotence: `[ -x <prefix>/bin/conda ]` for the bootstrap, then
-  `conda run -n <env> <tool> --version` (or `-help`) before `conda create`, so a
-  re-run finds a working env and skips.
+- Idempotence: `<prefix>/bin/conda --version` for the bootstrap (a binary a cut
+  install left behind is not a conda), then `conda run -n <env> <tool> --version`
+  (or `-help`) before `conda create`, so a re-run finds a working env and skips. An
+  install a walltime or an attempt budget cuts short is the reason for the markers
+  below: `tools/utils/miniforge.sh` marks the prefix while it bootstraps and
+  `install-openfoam.sh` the env while it creates it, and only a marked one is
+  removed and redone (2026-10-16).
 - Keep several envs in one prefix under
   `${service_parent_install_dir:-$HOME/pw/software}/<workflow>/miniforge`, and any
   post-install repair (a missing symlink, a variable the activation forgets) in the

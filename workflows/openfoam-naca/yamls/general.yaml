@@ -50,31 +50,20 @@ jobs:
           sparse_checkout:
             - workflows/openfoam-naca/app
             - tools/utils
-      # the environment is one file every later step and the case source; the heredoc
-      # carries the form's load commands verbatim (empty -> conda-forge install).
-      # The same for ParaView when images are wanted (empty -> the official binaries)
+      # the environment is one file every later step and the case source
+      # (app/prepare-environments.sh); the quoted heredocs carry the form's load
+      # commands verbatim (empty -> the installers)
       - name: Prepare the OpenFOAM and ParaView Environments
         run: |
-          set -e
-          cores="${{ inputs.cluster.cores_per_case }}"
-          if ! [[ "${cores}" =~ ^[0-9]+$ ]] || [ "${cores}" -lt 1 ]; then
-            echo "::error::cores_per_case must be a positive integer, got '${cores}'"
-            exit 1
-          fi
-          required="blockMesh potentialFoam simpleFoam"
-          if [ "${cores}" -gt 1 ]; then
-            required="${required} decomposePar reconstructPar mpirun"
-          fi
-          bash tools/utils/prepare-env.sh openfoam "${PWD}/openfoam-env.sh" \
-            workflows/openfoam-naca/app/install-openfoam.sh ${required} << 'PW_LOAD_EOF'
+          cat > openfoam-load.sh << 'PW_LOAD_EOF'
           ${{ inputs.software.openfoam_load }}
           PW_LOAD_EOF
-          if [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
-            bash tools/utils/prepare-env.sh paraview "${PWD}/paraview-env.sh" \
-              workflows/openfoam-naca/app/install-paraview.sh pvpython << 'PW_LOAD_EOF'
+          cat > paraview-load.sh << 'PW_LOAD_EOF'
           ${{ inputs.software.paraview_load }}
           PW_LOAD_EOF
-          fi
+          CORES_PER_CASE="${{ inputs.cluster.cores_per_case }}" GENERATE_IMAGES="${{ inputs.postprocessing.generate_images }}" \
+            RESOURCE_IP="${{ inputs.resource.ip }}" \
+            bash workflows/openfoam-naca/app/prepare-environments.sh openfoam-load.sh paraview-load.sh
       # the case directory gets the design (params.in) and the script the submitter
       # runs there (app/create-case.sh, one script shared by every variant)
       - name: Create the Case

@@ -16,6 +16,7 @@
 #                    the loop stops; a killed one (no exit_code) fails the step,
 #                    so the loop resumes the case from its latest checkpoint
 set -o pipefail
+set -x
 case_dir="$1"
 if [ -z "${case_dir}" ] || [ -z "${OUTPUTS}" ]; then
     echo "::error::usage: OUTPUTS=<file> read-results.sh <case_dir>"

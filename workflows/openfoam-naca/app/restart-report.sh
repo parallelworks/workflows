@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: OUTPUTS=<file> restart-report.sh <case_dir>
+# Usage: OUTPUTS=<file> [CASE_DIR=<dir>] restart-report.sh
 #
 # The Report step of the restart variants (<variant>-restart.yaml), one script
 # for the three, run with if: always: the run's verdict comes from the case
@@ -11,14 +11,19 @@
 # failed before it), or the case is still interrupted after the attempts ran
 # out (resumable: a later run given this directory continues it).
 # Environment: OUTPUTS (the file the workflow collects KEY=value outputs from),
+# CASE_DIR (the case.case_dir input; empty: the attempts' default, case/ in the
+# directory they ran in, the one this copy of the app was checked out to),
 # MAX_RESTARTS and MESH_SCALE (for the messages).
 set -o pipefail
 set -x
-case_dir="$1"
-if [ -z "${case_dir}" ] || [ -z "${OUTPUTS}" ]; then
-    echo "::error::usage: OUTPUTS=<file> restart-report.sh <case_dir>"
+if [ -z "${OUTPUTS}" ]; then
+    echo "::error::usage: OUTPUTS=<file> [CASE_DIR=<dir>] restart-report.sh"
     exit 1
 fi
+case_dir="${CASE_DIR}"
+case "${case_dir}" in
+    ''|undefined) case_dir="$(cd "$(dirname "$0")/../../.." && pwd)/case" ;;
+esac
 log="${case_dir}/attempts.log"
 echo "--- ${log}"
 cat "${log}" 2>/dev/null || echo "(no attempt ran the simulator)"

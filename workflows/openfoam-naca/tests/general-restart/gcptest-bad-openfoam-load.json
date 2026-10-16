@@ -1,0 +1,26 @@
+{
+  "_test": {
+    "timeout_s": 600,
+    "endpoint": false,
+    "expect": "error",
+    "warm_marker": "${HOME}/pw/software/openfoam-naca/miniforge/envs/openfoam",
+    "leftover_patterns": ["simpleFoam", "potentialFoam", "blockMesh", "simulator.sh"]
+  },
+  "resource": "pw://alvaro/gcptest",
+  "cluster": {
+    "scheduler": false,
+    "cores_per_case": 1
+  },
+  "case": {
+    "mesh_scale": 3
+  },
+  "restart": {
+    "max_restarts": 10,
+    "attempt_timeout": "30m",
+    "checkpoint_every": 100,
+    "keep_checkpoints": 2
+  },
+  "software": {
+    "openfoam_load": "module load openfoam/does-not-exist"
+  }
+}

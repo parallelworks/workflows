@@ -70,6 +70,9 @@ for v in checkpoint_every keep_checkpoints; do
         exit 1
     fi
 done
+if [ "${resume}" = true ] && [ "${checkpoint_every}" -eq 0 ]; then
+    echo "::warning::resume is on but restart.checkpoint_every is 0: no checkpoints are written, so an interrupted solver starts again from iteration 0"
+fi
 if [ "${resume}" = true ] && [ -d "${case_dir}/case" ]; then
     echo "::notice::resume is on: the case in ${case_dir}/case is continued when it matches this design and these settings (its attempts so far are in ${case_dir}/attempts.log)"
 fi

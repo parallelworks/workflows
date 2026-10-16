@@ -28,11 +28,14 @@
 #                ends the run accordingly
 #
 # Every attempt checks out the app, prepares the OpenFOAM environment and
-# creates the case itself (general.yaml's preprocessing, idempotent and cheap),
-# so this workflow only validates its own inputs and names the case directory
-# (app/restart-prepare.sh) and reports (app/restart-report.sh).
-# On a cold cluster the first attempt also installs OpenFOAM, which needs a
-# budget of a few minutes; an install cut short is removed and redone.
+# creates the case itself (noaa.yaml's preprocessing, idempotent and cheap)
+# in the Solve step's own directory, the same on every retry: the case lives
+# there unless case.case_dir names another, and the Report step runs the
+# attempts' copy of app/restart-report.sh. Environment commands given in the
+# form are checked once before the loop (check_openfoam_load). Without them, a
+# cluster that never ran this workflow installs OpenFOAM inside the first
+# attempt: allow a few minutes for it in restart.attempt_timeout (an install
+# cut short is removed and redone by the next attempt).
 #
 # By default the run is set up to be interrupted: a mesh_scale 3 case (a few
 # minutes) under a 2-minute walltime when scheduled, so a run shows two or three
@@ -46,9 +49,9 @@ permissions:
 
 # Saved inputs, offered under "Load saved inputs" on the Execute page: the login
 # node demo, where the attempt budget is what interrupts the case (a 75-second
-# budget against a case of about 3 minutes: four attempts, one core). On a cold
-# cluster run general.yaml once first, or raise the budget for the first run:
-# 75 seconds do not cover the OpenFOAM install.
+# budget against a case of about 3 minutes: four attempts, one core). Where
+# OpenFOAM still has to be installed, 75 seconds do not cover the install: run
+# general.yaml there once first.
 configurations:
   login_node_demo:
     inputs:
@@ -64,12 +67,16 @@ configurations:
         keep_checkpoints: 2
 
 jobs:
-  preprocessing:
+  # the OpenFOAM environment commands typed in the form, checked once before
+  # the loop (app/prepare-environments.sh): inside it, commands that do not
+  # deliver the tools would fail every attempt. Skipped when none are given (an
+  # unset editor input is null to the expression, not ''); the solve job still
+  # runs after a skipped job, and not after a failed one
+  check_openfoam_load:
+    if: ${{ inputs.software.openfoam_load != null }}
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      # the loop's own two scripts (restart-prepare.sh here, restart-report.sh in
-      # the Report step); every attempt checks out the app again inside its call
       - name: Checkout the App
         uses: parallelworks/checkout
         with:
@@ -77,15 +84,17 @@ jobs:
           branch: restart-simulation
           sparse_checkout:
             - workflows/openfoam-naca/app
-      - name: Validate Inputs and Prepare the Case Directory
+            - tools/utils
+      - name: Check the OpenFOAM Environment Commands
         run: |
-          MAX_RESTARTS="${{ inputs.restart.max_restarts }}" ATTEMPT_TIMEOUT="${{ inputs.restart.attempt_timeout }}" \
-            CHECKPOINT_EVERY="${{ inputs.restart.checkpoint_every }}" KEEP_CHECKPOINTS="${{ inputs.restart.keep_checkpoints }}" \
-            CORES_PER_CASE="${{ inputs.cluster.cores_per_case }}" CASE_DIR="${{ inputs.case.case_dir }}" \
-            OUTPUTS="${OUTPUTS}" bash workflows/openfoam-naca/app/restart-prepare.sh
+          cat > openfoam-load.sh << 'PW_LOAD_EOF'
+          ${{ inputs.software.openfoam_load }}
+          PW_LOAD_EOF
+          CORES_PER_CASE="${{ inputs.cluster.cores_per_case }}" RESOURCE_IP="${{ inputs.resource.ip }}" \
+            bash workflows/openfoam-naca/app/prepare-environments.sh openfoam-load.sh
 
   solve:
-    needs: [preprocessing]
+    needs: [check_openfoam_load]
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
@@ -125,7 +134,7 @@ jobs:
             thickness: ${{ inputs.case.thickness }}
             angle_of_attack: ${{ inputs.case.angle_of_attack }}
             mesh_scale: ${{ inputs.case.mesh_scale }}
-            case_dir: ${{ needs.preprocessing.outputs.CASE_DIR }}
+            case_dir: ${{ inputs.case.case_dir }}
           restart:
             resume: true
             attempt: true
@@ -138,12 +147,19 @@ jobs:
       # if: always — the run's verdict comes from the case directory, not from
       # how the Solve step ended (app/restart-report.sh): solved is the only
       # success, whether the loop stopped by decision or by exhausting its
-      # retries; the failures are told apart there
+      # retries; the failures are told apart there. The script is the attempts'
+      # checkout, in the Solve step's directory (subworkflows/<job>/step_<index>,
+      # the same on every retry); missing, no attempt got that far
       - name: Report
         if: ${{ always }}
         run: |
-          MAX_RESTARTS="${{ inputs.restart.max_restarts }}" MESH_SCALE="${{ inputs.case.mesh_scale }}" OUTPUTS="${OUTPUTS}" \
-            bash workflows/openfoam-naca/app/restart-report.sh "${{ needs.preprocessing.outputs.CASE_DIR }}"
+          report="${PW_PARENT_JOB_DIR}/subworkflows/solve/step_0/workflows/openfoam-naca/app/restart-report.sh"
+          if [ ! -f "${report}" ]; then
+            echo "::error::no attempt got as far as checking out the app (${report} is missing): read the Solve step's logs"
+            exit 1
+          fi
+          CASE_DIR="${{ inputs.case.case_dir }}" MAX_RESTARTS="${{ inputs.restart.max_restarts }}" \
+            MESH_SCALE="${{ inputs.case.mesh_scale }}" OUTPUTS="${OUTPUTS}" bash "${report}"
 
 'on':
   execute:
@@ -314,10 +330,12 @@ jobs:
             optional: true
             tooltip: |
               Absolute path of the directory every attempt works on. Leave empty
-              for case/ under this run's job directory. Give an earlier run's
-              case directory to continue its case (one whose attempts ran out):
-              it is resumed when it was built from the same design and settings,
-              and started over otherwise.
+              for case/ in the Solve step's directory,
+              subworkflows/solve/step_0/case under this run's job directory (the
+              same on every attempt; the Report step prints it). Give an earlier
+              run's case directory to continue its case (one whose attempts ran
+              out): it is resumed when it was built from the same design and
+              settings, and started over otherwise.
       restart:
         type: group
         label: Restarts
@@ -345,7 +363,9 @@ jobs:
               scheduled it must cover queue time + node boot (minutes on a cloud
               cluster) + the walltime, or it interrupts attempts before the
               walltime does. The retry default of 30 seconds would cancel every
-              attempt.
+              attempt. Where OpenFOAM still has to be installed (no environment
+              commands, and a cluster that never ran this workflow), the first
+              attempt installs it too: allow a few minutes for that.
           checkpoint_every:
             type: number
             label: Write the fields every N iterations
@@ -385,3 +405,4 @@ jobs:
               ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca.
               The case sources these commands; `export MPIRUN="srun --mpi=pmix"`
               here replaces the default launcher `mpirun --bind-to none -np N`.
+              Commands given here are checked once, before the first attempt.

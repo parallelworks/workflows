@@ -103,6 +103,14 @@
   it to be fixed platform-side. If a scalar input must be guarded, a ternary works
   (`"${{ x == '' ? '1h' : x }}"` — quote it: the ternary's `: ` breaks plain YAML scalars).
 
+- **An unset optional `editor` input is null to the expression layer, not `''`**
+  (verified 2026-10-16, probe runs oriented-hare, present-vulture, coherent-trout): it
+  renders empty in the shell, yet `if: ${{ inputs.x != '' }}` and the bare
+  `if: ${{ inputs.x }}` are both true when it is unset, and so is `!= ''` with
+  `default: ''` on the input. `if: ${{ inputs.x != null }}` (or `!= undefined`) is
+  false when unset and true when set: that is the test for "commands were given"
+  (`workflows/openfoam-naca/yamls/general-restart.yaml`, `check_openfoam_load`).
+
 ## Jobs, outputs, matrix and retries
 
 - **A matrix over a computed list fails at submission** (`Could not expand matrix
@@ -198,6 +206,23 @@
   `workflows/dakota-openfoam/yamls/general-naca.yaml` exposes it as a form input.
   `tutorials/optimization/general.yaml`'s Iterate step has this latent bug
   (its ~15 s test waves win the race; any real solver loses it).
+
+- **A job that `needs` a skipped job still runs; one that `needs` a failed job does
+  not** (verified 2026-10-16, probe runs rational-beetle, coherent-mongoose,
+  lucky-amoeba): with the default `if:`, `needs: [check]` ran after `check` was skipped
+  by its own `if:` and after it completed, and stayed unrun (the run in error) after
+  it failed. So an optional check job needs no special guard downstream. A job-level
+  `if: ${{ !error }}` or `${{ !error && !canceled }}` never ran in the same probes,
+  even with its needed job completed; `pw workflows runs view` hides skipped jobs, so
+  a job missing from its listing was skipped.
+- **A nested workflow's jobs run in the caller step's directory,
+  `subworkflows/<job>/step_<index>/` under the run's job directory, the same on every
+  retry** (verified again 2026-10-16): its checkout and anything it creates relative to
+  its working directory (a default case directory) persist across attempts there, so
+  a later step of the caller's job can read them by that path. The openfoam-naca
+  restart variants' `Report` step runs the attempts' copy of `restart-report.sh` from
+  `${PW_PARENT_JOB_DIR}/subworkflows/solve/step_0/` and guards against it missing
+  (no attempt got as far as the checkout). Moving the retried step changes the index.
 
 ## Resources, nodes and filesystems
 
@@ -327,7 +352,7 @@
   the batch script runs the real script in the background with a `trap` that forwards
   TERM/INT/HUP to it, and that script forwards to the solver's process tree (walk
   `pgrep -P` recursively: `mpirun` → proxies → ranks) and records the interruption
-  (`workflows/openfoam-naca/yamls/*.yaml` `case.sh`, `app/restart.sh`). bash runs a
+  (`workflows/openfoam-naca/app/create-case.sh`'s `case.sh`, `app/restart.sh`). bash runs a
   trap at once only while it waits on a *background* job (`wait $!`); a foreground
   command defers it until the command ends, so run every long tool in the background.
   The platform's cancel of a retried attempt goes through the submitter's cleanup

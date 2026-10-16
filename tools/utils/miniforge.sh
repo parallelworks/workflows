@@ -19,13 +19,21 @@ miniforge_lock() {
     exec 9> "$1.lock" && flock 9
 }
 
+# A conda that runs is the test, not a binary the file system merely holds: a
+# Miniforge installer cut short (a walltime, an attempt budget) can leave the
+# binary behind. The marker stands while this bootstrap installs, so only a
+# prefix it left half-made is removed and redone; a prefix nobody marked whose
+# conda does not run was made by someone else and is left alone
 miniforge_bootstrap() {
     local prefix="$1"
-    # a conda that runs, not one the file system merely holds: a Miniforge
-    # installer cut short (a walltime, an attempt budget) can leave the binary
-    # behind, and the install below starts over from a removed prefix
+    local installing="${prefix}.installing"
     if "${prefix}/bin/conda" --version > /dev/null 2>&1; then
+        rm -f "${installing}"
         return 0
+    fi
+    if [ -e "${prefix}/bin/conda" ] && [ ! -f "${installing}" ]; then
+        echo "::error::${prefix} exists but its conda does not run, and it was not left by this bootstrap: fix or remove it by hand"
+        return 1
     fi
     local url="${MINIFORGE_URL:-https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh}"
     local installer
@@ -37,14 +45,14 @@ miniforge_bootstrap() {
         return 1
     fi
     rm -rf "${prefix}"
-    mkdir -p "$(dirname "${prefix}")"
+    mkdir -p "$(dirname "${prefix}")" && touch "${installing}"
     if ! bash "${installer}" -b -p "${prefix}"; then
         rm -f "${installer}"
         rm -rf "${prefix}"
         echo "::error::The Miniforge installer failed"
         return 1
     fi
-    rm -f "${installer}"
+    rm -f "${installer}" "${installing}"
 }
 
 miniforge_env_file() {

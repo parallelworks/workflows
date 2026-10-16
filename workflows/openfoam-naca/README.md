@@ -72,8 +72,8 @@ In the case directory (`CASE_DIR` in the log):
 ```
 params.in        the design the case was solved with (file values merged over the form's)
 results.out      "<Cd> drag_coefficient" and "<-Cl> neg_lift_coefficient"
-exit_code        the simulator's exit status, written even when it failed (128 + signal when
-                 a signal ended it)
+exit_code        the simulator's exit status when it ran to its end, even if it failed; a
+                 signal leaves none (a caller reads "neither file" as killed mid-way)
 attempts.log     one start and one end line per attempt of the simulator on this directory
 run.<job>.out    the streamed log: every OpenFOAM step, one solver progress line per 50 iterations
 case/            the OpenFOAM case, final time step included; case/case.foam opens it in ParaView
@@ -292,9 +292,11 @@ SIGKILL, mid-write or not. So the signal is passed down two steps:
 
 - `case.sh`, the script preprocessing writes and the submitter turns into the
   batch script, runs the simulator in the background with a `trap` that
-  forwards SIGTERM, SIGINT and SIGHUP to it, then `wait`s (bash runs a trap at
-  once while it waits on a background job, only once the command ends while it
-  waits on a foreground one).
+  forwards SIGTERM and SIGHUP to it, then `wait`s (bash runs a trap at once
+  while it waits on a background job, only once the command ends while it
+  waits on a foreground one). It writes `exit_code` only when the simulator
+  ended on its own: a killed case leaves none, which is what `dakota-openfoam`
+  reads as "re-propose" and the loop below reads as "resume".
 - The simulator (`restart.sh`) runs every OpenFOAM tool through
   `run_interruptible`, the same background-and-wait pattern, and its trap
   forwards the signal to the tool's whole process tree (`mpirun`, its proxies
@@ -344,11 +346,13 @@ the **entire** `general.yaml` (its preprocessing reruns every time, idempotent
 and cheap: the checkout, the environment check, `params.in`, `case.sh`) on the
 shared case directory, and its **Read the Coefficients** step is where the
 verdict is made: `results.out` present, exit 0 (solved, the loop stops); no
-`results.out` and `case/restart/failed` present, exit 0 as well when
-`restart.attempt` is on (failed on its own: final, the loop stops; without the
-flag it is the usual error, which is what every other caller and a standalone
-run must see); no `results.out` and no `failed`, exit 1 (interrupted: the
-retry fires the next attempt). **`timeout` is always set**: it defaults to 30
+`results.out` but an `exit_code`, exit 0 as well when `restart.attempt` is on
+(the simulator ended on its own: a diverged solver recorded in
+`case/restart/failed`, or a failure before the case was opened such as a bad
+input or a missing module on the node; final, the loop stops; without the flag
+it is the usual error, which is what every other caller and a standalone run
+must see); neither file, exit 1 (killed: the retry fires the next attempt).
+**`timeout` is always set**: it defaults to 30
 seconds per attempt and cancels the whole attempt, every job of the sub-run,
 the scheduler job included. It must cover queue time, node boot (minutes on a
 cloud cluster) and the walltime; on the login node it is the only interruption
@@ -360,9 +364,15 @@ The `Report` step runs `if: ${{ always }}`, whether the loop stopped by
 decision or by running out of retries, and reads the case directory, never the
 step's status: `case/restart/failed` is the solver's own failure (error, with
 the reason and the log paths), `results.out` with `simpleFoam.done` is success
-(the coefficients, the attempt and interruption counts), anything else is a
-case still interrupted after `max_restarts + 1` attempts (error, with the case
-directory to resume from). The run's outputs come from the same files.
+(the coefficients, the attempt and interruption counts), an `exit_code` without
+either is a simulator that failed before opening the case (error: the inputs
+or the node's environment, which no retry fixes), anything else is a case
+still interrupted after `max_restarts + 1` attempts (error, with the case
+directory to resume from). The run's outputs come from the same files. One
+corner: when the budget cuts the last allowed attempt after it has solved, the
+`Solve` step ends as failed (its retries are exhausted) and the run with it,
+while `Report` prints the solved notice; the notice says so, and the result
+stands.
 
 ### Inputs of `restart.yaml`
 
@@ -487,14 +497,14 @@ concurrent calls on a cold cluster install once. Worked example:
 | `openfoam-case/` | the case template: boundary conditions, schemes, solver settings |
 | `simulator.sh` | `params.in` → case → `blockMesh` (+ `decomposePar`) → `potentialFoam` → `simpleFoam` → `results.out` → `reconstructPar` + `case.foam`; env contract `MESH_SCALE`, `CORES_PER_CASE`, `MIN_CELLS_PER_RANK`, `OPENFOAM_ENV`, `MPIRUN`, and for checkpoints and resuming `CHECKPOINT_EVERY`, `KEEP_CHECKPOINTS`, `RESUME` |
 | `restart.sh` | sourced by `simulator.sh`: the attempts log, the inputs check, the stage markers, the checkpoint check and pruning, the signal trap that stops the solver and records an interruption, the final failure record |
+| `install-paraview.sh` | idempotent download of the official ParaView binaries (`PARAVIEW_VERSION`, `PARAVIEW_URL`), with an offscreen render check, and the activation file for `tools/utils/prepare-env.sh` |
+| `render-images.sh` | `pvpython` wrapper: the ParaView environment (`PARAVIEW_ENV`), the backend fallbacks, the timeout, `render.log` |
+| `render-case.py` | the pvpython script: `case.foam` (reconstructed or decomposed) → the six images + `manifest.json` |
 
 | `yamls/` | Role |
 |---|---|
 | `general.yaml`, `hsp.yaml`, `noaa.yaml` | one case, per platform variant |
 | `restart.yaml` | the resubmission loop over `general.yaml` ([above](#resubmitting-an-interrupted-case-restartyaml)); its tests are `tests/restart/`, its picture `thumbnails/restart-loop.svg` |
-| `install-paraview.sh` | idempotent download of the official ParaView binaries (`PARAVIEW_VERSION`, `PARAVIEW_URL`), with an offscreen render check, and the activation file for `tools/utils/prepare-env.sh` |
-| `render-images.sh` | `pvpython` wrapper: the ParaView environment (`PARAVIEW_ENV`), the backend fallbacks, the timeout, `render.log` |
-| `render-case.py` | the pvpython script: `case.foam` (reconstructed or decomposed) → the six images + `manifest.json` |
 
 Shared: `tools/utils/miniforge.sh`, `tools/utils/prepare-env.sh`,
 `tools/utils/check-params.sh` (checks a params file against

@@ -132,7 +132,8 @@ jobs:
           # the submitter inlines the script body, so the absolute paths are baked in;
           # it is not named run.sh because the submitter writes its assembled job
           # script under that name in the same directory. The exit_code file is the
-          # evidence that the case ran (and how it ended) when no results.out came back.
+          # evidence that the case ran to its end (and how it ended) when no
+          # results.out came back.
           # The simulator runs in the background: the scheduler's walltime SIGTERM
           # reaches this script alone, and the trap passes it on at once, so the
           # simulator stops the solver and records the interruption (app/restart.sh)
@@ -154,7 +155,13 @@ jobs:
             wait \${pid}
             rc=\$?
           fi
-          echo "\${rc}" > exit_code
+          # exit_code says the simulator ran to its end, and how it ended; a signal
+          # (status 128 + n) leaves none, so "no results.out and no exit_code" still
+          # means killed mid-way to a caller (dakota's optimizer re-proposes such a
+          # case instead of counting it as failed); attempts.log keeps the record
+          if [ "\${rc}" -le 128 ]; then
+            echo "\${rc}" > exit_code
+          fi
           if [ "\${rc}" -eq 0 ] && [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
             PARAVIEW_ENV="${PWD}/paraview-env.sh" \\
               bash "${PWD}/workflows/openfoam-naca/app/render-images.sh" case images params.in results.out
@@ -214,16 +221,19 @@ jobs:
           if [ ! -f "${case_dir}/results.out" ]; then
             rc=$(cat "${case_dir}/exit_code" 2>/dev/null || echo "none: the case did not run to its end (killed, walltime, node lost)")
             # as one attempt of a resubmission loop (restart.attempt), this step's
-            # status is the loop control: a case that failed on its own is final,
-            # so the run completes and the retry stops (the caller reads
-            # case/restart/failed); an interrupted case fails the run, so the
-            # caller's retry resumes it from its latest checkpoint
-            if [ "${{ inputs.restart.attempt }}" = "true" ] && [ -f "${case_dir}/case/restart/failed" ]; then
-              echo "::notice::no results.out: the case failed on its own, which is final ($(cat "${case_dir}/case/restart/failed")); this attempt completes so that the calling loop stops. Log tails follow"
+            # status is the loop control: a simulator that ended on its own (an
+            # exit_code: a diverged solver, recorded in case/restart/failed, or a
+            # failure before the case was opened) is final, so the run completes
+            # and the retry stops; a killed one (no exit_code) fails the run, so
+            # the caller's retry resumes the case from its latest checkpoint
+            if [ "${{ inputs.restart.attempt }}" = "true" ] && [ -f "${case_dir}/exit_code" ]; then
+              reason=$(cat "${case_dir}/case/restart/failed" 2>/dev/null || echo "exit status ${rc} before the case was opened: the inputs, or the environment on the node; its output follows")
+              echo "::notice::no results.out: the simulator failed on its own, which is final (${reason}); this attempt completes so that the calling loop stops"
               tail -n 20 "${case_dir}"/case/log.* 2>/dev/null
+              tail -n 30 "${case_dir}"/run.*.out 2>/dev/null
               exit 0
             fi
-            echo "::error::no results.out in ${case_dir} (simulator exit code: ${rc}; 128 + signal when a signal ended it); log tails follow"
+            echo "::error::no results.out in ${case_dir} (simulator exit code: ${rc}); log tails follow"
             [ -f "${case_dir}/attempts.log" ] && echo "last attempt: $(tail -n 1 "${case_dir}/attempts.log")"
             if [ "${{ inputs.restart.attempt }}" = "true" ]; then
               echo "::notice::one attempt of a resubmission loop: this failure makes the calling loop resume the case from its latest complete checkpoint"

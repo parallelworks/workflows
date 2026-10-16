@@ -67,11 +67,14 @@ jobs:
       - name: Validate Inputs and Prepare the Case Directory
         run: |
           set -e
-          for pair in "max_restarts=${{ inputs.restart.max_restarts }}" \
-                      "checkpoint_every=${{ inputs.restart.checkpoint_every }}" \
-                      "keep_checkpoints=${{ inputs.restart.keep_checkpoints }}"; do
-            if ! [[ "${pair#*=}" =~ ^[0-9]+$ ]]; then
-              echo "::error::restart.${pair%%=*} must be a non-negative integer, got '${pair#*=}'"
+          # the API passes values the form forbids through unchanged: with no
+          # checkpoints every attempt would start over from iteration 0
+          for pair in "max_restarts=${{ inputs.restart.max_restarts }}:0" \
+                      "checkpoint_every=${{ inputs.restart.checkpoint_every }}:1" \
+                      "keep_checkpoints=${{ inputs.restart.keep_checkpoints }}:1"; do
+            name="${pair%%=*}"; value="${pair#*=}"; min="${value##*:}"; value="${value%:*}"
+            if ! [[ "${value}" =~ ^[0-9]+$ ]] || [ "${value}" -lt "${min}" ]; then
+              echo "::error::restart.${name} must be an integer of at least ${min}, got '${value}'"
               exit 1
             fi
           done
@@ -190,8 +193,15 @@ jobs:
             echo "DRAG_COEFFICIENT=${cd_}" | tee -a $OUTPUTS
             echo "LIFT_COEFFICIENT=${cl}" | tee -a $OUTPUTS
             echo "PARAVIEW_FILE=${case_dir}/case/case.foam" | tee -a $OUTPUTS
-            echo "::notice::solved in ${attempts} attempt(s), ${interruptions} of them interrupted and resumed from a checkpoint: Cd = ${cd_}, Cl = ${cl} (mesh_scale ${{ inputs.case.mesh_scale }}). The history is ${log}; open ${case_dir}/case/case.foam in ParaView to see the fields"
+            echo "::notice::solved in ${attempts} attempt(s), ${interruptions} of them interrupted and resumed from a checkpoint: Cd = ${cd_}, Cl = ${cl} (mesh_scale ${{ inputs.case.mesh_scale }}). The history is ${log}; open ${case_dir}/case/case.foam in ParaView to see the fields. Should the Solve step show as failed anyway, the budget cut its last allowed attempt after the solve: the result stands"
             exit 0
+          fi
+          # the last attempt's simulator ended on its own without opening the case
+          # (an exit_code, no failed record): a bad input or the environment on the
+          # node, which no retry would fix and the loop therefore stopped on
+          if [ -f "${case_dir}/exit_code" ]; then
+            echo "::error::the last attempt's simulator failed before the case was opened (exit status $(cat "${case_dir}/exit_code")): not an interruption, so the loop stopped. Read the Solve step's logs (the OpenFOAM environment on the node, the inputs); ${attempts:-0} attempt(s), ${interruptions:-0} interrupted"
+            exit 1
           fi
           echo "::error::not solved: the attempts ran out (${attempts:-0} made, ${interruptions:-0} interrupted; max_restarts ${{ inputs.restart.max_restarts }}) with the case still interrupted. The case is resumable: run this workflow again with case.case_dir = ${case_dir}, or raise max_restarts, attempt_timeout or the walltime"
           exit 1

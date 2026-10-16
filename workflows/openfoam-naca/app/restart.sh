@@ -2,7 +2,7 @@
 # Resume support for simulator.sh, which sources this file: everything that lets
 # an interrupted OpenFOAM case continue where it stopped instead of starting over,
 # so that a workflow can resubmit the case until it completes
-# (workflows/openfoam-naca-restart). The case directory is the cwd and the
+# (yamls/restart.yaml). The case directory is the cwd and the
 # OpenFOAM case is ./case; the state is plain files, readable by hand:
 #
 #   attempts.log                 the history: one start and one end line per attempt

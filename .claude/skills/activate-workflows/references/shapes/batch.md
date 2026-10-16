@@ -49,7 +49,8 @@ submitter runs the start script in its own directory").
 A batch workflow that solves one design from a params file (`openfoam-naca`) is also
 a building block: it lists its design parameters in `app/design-parameters.txt`,
 checks the params file with `tools/utils/check-params.sh` before submitting, writes
-`results.out` atomically and always writes `exit_code`. The contract, and how a
+`results.out` atomically and writes `exit_code` when the case ran to its end (a killed
+case leaves neither, which a driver reads as "re-propose"). The contract, and how a
 driver feeds it: [../design-parameters.md](../design-parameters.md) and
 [composed.md](composed.md).
 

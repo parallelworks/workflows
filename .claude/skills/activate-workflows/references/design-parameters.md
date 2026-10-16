@@ -20,7 +20,9 @@ One directory per design, `case_<j>/` or `iter_<N>/case_<j>/`:
 ```
 params.in     written by the driver: one "<value> <name>" line per design parameter
 results.out   written by the runner: one "<value> <label>" line per output, atomically
-exit_code     written by the runner always; without results.out it means "ran and failed"
+exit_code     written by the runner when it ran to its end; without results.out it means
+              "ran and failed". A runner killed mid-way (a signal, a lost node) leaves
+              neither file, which the driver reads as "not run": re-propose
 images/*.png  optional, written by the runner
 ```
 
@@ -96,7 +98,8 @@ value as an output and turns that pair into Cd, Cl and Cl/Cd.
 - **Runner:** put each design parameter in the form; list the same names in
   `app/design-parameters.txt`; take `params_file` and `case_dir`; check the params
   file with `tools/utils/check-params.sh`, then merge as above; write
-  `results.out` atomically with labels and always write `exit_code`; show the
+  `results.out` atomically with labels and write `exit_code` whenever the case ran
+  to its end (a killed case leaves neither file); show the
   names in the README (openfoam-naca's "Design names" table is the model).
 - **Driver:** write `params.in` with the runner's names, as the user typed them,
   one case directory per design, in one of Design Explorer's two layouts; read

@@ -1,0 +1,8 @@
+Run exotic-goat: error (8s)
+
+Failed jobs/steps:
+
+  preprocessing > Create the Case (error, 0s)
+    bash: workflows/openfoam-naca/app/create-case.sh: No such file or directory
+
+Summary: 1 job(s) failed, 1 step(s) failed

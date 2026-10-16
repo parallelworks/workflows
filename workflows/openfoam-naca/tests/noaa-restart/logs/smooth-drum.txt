@@ -1,0 +1,8 @@
+Run smooth-drum: error (4s)
+
+Failed jobs/steps:
+
+  preprocessing > Validate Inputs and Prepare the Case Directory (error, 0s)
+    bash: workflows/openfoam-naca/app/restart-prepare.sh: No such file or directory
+
+Summary: 1 job(s) failed, 1 step(s) failed

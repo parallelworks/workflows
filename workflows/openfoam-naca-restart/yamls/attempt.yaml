@@ -1,0 +1,168 @@
+# One attempt of workflows/openfoam-naca-restart: the whole openfoam-naca
+# workflow, called on the case directory the parent owns with resume on, then a
+# verdict read from the case's state files. The exit status is the loop control
+# of the parent's retried Solve step: completing means the case is over, solved
+# or failed on its own (a diverged solver is final, not an interruption, so it is
+# not retried); failing means the attempt was interrupted (the walltime, the
+# attempt budget, a lost node), and the parent's retry fires the next attempt,
+# which resumes from the latest complete checkpoint. openfoam-naca itself fails
+# whenever it leaves no results.out, interrupted included, so its status is
+# ignored here (ignore-errors) and the state files decide.
+permissions:
+  - '*'
+
+jobs:
+  attempt:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: OpenFOAM (Resume the Case)
+        ignore-errors: true
+        uses: github/parallelworks/workflows@restart-simulation
+        with:
+          $yaml: workflows/openfoam-naca/yamls/general.yaml
+          resource: ${{ inputs.resource }}
+          cluster:
+            scheduler: ${{ inputs.scheduler }}
+            cores_per_case: ${{ inputs.cores_per_case }}
+            slurm:
+              is_enabled: ${{ inputs.slurm.is_enabled }}
+              partition: ${{ inputs.slurm.partition }}
+              time: ${{ inputs.slurm.time }}
+              scheduler_directives: ${{ inputs.slurm.scheduler_directives }}
+            pbs:
+              is_enabled: ${{ inputs.pbs.is_enabled }}
+              scheduler_directives: ${{ inputs.pbs.scheduler_directives }}
+          case:
+            max_camber: ${{ inputs.max_camber }}
+            camber_position: ${{ inputs.camber_position }}
+            thickness: ${{ inputs.thickness }}
+            angle_of_attack: ${{ inputs.angle_of_attack }}
+            mesh_scale: ${{ inputs.mesh_scale }}
+            case_dir: ${{ inputs.case_dir }}
+          restart:
+            resume: true
+            checkpoint_every: ${{ inputs.checkpoint_every }}
+            keep_checkpoints: ${{ inputs.keep_checkpoints }}
+          postprocessing:
+            generate_images: false
+          software:
+            openfoam_load: ${{ inputs.openfoam_load }}
+      # the verdict comes from what the simulator left behind, never from how the
+      # call above ended: a case that failed on its own and a solved case are
+      # over (exit 0, the loop stops); anything else was interrupted (exit 1, the
+      # parent retries). A start line missing for this attempt means the
+      # simulator never ran: the call failed before it, and the parent retries
+      # that too, within its budget of attempts
+      - name: Over or Interrupted
+        run: |
+          case_dir="${{ inputs.case_dir }}"
+          n=$(( ${{ inputs.attempt }} + 1 ))
+          started=$(awk '$2 == "attempt" && $4 == "start" {n = $3} END {print n + 0}' "${case_dir}/attempts.log" 2>/dev/null)
+          last=$(tail -n 1 "${case_dir}/attempts.log" 2>/dev/null)
+          if [ -f "${case_dir}/case/restart/failed" ]; then
+            echo "::notice::attempt ${n}: over, the case failed on its own and is not retried: $(cat "${case_dir}/case/restart/failed")"
+          elif [ -f "${case_dir}/results.out" ] && [ -f "${case_dir}/case/restart/simpleFoam.done" ]; then
+            echo "::notice::attempt ${n}: over, the case is solved: ${last}"
+          elif [ "${started:-0}" -lt "${n}" ]; then
+            echo "::notice::attempt ${n}: the simulator did not start (${started:-0} attempts recorded in ${case_dir}/attempts.log); read the OpenFOAM call's logs above. Exit 1 so the parent retries"
+            exit 1
+          else
+            echo "::notice::attempt ${n} interrupted: ${last}. Exit 1 so the parent retries from the latest complete checkpoint"
+            exit 1
+          fi
+
+'on':
+  execute:
+    inputs:
+      attempt:
+        type: number
+        label: Attempt of the parent's retried Solve step (0-based)
+        default: 0
+        min: 0
+      resource:
+        type: compute-clusters
+        label: Resource
+        optional: false
+      scheduler:
+        type: boolean
+        label: Schedule the case?
+        default: false
+      cores_per_case:
+        type: number
+        label: MPI ranks per case
+        default: 1
+        min: 1
+      slurm:
+        type: group
+        label: SLURM directives
+        items:
+          is_enabled:
+            type: boolean
+            hidden: true
+            default: true
+            label: Is SLURM enabled?
+          partition:
+            type: string
+            label: SLURM partition
+            optional: true
+          time:
+            type: string
+            label: Walltime
+            default: '00:02:00'
+          scheduler_directives:
+            type: editor
+            label: Scheduler directives
+            optional: true
+      pbs:
+        type: group
+        label: PBS directives
+        items:
+          is_enabled:
+            type: boolean
+            hidden: true
+            default: true
+            label: Is PBS enabled?
+          scheduler_directives:
+            type: editor
+            label: Scheduler directives
+            optional: true
+      case_dir:
+        type: string
+        label: Absolute path of the case directory the attempts share
+      max_camber:
+        type: number
+        label: Maximum camber (chord fraction)
+        default: 0.02
+      camber_position:
+        type: number
+        label: Camber position (chord fraction)
+        default: 0.4
+      thickness:
+        type: number
+        label: Thickness (chord fraction)
+        default: 0.12
+      angle_of_attack:
+        type: number
+        label: Angle of attack (degrees)
+        default: 5
+      mesh_scale:
+        type: number
+        label: Mesh resolution multiplier
+        default: 3
+        min: 1
+        max: 6
+      checkpoint_every:
+        type: number
+        label: Write the fields every N iterations
+        default: 100
+        min: 1
+      keep_checkpoints:
+        type: number
+        label: Checkpoints kept
+        default: 2
+        min: 1
+      openfoam_load:
+        type: editor
+        label: OpenFOAM environment commands (empty = conda-forge install)
+        optional: true

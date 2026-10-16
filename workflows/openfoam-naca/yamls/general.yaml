@@ -21,6 +21,15 @@
 # load commands or, when none are given, from the official binaries the app's
 # installer downloads once; a case whose images fail to render is still a solved
 # case (the coefficients are on disk first).
+# Checkpoints and resuming (the restart group): the solver can write its fields
+# every N iterations and, with resume on, a case found in the case directory
+# that was built from the same design and settings is continued instead of
+# started over: the mesh, the decomposition and the potentialFoam initialization
+# are kept once done, simpleFoam restarts from its latest complete checkpoint,
+# and a solved case, or one whose solver failed on its own, is not solved again.
+# Every attempt is one line of <case directory>/attempts.log (app/restart.sh).
+# workflows/openfoam-naca-restart builds on this: it calls this YAML from a
+# retried step until the case completes.
 permissions:
   - '*'
 
@@ -33,7 +42,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: restart-simulation
           sparse_checkout:
             - workflows/openfoam-naca/app
             - tools/utils
@@ -102,17 +111,46 @@ jobs:
           } | awk 'NF >= 2 && !seen[$2]++' > "${case_dir}/params.in.tmp"
           mv "${case_dir}/params.in.tmp" "${case_dir}/params.in"
           rm -f "${case_dir}/results.out" "${case_dir}/exit_code"
+          resume="${{ inputs.restart.resume }}"
+          [ "${resume}" = true ] || resume=false
+          checkpoint_every="${{ inputs.restart.checkpoint_every }}"
+          keep_checkpoints="${{ inputs.restart.keep_checkpoints }}"
+          case "${checkpoint_every}" in ''|undefined) checkpoint_every=0 ;; esac
+          case "${keep_checkpoints}" in ''|undefined) keep_checkpoints=2 ;; esac
+          for v in checkpoint_every keep_checkpoints; do
+            if ! [[ "${!v}" =~ ^[0-9]+$ ]]; then
+              echo "::error::restart.${v} must be a non-negative integer, got '${!v}'"
+              exit 1
+            fi
+          done
+          if [ "${resume}" = true ] && [ -d "${case_dir}/case" ]; then
+            echo "::notice::resume is on: the case in ${case_dir}/case is continued when it matches this design and these settings (its attempts so far are in ${case_dir}/attempts.log)"
+          fi
           # the submitter inlines the script body, so the absolute paths are baked in;
           # it is not named run.sh because the submitter writes its assembled job
           # script under that name in the same directory. The exit_code file is the
           # evidence that the case ran (and how it ended) when no results.out came back.
+          # The simulator runs in the background: the scheduler's walltime SIGTERM
+          # reaches this script alone, and the trap passes it on at once, so the
+          # simulator stops the solver and records the interruption (app/restart.sh)
           cat > "${case_dir}/case.sh" << PW_CASE_EOF
           #!/bin/bash
           cd "${case_dir}"
           MESH_SCALE="${{ inputs.case.mesh_scale }}" CORES_PER_CASE="${{ inputs.cluster.cores_per_case }}" \\
+            RESUME="${resume}" CHECKPOINT_EVERY="${checkpoint_every}" KEEP_CHECKPOINTS="${keep_checkpoints}" \\
             OPENFOAM_ENV="${PWD}/openfoam-env.sh" \\
-            bash "${PWD}/workflows/openfoam-naca/app/simulator.sh"
+            bash "${PWD}/workflows/openfoam-naca/app/simulator.sh" &
+          pid=\$!
+          trap 'kill -TERM \${pid} 2>/dev/null' TERM
+          trap 'kill -INT \${pid} 2>/dev/null' INT
+          trap 'kill -HUP \${pid} 2>/dev/null' HUP
+          wait \${pid}
           rc=\$?
+          # a trapped signal returns wait at once: wait for the simulator to finish
+          if [ "\${rc}" -gt 128 ] && kill -0 \${pid} 2>/dev/null; then
+            wait \${pid}
+            rc=\$?
+          fi
           echo "\${rc}" > exit_code
           if [ "\${rc}" -eq 0 ] && [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
             PARAVIEW_ENV="${PWD}/paraview-env.sh" \\
@@ -171,8 +209,9 @@ jobs:
         run: |
           case_dir="${{ needs.preprocessing.outputs.CASE_DIR }}"
           if [ ! -f "${case_dir}/results.out" ]; then
-            rc=$(cat "${case_dir}/exit_code" 2>/dev/null || echo "none: the case never ran")
-            echo "::error::no results.out in ${case_dir} (simulator exit code: ${rc}); log tails follow"
+            rc=$(cat "${case_dir}/exit_code" 2>/dev/null || echo "none: the case did not run to its end (killed, walltime, node lost)")
+            echo "::error::no results.out in ${case_dir} (simulator exit code: ${rc}; 128 + signal when a signal ended it); log tails follow"
+            [ -f "${case_dir}/attempts.log" ] && echo "last attempt: $(tail -n 1 "${case_dir}/attempts.log")"
             tail -n 20 "${case_dir}"/case/log.* 2>/dev/null
             tail -n 30 "${case_dir}"/run.*.out 2>/dev/null
             exit 1
@@ -372,6 +411,48 @@ jobs:
               the commands in Software Environment or, left empty, from the
               official binaries the workflow downloads once (no sudo, ~830 MB).
               A case whose images fail to render still reports its coefficients.
+      restart:
+        type: group
+        label: Checkpoints and Resume
+        collapsed: true
+        items:
+          checkpoint_every:
+            type: number
+            label: Write the fields every N iterations
+            default: 0
+            min: 0
+            tooltip: |
+              0 writes only the last iteration. N > 0 also writes every N
+              iterations: the checkpoints a resumed case restarts from, and
+              intermediate fields to look at in ParaView. The last Checkpoints
+              kept of them stay on disk (purgeWrite).
+          keep_checkpoints:
+            type: number
+            label: Checkpoints kept
+            default: 2
+            min: 1
+            tooltip: |
+              How many written iterations stay on disk; older ones are removed as
+              new ones are written. Keep at least two to resume: a checkpoint a
+              kill cut short is incomplete and discarded, and the solver restarts
+              from the one before it.
+          resume:
+            type: boolean
+            label: Resume the case in the case directory?
+            default: false
+            tooltip: |
+              No  → case/ under the case directory is removed and the case solved
+                    from scratch.
+              Yes → a case/ built from the same design and settings (listed in
+                    case/restart/inputs) is continued: the mesh, the decomposition
+                    and the potentialFoam initialization are kept once done,
+                    simpleFoam restarts from its latest complete checkpoint, a
+                    solved case is not solved again and neither is one whose
+                    solver failed on its own (diverged). A case built from other
+                    inputs starts from scratch. Every attempt is one line of
+                    <case directory>/attempts.log. This is what
+                    workflows/openfoam-naca-restart relies on to resubmit a case
+                    until it completes.
       software:
         type: group
         label: Software Environment

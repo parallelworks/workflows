@@ -26,6 +26,18 @@
 # solver streams one progress line (iteration, pressure residual, Cd, Cl) every
 # STREAM_EVERY iterations (default 50; 0 streams its whole log). DECOMP_METHOD
 # (default hierarchical: x-strips) selects the decomposePar method.
+#
+# Checkpoints and resuming (restart.sh, sourced below, has the mechanics and the
+# state files): CHECKPOINT_EVERY (default 0: only the last iteration is written)
+# makes simpleFoam write its fields every N iterations, keeping the last
+# KEEP_CHECKPOINTS (default 2) of them. RESUME=true continues a ./case built from
+# the same design and settings: the mesh, the decomposition and the potentialFoam
+# initialization are kept once done, simpleFoam restarts from its latest complete
+# checkpoint, a solved case is not solved again and neither is one whose solver
+# failed on its own; a case built from other inputs starts over. Every run is one
+# attempt in ./attempts.log, and a signal (the scheduler's walltime, a cancel)
+# ends the attempt as interrupted, exit status 128 + signal, for the next one to
+# continue. Without RESUME the case always starts from scratch.
 set -o pipefail
 
 SOFTWARE_DIR="${service_parent_install_dir:-${HOME}/pw/software}"
@@ -36,6 +48,16 @@ ALPHA_DEG="${ALPHA_DEG:-5}"
 UINF="${UINF:-10}"
 MESH_SCALE="${MESH_SCALE:-1}"
 CORES_PER_CASE="${CORES_PER_CASE:-1}"
+RESUME="${RESUME:-false}"
+CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-0}"
+KEEP_CHECKPOINTS="${KEEP_CHECKPOINTS:-2}"
+for v in CHECKPOINT_EVERY KEEP_CHECKPOINTS; do
+    if ! [[ "${!v}" =~ ^[0-9]+$ ]]; then
+        echo "${v} must be a non-negative integer, got '${!v}'"
+        exit 1
+    fi
+done
+[ "${KEEP_CHECKPOINTS}" -ge 1 ] || KEEP_CHECKPOINTS=1
 
 if [ -n "${OPENFOAM_ENV:-}" ]; then
     source "${OPENFOAM_ENV}" || { echo "sourcing ${OPENFOAM_ENV} failed"; exit 1; }
@@ -82,18 +104,28 @@ a = math.radians(${ALPHA_DEG})
 print('%.8f %.8f %.8f %.8f' % (${UINF} * math.cos(a), ${UINF} * math.sin(a),
                                -math.sin(a), math.cos(a)))")"
 
-# the static case files are versioned with the workflow; only what depends on
-# the design point is generated: blockMeshDict, 0/U and controlDict
-rm -rf case
-cp -r "${APP_DIR}/openfoam-case" case
-
-python3 "${APP_DIR}/naca_blockmesh.py" \
-    --camber "${max_camber}" --camber-pos "${camber_position}" \
-    --thickness "${thickness}" --scale "${MESH_SCALE}" > case/system/blockMeshDict || exit 1
-
-# write 0/U wholesale: a foamDictionary edit of internalField alone leaves the
-# freestreamValue macros expanded to the tutorial's original velocity
-cat > case/0/U << EOF
+# the case is continued or started over (restart.sh decides from these inputs,
+# the ones that decide the solution). The static case files are versioned with
+# the workflow and (re)written on every attempt with what depends on the design
+# point: blockMeshDict, 0/U and controlDict. The initial fields are only
+# rewritten while potentialFoam has not run on them, and with them goes a
+# decomposition made before it, so that no stage ever starts from a file a kill
+# cut short
+source "${APP_DIR}/restart.sh"
+restart_begin "$(printf '%s\n' \
+    "max_camber ${max_camber}" "camber_position ${camber_position}" \
+    "thickness ${thickness}" "angle_of_attack ${ALPHA_DEG}" "uinf ${UINF}" \
+    "mesh_scale ${MESH_SCALE}" "cores_per_case ${CORES_PER_CASE}" \
+    "min_cells_per_rank ${MIN_CELLS_PER_RANK}" "decomp_method ${DECOMP_METHOD}" \
+    "mpirun ${MPIRUN:-}")"
+mkdir -p case
+cp -r "${APP_DIR}/openfoam-case/constant" "${APP_DIR}/openfoam-case/system" case/
+if ! stage_done potentialFoam; then
+    rm -rf case/0 case/processor[0-9]* "${RESTART_DIR}/decomposePar.done"
+    cp -r "${APP_DIR}/openfoam-case/0" case/
+    # write 0/U wholesale: a foamDictionary edit of internalField alone leaves the
+    # freestreamValue macros expanded to the tutorial's original velocity
+    cat > case/0/U << EOF
 FoamFile
 {
     version     2.0;
@@ -128,6 +160,11 @@ boundaryField
     }
 }
 EOF
+fi
+
+python3 "${APP_DIR}/naca_blockmesh.py" \
+    --camber "${max_camber}" --camber-pos "${camber_position}" \
+    --thickness "${thickness}" --scale "${MESH_SCALE}" > case/system/blockMeshDict || exit 1
 
 # finer meshes converge more slowly (information travels cell by cell) and are
 # less forgiving of aggressive relaxation: scale the iteration cap with the mesh
@@ -140,7 +177,14 @@ if [ "${MESH_SCALE}" -ge 2 ]; then
 fi
 
 # own controlDict: iteration cap (fvSolution's residualControl usually converges
-# earlier) and the forceCoeffs function object that extracts the objectives
+# earlier), the checkpoints (the fields every CHECKPOINT_EVERY iterations, the
+# last KEEP_CHECKPOINTS kept; without, only the last iteration), where a resumed
+# case starts (latestTime: its latest checkpoint, 0 on a fresh case) and the
+# forceCoeffs function object that extracts the objectives
+START_FROM=startTime
+[ "${RESUME}" = true ] && START_FROM=latestTime
+WRITE_INTERVAL="${END_TIME}"
+[ "${CHECKPOINT_EVERY}" -gt 0 ] && WRITE_INTERVAL="${CHECKPOINT_EVERY}"
 cat > case/system/controlDict << EOF
 FoamFile
 {
@@ -151,14 +195,14 @@ FoamFile
 }
 
 application     simpleFoam;
-startFrom       startTime;
+startFrom       ${START_FROM};
 startTime       0;
 stopAt          endTime;
 endTime         ${END_TIME};
 deltaT          1;
 writeControl    timeStep;
-writeInterval   ${END_TIME};
-purgeWrite      1;
+writeInterval   ${WRITE_INTERVAL};
+purgeWrite      ${KEEP_CHECKPOINTS};
 writeFormat     ascii;
 writePrecision  6;
 timeFormat      general;
@@ -218,14 +262,25 @@ foam_solve() {
     ')
 }
 
+# a stage that did not return 0: an interruption ends the attempt here (exit
+# 128 + signal, for the next attempt to continue); a tool failing on its own is
+# recorded as final and the case fails
 f_failed() {
+    restart_failed "$1" "$2"
     echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness} (${RANKS:-${CORES_PER_CASE}} rank(s)); log tails:"
     # -n: coreutils rejects the short `tail -8 f1 f2` form with several files
     tail -n 20 case/log.blockMesh case/log.decomposePar case/log.potentialFoam case/log.simpleFoam 2>/dev/null
     exit 1
 }
 
-foam_step blockMesh blockMesh || f_failed
+# every tool runs through run_interruptible, in the background, so a signal
+# stops it at once and the stage stays unfinished for the next attempt
+if stage_done blockMesh; then
+    echo "--- blockMesh: kept (done on $(stage_by blockMesh))"
+else
+    run_interruptible foam_step blockMesh blockMesh || f_failed blockMesh $?
+    stage_mark blockMesh
+fi
 
 # the rank count: the request, capped so that every rank keeps MIN_CELLS_PER_RANK
 # cells (the header has the measurements behind the floor)
@@ -271,47 +326,94 @@ numberOfSubdomains ${RANKS};
 method          ${DECOMP_METHOD};
 ${coeffs}
 EOF
-    foam_step decomposePar decomposePar || f_failed
+    if stage_done decomposePar; then
+        n_proc=$(ls -d case/processor[0-9]* 2>/dev/null | wc -l)
+        if [ "${n_proc}" -ne "${RANKS}" ]; then
+            echo "the case is decomposed into ${n_proc} parts but ${RANKS} ranks were settled from the same inputs; remove ${PWD}/case to start over"
+            exit 1
+        fi
+        echo "--- decomposePar: kept (done on $(stage_by decomposePar), ${RANKS} parts)"
+    else
+        run_interruptible foam_step decomposePar decomposePar || f_failed decomposePar $?
+        stage_mark decomposePar
+    fi
 fi
 
 # the potentialFoam initial field is required: starting SIMPLE impulsively from
 # a uniform freestream diverges on this C-mesh (see fvSolution's Phi block).
 # In parallel the forceCoeffs output still lands in case/postProcessing, so the
 # objectives need no reconstructPar.
-foam_step potentialFoam "${LAUNCH[@]}" potentialFoam "${PARALLEL[@]}" || f_failed
-foam_solve simpleFoam "${LAUNCH[@]}" simpleFoam "${PARALLEL[@]}" || f_failed
+if stage_done potentialFoam; then
+    echo "--- potentialFoam: kept (done on $(stage_by potentialFoam))"
+else
+    run_interruptible foam_step potentialFoam "${LAUNCH[@]}" potentialFoam "${PARALLEL[@]}" || f_failed potentialFoam $?
+    stage_mark potentialFoam
+fi
+
+if stage_done simpleFoam; then
+    echo "--- simpleFoam: kept (done on $(stage_by simpleFoam)); only the results are extracted again"
+else
+    # the checkpoint the solver continues from, once the incomplete ones are
+    # discarded; the previous attempt's solver log is kept under its number
+    latest=$(restart_checkpoints)
+    if [ -f case/log.simpleFoam ] && [ -f "${RESTART_DIR}/solver.attempt" ]; then
+        mv case/log.simpleFoam "case/log.simpleFoam.$(cat "${RESTART_DIR}/solver.attempt")"
+    fi
+    echo "${ATTEMPT}" > "${RESTART_DIR}/solver.attempt"
+    if [ "${latest}" != 0 ]; then
+        echo "--- simpleFoam: resuming from checkpoint ${latest} of ${END_TIME} iterations (attempt ${ATTEMPT})"
+    fi
+    run_interruptible foam_solve simpleFoam "${LAUNCH[@]}" simpleFoam "${PARALLEL[@]}"
+    rc=$?
+    # a signal that came as the solver ended on its own still marks the stage
+    # done: the next attempt extracts the results instead of solving again
+    [ "${rc}" -eq 0 ] && stage_mark simpleFoam
+    { [ "${rc}" -eq 0 ] && [ -z "${INTERRUPTED}" ]; } || f_failed simpleFoam "${rc}"
+    # the solver only purges what it wrote itself: the earlier attempts'
+    # checkpoints go now, so the last KEEP_CHECKPOINTS remain whatever the history
+    restart_checkpoints > /dev/null
+fi
 
 python3 - << 'EOF'
 import glob
 import os
 import sys
 
-paths = sorted(glob.glob("case/postProcessing/forceCoeffs1/*/coefficient*.dat"))
+# one coefficient file per start of the solver, in a directory named after its
+# start iteration: a resumed case has several, and the iterations after a
+# checkpoint were solved again, so the later file wins
+paths = glob.glob("case/postProcessing/forceCoeffs1/*/coefficient*.dat")
 if not paths:
     sys.exit("missing forceCoeffs output")
-header, rows = None, []
-with open(paths[-1]) as fh:
-    for line in fh:
-        if line.startswith("#"):
-            header = line
-        elif line.split():
-            rows.append(line.split())
+paths.sort(key=lambda p: float(os.path.basename(os.path.dirname(p))))
+header, rows = None, {}
+for path in paths:
+    with open(path) as fh:
+        for line in fh:
+            if line.startswith("#"):
+                header = line
+            elif line.split():
+                parts = line.split()
+                rows[float(parts[0])] = parts
 if not header or not rows:
     sys.exit("empty forceCoeffs output")
 cols = header.lstrip("#").split()
 icd, icl = cols.index("Cd"), cols.index("Cl")
 
 # average the last 20% of iterations to smooth residual oscillation
-tail = rows[-max(1, len(rows) // 5):]
+ordered = [rows[t] for t in sorted(rows)]
+tail = ordered[-max(1, len(ordered) // 5):]
 cd = sum(float(r[icd]) for r in tail) / len(tail)
 cl = sum(float(r[icl]) for r in tail) / len(tail)
 
 with open("results.out.tmp", "w") as fh:
     fh.write("%.10f drag_coefficient\n%.10f neg_lift_coefficient\n" % (cd, -cl))
 os.rename("results.out.tmp", "results.out")
-print("Cd=%.6f Cl=%.6f (averaged over last %d iterations, %s rank(s))"
-      % (cd, cl, len(tail), os.environ.get("RANKS", "1")))
+print("Cd=%.6f Cl=%.6f (averaged over last %d of %d iterations, %s rank(s))"
+      % (cd, cl, len(tail), len(ordered), os.environ.get("RANKS", "1")))
 EOF
+[ -f results.out ] || f_failed results 1
+restart_log "${ATTEMPT}" end "solved: $(awk 'NR == 1 {cd = $1} NR == 2 {cl = -$1} END {printf "Cd %.6f Cl %.6f", cd, cl}' results.out) at iteration $(restart_iteration) ($(cat case/log.simpleFoam* 2>/dev/null | grep -c '^Time = ') solved over all attempts); simpleFoam done on $(stage_by simpleFoam)"
 
 # the objectives are safe on disk: everything below only makes the case open in
 # ParaView — reconstruct a decomposed case (the reader handles processor*

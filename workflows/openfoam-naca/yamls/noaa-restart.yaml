@@ -1,0 +1,438 @@
+# The NOAA (noaa.parallel.works) variant of general-restart.yaml: the same loop
+# over noaa.yaml, with that variant's cluster form (SLURM account and QoS for
+# on-prem `existing` resources). Everything below the form is
+# general-restart.yaml's; read it for the design.
+#
+# A long OpenFOAM case that keeps being interrupted (the scheduler's walltime,
+# a preempted node, the platform canceling an attempt that overran its budget)
+# and is resubmitted until it completes: general.yaml, called whole from a
+# retried step, once per attempt, on a case directory this run owns. The example
+# for a simulation tool of your own brought to the platform (hsp-restart.yaml and
+# noaa-restart.yaml are the same loop over those platforms' variants, with their
+# cluster forms); the pieces, each in its own place:
+#
+#   checkpoints  the solver writes its fields every N iterations and keeps the
+#                last K of them (the restart group of general.yaml)
+#   the run script  resumes from the latest complete checkpoint, skips the stages
+#                already done, records every attempt, and tells an interruption
+#                (a signal) from a solver that failed on its own
+#                (app/simulator.sh + app/restart.sh)
+#   the retry    the Solve step below calls general.yaml and retries it while it
+#                exits non-zero; each attempt is the entire case workflow, its
+#                preprocessing rerun every time (idempotent and cheap)
+#   the verdict  general.yaml's results job (app/read-results.sh), with the
+#                hidden restart.attempt on, completes when the case is over
+#                (solved, or failed on its own: a diverged solver is final, not
+#                retried) and fails when it was interrupted; the Report step
+#                (if: always) reads the case's attempts.log and state files and
+#                ends the run accordingly
+#
+# Every attempt checks out the app, prepares the OpenFOAM environment and
+# creates the case itself (general.yaml's preprocessing, idempotent and cheap),
+# so this workflow only validates its own inputs and names the case directory.
+# On a cold cluster the first attempt also installs OpenFOAM, which needs a
+# budget of a few minutes; an install cut short is removed and redone.
+#
+# By default the run is set up to be interrupted: a mesh_scale 3 case (a few
+# minutes) under a 2-minute walltime when scheduled, so a run shows two or three
+# attempts; on the login node the attempt budget (restart.attempt_timeout) is
+# the only interruption, and it also bounds every attempt when scheduled (queue
+# + node boot + walltime). The history of a run is one line per attempt in
+# <case directory>/attempts.log; a run whose attempts ran out leaves a case that
+# the next run continues when given the same case directory.
+permissions:
+  - '*'
+
+# Saved inputs, offered under "Load saved inputs" on the Execute page: the login
+# node demo, where the attempt budget is what interrupts the case (a 75-second
+# budget against a case of about 3 minutes: four attempts, one core). On a cold
+# cluster run general.yaml once first, or raise the budget for the first run:
+# 75 seconds do not cover the OpenFOAM install.
+configurations:
+  login_node_demo:
+    inputs:
+      cluster:
+        scheduler: false
+        cores_per_case: 1
+      case:
+        mesh_scale: 3
+      restart:
+        max_restarts: 10
+        attempt_timeout: 75s
+        checkpoint_every: 100
+        keep_checkpoints: 2
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Validate Inputs and Prepare the Case Directory
+        run: |
+          set -e
+          # the API passes values the form forbids through unchanged: with no
+          # checkpoints every attempt would start over from iteration 0
+          for pair in "max_restarts=${{ inputs.restart.max_restarts }}:0" \
+                      "checkpoint_every=${{ inputs.restart.checkpoint_every }}:1" \
+                      "keep_checkpoints=${{ inputs.restart.keep_checkpoints }}:1"; do
+            name="${pair%%=*}"; value="${pair#*=}"; min="${value##*:}"; value="${value%:*}"
+            if ! [[ "${value}" =~ ^[0-9]+$ ]] || [ "${value}" -lt "${min}" ]; then
+              echo "::error::restart.${name} must be an integer of at least ${min}, got '${value}'"
+              exit 1
+            fi
+          done
+          if ! [[ "${{ inputs.restart.attempt_timeout }}" =~ ^[0-9]+(s|m|h|d)$ ]]; then
+            echo "::error::restart.attempt_timeout must be a number with a unit (30s, 10m, 2h, 1d), got '${{ inputs.restart.attempt_timeout }}'"
+            exit 1
+          fi
+          cores="${{ inputs.cluster.cores_per_case }}"
+          if ! [[ "${cores}" =~ ^[0-9]+$ ]] || [ "${cores}" -lt 1 ]; then
+            echo "::error::cores_per_case must be a positive integer, got '${cores}'"
+            exit 1
+          fi
+          # the case directory every attempt works on: this run's, or an earlier
+          # run's to continue its case (resume only keeps a case built from the
+          # same design and settings; anything else starts over there)
+          case_dir="${{ inputs.case.case_dir }}"
+          case "${case_dir}" in
+            ''|undefined) case_dir="${PWD}/case" ;;
+          esac
+          mkdir -p "${case_dir}"
+          if [ -f "${case_dir}/attempts.log" ]; then
+            echo "::notice::${case_dir} has $(grep -c '  start  ' "${case_dir}/attempts.log") attempts recorded already; the case there is continued when it matches this design and these settings"
+            cat "${case_dir}/attempts.log"
+          fi
+          echo "::notice::up to $(( ${{ inputs.restart.max_restarts }} + 1 )) attempts of ${{ inputs.restart.attempt_timeout }} each on ${case_dir}; checkpoints every ${{ inputs.restart.checkpoint_every }} iterations, the last ${{ inputs.restart.keep_checkpoints }} kept"
+          echo "CASE_DIR=${case_dir}" | tee -a $OUTPUTS
+
+  solve:
+    needs: [preprocessing]
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      # retry-as-loop: the case workflow exits 1 while the case is interrupted
+      # (restart.attempt makes a case that failed on its own exit 0 instead, so
+      # the loop stops on it) and each retry re-invokes it fresh; max-retries is
+      # the number of restarts. The timeout bounds ONE attempt and cancels it
+      # whole (every job of the subworkflow, the scheduler job through the
+      # submitter's cleanup) when it expires; it defaults to 30 s, so it is
+      # always set here. Only the last attempt's logs surface under this step:
+      # the history is attempts.log
+      - name: Solve (One Attempt per Retry)
+        retry:
+          max-retries: ${{ inputs.restart.max_restarts }}
+          interval: 10s
+          timeout: ${{ inputs.restart.attempt_timeout }}
+        uses: github/parallelworks/workflows@restart-simulation
+        with:
+          $yaml: workflows/openfoam-naca/yamls/noaa.yaml
+          resource: ${{ inputs.resource }}
+          cluster:
+            scheduler: ${{ inputs.cluster.scheduler }}
+            cores_per_case: ${{ inputs.cluster.cores_per_case }}
+            slurm:
+              is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+              account: ${{ inputs.cluster.slurm.account }}
+              partition: ${{ inputs.cluster.slurm.partition }}
+              qos: ${{ inputs.cluster.slurm.qos }}
+              time: ${{ inputs.cluster.slurm.time }}
+              scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            pbs:
+              is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+              scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+          case:
+            max_camber: ${{ inputs.case.max_camber }}
+            camber_position: ${{ inputs.case.camber_position }}
+            thickness: ${{ inputs.case.thickness }}
+            angle_of_attack: ${{ inputs.case.angle_of_attack }}
+            mesh_scale: ${{ inputs.case.mesh_scale }}
+            case_dir: ${{ needs.preprocessing.outputs.CASE_DIR }}
+          restart:
+            resume: true
+            attempt: true
+            checkpoint_every: ${{ inputs.restart.checkpoint_every }}
+            keep_checkpoints: ${{ inputs.restart.keep_checkpoints }}
+          postprocessing:
+            generate_images: false
+          software:
+            openfoam_load: ${{ inputs.software.openfoam_load }}
+      # if: always — the run's verdict comes from the case directory, not from
+      # how the Solve step ended: solved is the only success, whether the loop
+      # stopped by decision or by exhausting its retries; a case that failed on
+      # its own and a case still interrupted when the attempts ran out are the
+      # two failures, told apart here
+      - name: Report
+        if: ${{ always }}
+        run: |
+          case_dir="${{ needs.preprocessing.outputs.CASE_DIR }}"
+          log="${case_dir}/attempts.log"
+          echo "--- ${log}"
+          cat "${log}" 2>/dev/null || echo "(no attempt ran the simulator: read the Solve step's logs)"
+          attempts=$(awk '$2 == "attempt" && $4 == "start" {n = $3} END {print n + 0}' "${log}" 2>/dev/null)
+          interruptions=$(awk '$2 == "attempt" && $4 == "end" && $5 == "interrupted" {n++} END {print n + 0}' "${log}" 2>/dev/null)
+          echo "ATTEMPTS=${attempts:-0}" | tee -a $OUTPUTS
+          echo "INTERRUPTIONS=${interruptions:-0}" | tee -a $OUTPUTS
+          echo "CASE_DIR=${case_dir}" | tee -a $OUTPUTS
+          if [ -f "${case_dir}/case/restart/failed" ]; then
+            echo "::error::the case failed on its own, which is final (not an interruption, so no attempt solved it again): $(cat "${case_dir}/case/restart/failed"); ${interruptions:-0} interruption(s) before that over ${attempts:-0} attempt(s). The solver's logs are ${case_dir}/case/log.simpleFoam*; to start over, change the design or remove ${case_dir}/case"
+            exit 1
+          fi
+          if [ -f "${case_dir}/results.out" ] && [ -f "${case_dir}/case/restart/simpleFoam.done" ]; then
+            cd_=$(awk '$2 == "drag_coefficient" {print $1}' "${case_dir}/results.out")
+            cl=$(awk '$2 == "neg_lift_coefficient" {printf "%.10f", -$1}' "${case_dir}/results.out")
+            echo "DRAG_COEFFICIENT=${cd_}" | tee -a $OUTPUTS
+            echo "LIFT_COEFFICIENT=${cl}" | tee -a $OUTPUTS
+            echo "PARAVIEW_FILE=${case_dir}/case/case.foam" | tee -a $OUTPUTS
+            echo "::notice::solved in ${attempts} attempt(s), ${interruptions} of them interrupted and resumed from a checkpoint: Cd = ${cd_}, Cl = ${cl} (mesh_scale ${{ inputs.case.mesh_scale }}). The history is ${log}; open ${case_dir}/case/case.foam in ParaView to see the fields. Should the Solve step show as failed anyway, the budget cut its last allowed attempt after the solve: the result stands"
+            exit 0
+          fi
+          # the last attempt's simulator ended on its own without opening the case
+          # (an exit_code, no failed record): a bad input or the environment on the
+          # node, which no retry would fix and the loop therefore stopped on
+          if [ -f "${case_dir}/exit_code" ]; then
+            echo "::error::the last attempt's simulator failed before the case was opened (exit status $(cat "${case_dir}/exit_code")): not an interruption, so the loop stopped. Read the Solve step's logs (the OpenFOAM environment on the node, the inputs); ${attempts:-0} attempt(s), ${interruptions:-0} interrupted"
+            exit 1
+          fi
+          echo "::error::not solved: the attempts ran out (${attempts:-0} made, ${interruptions:-0} interrupted; max_restarts ${{ inputs.restart.max_restarts }}) with the case still interrupted. The case is resumable: run this workflow again with case.case_dir = ${case_dir}, or raise max_restarts, attempt_timeout or the walltime"
+          exit 1
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        include-workspace: false
+        tooltip: Resource where the OpenFOAM case runs, attempt after attempt
+      cluster:
+        type: group
+        label: Compute Cluster Settings
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Schedule the Case?
+            hidden: ${{ inputs.resource.schedulerType == '' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Yes → Every attempt is submitted to the scheduler using sbatch, qsub, etc,
+                    and the walltime is what interrupts it
+              No  → Every attempt runs on the controller or login node instead, and
+                    only the attempt budget (below) interrupts it
+          cores_per_case:
+            type: number
+            label: Cores per case
+            default: 1
+            min: 1
+            max: 64
+            tooltip: |
+              MPI ranks for the case. 1 runs the solvers serially; more decomposes
+              the mesh into N strips and runs potentialFoam and simpleFoam under
+              mpirun, then reconstructs the result. Only pays off from mesh_scale
+              3-4 (2-4 ranks): at the default mesh a decomposed case is slower
+              than a serial one. The solver caps the ranks at one per 1000 cells
+              (the mesh has 5400 x mesh_scale^2 cells, so 16 ranks need mesh_scale
+              2 or more): 16 ranks on the base mesh diverged where 4 converged. A
+              scheduled case requests --nodes=1 --ntasks=N (PBS:
+              select=1:ncpus=N:mpiprocs=N), so N must fit one node.
+          slurm:
+            type: group
+            label: SLURM Directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+                tooltip: Select a partition from the drop down menu.
+              qos:
+                label: Quality of Service [QoS]
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              time:
+                label: Walltime per attempt
+                type: string
+                default: '00:02:00'
+                tooltip: |
+                  --time= SLURM directive: the wall-clock limit of each attempt's job.
+                  Deliberately short by default (2 minutes against a case of a few
+                  minutes at mesh_scale 3): SLURM kills the attempt at the limit and
+                  the next one resumes from the latest checkpoint. Give a real case
+                  the walltime it needs; the restarts then only serve preemptions
+                  and node failures.
+              scheduler_directives:
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+                  The workflow already sets --nodes=1 and --ntasks from Cores per case.
+          pbs:
+            type: group
+            label: PBS Directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler Directives
+                type: editor
+                optional: true
+                default: |
+                  #PBS -l walltime=00:02:00
+                tooltip: |
+                  PBS directives, one per line, using the #PBS prefix. The walltime
+                  is what interrupts a scheduled attempt: deliberately short by
+                  default, give a real case the walltime it needs. For example:
+                  #PBS -l walltime=00:02:00
+                  #PBS -l mem=16gb
+                  The workflow already sets -l select=1:ncpus=N:mpiprocs=N from Cores per case.
+      case:
+        type: group
+        label: Airfoil Case
+        items:
+          max_camber:
+            type: number
+            label: Maximum camber (chord fraction)
+            default: 0.02
+            min: 0
+            max: 0.06
+            tooltip: |
+              The first NACA digit / 100: 0 is a symmetric airfoil (00xx), 0.02 a
+              2412-like one. The box 0-0.06 is where the C-grid generator was
+              validated; higher forward camber breaks the mesh quality.
+          camber_position:
+            type: number
+            label: Camber position (chord fraction)
+            default: 0.4
+            min: 0.3
+            max: 0.6
+            tooltip: The second NACA digit / 10. Ignored by the geometry when the camber is 0.
+          thickness:
+            type: number
+            label: Thickness (chord fraction)
+            default: 0.12
+            min: 0.08
+            max: 0.18
+            tooltip: The last two NACA digits / 100.
+          angle_of_attack:
+            type: number
+            label: Angle of attack (degrees)
+            default: 5
+            min: -5
+            max: 12
+            tooltip: |
+              Incidence of the freestream. The airfoil stays axis-aligned; the
+              angle goes into the far-field velocity and the lift/drag directions.
+          mesh_scale:
+            type: number
+            label: Mesh resolution multiplier
+            default: 3
+            min: 1
+            max: 6
+            tooltip: |
+              The cost dial: multiplies every cell count of the C-grid around the
+              airfoil, and the solver's iteration budget scales with it, so cost
+              grows roughly with the cube: ~10 s per case at 1, ~1 min at 2,
+              ~3.5 min at 3, ~10 min at 4, ~35 min at 6 (one core). The default
+              makes the case outlast the default walltime, so that a run shows
+              several attempts; the README has the accuracy table.
+          case_dir:
+            type: string
+            label: Case directory
+            optional: true
+            tooltip: |
+              Absolute path of the directory every attempt works on. Leave empty
+              for case/ under this run's job directory. Give an earlier run's
+              case directory to continue its case (one whose attempts ran out):
+              it is resumed when it was built from the same design and settings,
+              and started over otherwise.
+      restart:
+        type: group
+        label: Restarts
+        items:
+          max_restarts:
+            type: number
+            label: Restarts after the first attempt
+            default: 10
+            min: 0
+            tooltip: |
+              How many times an interrupted case is resubmitted (the retried
+              step's max-retries): up to this + 1 attempts in all. A case that
+              failed on its own (a diverged solver) stops the loop at once,
+              whatever is left of the budget; a case still interrupted when the
+              budget runs out ends the run in error and stays resumable.
+          attempt_timeout:
+            type: string
+            label: Time budget per attempt
+            default: 30m
+            tooltip: |
+              Maximum wall time of one attempt, with a unit (75s, 30m, 2h). When
+              it expires the platform cancels the whole attempt, scheduler job
+              included, and the next attempt resumes from the latest checkpoint:
+              so it is the interruption on the login node, and when the case is
+              scheduled it must cover queue time + node boot (minutes on a cloud
+              cluster) + the walltime, or it interrupts attempts before the
+              walltime does. The retry default of 30 seconds would cancel every
+              attempt.
+          checkpoint_every:
+            type: number
+            label: Write the fields every N iterations
+            default: 100
+            min: 1
+            tooltip: |
+              The checkpoint interval: an interrupted attempt loses at most this
+              many iterations, and each write costs time and disk (every field,
+              every rank). About 10 s of solving per 100 iterations at
+              mesh_scale 3 on one core.
+          keep_checkpoints:
+            type: number
+            label: Checkpoints kept
+            default: 2
+            min: 1
+            tooltip: |
+              How many written iterations stay on disk (older ones are removed as
+              new ones are written). Keep at least two: a checkpoint a kill cut
+              short is incomplete and discarded, and the solver restarts from
+              the one before it.
+      software:
+        type: group
+        label: Software Environment
+        collapsed: true
+        items:
+          openfoam_load:
+            type: editor
+            label: OpenFOAM environment commands
+            optional: true
+            tooltip: |
+              Shell commands that put blockMesh, potentialFoam and simpleFoam (and
+              decomposePar, reconstructPar plus mpirun when Cores per case > 1) on
+              PATH, one per line, e.g. `module load openfoam/2412` or `source
+              /opt/openfoam2412/etc/bashrc`. Leave empty to install OpenFOAM v2412
+              from conda-forge (no sudo, a few minutes once, inside the first
+              attempt: give it the budget) under
+              ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca.
+              The case sources these commands; `export MPIRUN="srun --mpi=pmix"`
+              here replaces the default launcher `mpirun --bind-to none -np N`.

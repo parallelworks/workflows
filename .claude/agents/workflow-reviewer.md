@@ -84,7 +84,9 @@ conclusions.
    whose block has no `skip_cleanups_file`; Kubernetes against
    `workflows/mlflow/yamls/k8s.yaml` and `workflows/openvscode/yamls/general_k8s.yaml`.
    A callable step keeps one `general.yaml` with no `cluster` group: a second variant
-   or scheduler fields there are a finding. An `emed`, `hsp` or `noaa` variant dry-runs
+   or scheduler fields there are a finding. A step body copied verbatim across
+   variants is one too: it belongs in a script under `app/`, called with its inputs
+   as environment variables (CLAUDE.md, Workflow YAMLs). An `emed`, `hsp` or `noaa` variant dry-runs
    and tests on an `activate.parallel.works` cloud cluster like any other; what no
    check from here settles is the target platform itself (its modules, partitions,
    paths): say so.

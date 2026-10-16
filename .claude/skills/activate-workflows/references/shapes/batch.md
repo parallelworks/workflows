@@ -72,8 +72,8 @@ driver feeds it: [../design-parameters.md](../design-parameters.md) and
 
 A batch job that outlasts its walltime, or runs on nodes that can be preempted, is
 made resumable rather than given a longer walltime: `workflows/openfoam-naca`'s
-`yamls/restart.yaml`, whose README section "Resubmitting an interrupted case" walks
-through the pieces. The solver writes checkpoints (at least two kept, a torn one
+`yamls/general-restart.yaml` (and `hsp-restart`, `noaa-restart`), whose README section
+"Resubmitting an interrupted case" walks through the pieces. The solver writes checkpoints (at least two kept, a torn one
 discarded); the run script resumes only a case built from the same inputs, skips the
 stages done, restarts the solver from the latest complete checkpoint, never solves a
 solved case again, records a solver that failed on its own as final, and logs every

@@ -390,7 +390,7 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   files it left and exits 0 (over) or 1 (retry). When the callee is yours, a hidden
   input is simpler and saves the nesting level: `openfoam-naca`'s `restart.attempt`
   makes its results step exit 0 on a case that failed on its own (final) and 1 on an
-  interrupted one, so `yamls/restart.yaml` retries `general.yaml` directly. A retried
+  interrupted one, so `yamls/general-restart.yaml` retries `general.yaml` directly. A retried
   step that fails is retried whatever a later `if: always` step in the same job
   returns, so the verdict must be the status of the first failing step, not of a step
   after it.
@@ -419,6 +419,11 @@ platform host):
 | `activate.hpc.mil` | `hsp` |
 | anything else | `general` |
 | unclear | **ask the user** |
+
+Keep the variants' shared step bodies in one script under `app/` (a one-line step
+calls it with its inputs as environment variables, `OUTPUTS` included:
+`workflows/openfoam-naca/app/read-results.sh`), so the YAMLs differ only where the
+platform does and a change lands once.
 
 The same choice applies to **`script_submitter`** (§5) and to the **resource form
 section** of your YAML: the `resource`, `scheduler`, `slurm`, and `pbs` input groups and
@@ -683,7 +688,7 @@ to your task.
 | **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/endpoint-workflows/05-matrix.yaml` |
 | **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` |
 | **Iterative loop over computed cases** (retry-as-loop + guarded static matrix) | `tutorials/optimization/` |
-| **Resubmit an interrupted simulation until it completes** (checkpoints, a run script that resumes, the walltime signal forwarded, retry-as-loop whose callee tells a final failure from an interruption) | `workflows/openfoam-naca/yamls/restart.yaml` (the README's "Resubmitting an interrupted case" is the walkthrough; the resume logic in `app/restart.sh`) |
+| **Resubmit an interrupted simulation until it completes** (a walltime, a preempted or lost node, a cancel: checkpoints, a run script that resumes, the signal forwarded, retry-as-loop whose callee tells a final failure from an interruption) | `workflows/openfoam-naca/yamls/general-restart.yaml` (+ `hsp-restart`, `noaa-restart`; the README's "Resubmitting an interrupted case" is the walkthrough; the resume logic in `app/restart.sh`) |
 | **`if:` status keywords on steps and jobs** (`always`, `error`, `canceled`, `!completed`) | `tutorials/if-conditions/` |
 | **Compose standalone workflows** (sampler or optimizer → matrix of evaluators → a live page; files as the only coupling) | `workflows/doe-openfoam/`, `workflows/dakota-openfoam/` (READMEs show the wiring); the file contract in [design-parameters.md](design-parameters.md) |
 | **A workflow others can call** (form as the interface, paths as inputs, one `general.yaml` for every platform) | `workflows/doe/`, `workflows/design-explorer/`, `workflows/wait_for_endpoint/` |

@@ -75,7 +75,10 @@ user can.
   matching `workflows/<name>/yamls/<variant>.yaml`; `--dry-run` does not catch a
   mismatch. A workflow that only runs on the login node keeps one `general.yaml`
   (`wait_for_endpoint`, `doe`, `dakota`, `design-explorer`); a site difference a
-  hostname can decide is runtime logic inside it.
+  hostname can decide is runtime logic inside it. A step body the variants share
+  goes into a script under `app/`, called with its inputs as environment variables
+  (`openfoam-naca/app/read-results.sh`), so the variants differ only where the
+  platform does and a change lands once.
 - **Pass every required subworkflow input, and `--dry-run` first.** Dry-run validates
   the YAML and each subworkflow's required inputs; a missing one fails with the terse
   `Could not parse subworkflow` (the field is never named: diff your `with:` block
@@ -164,6 +167,13 @@ checks:
 | **Callable step** (login node only) | its steps finish; one `general.yaml` for every platform | plain `run:` steps; a detached `pw endpoints run` with a `!completed` handler when it serves | `workflows/doe`, `workflows/design-explorer` | [shapes/composed.md](references/shapes/composed.md) |
 | **Composed** | the study or loop finishes | `uses:` of the rows above: a matrix of evaluators, retry-as-loop, a live page | `workflows/doe-openfoam`, `workflows/dakota-openfoam` | [shapes/composed.md](references/shapes/composed.md) |
 | **Kubernetes** | never: cancelling the run is the teardown | the sidecar pod jobs; no submitter, nothing checked out | `workflows/mlflow/yamls/k8s.yaml`, `workflows/openvscode/yamls/general_k8s.yaml` (hybrid) | [k8s-workflows.md](references/k8s-workflows.md) |
+
+A simulation that must survive its walltime, a preempted or lost node, or a cancel is
+the resumable batch job: `workflows/openfoam-naca/yamls/general-restart.yaml` (and the
+`hsp`/`noaa` ones) retries the whole case workflow from one step, the solver writes
+checkpoints and `app/restart.sh` resumes from the latest complete one; the README's
+"Resubmitting an interrupted case" is the walkthrough to copy for another solver
+([shapes/batch.md](references/shapes/batch.md), "A resumable batch job").
 
 The rows are tested shapes, not a menu: combine them (`physicsnemo`, `dakota-openfoam`)
 or build a new one from the same parts, as long as it keeps what every row keeps: the

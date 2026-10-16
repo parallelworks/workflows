@@ -41,6 +41,13 @@ if f_openfoam_ok; then
     echo "::notice::OpenFOAM already installed in ${OPENFOAM_PREFIX}"
 else
     miniforge_bootstrap "${PREFIX}" || exit 1
+    # an env that exists but does not run is one a kill left half-made (an
+    # install cut by a walltime or an attempt budget): conda refuses to create
+    # over it, so it goes first
+    if [ -d "${OPENFOAM_PREFIX}" ]; then
+        echo "::warning::removing ${OPENFOAM_PREFIX}: it exists but simpleFoam does not run from it (an install cut short?)"
+        rm -rf "${OPENFOAM_PREFIX}"
+    fi
     echo "::notice::Creating the openfoam env (openfoam=${OPENFOAM_VERSION} from conda-forge)"
     if ! "${PREFIX}/bin/conda" create -y -n openfoam "openfoam=${OPENFOAM_VERSION}"; then
         echo "::error::conda create -n openfoam openfoam=${OPENFOAM_VERSION} failed"

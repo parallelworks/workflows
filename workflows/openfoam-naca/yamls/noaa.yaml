@@ -37,10 +37,11 @@
 # are kept once done, simpleFoam restarts from its latest complete checkpoint,
 # and a solved case, or one whose solver failed on its own, is not solved again.
 # Every attempt is one line of <case directory>/attempts.log (app/restart.sh).
-# yamls/restart.yaml builds on this: it calls this YAML from a retried step until
-# the case completes, with the hidden restart.attempt on, which makes a case that
-# failed on its own complete the run (final, so the loop stops) instead of failing
-# it (interrupted, so the loop resumes it).
+# The group is hidden: noaa-restart.yaml sets it when it calls this YAML from a
+# retried step until the case completes, with restart.attempt on, which makes a
+# case that failed on its own complete the run (final, so the loop stops) instead
+# of failing it (interrupted, so the loop resumes it); a caller's with: block can
+# set it too.
 permissions:
   - '*'
 
@@ -53,7 +54,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: restart-simulation
           sparse_checkout:
             - workflows/openfoam-naca/app
             - tools/utils
@@ -242,7 +243,8 @@ jobs:
               ${{ inputs.cluster.pbs.scheduler_directives }}
 
   # the submitter never forwards the script's exit status, so the verdict comes
-  # from the files the case left behind: results.out (the objectives) or none
+  # from the files the case left behind: results.out (the objectives) or none.
+  # The step is one script shared by every variant (app/read-results.sh)
   results:
     needs: [preprocessing, run_case]
     ssh:
@@ -250,50 +252,9 @@ jobs:
     steps:
       - name: Read the Coefficients
         run: |
-          case_dir="${{ needs.preprocessing.outputs.CASE_DIR }}"
-          if [ ! -f "${case_dir}/results.out" ]; then
-            rc=$(cat "${case_dir}/exit_code" 2>/dev/null || echo "none: the case did not run to its end (killed, walltime, node lost)")
-            # as one attempt of a resubmission loop (restart.attempt), this step's
-            # status is the loop control: a simulator that ended on its own (an
-            # exit_code: a diverged solver, recorded in case/restart/failed, or a
-            # failure before the case was opened) is final, so the run completes
-            # and the retry stops; a killed one (no exit_code) fails the run, so
-            # the caller's retry resumes the case from its latest checkpoint
-            if [ "${{ inputs.restart.attempt }}" = "true" ] && [ -f "${case_dir}/exit_code" ]; then
-              reason=$(cat "${case_dir}/case/restart/failed" 2>/dev/null || echo "exit status ${rc} before the case was opened: the inputs, or the environment on the node; its output follows")
-              echo "::notice::no results.out: the simulator failed on its own, which is final (${reason}); this attempt completes so that the calling loop stops"
-              tail -n 20 "${case_dir}"/case/log.* 2>/dev/null
-              tail -n 30 "${case_dir}"/run.*.out 2>/dev/null
-              exit 0
-            fi
-            echo "::error::no results.out in ${case_dir} (simulator exit code: ${rc}); log tails follow"
-            [ -f "${case_dir}/attempts.log" ] && echo "last attempt: $(tail -n 1 "${case_dir}/attempts.log")"
-            if [ "${{ inputs.restart.attempt }}" = "true" ]; then
-              echo "::notice::one attempt of a resubmission loop: this failure makes the calling loop resume the case from its latest complete checkpoint"
-            fi
-            tail -n 20 "${case_dir}"/case/log.* 2>/dev/null
-            tail -n 30 "${case_dir}"/run.*.out 2>/dev/null
-            exit 1
-          fi
-          cd_=$(awk '$2 == "drag_coefficient" {print $1}' "${case_dir}/results.out")
-          cl=$(awk '$2 == "neg_lift_coefficient" {printf "%.10f", -$1}' "${case_dir}/results.out")
-          echo "DRAG_COEFFICIENT=${cd_}" | tee -a $OUTPUTS
-          echo "LIFT_COEFFICIENT=${cl}" | tee -a $OUTPUTS
-          echo "RESULTS_FILE=${case_dir}/results.out" | tee -a $OUTPUTS
-          echo "PARAVIEW_FILE=${case_dir}/case/case.foam" | tee -a $OUTPUTS
-          # the images are a courtesy of a solved case: missing ones are a warning
-          # with the renderer's log, never a failed case
-          if [ "${{ inputs.postprocessing.generate_images }}" = "true" ]; then
-            n=$(ls "${case_dir}"/images/*.png 2>/dev/null | wc -l)
-            if [ "${n}" -gt 0 ]; then
-              echo "IMAGES_DIR=${case_dir}/images" | tee -a $OUTPUTS
-              echo "::notice::${n} images of the fields in ${case_dir}/images: $(cd "${case_dir}/images" && ls *.png | tr '\n' ' ')"
-            else
-              echo "::warning::no images were rendered for the solved case; the renderer's log follows (${case_dir}/images/render.log)"
-              tail -n 20 "${case_dir}/images/render.log" 2>/dev/null
-            fi
-          fi
-          echo "::notice::Cd = ${cd_}, Cl = ${cl} for the design in ${case_dir}/params.in (mesh_scale ${{ inputs.case.mesh_scale }}); open ${case_dir}/case/case.foam in ParaView to see the fields"
+          OUTPUTS="${OUTPUTS}" GENERATE_IMAGES="${{ inputs.postprocessing.generate_images }}" \
+            MESH_SCALE="${{ inputs.case.mesh_scale }}" RESTART_ATTEMPT="${{ inputs.restart.attempt }}" \
+            bash workflows/openfoam-naca/app/read-results.sh "${{ needs.preprocessing.outputs.CASE_DIR }}"
 
 'on':
   execute:
@@ -485,8 +446,8 @@ jobs:
               A case whose images fail to render still reports its coefficients.
       restart:
         type: group
-        label: Checkpoints and Resume
-        collapsed: true
+        label: Checkpoints and Resume (hidden; set by noaa-restart.yaml and by callers)
+        hidden: true
         items:
           checkpoint_every:
             type: number
@@ -523,13 +484,13 @@ jobs:
                     solver failed on its own (diverged). A case built from other
                     inputs starts from scratch. Every attempt is one line of
                     <case directory>/attempts.log. This is what
-                    yamls/restart.yaml relies on to resubmit a case until it
+                    noaa-restart.yaml relies on to resubmit a case until it
                     completes.
           attempt:
             type: boolean
             hidden: true
             default: false
-            label: One attempt of a resubmission loop? Yes only from yamls/restart.yaml's retried step, where a case that failed on its own completes the run so the loop stops
+            label: One attempt of a resubmission loop? Yes only from noaa-restart.yaml's retried step, where a case that failed on its own completes the run so the loop stops
       software:
         type: group
         label: Software Environment

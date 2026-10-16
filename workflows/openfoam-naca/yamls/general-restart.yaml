@@ -2,8 +2,9 @@
 # a preempted node, the platform canceling an attempt that overran its budget)
 # and is resubmitted until it completes: general.yaml, called whole from a
 # retried step, once per attempt, on a case directory this run owns. The example
-# for a simulation tool of your own brought to the platform; the pieces, each in
-# its own place:
+# for a simulation tool of your own brought to the platform (hsp-restart.yaml and
+# noaa-restart.yaml are the same loop over those platforms' variants, with their
+# cluster forms); the pieces, each in its own place:
 #
 #   checkpoints  the solver writes its fields every N iterations and keeps the
 #                last K of them (the restart group of general.yaml)
@@ -14,11 +15,18 @@
 #   the retry    the Solve step below calls general.yaml and retries it while it
 #                exits non-zero; each attempt is the entire case workflow, its
 #                preprocessing rerun every time (idempotent and cheap)
-#   the verdict  general.yaml's results job, with the hidden restart.attempt on,
-#                completes when the case is over (solved, or failed on its own: a
-#                diverged solver is final, not retried) and fails when it was
-#                interrupted; the Report step (if: always) reads the case's
-#                attempts.log and state files and ends the run accordingly
+#   the verdict  general.yaml's results job (app/read-results.sh), with the
+#                hidden restart.attempt on, completes when the case is over
+#                (solved, or failed on its own: a diverged solver is final, not
+#                retried) and fails when it was interrupted; the Report step
+#                (if: always) reads the case's attempts.log and state files and
+#                ends the run accordingly
+#
+# Every attempt checks out the app, prepares the OpenFOAM environment and
+# creates the case itself (general.yaml's preprocessing, idempotent and cheap),
+# so this workflow only validates its own inputs and names the case directory.
+# On a cold cluster the first attempt also installs OpenFOAM, which needs a
+# budget of a few minutes; an install cut short is removed and redone.
 #
 # By default the run is set up to be interrupted: a mesh_scale 3 case (a few
 # minutes) under a 2-minute walltime when scheduled, so a run shows two or three
@@ -32,7 +40,9 @@ permissions:
 
 # Saved inputs, offered under "Load saved inputs" on the Execute page: the login
 # node demo, where the attempt budget is what interrupts the case (a 75-second
-# budget against a case of about 3 minutes: four or five attempts, one core).
+# budget against a case of about 3 minutes: four attempts, one core). On a cold
+# cluster run general.yaml once first, or raise the budget for the first run:
+# 75 seconds do not cover the OpenFOAM install.
 configurations:
   login_node_demo:
     inputs:
@@ -52,18 +62,6 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      # every attempt checks out the app inside its subworkflow. Checked out
-      # here: the installer, so that a cold cluster installs OpenFOAM once,
-      # before the loop, and not inside an attempt whose budget may cancel the
-      # install half-way
-      - name: Checkout the Installer
-        uses: parallelworks/checkout
-        with:
-          repo: https://github.com/parallelworks/workflows.git
-          branch: canary
-          sparse_checkout:
-            - workflows/openfoam-naca/app
-            - tools/utils
       - name: Validate Inputs and Prepare the Case Directory
         run: |
           set -e
@@ -101,21 +99,6 @@ jobs:
           fi
           echo "::notice::up to $(( ${{ inputs.restart.max_restarts }} + 1 )) attempts of ${{ inputs.restart.attempt_timeout }} each on ${case_dir}; checkpoints every ${{ inputs.restart.checkpoint_every }} iterations, the last ${{ inputs.restart.keep_checkpoints }} kept"
           echo "CASE_DIR=${case_dir}" | tee -a $OUTPUTS
-      # the check every attempt makes, made once here: environment commands that
-      # do not deliver the tools fail the run now, with the tools' own output, and
-      # with no commands given the conda-forge install happens here, outside any
-      # attempt's budget
-      - name: Check the OpenFOAM Environment
-        run: |
-          set -e
-          required="blockMesh potentialFoam simpleFoam"
-          if [ "${{ inputs.cluster.cores_per_case }}" -gt 1 ]; then
-            required="${required} decomposePar reconstructPar mpirun"
-          fi
-          bash tools/utils/prepare-env.sh openfoam "${PWD}/openfoam-env.sh" \
-            workflows/openfoam-naca/app/install-openfoam.sh ${required} << 'PW_LOAD_EOF'
-          ${{ inputs.software.openfoam_load }}
-          PW_LOAD_EOF
 
   solve:
     needs: [preprocessing]
@@ -135,7 +118,7 @@ jobs:
           max-retries: ${{ inputs.restart.max_restarts }}
           interval: 10s
           timeout: ${{ inputs.restart.attempt_timeout }}
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@restart-simulation
         with:
           $yaml: workflows/openfoam-naca/yamls/general.yaml
           resource: ${{ inputs.resource }}
@@ -426,8 +409,8 @@ jobs:
               decomposePar, reconstructPar plus mpirun when Cores per case > 1) on
               PATH, one per line, e.g. `module load openfoam/2412` or `source
               /opt/openfoam2412/etc/bashrc`. Leave empty to install OpenFOAM v2412
-              from conda-forge (no sudo, ~5 min once, done in preprocessing before
-              the first attempt) under
+              from conda-forge (no sudo, a few minutes once, inside the first
+              attempt: give it the budget) under
               ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca.
               The case sources these commands; `export MPIRUN="srun --mpi=pmix"`
               here replaces the default launcher `mpirun --bind-to none -np N`.

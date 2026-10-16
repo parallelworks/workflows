@@ -98,7 +98,7 @@ listed, the runner's default lane.
   hidden input only the loop sets (`restart.attempt`): with it, the results step exits
   0 on a case that failed on its own (final) and 1 on an interrupted one; the loop
   variant retries the runner directly and its `Report` step (`if: always`) reads the
-  case's files for the run's verdict (`workflows/openfoam-naca/yamls/restart.yaml`).
+  case's files for the run's verdict (`workflows/openfoam-naca/yamls/general-restart.yaml`).
   Depth: restart → runner → script_submitter, three. For a callee you cannot change,
   a thin attempt YAML with `ignore-errors` on the call does the same one level deeper.
 

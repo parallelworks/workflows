@@ -2,3 +2,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-16T08:31:20Z,warm,pass,ok,cda5c81,e0cda99,e8105a3,1580b56,1580b56,restart-simulation,alvaro,smashing-guppy,290,
 2026-10-16T08:48:16Z,warm,pass,ok,2c01838,e0cda99,e8105a3,00af1eb,00af1eb,restart-simulation,alvaro,definite-monarch,290,
 2026-10-16T10:36:27Z,warm,pass,ok,78e5b2e,e0cda99,e8105a3,2877153,2877153,restart-simulation,alvaro,infinite-buzzard,291,
+2026-10-16T11:01:53Z,warm,pass,ok,8e1b9a2,e0cda99,e8105a3,936e440,936e440,restart-simulation,alvaro,teaching-fox,290,

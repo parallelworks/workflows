@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-16T09:03:51Z,warm,pass,ok,73e988a,e0cda99,e8105a3,a006daf,a006daf,restart-simulation,alvaro,arriving-chigger,69,
 2026-10-16T10:52:49Z,warm,pass,ok,78e5b2e,e0cda99,e8105a3,0f29948-dirty,2877153,restart-simulation,alvaro,evident-doe,69,
+2026-10-16T11:17:59Z,warm,pass,ok,8e1b9a2,e0cda99,e8105a3,936e440,936e440,restart-simulation,alvaro,quality-pangolin,69,

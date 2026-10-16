@@ -4,3 +4,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-16T10:36:27Z,warm,pass,ok,78e5b2e,e0cda99,e8105a3,2877153,2877153,restart-simulation,alvaro,infinite-buzzard,291,
 2026-10-16T11:01:53Z,warm,pass,ok,8e1b9a2,e0cda99,e8105a3,936e440,936e440,restart-simulation,alvaro,teaching-fox,290,
 2026-10-16T12:01:03Z,warm,pass,ok,cb8865f,e0cda99,e8105a3,88e8d58-dirty,0a6b4d9,restart-simulation,alvaro,classic-opossum,290,
+2026-10-16T12:24:44Z,warm,pass,ok,61c99b3,e0cda99,907e448,02596ce,02596ce,restart-simulation,alvaro,related-barnacle,288,

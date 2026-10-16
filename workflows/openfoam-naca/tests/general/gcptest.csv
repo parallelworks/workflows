@@ -3,3 +3,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-16T10:50:18Z,warm,pass,ok,78e5b2e,e0cda99,e8105a3,0f29948-dirty,2877153,restart-simulation,alvaro,special-stud,38,
 2026-10-16T11:15:27Z,warm,pass,ok,8e1b9a2,e0cda99,e8105a3,936e440,936e440,restart-simulation,alvaro,feasible-newt,37,
 2026-10-16T12:19:27Z,warm,fail,ok,e631718,e0cda99,e8105a3,f5d2335-dirty,88e8d58,restart-simulation,alvaro,immune-labrador,23,"run error, expected completed: preprocessing > Create the Case (error, 0s)"
+2026-10-16T12:46:40Z,warm,pass,ok,61c99b3,e0cda99,907e448,02596ce,02596ce,restart-simulation,alvaro,fast-ocelot,37,

@@ -2,3 +2,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-16T09:00:12Z,warm,pass,ok,86230b7,e0cda99,e8105a3,a006daf,a006daf,restart-simulation,alvaro,united-whale,55,
 2026-10-16T10:49:11Z,warm,pass,ok,78e5b2e,e0cda99,e8105a3,0f29948-dirty,2877153,restart-simulation,alvaro,fresh-airedale,54,
 2026-10-16T11:14:20Z,warm,pass,ok,8e1b9a2,e0cda99,e8105a3,936e440,936e440,restart-simulation,alvaro,saved-javelin,55,
+2026-10-16T12:13:13Z,warm,pass,ok,cb8865f,e0cda99,e8105a3,88e8d58-dirty,0a6b4d9,restart-simulation,alvaro,useful-falcon,39,

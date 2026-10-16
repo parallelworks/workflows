@@ -112,6 +112,18 @@ print('%.8f %.8f %.8f %.8f' % (${UINF} * math.cos(a), ${UINF} * math.sin(a),
 # decomposition made before it, so that no stage ever starts from a file a kill
 # cut short
 source "${APP_DIR}/restart.sh"
+# a stage that did not return 0: an interruption ends the attempt here (exit
+# 128 + signal, for the next attempt to continue); a tool failing on its own is
+# recorded as final and the case fails. Every deterministic failure after
+# restart_begin goes through here, or the loop would retry it as an interruption
+f_failed() {
+    restart_failed "$1" "$2"
+    echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness} (${RANKS:-${CORES_PER_CASE}} rank(s)); log tails:"
+    # -n: coreutils rejects the short `tail -8 f1 f2` form with several files
+    tail -n 20 case/log.blockMesh case/log.decomposePar case/log.potentialFoam case/log.simpleFoam 2>/dev/null
+    exit 1
+}
+
 restart_begin "$(printf '%s\n' \
     "max_camber ${max_camber}" "camber_position ${camber_position}" \
     "thickness ${thickness}" "angle_of_attack ${ALPHA_DEG}" "uinf ${UINF}" \
@@ -237,18 +249,6 @@ foam_step() {
     shift
     echo "--- ${name}: $*"
     (cd case && "$@" 2>&1 | tee "log.${name}")
-}
-
-# a stage that did not return 0: an interruption ends the attempt here (exit
-# 128 + signal, for the next attempt to continue); a tool failing on its own is
-# recorded as final and the case fails. Every deterministic failure after
-# restart_begin goes through here, or the loop would retry it as an interruption
-f_failed() {
-    restart_failed "$1" "$2"
-    echo "OpenFOAM failed for camber=${max_camber} pos=${camber_position} thickness=${thickness} (${RANKS:-${CORES_PER_CASE}} rank(s)); log tails:"
-    # -n: coreutils rejects the short `tail -8 f1 f2` form with several files
-    tail -n 20 case/log.blockMesh case/log.decomposePar case/log.potentialFoam case/log.simpleFoam 2>/dev/null
-    exit 1
 }
 
 # the solver's log runs to thousands of iterations: keep it whole in

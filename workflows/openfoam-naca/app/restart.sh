@@ -2,7 +2,7 @@
 # Resume support for simulator.sh, which sources this file: everything that lets
 # an interrupted OpenFOAM case continue where it stopped instead of starting over,
 # so that a workflow can resubmit the case until it completes
-# (yamls/restart.yaml). The case directory is the cwd and the
+# (yamls/<variant>-restart.yaml). The case directory is the cwd and the
 # OpenFOAM case is ./case; the state is plain files, readable by hand:
 #
 #   attempts.log                 the history: one start and one end line per attempt
@@ -74,12 +74,19 @@ restart_begin() {
     local inputs="$1" how
     # two attempts must never work on one case at once (the previous one may still
     # be dying when the next is submitted): the lock belongs to this process tree,
-    # the solver included, and goes away with it, even killed outright
+    # the solver included, and goes away with it, even killed outright. An attempt
+    # that cannot get it stands down as interrupted (exit 128 + 15, no exit_code),
+    # for the loop to retry; a filesystem without flock only loses the protection
+    local t0
     if command -v flock > /dev/null; then
-        exec 9> "${ATTEMPT_LOCK}"
-        if ! flock -w 120 9; then
-            echo "another attempt still holds ${PWD}/${ATTEMPT_LOCK} after 120 s; giving up"
-            exit 1
+        exec 7> "${ATTEMPT_LOCK}"
+        t0=$(date +%s)
+        if ! flock -w 120 7; then
+            if [ $(( $(date +%s) - t0 )) -ge 100 ]; then
+                echo "another attempt still holds ${PWD}/${ATTEMPT_LOCK} after 120 s: standing down as interrupted, for the loop to retry"
+                exit 143
+            fi
+            echo "::warning::flock on ${PWD}/${ATTEMPT_LOCK} is not available on this filesystem: concurrent attempts are not prevented"
         fi
     else
         echo "::warning::flock not found: concurrent attempts on ${PWD} are not prevented"

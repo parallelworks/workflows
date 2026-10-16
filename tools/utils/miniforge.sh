@@ -21,7 +21,10 @@ miniforge_lock() {
 
 miniforge_bootstrap() {
     local prefix="$1"
-    if [ -x "${prefix}/bin/conda" ]; then
+    # a conda that runs, not one the file system merely holds: a Miniforge
+    # installer cut short (a walltime, an attempt budget) can leave the binary
+    # behind, and the install below starts over from a removed prefix
+    if "${prefix}/bin/conda" --version > /dev/null 2>&1; then
         return 0
     fi
     local url="${MINIFORGE_URL:-https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh}"

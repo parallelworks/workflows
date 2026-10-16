@@ -293,9 +293,10 @@ to the **batch script alone**, not to its children (verified on gcptest: a
 later, SLURM's `KillWait`). The solver would run on, unrecorded, until the
 SIGKILL, mid-write or not. So the signal is passed down two steps:
 
-- `case.sh`, the script preprocessing writes and the submitter turns into the
-  batch script, runs the simulator in the background with a `trap` that
-  forwards SIGTERM and SIGHUP to it, then `wait`s (bash runs a trap at once
+- `case.sh`, the script preprocessing writes (`app/create-case.sh`) and the
+  submitter turns into the batch script, runs the simulator in the background
+  with a `trap` that forwards SIGTERM, SIGINT and SIGHUP to it, then `wait`s
+  (bash runs a trap at once
   while it waits on a background job, only once the command ends while it
   waits on a foreground one). It writes `exit_code` only when the simulator
   ended on its own: a killed case leaves none, which is what `dakota-openfoam`
@@ -319,14 +320,15 @@ with no signal remembered is the tool failing on its own**.
 ### The loop: a retried subworkflow step
 
 [`general-restart.yaml`](yamls/general-restart.yaml) has two jobs.
-`preprocessing` is one step: it validates the form and names the case directory
-(`case/` under the run's job directory, or the `case.case_dir` given). Nothing
-else is needed before the loop, because every attempt checks out the app,
-prepares the OpenFOAM environment and creates the case itself, in
-`general.yaml`'s own preprocessing; on a cold cluster the first attempt
-therefore also installs OpenFOAM, which needs a budget of a few minutes (an
-install cut short is removed and redone by the next attempt). `solve` is the
-loop:
+`preprocessing` checks out the app for the loop's own two scripts and runs the
+first, [`app/restart-prepare.sh`](app/restart-prepare.sh), which validates the
+form and names the case directory (`case/` under the run's job directory, or
+the `case.case_dir` given). Nothing else is needed before the loop, because
+every attempt checks out the app, prepares the OpenFOAM environment and
+creates the case itself, in `general.yaml`'s own preprocessing; on a cold
+cluster the first attempt therefore also installs OpenFOAM, which needs a
+budget of a few minutes (an install cut short is removed and redone by the
+next attempt). `solve` is the loop:
 
 ```yaml
 - name: Solve (One Attempt per Retry)
@@ -368,15 +370,18 @@ there is.
 
 ### The verdict
 
-The `Report` step runs `if: ${{ always }}`, whether the loop stopped by
-decision or by running out of retries, and reads the case directory, never the
-step's status: `case/restart/failed` is the solver's own failure (error, with
-the reason and the log paths), `results.out` with `simpleFoam.done` is success
-(the coefficients, the attempt and interruption counts), an `exit_code` without
+The `Report` step ([`app/restart-report.sh`](app/restart-report.sh)) runs
+`if: ${{ always }}`, whether the loop stopped by decision or by running out of
+retries, and reads the case directory, never the step's status:
+`case/restart/failed` is the solver's own failure (error, with the reason and
+the log paths), `results.out` with `simpleFoam.done` is success (the
+coefficients, the attempt and interruption counts), an `exit_code` without
 either is a simulator that failed before opening the case (error: the inputs
-or the node's environment, which no retry fixes), anything else is a case
-still interrupted after `max_restarts + 1` attempts (error, with the case
-directory to resume from). The run's outputs come from the same files. One
+or the node's environment, which no retry fixes), no attempt at all is the
+case workflow failing before the simulator every time (error: its checkout,
+the environment commands), anything else is a case still interrupted after
+`max_restarts + 1` attempts (error, with the case directory to resume from).
+The run's outputs come from the same files. One
 corner: when the budget cuts the last allowed attempt after it has solved, the
 `Solve` step ends as failed (its retries are exhausted) and the run with it,
 while `Report` prints the solved notice; the notice says so, and the result
@@ -507,7 +512,9 @@ concurrent calls on a cold cluster install once. Worked example:
 | `openfoam-case/` | the case template: boundary conditions, schemes, solver settings |
 | `simulator.sh` | `params.in` → case → `blockMesh` (+ `decomposePar`) → `potentialFoam` → `simpleFoam` → `results.out` → `reconstructPar` + `case.foam`; env contract `MESH_SCALE`, `CORES_PER_CASE`, `MIN_CELLS_PER_RANK`, `OPENFOAM_ENV`, `MPIRUN`, and for checkpoints and resuming `CHECKPOINT_EVERY`, `KEEP_CHECKPOINTS`, `RESUME` |
 | `restart.sh` | sourced by `simulator.sh`: the attempts log, the inputs check, the stage markers, the checkpoint check and pruning, the signal trap that stops the solver and records an interruption, the final failure record |
+| `create-case.sh` | the **Create the Case** step of every variant: `params.in` from the form and the params file, `case.sh` (the submitted script, which forwards the walltime's signal to the simulator and records its exit status), `CASE_DIR` |
 | `read-results.sh` | the **Read the Coefficients** step of every variant: the coefficients as outputs, or the failure with the exit status and the log tails; under `RESTART_ATTEMPT` the loop's verdict |
+| `restart-prepare.sh`, `restart-report.sh` | the restart variants' preprocessing (the inputs, the case directory) and `Report` (the verdict from the case's files) |
 | `install-paraview.sh` | idempotent download of the official ParaView binaries (`PARAVIEW_VERSION`, `PARAVIEW_URL`), with an offscreen render check, and the activation file for `tools/utils/prepare-env.sh` |
 | `render-images.sh` | `pvpython` wrapper: the ParaView environment (`PARAVIEW_ENV`), the backend fallbacks, the timeout, `render.log` |
 | `render-case.py` | the pvpython script: `case.foam` (reconstructed or decomposed) → the six images + `manifest.json` |

@@ -1,7 +1,7 @@
 # The NOAA (noaa.parallel.works) variant of general-restart.yaml: the same loop
 # over noaa.yaml, with that variant's cluster form (SLURM account and QoS for
-# on-prem `existing` resources). Everything below the form is
-# general-restart.yaml's; read it for the design.
+# on-prem `existing` resources). Everything else is general-restart.yaml's; read
+# it for the design.
 #
 # A long OpenFOAM case that keeps being interrupted (the scheduler's walltime,
 # a preempted node, the platform canceling an attempt that overran its budget)
@@ -29,7 +29,8 @@
 #
 # Every attempt checks out the app, prepares the OpenFOAM environment and
 # creates the case itself (general.yaml's preprocessing, idempotent and cheap),
-# so this workflow only validates its own inputs and names the case directory.
+# so this workflow only validates its own inputs and names the case directory
+# (app/restart-prepare.sh) and reports (app/restart-report.sh).
 # On a cold cluster the first attempt also installs OpenFOAM, which needs a
 # budget of a few minutes; an install cut short is removed and redone.
 #
@@ -67,43 +68,21 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
+      # the loop's own two scripts (restart-prepare.sh here, restart-report.sh in
+      # the Report step); every attempt checks out the app again inside its call
+      - name: Checkout the App
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: restart-simulation
+          sparse_checkout:
+            - workflows/openfoam-naca/app
       - name: Validate Inputs and Prepare the Case Directory
         run: |
-          set -e
-          # the API passes values the form forbids through unchanged: with no
-          # checkpoints every attempt would start over from iteration 0
-          for pair in "max_restarts=${{ inputs.restart.max_restarts }}:0" \
-                      "checkpoint_every=${{ inputs.restart.checkpoint_every }}:1" \
-                      "keep_checkpoints=${{ inputs.restart.keep_checkpoints }}:1"; do
-            name="${pair%%=*}"; value="${pair#*=}"; min="${value##*:}"; value="${value%:*}"
-            if ! [[ "${value}" =~ ^[0-9]+$ ]] || [ "${value}" -lt "${min}" ]; then
-              echo "::error::restart.${name} must be an integer of at least ${min}, got '${value}'"
-              exit 1
-            fi
-          done
-          if ! [[ "${{ inputs.restart.attempt_timeout }}" =~ ^[0-9]+(s|m|h|d)$ ]]; then
-            echo "::error::restart.attempt_timeout must be a number with a unit (30s, 10m, 2h, 1d), got '${{ inputs.restart.attempt_timeout }}'"
-            exit 1
-          fi
-          cores="${{ inputs.cluster.cores_per_case }}"
-          if ! [[ "${cores}" =~ ^[0-9]+$ ]] || [ "${cores}" -lt 1 ]; then
-            echo "::error::cores_per_case must be a positive integer, got '${cores}'"
-            exit 1
-          fi
-          # the case directory every attempt works on: this run's, or an earlier
-          # run's to continue its case (resume only keeps a case built from the
-          # same design and settings; anything else starts over there)
-          case_dir="${{ inputs.case.case_dir }}"
-          case "${case_dir}" in
-            ''|undefined) case_dir="${PWD}/case" ;;
-          esac
-          mkdir -p "${case_dir}"
-          if [ -f "${case_dir}/attempts.log" ]; then
-            echo "::notice::${case_dir} has $(grep -c '  start  ' "${case_dir}/attempts.log") attempts recorded already; the case there is continued when it matches this design and these settings"
-            cat "${case_dir}/attempts.log"
-          fi
-          echo "::notice::up to $(( ${{ inputs.restart.max_restarts }} + 1 )) attempts of ${{ inputs.restart.attempt_timeout }} each on ${case_dir}; checkpoints every ${{ inputs.restart.checkpoint_every }} iterations, the last ${{ inputs.restart.keep_checkpoints }} kept"
-          echo "CASE_DIR=${case_dir}" | tee -a $OUTPUTS
+          MAX_RESTARTS="${{ inputs.restart.max_restarts }}" ATTEMPT_TIMEOUT="${{ inputs.restart.attempt_timeout }}" \
+            CHECKPOINT_EVERY="${{ inputs.restart.checkpoint_every }}" KEEP_CHECKPOINTS="${{ inputs.restart.keep_checkpoints }}" \
+            CORES_PER_CASE="${{ inputs.cluster.cores_per_case }}" CASE_DIR="${{ inputs.case.case_dir }}" \
+            OUTPUTS="${OUTPUTS}" bash workflows/openfoam-naca/app/restart-prepare.sh
 
   solve:
     needs: [preprocessing]
@@ -157,44 +136,14 @@ jobs:
           software:
             openfoam_load: ${{ inputs.software.openfoam_load }}
       # if: always — the run's verdict comes from the case directory, not from
-      # how the Solve step ended: solved is the only success, whether the loop
-      # stopped by decision or by exhausting its retries; a case that failed on
-      # its own and a case still interrupted when the attempts ran out are the
-      # two failures, told apart here
+      # how the Solve step ended (app/restart-report.sh): solved is the only
+      # success, whether the loop stopped by decision or by exhausting its
+      # retries; the failures are told apart there
       - name: Report
         if: ${{ always }}
         run: |
-          case_dir="${{ needs.preprocessing.outputs.CASE_DIR }}"
-          log="${case_dir}/attempts.log"
-          echo "--- ${log}"
-          cat "${log}" 2>/dev/null || echo "(no attempt ran the simulator: read the Solve step's logs)"
-          attempts=$(awk '$2 == "attempt" && $4 == "start" {n = $3} END {print n + 0}' "${log}" 2>/dev/null)
-          interruptions=$(awk '$2 == "attempt" && $4 == "end" && $5 == "interrupted" {n++} END {print n + 0}' "${log}" 2>/dev/null)
-          echo "ATTEMPTS=${attempts:-0}" | tee -a $OUTPUTS
-          echo "INTERRUPTIONS=${interruptions:-0}" | tee -a $OUTPUTS
-          echo "CASE_DIR=${case_dir}" | tee -a $OUTPUTS
-          if [ -f "${case_dir}/case/restart/failed" ]; then
-            echo "::error::the case failed on its own, which is final (not an interruption, so no attempt solved it again): $(cat "${case_dir}/case/restart/failed"); ${interruptions:-0} interruption(s) before that over ${attempts:-0} attempt(s). The solver's logs are ${case_dir}/case/log.simpleFoam*; to start over, change the design or remove ${case_dir}/case"
-            exit 1
-          fi
-          if [ -f "${case_dir}/results.out" ] && [ -f "${case_dir}/case/restart/simpleFoam.done" ]; then
-            cd_=$(awk '$2 == "drag_coefficient" {print $1}' "${case_dir}/results.out")
-            cl=$(awk '$2 == "neg_lift_coefficient" {printf "%.10f", -$1}' "${case_dir}/results.out")
-            echo "DRAG_COEFFICIENT=${cd_}" | tee -a $OUTPUTS
-            echo "LIFT_COEFFICIENT=${cl}" | tee -a $OUTPUTS
-            echo "PARAVIEW_FILE=${case_dir}/case/case.foam" | tee -a $OUTPUTS
-            echo "::notice::solved in ${attempts} attempt(s), ${interruptions} of them interrupted and resumed from a checkpoint: Cd = ${cd_}, Cl = ${cl} (mesh_scale ${{ inputs.case.mesh_scale }}). The history is ${log}; open ${case_dir}/case/case.foam in ParaView to see the fields. Should the Solve step show as failed anyway, the budget cut its last allowed attempt after the solve: the result stands"
-            exit 0
-          fi
-          # the last attempt's simulator ended on its own without opening the case
-          # (an exit_code, no failed record): a bad input or the environment on the
-          # node, which no retry would fix and the loop therefore stopped on
-          if [ -f "${case_dir}/exit_code" ]; then
-            echo "::error::the last attempt's simulator failed before the case was opened (exit status $(cat "${case_dir}/exit_code")): not an interruption, so the loop stopped. Read the Solve step's logs (the OpenFOAM environment on the node, the inputs); ${attempts:-0} attempt(s), ${interruptions:-0} interrupted"
-            exit 1
-          fi
-          echo "::error::not solved: the attempts ran out (${attempts:-0} made, ${interruptions:-0} interrupted; max_restarts ${{ inputs.restart.max_restarts }}) with the case still interrupted. The case is resumable: run this workflow again with case.case_dir = ${case_dir}, or raise max_restarts, attempt_timeout or the walltime"
-          exit 1
+          MAX_RESTARTS="${{ inputs.restart.max_restarts }}" MESH_SCALE="${{ inputs.case.mesh_scale }}" OUTPUTS="${OUTPUTS}" \
+            bash workflows/openfoam-naca/app/restart-report.sh "${{ needs.preprocessing.outputs.CASE_DIR }}"
 
 'on':
   execute:

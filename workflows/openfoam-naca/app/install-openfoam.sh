@@ -37,17 +37,27 @@ f_link_mpi_pstream() {
     echo "::notice::linked lib/${foam_mpi} -> lib/$(basename "$(dirname "${real}")") so -parallel runs load the MPI Pstream"
 }
 
+# the marker stands while this installer creates the env: an env found with it
+# is one a kill left half-made (an install cut by a walltime or an attempt
+# budget), which conda refuses to create over, so it is removed first; an env
+# without it that does not run was not left by this installer (a shared tree,
+# someone's hand-made env) and is never removed
+INSTALLING="${OPENFOAM_PREFIX}.installing"
 if f_openfoam_ok; then
     echo "::notice::OpenFOAM already installed in ${OPENFOAM_PREFIX}"
+    rm -f "${INSTALLING}"
 else
     miniforge_bootstrap "${PREFIX}" || exit 1
-    # an env that exists but does not run is one a kill left half-made (an
-    # install cut by a walltime or an attempt budget): conda refuses to create
-    # over it, so it goes first
     if [ -d "${OPENFOAM_PREFIX}" ]; then
-        echo "::warning::removing ${OPENFOAM_PREFIX}: it exists but simpleFoam does not run from it (an install cut short?)"
-        rm -rf "${OPENFOAM_PREFIX}"
+        if [ -f "${INSTALLING}" ]; then
+            echo "::warning::removing ${OPENFOAM_PREFIX}: an install this installer started was cut short"
+            rm -rf "${OPENFOAM_PREFIX}"
+        else
+            echo "::error::${OPENFOAM_PREFIX} exists but 'simpleFoam -help' does not run from it, and it was not left by this installer: fix or remove it by hand"
+            exit 1
+        fi
     fi
+    mkdir -p "$(dirname "${INSTALLING}")" && touch "${INSTALLING}"
     echo "::notice::Creating the openfoam env (openfoam=${OPENFOAM_VERSION} from conda-forge)"
     if ! "${PREFIX}/bin/conda" create -y -n openfoam "openfoam=${OPENFOAM_VERSION}"; then
         echo "::error::conda create -n openfoam openfoam=${OPENFOAM_VERSION} failed"
@@ -57,6 +67,7 @@ else
         echo "::error::OpenFOAM installed but 'simpleFoam -help' does not run"
         exit 1
     fi
+    rm -f "${INSTALLING}"
     echo "::notice::OpenFOAM ${OPENFOAM_VERSION} ready"
 fi
 f_link_mpi_pstream || exit 1

@@ -50,7 +50,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: restart-simulation
+          branch: canary
           sparse_checkout:
             - workflows/dakota/app
             - workflows/openfoam-naca/app
@@ -114,7 +114,7 @@ jobs:
       # completes once the page is served, so a server that cannot start fails
       # the run before any case is spent
       - name: Design Explorer (Serve the Study)
-        uses: github/parallelworks/workflows@restart-simulation
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/design-explorer/yamls/general.yaml
           resource: ${{ inputs.resource }}
@@ -142,7 +142,7 @@ jobs:
           # subworkflow, mid-simulation — when it expires. One generation
           # (propose + node boot + queue + solve + decide) must fit in it.
           timeout: ${{ inputs.optimizer.iteration_timeout }}
-        uses: github/parallelworks/workflows@restart-simulation
+        uses: github/parallelworks/workflows@canary
         with:
           $yaml: workflows/dakota-openfoam/yamls/iteration-naca.yaml
           # the retry counter (0 on the first attempt), so the iteration can say

@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-16T16:09:22Z,warm,pass,ok,6399439,e0cda99,a60fa58,55356c8,55356c8,restart-simulation,alvaro,measured-mudfish,102,

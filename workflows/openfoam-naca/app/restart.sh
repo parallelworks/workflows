@@ -201,7 +201,7 @@ restart_failed() {
     fi
     # every OpenFOAM log opens with a "trapFpe: Floating point exception trapping
     # enabled" banner: not the crash
-    reason=$(grep -E 'FOAM FATAL|sigFpe|Floating point exception' "case/log.${stage}" 2>/dev/null | grep -v trapFpe | head -n 1 | head -c 120)
+    reason=$(grep -E 'FOAM FATAL|sigFpe|Floating point exception' "case/log.${stage}" 2>/dev/null | grep -v trapFpe | head -n 1 | sed 's/ in [^ ]*lib[^ ]*$//' | head -c 120)
     case "${stage}" in
         simpleFoam|potentialFoam) [ -z "${reason}" ] || reason="diverged: ${reason}" ;;
     esac

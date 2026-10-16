@@ -1,31 +1,32 @@
 # A long OpenFOAM case that keeps being interrupted (the scheduler's walltime,
 # a preempted node, the platform canceling an attempt that overran its budget)
-# and is resubmitted until it completes. The example for a simulation tool of
-# your own brought to the platform; the pieces, each in its own place:
+# and is resubmitted until it completes: general.yaml, called whole from a
+# retried step, once per attempt, on a case directory this run owns. The example
+# for a simulation tool of your own brought to the platform; the pieces, each in
+# its own place:
 #
 #   checkpoints  the solver writes its fields every N iterations and keeps the
-#                last K of them (openfoam-naca's restart group)
+#                last K of them (the restart group of general.yaml)
 #   the run script  resumes from the latest complete checkpoint, skips the stages
 #                already done, records every attempt, and tells an interruption
 #                (a signal) from a solver that failed on its own
-#                (workflows/openfoam-naca/app/simulator.sh + restart.sh)
-#   the retry    the Solve step below calls attempt.yaml and retries it while it
-#                exits non-zero; each attempt is the entire openfoam-naca
-#                workflow on the case directory this run owns, its
+#                (app/simulator.sh + app/restart.sh)
+#   the retry    the Solve step below calls general.yaml and retries it while it
+#                exits non-zero; each attempt is the entire case workflow, its
 #                preprocessing rerun every time (idempotent and cheap)
-#   the verdict  attempt.yaml exits 0 when the case is over (solved, or failed on
-#                its own: a diverged solver is final, not retried) and 1 when it
-#                was interrupted; the Report step (if: always) reads the case's
+#   the verdict  general.yaml's results job, with the hidden restart.attempt on,
+#                completes when the case is over (solved, or failed on its own: a
+#                diverged solver is final, not retried) and fails when it was
+#                interrupted; the Report step (if: always) reads the case's
 #                attempts.log and state files and ends the run accordingly
 #
-# The case, its form and its results are openfoam-naca's: this workflow has no
-# code of its own. By default it is set up to be interrupted: a mesh_scale 3 case
-# (a few minutes) under a 2-minute walltime when scheduled, so a run shows two or
-# three attempts; on the login node the attempt budget (restart.attempt_timeout)
-# is the only interruption, and it also bounds every attempt when scheduled
-# (queue + node boot + walltime). The history of a run is one line per attempt
-# in <case directory>/attempts.log; a run whose attempts ran out leaves a case
-# that the next run continues when given the same case directory.
+# By default the run is set up to be interrupted: a mesh_scale 3 case (a few
+# minutes) under a 2-minute walltime when scheduled, so a run shows two or three
+# attempts; on the login node the attempt budget (restart.attempt_timeout) is
+# the only interruption, and it also bounds every attempt when scheduled (queue
+# + node boot + walltime). The history of a run is one line per attempt in
+# <case directory>/attempts.log; a run whose attempts ran out leaves a case that
+# the next run continues when given the same case directory.
 permissions:
   - '*'
 
@@ -51,15 +52,15 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      # this workflow has no app of its own: every attempt checks out
-      # openfoam-naca's inside its subworkflow. Checked out here: its installer,
-      # so that a cold cluster installs OpenFOAM once, before the loop, and not
-      # inside an attempt whose budget may cancel the install half-way
+      # every attempt checks out the app inside its subworkflow. Checked out
+      # here: the installer, so that a cold cluster installs OpenFOAM once,
+      # before the loop, and not inside an attempt whose budget may cancel the
+      # install half-way
       - name: Checkout the Installer
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: restart-simulation
           sparse_checkout:
             - workflows/openfoam-naca/app
             - tools/utils
@@ -118,43 +119,50 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      # retry-as-loop: attempt.yaml exits 1 while the case is interrupted and
-      # each retry re-invokes it fresh; max-retries is the number of restarts.
-      # The timeout bounds ONE attempt and cancels it whole (every job of the
-      # subworkflow, the scheduler job through the submitter's cleanup) when it
-      # expires; it defaults to 30 s, so it is always set here. Only the last
-      # attempt's logs surface under this step: the history is attempts.log
+      # retry-as-loop: the case workflow exits 1 while the case is interrupted
+      # (restart.attempt makes a case that failed on its own exit 0 instead, so
+      # the loop stops on it) and each retry re-invokes it fresh; max-retries is
+      # the number of restarts. The timeout bounds ONE attempt and cancels it
+      # whole (every job of the subworkflow, the scheduler job through the
+      # submitter's cleanup) when it expires; it defaults to 30 s, so it is
+      # always set here. Only the last attempt's logs surface under this step:
+      # the history is attempts.log
       - name: Solve (One Attempt per Retry)
         retry:
           max-retries: ${{ inputs.restart.max_restarts }}
           interval: 10s
           timeout: ${{ inputs.restart.attempt_timeout }}
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@restart-simulation
         with:
-          $yaml: workflows/openfoam-naca-restart/yamls/attempt.yaml
-          # the retry counter (0 on the first attempt), so the attempt can say
-          # which one it is; the simulator keeps its own count in attempts.log
-          attempt: ${{ env.PW_WORKFLOW_STEP_CURRENT_RETRY }}
+          $yaml: workflows/openfoam-naca/yamls/general.yaml
           resource: ${{ inputs.resource }}
-          scheduler: ${{ inputs.cluster.scheduler }}
-          cores_per_case: ${{ inputs.cluster.cores_per_case }}
-          slurm:
-            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
-            partition: ${{ inputs.cluster.slurm.partition }}
-            time: ${{ inputs.cluster.slurm.time }}
-            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
-          pbs:
-            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
-            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
-          case_dir: ${{ needs.preprocessing.outputs.CASE_DIR }}
-          max_camber: ${{ inputs.case.max_camber }}
-          camber_position: ${{ inputs.case.camber_position }}
-          thickness: ${{ inputs.case.thickness }}
-          angle_of_attack: ${{ inputs.case.angle_of_attack }}
-          mesh_scale: ${{ inputs.case.mesh_scale }}
-          checkpoint_every: ${{ inputs.restart.checkpoint_every }}
-          keep_checkpoints: ${{ inputs.restart.keep_checkpoints }}
-          openfoam_load: ${{ inputs.software.openfoam_load }}
+          cluster:
+            scheduler: ${{ inputs.cluster.scheduler }}
+            cores_per_case: ${{ inputs.cluster.cores_per_case }}
+            slurm:
+              is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+              partition: ${{ inputs.cluster.slurm.partition }}
+              time: ${{ inputs.cluster.slurm.time }}
+              scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            pbs:
+              is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+              scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+          case:
+            max_camber: ${{ inputs.case.max_camber }}
+            camber_position: ${{ inputs.case.camber_position }}
+            thickness: ${{ inputs.case.thickness }}
+            angle_of_attack: ${{ inputs.case.angle_of_attack }}
+            mesh_scale: ${{ inputs.case.mesh_scale }}
+            case_dir: ${{ needs.preprocessing.outputs.CASE_DIR }}
+          restart:
+            resume: true
+            attempt: true
+            checkpoint_every: ${{ inputs.restart.checkpoint_every }}
+            keep_checkpoints: ${{ inputs.restart.keep_checkpoints }}
+          postprocessing:
+            generate_images: false
+          software:
+            openfoam_load: ${{ inputs.software.openfoam_load }}
       # if: always — the run's verdict comes from the case directory, not from
       # how the Solve step ended: solved is the only success, whether the loop
       # stopped by decision or by exhausting its retries; a case that failed on
@@ -335,7 +343,7 @@ jobs:
               grows roughly with the cube: ~10 s per case at 1, ~1 min at 2,
               ~3.5 min at 3, ~10 min at 4, ~35 min at 6 (one core). The default
               makes the case outlast the default walltime, so that a run shows
-              several attempts; the openfoam-naca README has the accuracy table.
+              several attempts; the README has the accuracy table.
           case_dir:
             type: string
             label: Case directory

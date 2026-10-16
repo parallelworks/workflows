@@ -92,7 +92,7 @@
   `hydra_pmi_proxy` or rank behind even though hydra puts them in their own process
   groups: the proxies exit when their control connection drops (verified 2026-09-30).
 
-## Checkpoints and restarts (`workflows/openfoam-naca-restart`, 2026-10-16)
+## Checkpoints and restarts (`workflows/openfoam-naca/yamls/restart.yaml`, 2026-10-16)
 
 - `writeControl timeStep; writeInterval N; purgeWrite K` keeps the last K time
   directories **written by this run only**: a restart starts with an empty purge stack,

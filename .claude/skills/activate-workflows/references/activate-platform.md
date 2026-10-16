@@ -385,12 +385,15 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   `retry.max-retries: ${{ inputs.<group>.<n> }}` from a form input also verified there.
 - **`ignore-errors: true` works on a `uses:` step** (verified 2026-10-16, run finer-bunny:
   a subworkflow ending in error, the next step ran, the job and the run completed). It
-  is how a retried attempt workflow maps a callee's failure to a verdict of its own: a
-  thin `attempt.yaml` calls the whole case workflow with `ignore-errors`, then a step
-  reads the state files the case left and exits 0 (over: solved, or failed on its own)
-  or 1 (interrupted: the parent's retry fires the next attempt). Retrying the case
-  workflow directly would retry a diverged case too, a scheduler job each time
-  (`workflows/openfoam-naca-restart/yamls/attempt.yaml`).
+  one way to give a retried call a verdict of its own when the callee cannot be
+  changed: a thin attempt workflow calls it with `ignore-errors`, then a step reads the
+  files it left and exits 0 (over) or 1 (retry). When the callee is yours, a hidden
+  input is simpler and saves the nesting level: `openfoam-naca`'s `restart.attempt`
+  makes its results step exit 0 on a case that failed on its own (final) and 1 on an
+  interrupted one, so `yamls/restart.yaml` retries `general.yaml` directly. A retried
+  step that fails is retried whatever a later `if: always` step in the same job
+  returns, so the verdict must be the status of the first failing step, not of a step
+  after it.
 - **`max-retries` can be computed:** `max-retries: ${{ needs.<job>.outputs.N - 1 }}` —
   arithmetic is evaluated in the expression layer. An upstream step writing `N` to
   `$OUTPUTS` lets a later step in the **same job** size its own retries
@@ -680,7 +683,7 @@ to your task.
 | **Fan-out / sweep over N workers** (matrix strategy) | `tutorials/endpoint-workflows/05-matrix.yaml` |
 | **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` |
 | **Iterative loop over computed cases** (retry-as-loop + guarded static matrix) | `tutorials/optimization/` |
-| **Resubmit an interrupted simulation until it completes** (checkpoints, a run script that resumes, the walltime signal forwarded, retry-as-loop with the verdict read from files) | `workflows/openfoam-naca-restart/` (README is the walkthrough; the resume logic in `workflows/openfoam-naca/app/restart.sh`) |
+| **Resubmit an interrupted simulation until it completes** (checkpoints, a run script that resumes, the walltime signal forwarded, retry-as-loop whose callee tells a final failure from an interruption) | `workflows/openfoam-naca/yamls/restart.yaml` (the README's "Resubmitting an interrupted case" is the walkthrough; the resume logic in `app/restart.sh`) |
 | **`if:` status keywords on steps and jobs** (`always`, `error`, `canceled`, `!completed`) | `tutorials/if-conditions/` |
 | **Compose standalone workflows** (sampler or optimizer → matrix of evaluators → a live page; files as the only coupling) | `workflows/doe-openfoam/`, `workflows/dakota-openfoam/` (READMEs show the wiring); the file contract in [design-parameters.md](design-parameters.md) |
 | **A workflow others can call** (form as the interface, paths as inputs, one `general.yaml` for every platform) | `workflows/doe/`, `workflows/design-explorer/`, `workflows/wait_for_endpoint/` |

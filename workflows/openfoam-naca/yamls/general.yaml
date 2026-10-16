@@ -29,8 +29,10 @@
 # are kept once done, simpleFoam restarts from its latest complete checkpoint,
 # and a solved case, or one whose solver failed on its own, is not solved again.
 # Every attempt is one line of <case directory>/attempts.log (app/restart.sh).
-# workflows/openfoam-naca-restart builds on this: it calls this YAML from a
-# retried step until the case completes.
+# yamls/restart.yaml builds on this: it calls this YAML from a retried step until
+# the case completes, with the hidden restart.attempt on, which makes a case that
+# failed on its own complete the run (final, so the loop stops) instead of failing
+# it (interrupted, so the loop resumes it).
 permissions:
   - '*'
 
@@ -43,7 +45,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: restart-simulation
           sparse_checkout:
             - workflows/openfoam-naca/app
             - tools/utils
@@ -211,8 +213,21 @@ jobs:
           case_dir="${{ needs.preprocessing.outputs.CASE_DIR }}"
           if [ ! -f "${case_dir}/results.out" ]; then
             rc=$(cat "${case_dir}/exit_code" 2>/dev/null || echo "none: the case did not run to its end (killed, walltime, node lost)")
+            # as one attempt of a resubmission loop (restart.attempt), this step's
+            # status is the loop control: a case that failed on its own is final,
+            # so the run completes and the retry stops (the caller reads
+            # case/restart/failed); an interrupted case fails the run, so the
+            # caller's retry resumes it from its latest checkpoint
+            if [ "${{ inputs.restart.attempt }}" = "true" ] && [ -f "${case_dir}/case/restart/failed" ]; then
+              echo "::notice::no results.out: the case failed on its own, which is final ($(cat "${case_dir}/case/restart/failed")); this attempt completes so that the calling loop stops. Log tails follow"
+              tail -n 20 "${case_dir}"/case/log.* 2>/dev/null
+              exit 0
+            fi
             echo "::error::no results.out in ${case_dir} (simulator exit code: ${rc}; 128 + signal when a signal ended it); log tails follow"
             [ -f "${case_dir}/attempts.log" ] && echo "last attempt: $(tail -n 1 "${case_dir}/attempts.log")"
+            if [ "${{ inputs.restart.attempt }}" = "true" ]; then
+              echo "::notice::one attempt of a resubmission loop: this failure makes the calling loop resume the case from its latest complete checkpoint"
+            fi
             tail -n 20 "${case_dir}"/case/log.* 2>/dev/null
             tail -n 30 "${case_dir}"/run.*.out 2>/dev/null
             exit 1
@@ -452,8 +467,13 @@ jobs:
                     solver failed on its own (diverged). A case built from other
                     inputs starts from scratch. Every attempt is one line of
                     <case directory>/attempts.log. This is what
-                    workflows/openfoam-naca-restart relies on to resubmit a case
-                    until it completes.
+                    yamls/restart.yaml relies on to resubmit a case until it
+                    completes.
+          attempt:
+            type: boolean
+            hidden: true
+            default: false
+            label: One attempt of a resubmission loop? Yes only from yamls/restart.yaml's retried step, where a case that failed on its own completes the run so the loop stops
       software:
         type: group
         label: Software Environment

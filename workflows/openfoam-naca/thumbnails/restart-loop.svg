@@ -1,6 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="980" height="410" viewBox="0 0 980 410" font-family="Helvetica, Arial, sans-serif">
   <defs>
-    <marker id="aB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2a78d6"/></marker>
     <marker id="aG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1a9850"/></marker>
     <marker id="aR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c0392b"/></marker>
     <marker id="aK" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52514e"/></marker>
@@ -9,30 +8,19 @@
 
   <!-- the retried step -->
   <rect x="20" y="20" width="920" height="176" rx="8" fill="#ffffff" stroke="#898781" stroke-dasharray="6 4"/>
-  <text x="32" y="40" font-size="13" font-weight="bold" fill="#0b0b0b">general.yaml, the Solve step: retried while it exits non-zero (max-retries = max_restarts, timeout = attempt_timeout)</text>
+  <text x="32" y="40" font-size="13" font-weight="bold" fill="#0b0b0b">restart.yaml, the Solve step: retried while it exits non-zero (max-retries = max_restarts, timeout = attempt_timeout)</text>
 
-  <!-- attempt.yaml -->
-  <rect x="32" y="54" width="280" height="128" rx="6" fill="#eef4fc" stroke="#2a78d6"/>
-  <text x="42" y="74" font-size="13" font-weight="bold" fill="#0b0b0b">attempt.yaml: one attempt</text>
-  <text x="42" y="92" font-size="11" fill="#2a78d6">uses openfoam-naca/yamls/general.yaml</text>
-  <text x="42" y="106" font-size="11" fill="#52514e">on the shared case directory, resume on,</text>
-  <text x="42" y="120" font-size="11" fill="#52514e">with ignore-errors (it fails without</text>
-  <text x="42" y="134" font-size="11" fill="#52514e">results.out while the case is interrupted)</text>
-  <text x="42" y="154" font-size="11" fill="#52514e">then reads the case's state:</text>
-  <text x="42" y="170" font-size="11" fill="#1a9850">over → exit 0</text>
-  <text x="150" y="170" font-size="11" fill="#c0392b">interrupted → exit 1</text>
-
-  <!-- openfoam-naca -->
-  <rect x="342" y="54" width="580" height="128" rx="6" fill="#ffffff" stroke="#898781"/>
-  <text x="352" y="74" font-size="13" font-weight="bold" fill="#0b0b0b">openfoam-naca, whole: preprocessing → script_submitter → results</text>
-  <text x="352" y="92" font-size="11" fill="#52514e">preprocessing reruns every attempt (checkout, environment, params.in, case.sh)</text>
-  <text x="352" y="108" font-size="11" fill="#52514e">case.sh forwards the walltime SIGTERM to simulator.sh, which (restart.sh):</text>
-  <text x="364" y="124" font-size="11" fill="#52514e">skips blockMesh, decomposePar and potentialFoam once done</text>
-  <text x="364" y="138" font-size="11" fill="#52514e">discards a checkpoint cut short, restarts simpleFoam from latestTime</text>
-  <text x="364" y="152" font-size="11" fill="#52514e">writes a checkpoint every checkpoint_every iterations, logs the attempt</text>
-  <text x="364" y="166" font-size="11" fill="#52514e">tells a signal from a solver that failed on its own (final, never retried)</text>
-
-  <line x1="312" y1="100" x2="342" y2="100" stroke="#2a78d6" stroke-width="1.5" marker-end="url(#aB)"/>
+  <!-- one attempt = general.yaml -->
+  <rect x="32" y="54" width="896" height="128" rx="6" fill="#eef4fc" stroke="#2a78d6"/>
+  <text x="42" y="74" font-size="13" font-weight="bold" fill="#0b0b0b">one attempt = general.yaml, whole, on the shared case directory with restart.resume and restart.attempt on</text>
+  <text x="42" y="92" font-size="11" fill="#52514e">preprocessing reruns every attempt (checkout, environment, params.in, case.sh); then script_submitter runs case.sh</text>
+  <text x="42" y="108" font-size="11" fill="#52514e">case.sh forwards the walltime SIGTERM to simulator.sh, which (restart.sh):</text>
+  <text x="54" y="124" font-size="11" fill="#52514e">skips blockMesh, decomposePar and potentialFoam once done · discards a checkpoint cut short, restarts simpleFoam from latestTime</text>
+  <text x="54" y="138" font-size="11" fill="#52514e">writes a checkpoint every checkpoint_every iterations · logs the attempt · tells a signal from a solver that failed on its own</text>
+  <text x="42" y="158" font-size="11" fill="#52514e">results, Read the Coefficients, is the loop control:</text>
+  <text x="54" y="174" font-size="11" fill="#1a9850">solved → exit 0 (over)</text>
+  <text x="200" y="174" font-size="11" fill="#1a9850">failed on its own → exit 0 (over, final: attempt on)</text>
+  <text x="480" y="174" font-size="11" fill="#c0392b">interrupted → exit 1 (the retry resumes it)</text>
 
   <!-- the interruptions -->
   <rect x="20" y="222" width="270" height="78" rx="6" fill="#fdf0ee" stroke="#c0392b"/>
@@ -51,7 +39,7 @@
   <text x="330" y="302" font-size="11" fill="#52514e">case/restart/failed: a solver that failed on its own</text>
   <text x="330" y="316" font-size="11" fill="#52514e">case/&lt;iteration&gt;/: the checkpoints kept</text>
   <text x="330" y="330" font-size="11" fill="#52514e">case/log.simpleFoam.&lt;n&gt;: the solver log of attempt n</text>
-  <text x="330" y="344" font-size="11" fill="#52514e">results.out, exit_code: openfoam-naca's outcome</text>
+  <text x="330" y="344" font-size="11" fill="#52514e">results.out, exit_code: the case's outcome files</text>
   <text x="330" y="368" font-size="11" fill="#52514e">a later run given this directory continues it</text>
   <line x1="470" y1="196" x2="470" y2="222" stroke="#52514e" stroke-width="1.5" marker-start="url(#aK)" marker-end="url(#aK)"/>
 

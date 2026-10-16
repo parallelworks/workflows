@@ -91,13 +91,16 @@ listed, the runner's default lane.
   design-parameter names, the runner writes `results.out` and `exit_code`
   ([../design-parameters.md](../design-parameters.md)).
 
-- **A loop whose callee cannot say "stop"**: a runner that fails whenever it leaves no
-  result (openfoam-naca) cannot tell a retried step whether to go on. Put the retry on
-  a thin attempt YAML that calls the runner whole with `ignore-errors: true`, then reads
-  the files it left and exits 0 when the case is over (solved, or failed on its own) and
-  1 when it was interrupted; the parent's `Report` step (`if: always`) reads the same
-  files for the verdict (`workflows/openfoam-naca-restart`: `attempt.yaml`,
-  `general.yaml`). Depth: restart → attempt → runner → script_submitter, four.
+- **A loop whose callee must keep failing for its other callers**: a runner that fails
+  whenever it leaves no result (openfoam-naca) cannot, as is, tell a retried step "over"
+  from "try again". The verdict has to be the status of the first failing step of the
+  sub-run (a later `if: always` step cannot undo a failed one), so give the runner a
+  hidden input only the loop sets (`restart.attempt`): with it, the results step exits
+  0 on a case that failed on its own (final) and 1 on an interrupted one; the loop
+  variant retries the runner directly and its `Report` step (`if: always`) reads the
+  case's files for the run's verdict (`workflows/openfoam-naca/yamls/restart.yaml`).
+  Depth: restart → runner → script_submitter, three. For a callee you cannot change,
+  a thin attempt YAML with `ignore-errors` on the call does the same one level deeper.
 
 ## Tests
 

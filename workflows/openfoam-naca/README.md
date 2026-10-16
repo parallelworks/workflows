@@ -11,7 +11,10 @@ It runs on its own from the platform, and it is the evaluator of
 [`workflows/dakota-openfoam`](../dakota-openfoam/), which calls this same YAML
 once per design the optimizer proposes, and of
 [`workflows/doe-openfoam`](../doe-openfoam/), which calls it once per sampled
-design and shows the images in Design Explorer.
+design and shows the images in Design Explorer. A fourth variant,
+[`yamls/restart.yaml`](yamls/restart.yaml), is the example of a long case
+interrupted again and again and resubmitted from its checkpoints until it
+completes ([below](#resubmitting-an-interrupted-case-restartyaml)).
 
 ![From the form or from a loop's params file to params.in and case.sh, then blockMesh, potentialFoam and simpleFoam under the submitter, leaving results.out, exit_code and case.foam in the case directory](thumbnails/case-pipeline.svg)
 
@@ -116,9 +119,11 @@ records the interruption and exits 128 + signal. A node lost outright leaves no
 record; the next attempt notes that. The attempts hold a `flock` on
 `attempt.lock`, so a new attempt waits for the previous one to die.
 
-[`workflows/openfoam-naca-restart`](../openfoam-naca-restart/) builds on this
-group: it calls this workflow from a retried step until the case completes, and
-its README walks through the pieces.
+[`yamls/restart.yaml`](yamls/restart.yaml) builds on this group: it calls this
+workflow from a retried step until the case completes
+([below](#resubmitting-an-interrupted-case-restartyaml)). The group also holds a
+hidden `attempt` flag, on only in that loop, which makes a case that failed on
+its own complete the run (final) instead of failing it (interrupted).
 
 ### Images of the results
 
@@ -213,6 +218,242 @@ rank) and on 16 ranks at `mesh_scale` 3, with the Intel and Gcc builds alike
 (2026-10-05). So 16 ranks need `mesh_scale` 2 or more to be used in full. A
 user-set `MPIRUN` carries its own rank count and is only warned about.
 
+## Resubmitting an interrupted case: `restart.yaml`
+
+A long simulation that keeps being killed and is resubmitted until it
+completes. The case is this workflow's airfoil, made to outlast its walltime:
+SLURM kills the job at the limit, the loop resubmits it, the solver picks up
+from its latest checkpoint, and so on until the case is solved. Preempted
+nodes, lost nodes and an attempt that overruns its budget are handled the same
+way. It is written as the example for a simulation tool of your own: every
+piece a restartable workflow needs is here, in its own place, and the last
+part of this section says what to copy for another solver.
+
+![The Solve step of restart.yaml retries general.yaml whole on a shared case directory; the case directory holds the attempts log, the stage markers and the checkpoints; the Report step ends the run as solved, failed on its own or out of attempts](thumbnails/restart-loop.svg)
+
+| Piece | Where | What it does |
+|---|---|---|
+| checkpoints | the **Checkpoints and Resume** group → `controlDict` | `simpleFoam` writes its fields every `checkpoint_every` iterations and keeps the last `keep_checkpoints` |
+| the run script | [`app/simulator.sh`](app/simulator.sh) + [`app/restart.sh`](app/restart.sh) | resumes from the latest complete checkpoint, skips the stages already done, records every attempt, tells a kill from a solver that failed on its own ([Checkpoints and resuming](#checkpoints-and-resuming)) |
+| the signal | `case.sh`, written by preprocessing | passes the walltime's SIGTERM on to the simulator, which stops the solver and records the interruption |
+| the loop | [`yamls/restart.yaml`](yamls/restart.yaml), the `Solve` step | a `retry` block around one call of `general.yaml` per attempt |
+| the verdict | `general.yaml`'s **Read the Coefficients**, with the hidden `restart.attempt` on | exit 0 when the case is over (solved, or failed on its own), exit 1 when it was interrupted |
+| the report | `restart.yaml`, the `Report` step | solved after N attempts, failed on its own, or out of attempts |
+
+### A run
+
+With the defaults the case is a `mesh_scale` 3 airfoil (a few minutes on one
+core) and, scheduled, the walltime is 2 minutes, so a run takes two or three
+attempts. On the login node the attempt budget is the only thing that
+interrupts a case; the saved inputs **login_node_demo** (75 seconds against the
+same case) show four attempts. The run log shows only the last attempt under
+the `Solve` step (a retried step surfaces only its last attempt); the whole
+history is `attempts.log` in the case directory, which the `Report` step
+prints:
+
+```
+2026-10-16T08:31:46Z  attempt 1  start  from scratch: no case yet
+2026-10-16T08:32:51Z  attempt 1  end    interrupted (SIGTERM) in simpleFoam; solver log at iteration 853; checkpoints: 700 800
+2026-10-16T08:33:12Z  attempt 2  start  resume; done: blockMesh, potentialFoam; solver log at iteration 853; checkpoints: 700 800
+2026-10-16T08:34:17Z  attempt 2  end    interrupted (SIGTERM) in simpleFoam; solver log at iteration 1643; checkpoints: 700 800 1500 1600
+2026-10-16T08:34:38Z  attempt 3  start  resume; done: blockMesh, potentialFoam; solver log at iteration 1643; checkpoints: 700 800 1500 1600
+2026-10-16T08:35:41Z  attempt 3  end    solved: Cd 0.018992 Cl 0.706550 at iteration 2400 (2496 solved over all attempts); simpleFoam done on attempt 3
+2026-10-16T08:36:04Z  attempt 4  start  resume; done: blockMesh, potentialFoam, simpleFoam; solver log at iteration 2400; checkpoints: 2300 2400
+2026-10-16T08:36:04Z  attempt 4  end    solved: Cd 0.018992 Cl 0.706550 at iteration 2400 (2496 solved over all attempts); simpleFoam done on attempt 3
+```
+
+(the recorded login-node test, run smashing-guppy). Attempt 1 was killed at
+iteration 853 with checkpoints at 700 and 800; attempt 2 kept the mesh and the
+initialization, restarted the solver at 800, and was killed at 1643; attempt 3
+restarted at 1600 and solved the case at 2400, 96 iterations solved twice in
+all. Then the budget cut attempt 3 too, during its post-processing, so attempt
+4 found the case solved and only extracted the results again: the "never solve
+a finished case again" rule at work. The `Report` step then says:
+
+```
+::notice::solved in 4 attempt(s), 2 of them interrupted and resumed from a checkpoint: Cd = 0.0189923490, Cl = 0.7065502600 (mesh_scale 3). The history is .../case/attempts.log; open .../case/case/case.foam in ParaView to see the fields
+```
+
+and publishes `DRAG_COEFFICIENT`, `LIFT_COEFFICIENT`, `ATTEMPTS`,
+`INTERRUPTIONS`, `CASE_DIR` and `PARAVIEW_FILE` as outputs. The two failures
+are told apart in the same place: a solver that **failed on its own** (it
+diverged) ends the run in error at once, whatever is left of the budget, and a
+case **still interrupted when the attempts ran out** ends it in error too but
+leaves a resumable case: run the workflow again with `case.case_dir` pointing
+at it and the next attempt continues from the latest checkpoint.
+
+### The signal: how a kill becomes a recorded interruption
+
+What SLURM does at the walltime decides most of the design. It sends SIGTERM
+to the **batch script alone**, not to its children (verified on gcptest: a
+`sleep` started by the script outlived the signal until the SIGKILL 30 seconds
+later, SLURM's `KillWait`). The solver would run on, unrecorded, until the
+SIGKILL, mid-write or not. So the signal is passed down two steps:
+
+- `case.sh`, the script preprocessing writes and the submitter turns into the
+  batch script, runs the simulator in the background with a `trap` that
+  forwards SIGTERM, SIGINT and SIGHUP to it, then `wait`s (bash runs a trap at
+  once while it waits on a background job, only once the command ends while it
+  waits on a foreground one).
+- The simulator (`restart.sh`) runs every OpenFOAM tool through
+  `run_interruptible`, the same background-and-wait pattern, and its trap
+  forwards the signal to the tool's whole process tree (`mpirun`, its proxies
+  and the ranks), remembers it, and ends the attempt with `attempts.log`
+  saying *interrupted (SIGTERM) in simpleFoam at iteration N* and exit status
+  128 + signal. A signal that arrives between tools ends the attempt before
+  the next one starts.
+
+The platform's cancel of an attempt (the budget expired, the run canceled)
+goes the same way: the submitter's cleanup `scancel`s the job or kills the
+process group, and the trap sees SIGTERM. A node that is preempted or lost
+sends nothing: the next attempt finds a start line without an end line and
+writes *interrupted without a record (killed outright or node lost)* for it.
+Either way, the distinction the loop relies on is simple: **a non-zero status
+with no signal remembered is the tool failing on its own**.
+
+### The loop: a retried subworkflow step
+
+[`restart.yaml`](yamls/restart.yaml) has two jobs. `preprocessing` validates
+the form, prepares the case directory (`case/` under the run's job directory,
+or the `case.case_dir` given) and prepares the OpenFOAM environment once, so a
+cold cluster installs OpenFOAM before the loop and not inside an attempt whose
+budget might cancel the install. `solve` is the loop:
+
+```yaml
+- name: Solve (One Attempt per Retry)
+  retry:
+    max-retries: ${{ inputs.restart.max_restarts }}   # restarts after the first attempt
+    interval: 10s
+    timeout: ${{ inputs.restart.attempt_timeout }}     # bounds ONE attempt; defaults to 30 s
+  uses: github/parallelworks/workflows@canary
+  with:
+    $yaml: workflows/openfoam-naca/yamls/general.yaml
+    case:
+      case_dir: ${{ needs.preprocessing.outputs.CASE_DIR }}
+      ...
+    restart:
+      resume: true
+      attempt: true          # hidden: a case that failed on its own completes the sub-run
+      ...
+```
+
+A retried step re-runs while it exits non-zero, so the sub-run's status is
+the loop control, and that status is the status of the first step that fails
+in it (a later `if: always` step cannot undo a failed one). Each attempt is
+the **entire** `general.yaml` (its preprocessing reruns every time, idempotent
+and cheap: the checkout, the environment check, `params.in`, `case.sh`) on the
+shared case directory, and its **Read the Coefficients** step is where the
+verdict is made: `results.out` present, exit 0 (solved, the loop stops); no
+`results.out` and `case/restart/failed` present, exit 0 as well when
+`restart.attempt` is on (failed on its own: final, the loop stops; without the
+flag it is the usual error, which is what every other caller and a standalone
+run must see); no `results.out` and no `failed`, exit 1 (interrupted: the
+retry fires the next attempt). **`timeout` is always set**: it defaults to 30
+seconds per attempt and cancels the whole attempt, every job of the sub-run,
+the scheduler job included. It must cover queue time, node boot (minutes on a
+cloud cluster) and the walltime; on the login node it is the only interruption
+there is.
+
+### The verdict
+
+The `Report` step runs `if: ${{ always }}`, whether the loop stopped by
+decision or by running out of retries, and reads the case directory, never the
+step's status: `case/restart/failed` is the solver's own failure (error, with
+the reason and the log paths), `results.out` with `simpleFoam.done` is success
+(the coefficients, the attempt and interruption counts), anything else is a
+case still interrupted after `max_restarts + 1` attempts (error, with the case
+directory to resume from). The run's outputs come from the same files.
+
+### Inputs of `restart.yaml`
+
+| Group | Input | Meaning |
+|---|---|---|
+| `cluster` | `resource`, `scheduler`, `cores_per_case`, `slurm`, `pbs` | as above: the login node, or one SLURM/PBS job of `cores_per_case` ranks per attempt. **`slurm.time` defaults to `00:02:00`**, the interruption of the demo; a PBS form sets the walltime in its directives |
+| `case` | `max_camber`, `camber_position`, `thickness`, `angle_of_attack` | the design, as above |
+| | `mesh_scale` | **default 3** (a few minutes), so the case outlasts the walltime |
+| | `case_dir` | empty: `case/` under this run's job directory; an earlier run's case directory continues its case |
+| `restart` | `max_restarts` | restarts after the first attempt (the step's `max-retries`), default 10 |
+| | `attempt_timeout` | the budget of one attempt (`75s`, `30m`, `2h`), default `30m`: queue + node boot + walltime when scheduled, the only interruption on the login node |
+| | `checkpoint_every` | iterations between checkpoints, default 100 |
+| | `keep_checkpoints` | checkpoints kept on disk, default 2 |
+| `software` | `openfoam_load` | commands that put OpenFOAM on PATH; empty installs it from conda-forge in preprocessing |
+
+Images are not offered here; open `case/case/case.foam` in ParaView as above.
+`restart.yaml` calls `general.yaml`, so a scheduled run on an `existing` HPCMP
+or NOAA resource (SLURM account, QoS, node type) would need a copy calling the
+`hsp` or `noaa` variant, the way `dakota-openfoam` ships
+`iteration-naca-hsp.yaml` and `iteration-naca-noaa.yaml`.
+
+### What a run of `restart.yaml` leaves
+
+In the case directory (`CASE_DIR` in the log, `case/` under the job directory
+by default):
+
+```
+attempts.log           the history: one start and one end line per attempt
+attempt.lock           the lock the running attempt holds
+params.in, results.out, exit_code, case.sh, run.<job>.out   this workflow's own files, from the last attempt
+case/                  the OpenFOAM case: the last keep_checkpoints time directories, the final one reconstructed
+case/restart/          inputs, <stage>.done, failed, solver.attempt
+case/log.simpleFoam.<n>, case/log.simpleFoam   every attempt's solver log
+```
+
+Every attempt is one `general.yaml` run inside the retried step; the platform
+shows only the last one under `Solve`, so read `attempts.log` (the `Report`
+step prints it) and the per-attempt solver logs for the earlier ones.
+
+### Tests of `restart.yaml`
+
+Recorded under [`tests/restart/`](tests/restart/), on the cloud cluster
+`gcptest` (`pw cluster ls`):
+
+| Test | Interruption | What it checks |
+|---|---|---|
+| `gcptest-login-node` | the attempt budget: `attempt_timeout` 75 s against a `mesh_scale` 3 case on one core | the platform cancels each attempt, the submitter's cleanup kills the process group, the next attempt resumes; the run completes |
+| `gcptest-slurm-mpi2-walltime` | the walltime: `00:02:00` against the same case on 2 ranks | SLURM's SIGTERM reaches the batch script, is forwarded to `mpirun`, the decomposed case resumes; the run completes |
+| `gcptest-login-node-diverged` | none: a design that diverges (16 ranks on the base mesh with the rank floor disabled through `openfoam_load`) | the first attempt fails on its own, the loop stops at once, the run ends in error with the reason (`_test.expect: error`) |
+
+```bash
+python3 tools/tests/run-workflow-test.py workflows/openfoam-naca/tests/restart/gcptest-login-node.json
+```
+
+The verdict of each attempt, and of the run, is in `attempts.log` and the
+`Report` step; `pw workflows runs errors <slug>` shows the failures. A
+`pw workflows runs cancel` of a scheduled run mid-solve was checked by hand as
+well: the submitter's cleanup `scancel`s the job, the simulator records the
+interruption with its checkpoints, nothing is left on either node, and a later
+run given the case directory (`case.case_dir`) resumes from the last checkpoint
+and solves it.
+
+### Bringing your own simulation tool
+
+What this example does, and what to do for another solver:
+
+1. **Make the solver write checkpoints**, at an interval that balances lost
+   work against write cost, and keep at least two. Decide how your tool tells a
+   complete checkpoint from a torn one (a closing line, a checksum, a manifest
+   written last, an atomic rename) and check it before resuming.
+2. **Make the run script resume**: a fingerprint of the inputs so only a
+   matching case is continued; a marker per expensive stage so it is not
+   redone; a start-from-latest-checkpoint for the solver; a marker for "solved"
+   so a finished case is never solved again; a record for "failed on its own"
+   so a diverged case is never retried; one line per attempt in a log. Keep the
+   state in plain files next to the case: they are what people read when a
+   run looks wrong, and what a later run continues from.
+3. **Handle the signal**: find out who receives it under your scheduler (SLURM:
+   the batch script only), forward it down to the solver, run long commands in
+   the background and `wait` so the trap runs at once, and exit with
+   128 + signal. Treat "non-zero and no signal seen" as the solver's own failure.
+4. **Keep the case workflow usable on its own** (and by its other callers) with
+   resume off, and give it one hidden flag the loop sets, under which the step
+   that reads the result completes on a final failure and fails on an
+   interruption; then the loop is a retried call of the whole case workflow
+   with the case directory as an input and the retry `timeout` sized for the
+   whole attempt.
+5. **Report from the state files** in an `if: always` step: solved, failed on
+   its own, or out of attempts and resumable, and record the tests that
+   produced each.
+
 ## As a subworkflow
 
 ```yaml
@@ -246,6 +487,11 @@ concurrent calls on a cold cluster install once. Worked example:
 | `openfoam-case/` | the case template: boundary conditions, schemes, solver settings |
 | `simulator.sh` | `params.in` → case → `blockMesh` (+ `decomposePar`) → `potentialFoam` → `simpleFoam` → `results.out` → `reconstructPar` + `case.foam`; env contract `MESH_SCALE`, `CORES_PER_CASE`, `MIN_CELLS_PER_RANK`, `OPENFOAM_ENV`, `MPIRUN`, and for checkpoints and resuming `CHECKPOINT_EVERY`, `KEEP_CHECKPOINTS`, `RESUME` |
 | `restart.sh` | sourced by `simulator.sh`: the attempts log, the inputs check, the stage markers, the checkpoint check and pruning, the signal trap that stops the solver and records an interruption, the final failure record |
+
+| `yamls/` | Role |
+|---|---|
+| `general.yaml`, `hsp.yaml`, `noaa.yaml` | one case, per platform variant |
+| `restart.yaml` | the resubmission loop over `general.yaml` ([above](#resubmitting-an-interrupted-case-restartyaml)); its tests are `tests/restart/`, its picture `thumbnails/restart-loop.svg` |
 | `install-paraview.sh` | idempotent download of the official ParaView binaries (`PARAVIEW_VERSION`, `PARAVIEW_URL`), with an offscreen render check, and the activation file for `tools/utils/prepare-env.sh` |
 | `render-images.sh` | `pvpython` wrapper: the ParaView environment (`PARAVIEW_ENV`), the backend fallbacks, the timeout, `render.log` |
 | `render-case.py` | the pvpython script: `case.foam` (reconstructed or decomposed) → the six images + `manifest.json` |

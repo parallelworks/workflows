@@ -26,8 +26,7 @@
 # creates the case itself (general.yaml's preprocessing, idempotent and cheap)
 # in the Solve step's own directory, the same on every retry: the case lives
 # there unless case.case_dir names another, and the Report step runs the
-# attempts' copy of app/restart-report.sh. Environment commands given in the
-# form are checked once before the loop (check_openfoam_load). Without them, a
+# attempts' copy of app/restart-report.sh. Without environment commands, a
 # cluster that never ran this workflow installs OpenFOAM inside the first
 # attempt: allow a few minutes for it in restart.attempt_timeout (an install
 # cut short is removed and redone by the next attempt).
@@ -62,34 +61,7 @@ configurations:
         keep_checkpoints: 2
 
 jobs:
-  # the OpenFOAM environment commands typed in the form, checked once before
-  # the loop (app/prepare-environments.sh): inside it, commands that do not
-  # deliver the tools would fail every attempt. Skipped when none are given (an
-  # unset editor input is null to the expression, not ''); the solve job still
-  # runs after a skipped job, and not after a failed one
-  check_openfoam_load:
-    if: ${{ inputs.software.openfoam_load != null }}
-    ssh:
-      remoteHost: ${{ inputs.resource.ip }}
-    steps:
-      - name: Checkout the App
-        uses: parallelworks/checkout
-        with:
-          repo: https://github.com/parallelworks/workflows.git
-          branch: restart-simulation
-          sparse_checkout:
-            - workflows/openfoam-naca/app
-            - tools/utils
-      - name: Check the OpenFOAM Environment Commands
-        run: |
-          cat > openfoam-load.sh << 'PW_LOAD_EOF'
-          ${{ inputs.software.openfoam_load }}
-          PW_LOAD_EOF
-          CORES_PER_CASE="${{ inputs.cluster.cores_per_case }}" RESOURCE_IP="${{ inputs.resource.ip }}" \
-            bash workflows/openfoam-naca/app/prepare-environments.sh openfoam-load.sh
-
   solve:
-    needs: [check_openfoam_load]
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
@@ -383,4 +355,3 @@ jobs:
               ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca.
               The case sources these commands; `export MPIRUN="srun --mpi=pmix"`
               here replaces the default launcher `mpirun --bind-to none -np N`.
-              Commands given here are checked once, before the first attempt.

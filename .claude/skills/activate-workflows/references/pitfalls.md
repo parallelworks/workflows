@@ -108,8 +108,7 @@
   renders empty in the shell, yet `if: ${{ inputs.x != '' }}` and the bare
   `if: ${{ inputs.x }}` are both true when it is unset, and so is `!= ''` with
   `default: ''` on the input. `if: ${{ inputs.x != null }}` (or `!= undefined`) is
-  false when unset and true when set: that is the test for "commands were given"
-  (`workflows/openfoam-naca/yamls/general-restart.yaml`, `check_openfoam_load`).
+  false when unset and true when set: that is the test for "commands were given".
 
 ## Jobs, outputs, matrix and retries
 

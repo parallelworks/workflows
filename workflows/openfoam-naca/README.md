@@ -326,16 +326,7 @@ prepares the OpenFOAM environment and creates the case itself. It runs in the
 directory, which is the same on every retry; so the case lives in its `case/`
 unless `case.case_dir` names another directory, and the `Report` step runs the
 attempts' copy of [`app/restart-report.sh`](app/restart-report.sh) from there.
-The workflow has two jobs:
-
-- `check_openfoam_load` runs only when **OpenFOAM environment commands** are
-  given (`if: ${{ inputs.software.openfoam_load != null }}`: an unset editor
-  input is null to the expression, not `''`). It checks once, with
-  [`app/prepare-environments.sh`](app/prepare-environments.sh), that the
-  commands put the tools on PATH. Inside the loop, commands that do not would
-  fail every attempt.
-- `solve` needs it. It still runs after a skipped job, and not after a failed
-  one. It holds the loop:
+The workflow is one job, `solve`, which holds the loop:
 
 ```yaml
 - name: Solve (One Attempt per Retry)
@@ -410,7 +401,7 @@ stands.
 | | `attempt_timeout` | the budget of one attempt (`75s`, `30m`, `2h`), default `30m`: queue + node boot + walltime when scheduled, the only interruption on the login node |
 | | `checkpoint_every` | iterations between checkpoints, default 100 |
 | | `keep_checkpoints` | checkpoints kept on disk, default 2 |
-| `software` | `openfoam_load` | commands that put OpenFOAM on PATH, checked once before the loop; empty installs it from conda-forge inside the first attempt on a cluster that never had it |
+| `software` | `openfoam_load` | commands that put OpenFOAM on PATH, checked by every attempt; empty installs it from conda-forge inside the first attempt on a cluster that never had it |
 
 Images are not offered here; open `case/case/case.foam` in ParaView as above.
 `hsp-restart.yaml` and `noaa-restart.yaml` call `hsp.yaml` and `noaa.yaml` with
@@ -447,7 +438,7 @@ Recorded under [`tests/general-restart/`](tests/general-restart/),
 | `gcptest-login-node` | the attempt budget: `attempt_timeout` 75 s against a `mesh_scale` 3 case on one core | the platform cancels each attempt, the submitter's cleanup kills the process group, the next attempt resumes; the run completes |
 | `gcptest-slurm-mpi2-walltime` | the walltime: `00:02:00` against the same case on 2 ranks | SLURM's SIGTERM reaches the batch script, is forwarded to `mpirun`, the decomposed case resumes; the run completes |
 | `gcptest-login-node-diverged` | none: a design that diverges (16 ranks on the base mesh with the rank floor disabled through `openfoam_load`) | the first attempt fails on its own, the loop stops at once, the run ends in error with the reason (`_test.expect: error`) |
-| `gcptest-bad-openfoam-load` | none: environment commands that load nothing | `check_openfoam_load` fails, the loop never starts, the run ends in error (`_test.expect: error`) |
+| `gcptest-bad-openfoam-load` | none: environment commands that load nothing | every attempt fails in its environment step, the attempts run out, and the `Report` step says no attempt ran the simulator; the run ends in error (`_test.expect: error`) |
 | `hsp-restart/gcptest-slurm-mpi2-walltime`, `noaa-restart/gcptest-slurm-mpi2-walltime` | the walltime, as above | the hsp and noaa forms and their `with:` blocks, on a cloud cluster |
 
 ```bash
@@ -524,7 +515,7 @@ concurrent calls on a cold cluster install once. Worked example:
 | `openfoam-case/` | the case template: boundary conditions, schemes, solver settings |
 | `simulator.sh` | `params.in` → case → `blockMesh` (+ `decomposePar`) → `potentialFoam` → `simpleFoam` → `results.out` → `reconstructPar` + `case.foam`; env contract `MESH_SCALE`, `CORES_PER_CASE`, `MIN_CELLS_PER_RANK`, `OPENFOAM_ENV`, `MPIRUN`, and for checkpoints and resuming `CHECKPOINT_EVERY`, `KEEP_CHECKPOINTS`, `RESUME` |
 | `restart.sh` | sourced by `simulator.sh`: the attempts log, the inputs check, the stage markers, the checkpoint check and pruning, the signal trap that stops the solver and records an interruption, the final failure record |
-| `prepare-environments.sh` | the environment step of every case variant, and the restart variants' check of the environment commands: `openfoam-env.sh` (and `paraview-env.sh`) from the form's load commands or the installers, checked for the tools the case needs; NOAA's shared software tree chosen by hostname |
+| `prepare-environments.sh` | the environment step of every case variant: `openfoam-env.sh` (and `paraview-env.sh`) from the form's load commands or the installers, checked for the tools the case needs; NOAA's shared software tree chosen by hostname |
 | `create-case.sh` | the **Create the Case** step of every variant: `params.in` from the form and the params file, `case.sh` (the submitted script, which forwards the walltime's signal to the simulator and records its exit status), `CASE_DIR` |
 | `read-results.sh` | the **Read the Coefficients** step of every variant: the coefficients as outputs, or the failure with the exit status and the log tails; under `RESTART_ATTEMPT` the loop's verdict |
 | `restart-report.sh` | the restart variants' `Report` step: the verdict from the case's files, run from the attempts' checkout |

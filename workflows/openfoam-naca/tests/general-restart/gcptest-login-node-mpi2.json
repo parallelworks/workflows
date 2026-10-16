@@ -1,0 +1,33 @@
+{
+  "_test": {
+    "timeout_s": 1800,
+    "endpoint": false,
+    "warm_marker": "${HOME}/pw/software/openfoam-naca/miniforge/envs/openfoam",
+    "leftover_patterns": [
+      "simpleFoam",
+      "potentialFoam",
+      "blockMesh",
+      "simulator.sh",
+      "mpirun",
+      "hydra_pmi_proxy"
+    ]
+  },
+  "resource": "pw://alvaro/gcptest",
+  "cluster": {
+    "scheduler": false,
+    "cores_per_case": 2
+  },
+  "case": {
+    "max_camber": 0.02,
+    "camber_position": 0.4,
+    "thickness": 0.12,
+    "angle_of_attack": 5,
+    "mesh_scale": 3
+  },
+  "restart": {
+    "max_restarts": 10,
+    "attempt_timeout": "75s",
+    "checkpoint_every": 100,
+    "keep_checkpoints": 2
+  }
+}

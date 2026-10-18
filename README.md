@@ -19,7 +19,7 @@ and fails when it fails ([activate-batch](workflows/activate-batch/),
 [design-explorer](workflows/design-explorer/)); a **composed** workflow is a YAML with
 no code of its own that calls them ([doe-openfoam](workflows/doe-openfoam/),
 [dakota-openfoam](workflows/dakota-openfoam/)); `*k8s*` variants serve the same endpoint
-from a pod. The shapes, their rules and their combinations: [CLAUDE.md](CLAUDE.md)
+from a pod. The shapes, their rules and their combinations: [AGENTS.md](AGENTS.md)
 ("Workflow shapes").
 
 Apart from Kubernetes, they all work the same way: a controller script installs the
@@ -152,7 +152,7 @@ effect once pushed to the referenced branch (**canary**).
 ## Developing
 
 - [DeveloperGuide.md](DeveloperGuide.md) — how to add or change a workflow
-- [CLAUDE.md](CLAUDE.md) — repo conventions and the workflow shapes (also read by AI agents)
+- [AGENTS.md](AGENTS.md) — repo conventions and the workflow shapes (also read by AI agents)
 - [docs/ai-workflow-development/](docs/ai-workflow-development/) — building workflows
   with AI agents; the `activate-workflows` Claude Code skill lives at
   [.claude/skills/activate-workflows/](.claude/skills/activate-workflows/)

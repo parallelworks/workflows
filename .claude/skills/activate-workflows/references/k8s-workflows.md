@@ -1,6 +1,6 @@
 # Kubernetes workflows
 
-> The one place for everything Kubernetes in this repo. SKILL.md, CLAUDE.md,
+> The one place for everything Kubernetes in this repo. SKILL.md, AGENTS.md,
 > `activate-platform.md`, the upgrade playbook and the tests README point here instead
 > of repeating it. Verified on the platform cluster `k3sgpu` on 2026-09-16: every file
 > named below ran (§8).

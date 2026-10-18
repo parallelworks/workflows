@@ -14,7 +14,7 @@ one:
 | **Kubernetes** | never: cancelling the run is the teardown | `workflows/mlflow/yamls/k8s.yaml` | [k8s-workflows.md](.claude/skills/activate-workflows/references/k8s-workflows.md) |
 
 This guide walks the endpoint service; §3 says where the other shapes differ. The
-rules every shape shares, and how the shapes combine, are in [CLAUDE.md](CLAUDE.md).
+rules every shape shares, and how the shapes combine, are in [AGENTS.md](AGENTS.md).
 
 Apart from Kubernetes, every shape works the same way: the controller script installs
 what the workflow needs into a shared directory on the login node
@@ -63,7 +63,7 @@ Working with an AI assistant? The repo ships a Claude Code skill —
 reference. In Claude Code: *"Using the activate-workflows skill, build a workflow for
 [deployment] that [does X]."* Before the first test run or the PR, *"Use the
 workflow-reviewer subagent on `workflows/<name>`"* gets a read-only review against
-CLAUDE.md's rules, the shape's reference and the recorded tests
+AGENTS.md's rules, the shape's reference and the recorded tests
 (`.claude/agents/workflow-reviewer.md`).
 
 ## 1. The controller script

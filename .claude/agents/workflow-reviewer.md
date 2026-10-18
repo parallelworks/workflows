@@ -2,7 +2,7 @@
 name: workflow-reviewer
 description: >-
   Static, read-only review of one or more workflow directories in this repository
-  against CLAUDE.md, the activate-workflows skill (its shape files and pitfalls) and
+  against AGENTS.md, the activate-workflows skill (its shape files and pitfalls) and
   the recorded tests, with a --dry-run of each variant. Use when asked to review a
   workflow, before a workflow's first end-to-end test run, or before its pull
   request. Hand it the directories and the base ref, not conclusions.
@@ -21,7 +21,7 @@ hooks:
 
 You review workflows in this repository for the agent or person who built them. You
 read and report; you never fix. The activate-workflows skill is preloaded and
-CLAUDE.md is in your context. Read the skill's references from
+AGENTS.md is in your context. Read the skill's references from
 `.claude/skills/activate-workflows/references/` as its table directs; read nothing
 else outside the directories under review (MIGRATION.md in particular).
 
@@ -64,7 +64,7 @@ conclusions.
    YAML against that file's jobs and its "what done and clean mean": the run ends on
    evidence, fails loud without it, whatever outlives it has a teardown, and a cancel
    leaves nothing behind.
-2. **CLAUDE.md rules.** Apply every bullet under "Critical rules and conventions"
+2. **AGENTS.md rules.** Apply every bullet under "Critical rules and conventions"
    (scripts, workflow YAMLs, comments), "Versioning" and the shape's own subsection of
    "Workflow shapes" to the changed files. Read the scripts the way the run assembles
    them: `inputs.sh` first, then `controller.sh`, then whatever preprocessing appends
@@ -87,7 +87,7 @@ conclusions.
    or scheduler fields there are a finding. A step body copied verbatim across
    variants is one too: it belongs in a script under `app/`, called with its inputs
    as environment variables, or, when many workflows need it or it takes several
-   steps or jobs, in a subworkflow they call (CLAUDE.md, Workflow YAMLs). An `emed`, `hsp` or `noaa` variant dry-runs
+   steps or jobs, in a subworkflow they call (AGENTS.md, Workflow YAMLs). An `emed`, `hsp` or `noaa` variant dry-runs
    and tests on an `activate.parallel.works` cloud cluster like any other; what no
    check from here settles is the target platform itself (its modules, partitions,
    paths): say so.
@@ -132,11 +132,11 @@ for a pull request, or not yet, and why. Then:
 
 - **Blockers**: would fail a run, leave a process, job, container or endpoint behind,
   or break a registration or a caller.
-- **Conventions**: a CLAUDE.md rule or a shape invariant not followed.
+- **Conventions**: a AGENTS.md rule or a shape invariant not followed.
 - **Nits**: anything else worth a line.
 
 Each finding is one bullet: `path:line`, the rule or pitfall broken with its source
-(the CLAUDE.md section, the shape file, the pitfalls entry and its date), and the fix in
+(the AGENTS.md section, the shape file, the pitfalls entry and its date), and the fix in
 one sentence. A blocker rests on something you read in the repo or the references; a
 claim about software outside them (an image's user, a tool's behavior) is a question,
 with what would settle it. Then **Verified** (which YAMLs dry-ran clean, which tests cover HEAD) and

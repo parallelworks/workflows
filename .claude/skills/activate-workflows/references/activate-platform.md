@@ -221,7 +221,7 @@ expressions (`ignore: ${{ .hidden }}` mirrors the hidden flag).
 
 | type | renders / resolves to |
 |------|----------------------|
-| `string`, `integer`, `number`, `boolean` | scalar (`number` = float, with `min`/`max`/`step`/`slider`; `integer` = int, undocumented but works). Verified 2026-09-16: an `integer` renders as bare digits in the shell (`$(( n + 1 ))` works) and compares numerically in expressions (`inputs.n == 5`, `inputs.n > 3` true; a JSON `"7"` in `-i` behaves like `7`); an **optional integer left unset renders empty** — guard with `${v:-default}` — and `inputs.m == ''` is *false* for it; an explicit `""` for a top-level input is default-filled |
+| `string`, `number`, `boolean` | scalar (`number` takes `min`/`max`/`step`/`slider`; give a whole-number input `step: 1`). There is **no `integer` type**: the launch form renders nothing for a type it doesn't know but still submits the default, so the input can't be changed from the form, while `pw workflows run -i` still passes a value and hides the problem. Verified 2026-09-16 through `-i`, with an input then typed `integer`: a number renders as bare digits in the shell (`$(( n + 1 ))` works) and compares numerically in expressions (`inputs.n == 5`, `inputs.n > 3` true; a JSON `"7"` in `-i` behaves like `7`); an **optional input left unset renders empty** — guard with `${v:-default}` — and `inputs.m == ''` is *false* for it; an explicit `""` for a top-level input is default-filled |
 | `editor` | multi-line text box (e.g. scheduler directives) |
 | `dropdown` | `options: [{label, value}]` |
 | `group` | container with `items:` (values at `inputs.<group>.<item>`) |

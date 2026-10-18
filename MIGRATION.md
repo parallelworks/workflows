@@ -416,7 +416,7 @@ endpoint name and address, the same restart, fallback and stop behaviour.
   labels), `settings.host` → `cluster.resource`. **Local Port** (`service.port`) is passed
   to `pw endpoints run --port` when non-zero. Dropped: `repo_url`/`repo_branch` — the
   dashboard comes from this repository's checkout now, and the subworkflow references are
-  fixed at `canary`. The `number` inputs are `integer` (the server parses them with
+  fixed at `canary`. The `number` inputs have `step: 1` (the server parses them with
   `int()`), the interval with `min: 60` (the server clamps to 60 anyway).
 - **Credentials:** the same order and effect as `serve-endpoint.sh` — the workspace key
   from `/etc/profile.d/parallelworks-env.sh` when it works, then saved credentials when they

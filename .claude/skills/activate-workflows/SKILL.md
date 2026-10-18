@@ -144,7 +144,7 @@ variant; the `cluster` group holds the scheduler fields and is hidden and ignore
 whole when the resource has no scheduler (`${{ inputs.resource.schedulerType == '' }}`);
 the rest of the form is grouped by what it configures (`service` for a served app,
 `case`, `doe`, `optimizer`, `software`, ... elsewhere). An optional input left unset
-renders empty in the shell (verified for `integer`): guard with `${var:-default}` and
+renders empty in the shell (verified for a numeric input): guard with `${var:-default}` and
 quote every `${{ }}` interpolation.
 
 **Code delivery: `parallelworks/checkout`, never base64.** The repo is fetched from

@@ -248,7 +248,8 @@ jobs:
               between runs. Blank derives status-<username>. Reserve it
               with `pw subdomains reserve <name>` to keep it yours.
           sweep_concurrency:
-            type: integer
+            type: number
+            step: 1
             label: Clusters Swept At Once
             default: 6
             min: 1
@@ -258,7 +259,8 @@ jobs:
               at a time, so this only overlaps different systems — raise it
               for a faster sweep of a large fleet, lower it to be gentler.
           port:
-            type: integer
+            type: number
+            step: 1
             label: Local Port
             default: 0
             min: 0
@@ -287,7 +289,8 @@ jobs:
             default: true
             tooltip: Enable background cluster data collection
           cluster_monitor_interval:
-            type: integer
+            type: number
+            step: 1
             label: Refresh Interval
             default: 180
             min: 60

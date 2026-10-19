@@ -165,11 +165,12 @@
   (also `canceled()`) and `always()`; the keywords are gone** (ACTIVATE v7.112; every
   platform runs a later version). The keywords v7.69 added — `completed`, `error`,
   `canceled`, `never`, their `!` forms, and `success`, `failure`, `cancelled` without
-  parentheses — no longer exist: only the word `always` on its own is still a keyword.
-  Any other bare word is a non-empty string, which is true, and an `if:` that calls no
-  status function keeps the implicit `success()` check, so an old condition still loads
-  but means something else: `${{ !completed }}` and `${{ !error }}` are always false
-  (the job never runs), `${{ error }}` runs only when nothing failed, and
+  parentheses — no longer exist: only the word `always` on its own still works, as the
+  older spelling of `always()` (write `always()`). Any other bare word is a non-empty
+  string, which is true, and an `if:` that calls no status function keeps the implicit
+  `success()` check, so an old condition still loads but means something else:
+  `${{ !completed }}` and `${{ !error }}` are always false (the job never runs),
+  `${{ error }}` runs only when nothing failed, and
   `${{ inputs.fallback ? error : never }}` runs whenever its needs succeeded. Write
   `!success()` (a needed job failed or was cancelled; it keeps running through a
   cancel), `failure()`, `cancelled()`, `!failure()`, and `false` for `never`; the
@@ -230,11 +231,12 @@
   `tutorials/optimization/general.yaml`'s Iterate step has this latent bug
   (its ~15 s test waves win the race; any real solver loses it).
 
-- **An `if: ${{ always }}` step cannot undo a step that failed before it** (verified
-  2026-10-16, probe run settling-hedgehog): after a retried step ran out of retries,
-  the `if: always` step ran and exited 0, and the job and the run still ended `error`.
-  A loop's verdict therefore has to be the status of the retried step itself (the
-  openfoam-naca restart variants' `restart.attempt`). The comment above
+- **An `if: ${{ always() }}` step cannot undo a step that failed before it** (verified
+  2026-10-16 as `if: ${{ always }}`, the older spelling, probe run settling-hedgehog):
+  after a retried step ran out of retries, the `if: always` step ran and exited 0, and
+  the job and the run still ended `error`. A loop's verdict therefore has to be the
+  status of the retried step itself (the openfoam-naca restart variants'
+  `restart.attempt`). The comment above
   `tutorials/optimization/general.yaml`'s Report step, which counts a loop that ran out
   of retries as success when its state says CONVERGED, does not hold.
 - **A job that `needs` a skipped job still runs; one that `needs` a failed job does

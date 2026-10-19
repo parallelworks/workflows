@@ -229,13 +229,13 @@ jobs:
             openfoam_load: ${{ inputs.software.openfoam_load }}
             paraview_load: ${{ inputs.software.paraview_load }}
 
-  # if: always — the table is written whatever happened to the cases: a case
+  # if: always() — the table is written whatever happened to the cases: a case
   # without results.out is a FAILED row (a diverged solver is a result of the
   # study, not an infrastructure failure), and the run fails only when no case
   # at all solved. Fixed paths, not outputs: a canceled job publishes none.
   results:
     needs: [preprocessing, workers]
-    if: ${{ always }}
+    if: ${{ always() }}
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:

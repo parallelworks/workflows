@@ -6,7 +6,7 @@ what happened before it:
 
 | condition | on a **step**: looks at its own job so far | on a **job**: looks at the jobs in `needs` |
 |---|---|---|
-| `always` | runs | runs |
+| `always()` | runs | runs |
 | `false` | skipped | skipped |
 | `success()` | no earlier step failed, job not canceled | no needed job failed or was canceled |
 | `failure()` | an earlier step failed | a needed job failed |
@@ -15,9 +15,9 @@ what happened before it:
 | `!failure()` | no earlier step failed | no needed job failed |
 | `!cancelled()` | this job was not canceled | no needed job was canceled |
 
-`canceled()` is another spelling of `cancelled()`, and `always()` is a function too.
-The word `always` on its own (`if: ${{ always }}`) is the one keyword `if:` still
-has, and means `always()`.
+`canceled()` is another spelling of `cancelled()`. The bare word `always`
+(`if: ${{ always }}`) is the older spelling of `always()`, still accepted as the
+whole condition but text inside a larger one: write `always()`.
 
 Leaving `if:` out behaves like `if: ${{ success() }}`, and so does an `if:` that
 calls no status function: `if: ${{ inputs.debug == true }}` runs only when
@@ -35,8 +35,6 @@ if: ${{ always() && inputs.debug == true }}        # whatever happened, in debug
 ```
 
 Quote a ternary: YAML would otherwise read its ` : ` as a key/value separator.
-Combine `always()`, not the word: in `${{ always && inputs.debug == true }}`,
-`always` is text and the implicit `success()` check stays.
 
 ### The keywords that are gone
 
@@ -58,7 +56,7 @@ is always false. Rewrite them as:
 | `!canceled` | `!cancelled()` |
 | `never` | `false` |
 | `success`, `failure`, `cancelled` (no parentheses) | `success()`, `failure()`, `cancelled()` |
-| `always` | `always` (unchanged) or `always()` |
+| `always` | `always()` |
 
 A word compared with `==` (`inputs.level == error`) is a string comparison, not a
 status check: leave it as it is.
@@ -75,16 +73,16 @@ work ──┬── on-success       if: ${{ success() }}
        ├── on-cancelled     if: ${{ cancelled() }}
        ├── on-not-success   if: ${{ !success() }}
        ├── fallback         if: ${{ inputs.fallback && failure() }}
-       └── report           if: ${{ always }}
+       └── report           if: ${{ always() }}
 ```
 
 Run it three times, once per outcome, and compare:
 
 | Outcome | steps of `work` that run | jobs that run |
 |---|---|---|
-| succeed | Do the work · `if: success()` · `if: always` | on-success · report |
-| fail | Do the work (exits 1) · `if: failure()` · `if: !success()` · `if: always` | on-failure · on-not-success · fallback · report |
-| cancel | Do the work · Cancel this job · `if: cancelled()` · `if: !success()` · `if: always` | on-cancelled · on-not-success · report |
+| succeed | Do the work · `if: success()` · `if: always()` | on-success · report |
+| fail | Do the work (exits 1) · `if: failure()` · `if: !success()` · `if: always()` | on-failure · on-not-success · fallback · report |
+| cancel | Do the work · Cancel this job · `if: cancelled()` · `if: !success()` · `if: always()` | on-cancelled · on-not-success · report |
 
 `if: false` never runs, and `fallback` stays skipped if you untick its box.
 

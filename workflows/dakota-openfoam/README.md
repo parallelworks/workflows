@@ -25,7 +25,7 @@ general-naca.yaml
      ├─ Iterate         retried step; each attempt runs iteration-naca.yaml once:
      │                    optimize ──▶ workers-1..batch_size ──▶ decide
      │                    dakota step   openfoam-naca   exit 1 = next cycle, exit 0 = done
-     └─ Report          if: always — verdict from state/status, the page URL
+     └─ Report          if: always() — verdict from state/status, the page URL
 ```
 
 The two subworkflows only share files under `state/`:

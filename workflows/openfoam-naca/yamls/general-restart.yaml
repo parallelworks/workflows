@@ -19,7 +19,7 @@
 #                hidden restart.attempt on, completes when the case is over
 #                (solved, or failed on its own: a diverged solver is final, not
 #                retried) and fails when it was interrupted; the Report step
-#                (if: always) reads the case's attempts.log and state files and
+#                (if: always()) reads the case's attempts.log and state files and
 #                ends the run accordingly
 #
 # Every attempt checks out the app, prepares the OpenFOAM environment and
@@ -109,14 +109,14 @@ jobs:
             generate_images: false
           software:
             openfoam_load: ${{ inputs.software.openfoam_load }}
-      # if: always — the run's verdict comes from the case directory, not from
+      # if: always() — the run's verdict comes from the case directory, not from
       # how the Solve step ended (app/restart-report.sh): solved is the only
       # success, whether the loop stopped by decision or by exhausting its
       # retries; the failures are told apart there. The script is the attempts'
       # checkout, in the Solve step's directory (subworkflows/<job>/step_<index>,
       # the same on every retry); missing, no attempt got that far
       - name: Report
-        if: ${{ always }}
+        if: ${{ always() }}
         run: |
           report="${PW_PARENT_JOB_DIR}/subworkflows/solve/step_0/workflows/openfoam-naca/app/restart-report.sh"
           if [ ! -f "${report}" ]; then

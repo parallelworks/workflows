@@ -73,7 +73,7 @@ listed, the runner's default lane.
   (`case_${{ matrix.job_id }}/params.in`): a matrix instance cannot read its own
   outputs or look an upstream map up by key.
 - **A results or decide job** with `needs: [preprocessing, workers]` and
-  `if: ${{ always }}` reads the files the cases left (`results.out`, or `exit_code`
+  `if: ${{ always() }}` reads the files the cases left (`results.out`, or `exit_code`
   for a case that ran and failed) and writes the table whatever happened to the cases;
   `doe-openfoam` warns about the failed ones and fails the run only when none solved.
 - **A loop** is a retried `uses:` step: the iteration YAML exits 1 while the optimizer
@@ -81,7 +81,7 @@ listed, the runner's default lane.
   and `timeout` is sized for a whole iteration (queue, node boot, work: a form input,
   `iteration_timeout`) because it defaults to 30 s per attempt. State lives in files
   under the job dir (attempt ≠ iteration: keep the counter in a file), and a trailing
-  `if: ${{ always }}` step maps the state file (CONVERGED / CONTINUE / FAILED) to the
+  `if: ${{ always() }}` step maps the state file (CONVERGED / CONTINUE / FAILED) to the
   run's verdict. Feed ran-and-failed points back as failures rather than re-proposing
   them (pitfalls, "A deterministic optimizer").
 - **The live page** is a call to `design-explorer` from preprocessing, before the
@@ -94,10 +94,10 @@ listed, the runner's default lane.
 - **A loop whose callee must keep failing for its other callers**: a runner that fails
   whenever it leaves no result (openfoam-naca) cannot, as is, tell a retried step "over"
   from "try again". The verdict has to be the status of the first failing step of the
-  sub-run (a later `if: always` step cannot undo a failed one), so give the runner a
+  sub-run (a later `if: always()` step cannot undo a failed one), so give the runner a
   hidden input only the loop sets (`restart.attempt`): with it, the results step exits
   0 on a case that failed on its own (final) and 1 on an interrupted one; the loop
-  variant retries the runner directly and its `Report` step (`if: always`) reads the
+  variant retries the runner directly and its `Report` step (`if: always()`) reads the
   case's files for the run's verdict (`workflows/openfoam-naca/yamls/general-restart.yaml`).
   Depth: restart → runner → script_submitter, three. For a callee you cannot change,
   a thin attempt YAML with `ignore-errors` on the call does the same one level deeper.

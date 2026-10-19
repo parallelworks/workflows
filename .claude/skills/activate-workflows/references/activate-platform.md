@@ -286,10 +286,11 @@ use. The job graph gives you sequencing, data flow, conditionals, and parallelis
   They combine with expressions (`if: ${{ failure() && inputs.fallback }}`; quote a
   ternary). The keywords ACTIVATE v7.69 added (`completed`, `error`, `canceled`,
   `never`, their `!` forms, and `success`, `failure`, `cancelled` without parentheses)
-  were removed in v7.112: the word `always` alone is the one keyword left, and any
-  other bare word is a non-empty string, which is true (`${{ !completed }}` is always
-  false; pitfalls). `if: ${{ always }}` steps run in order and, like `cleanup:`
-  steps, keep running through a cancel. See `tutorials/if-conditions/`.
+  were removed in v7.112: a bare word is now a non-empty string, which is true
+  (`${{ !completed }}` is always false; pitfalls). The exception is the word `always`
+  alone, the older spelling of `always()`, which still works; write `always()`.
+  `if: ${{ always() }}` steps run in order and, like `cleanup:` steps, keep running
+  through a cancel. See `tutorials/if-conditions/`.
 - **Fan-out / fan-in:** sibling jobs that share a common `needs` but don't depend on
   each other **run concurrently**; a downstream job with `needs: [w1, w2, w3]` joins
   them. (Verified: 3 workers logged the same finish second.) For N identical workers,
@@ -310,9 +311,9 @@ use. The job graph gives you sequencing, data flow, conditionals, and parallelis
   width can be a form input (honda) **or a runtime output** —
   `if: ${{ matrix.job_id <= needs.gen.outputs.N_CASES }}` compares numerically and
   skips the excess workers (verified live 2026-09-28: 2 of 4 ran; a downstream
-  `if: ${{ always }}` job joined the partially-skipped matrix cleanly, and a per-case
-  `rundir: ${{ needs.gen.outputs.ITER_DIR }}/case_${{ matrix.job_id }}` composed
-  fine into script_submitter's `with:`). Worked, tested example:
+  `if: ${{ always() }}` job, then spelled `always`, joined the partially-skipped matrix
+  cleanly, and a per-case `rundir: ${{ needs.gen.outputs.ITER_DIR }}/case_${{ matrix.job_id }}`
+  composed fine into script_submitter's `with:`). Worked, tested example:
   `tutorials/optimization/iteration.yaml` (`workers` job — computed case set from an
   optimizer, all of the above in one place). **A form input is concrete at submission,
   so a matrix can be sized by one:** `job_id: ${{ 1 range inputs.batch_size + 1 }}`
@@ -362,11 +363,11 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
     ssh "${TARGET_IP}" nvidia-smi   # exit code drives the retry
 ```
 - **`exit <code>` drives it:** zero = success (stop), non-zero = retry. A step that
-  exhausts its retries ends the run as **error**, and a later `if: ${{ always }}`
-  step that exits 0 does not change that (verified 2026-10-16, probe run
-  settling-hedgehog: the step failed after its retries, the `if: always` step ran and
-  exited 0, the job and the run ended `error`). Use that step to report what happened,
-  never to turn the run green.
+  exhausts its retries ends the run as **error**, and a later `if: ${{ always() }}`
+  step that exits 0 does not change that (verified 2026-10-16 with the older spelling
+  `always`, probe run settling-hedgehog: the step failed after its retries, the
+  `if: always` step ran and exited 0, the job and the run ended `error`). Use that
+  step to report what happened, never to turn the run green.
 - **Per-attempt env vars:** `PW_WORKFLOW_STEP_CURRENT_RETRY` (0 on the first try) and
   `PW_WORKFLOW_STEP_MAX_RETRIES` are exported each attempt. `index % N` over a list turns
   the retry counter into a **round-robin selector** (fail over to the next resource).
@@ -392,7 +393,7 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   = next loop iteration; `exit 0` ends the loop. State kept in files under the top
   job's own working dir (paths passed down as inputs, published via `$OUTPUTS`)
   persists across attempts. Remember attempt ≠ iteration: keep the true iteration
-  counter in a state file, and let a trailing `if: ${{ always }}` step map a status
+  counter in a state file, and let a trailing `if: ${{ always() }}` step map a status
   file (CONVERGED/CONTINUE/FAILED) to the run's final exit. The full pattern —
   retry-as-loop + guarded static matrix + results-file protocol, tested end-to-end
   (run dear-crow, 2026-09-28) — is `tutorials/optimization/` (staged README);
@@ -405,7 +406,7 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   input is simpler and saves the nesting level: `openfoam-naca`'s `restart.attempt`
   makes its results step exit 0 on a case that failed on its own (final) and 1 on an
   interrupted one, so `yamls/general-restart.yaml` retries `general.yaml` directly. A retried
-  step that fails is retried whatever a later `if: always` step in the same job
+  step that fails is retried whatever a later `if: always()` step in the same job
   returns, so the verdict must be the status of the first failing step, not of a step
   after it.
 - **`max-retries` can be computed:** `max-retries: ${{ needs.<job>.outputs.N - 1 }}` —
@@ -705,7 +706,7 @@ to your task.
 | **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` |
 | **Iterative loop over computed cases** (retry-as-loop + guarded static matrix) | `tutorials/optimization/` |
 | **Resubmit an interrupted simulation until it completes** (a walltime, a preempted or lost node, a cancel: checkpoints, a run script that resumes, the signal forwarded, retry-as-loop whose callee tells a final failure from an interruption) | `workflows/openfoam-naca/yamls/general-restart.yaml` (+ `hsp-restart`, `noaa-restart`; the README's "Resubmitting an interrupted case" is the walkthrough; the resume logic in `app/restart.sh`) |
-| **`if:` status functions on steps and jobs** (`success()`, `failure()`, `cancelled()`, `!success()`, `always`), and what replaced the removed keywords | `tutorials/if-conditions/` |
+| **`if:` status functions on steps and jobs** (`success()`, `failure()`, `cancelled()`, `!success()`, `always()`), and what replaced the removed keywords | `tutorials/if-conditions/` |
 | **Compose standalone workflows** (sampler or optimizer → matrix of evaluators → a live page; files as the only coupling) | `workflows/doe-openfoam/`, `workflows/dakota-openfoam/` (READMEs show the wiring); the file contract in [design-parameters.md](design-parameters.md) |
 | **A workflow others can call** (form as the interface, paths as inputs, one `general.yaml` for every platform) | `workflows/doe/`, `workflows/design-explorer/`, `workflows/wait_for_endpoint/` |
 | **Repo conventions and the human how-to** | `AGENTS.md`, `DeveloperGuide.md` |

@@ -196,11 +196,11 @@ jobs:
           generate_images: ${{ inputs.postprocessing.generate_images }}
           paraview_load: ${{ inputs.software.paraview_load }}
           state_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
-      # if: always — the run's verdict comes from the state files, not from how the
+      # if: always() — the run's verdict comes from the state files, not from how the
       # Iterate step ended: CONVERGED is the only success, whether the loop stopped
       # by decision (Iterate succeeded) or by exhausting its retries (Iterate failed).
       - name: Report
-        if: ${{ always }}
+        if: ${{ always() }}
         run: |
           state="${{ needs.preprocessing.outputs.STATE_DIR }}"
           command -v pw >/dev/null 2>&1 || export PATH="${PATH}:${HOME}/pw"

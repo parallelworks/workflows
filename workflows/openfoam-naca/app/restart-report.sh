@@ -2,7 +2,7 @@
 # Usage: OUTPUTS=<file> [CASE_DIR=<dir>] restart-report.sh
 #
 # The Report step of the restart variants (<variant>-restart.yaml), one script
-# for the three, run with if: always: the run's verdict comes from the case
+# for the three, run with if: always(): the run's verdict comes from the case
 # directory, never from how the retried Solve step ended. Solved is the only
 # success, whether the loop stopped by decision or by exhausting its retries;
 # the failures are told apart: the case failed on its own (a diverged solver,

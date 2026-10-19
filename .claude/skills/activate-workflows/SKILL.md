@@ -288,7 +288,7 @@ existing one.
   them to a file and `cat` it in, so a program's own output never lands there) and read
   `${{ needs.<job>.outputs.KEY }}`, listing every job whose outputs you read in
   `needs:`. Compute booleans upstream and drive `if:` with string equality; use the
-  status functions (`failure()`, `cancelled()`, `!success()`, `always`) for handlers
+  status functions (`failure()`, `cancelled()`, `!success()`, `always()`) for handlers
   (`tutorials/if-conditions/`; the old keywords such as `!completed` are text now).
   Fan out with a matrix (static: form inputs and literals; guard a computed count
   with `if: ${{ matrix.job_id <= needs.X.outputs.N }}`) and join

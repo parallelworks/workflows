@@ -82,7 +82,7 @@ the solver (pitfalls, "SLURM's walltime SIGTERM"); a loop variant calls the whol
 workflow from a retried step, and a hidden input (`restart.attempt`) makes the case
 workflow's results step complete on a final failure and fail on an interruption, so
 the retry stops on the one and resumes the other ([composed.md](composed.md)); a
-trailing `if: ${{ always }}` step tells solved, failed on its own and out of attempts
+trailing `if: ${{ always() }}` step tells solved, failed on its own and out of attempts
 apart. The case workflow itself stays a plain batch job with resume off.
 
 ## A batch job beside a page

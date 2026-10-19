@@ -15,8 +15,8 @@
 >
 > Sections: validation · inputs and expressions · jobs, outputs, matrix and retries ·
 > resources, nodes and filesystems · `script_submitter` and scheduler jobs · endpoints and
-> the service · the app's own web page · `pw` CLI, auth and remote shells · code delivery
-> and tests · shell scripting · software, sites and figures.
+> the service · `pw` CLI, auth and remote shells · code delivery and tests · shell
+> scripting · software, sites and figures.
 
 ## Validation: `--dry-run`, variants and YAML parsing
 
@@ -505,47 +505,21 @@
   is wired. For a distributed piece (e.g. cross-node `pw ssh` calls), stage the
   script on the target node and exercise it directly, then wrap it in YAML.
 
-## The app's own web page
-
-A page a workflow draws itself follows the platform's theme contract
-([app-ui.md](app-ui.md)); what adopting it taught (PROBE's dashboards, 2026-10-19):
-
-- **`light-dark()` tokens follow `color-scheme`, not a class or a token swap.** The
-  vendored `theme.css` pairs every token's two values with `light-dark()`; the root's
-  `color-scheme` decides which shows (`light dark`: the device; `light` or `dark`: pinned).
-  A mode toggle therefore sets one attribute on the root before the first paint and a
-  rule maps it to `color-scheme`; redefining the tokens per mode would drift from the
-  platform's palette. Verified 2026-10-19 with the browser check's screenshots of both
-  modes (`UI_SHOTS`).
-- **Draw icons inline; `<use href="#id">` and a `<base>` don't mix.** A page served
-  under an endpoint prefix sets a `<base>` from its location so relative URLs resolve
-  under the prefix; a fragment-only reference then resolves against that base rather than
-  the page, and points at another document whenever the page's URL differs from it
-  (`index.html`, no trailing slash). Each icon is an inline `<svg><path/></svg>` with the
-  package's path (`workflows/probe/app/web/app.js`, `icon()`), which also needs no sprite
-  request through the proxy. Avoided by design, not run-verified.
-- **Name the MIME types the page's server sends.** Python's `http.server` takes them
-  from the running interpreter's `mimetypes` table, which differs between the 3.6 to 3.12
-  the login nodes run (3.9 on `gcptest` says `application/javascript` for `.js`, a Mac's
-  3.9 `text/javascript`); the handler's `extensions_map` names `font/woff2`, `text/css`
-  and `text/javascript` so every node serves the same. Verified 2026-10-19
-  (`workflows/probe/app/probe/server.py`).
+- **A page on the vendored theme shows one mode only, or none, without `color-scheme`**
+  (verified 2026-10-19, PROBE): `theme.css` pairs each token's modes with `light-dark()`,
+  which follows the root's `color-scheme` (`light dark`: the device; `light` or `dark`:
+  pinned). Set it from one attribute the page writes before its first paint; never
+  redefine the tokens per mode ([app-ui.md](app-ui.md)).
 
 ## `pw` CLI, auth and remote shells
 
-- **A credential handed to a workflow as an input is checked by the platform, not by the
-  form: an expired one fails the run at the first `pw` call that uses it** (verified
-  2026-10-19, PROBE run `wealthy-rattler` on gcptest). The dashboards' start scripts export
-  the `api_key` input as `PW_API_KEY` and run `pw endpoints run` with it; the input had the
-  CLI's own token from `~/.config/pw/credentials`, read seconds after its hourly expiry, and
-  both scripts died with `[ERROR] Unauthorized` (in `run.*.out` of the job dir; the step log
-  only says `pw endpoints run failed for probe-admin-<slug>`), while the YAML's key check
-  had passed because it tests only that the input is not empty. That token is refreshed
-  only when a `pw` command runs, so a script that reads it runs one first (`pw context
-  current`) and reads the file after; a long-lived service wants a real API key from the
-  account settings, which is what the input is for. A check that must fail the run with a
-  clear message goes before `pw endpoints run` (above), such as `pw auth whoami` with the key.
-
+- **A credential passed as an input is checked at the first `pw` call that uses it, not
+  by the form** (verified 2026-10-19, PROBE run `wealthy-rattler`): an expired key reaches
+  `pw endpoints run` and the service dies with `[ERROR] Unauthorized` in `run.*.out`,
+  while the step log only says `pw endpoints run failed`. The CLI's own token in
+  `~/.config/pw/credentials` expires hourly and is refreshed only by a `pw` command: run
+  one before reading it, or pass a real API key; a `pw auth whoami` before
+  `pw endpoints run` fails the run with the reason.
 - **A `pw` call inside the run gets `401 Unauthorized`:** the workflow (or the parent
   of the subworkflow making the call) lacks `permissions: ['*']`.
 - **`pw workflows run` with a relative YAML path:** CLIs before v7.105 parsed it as a git
@@ -628,15 +602,12 @@ A page a workflow draws itself follows the platform's theme contract
   test files and runs them in order).
 
 - **Every PROBE test of a workflow failing at launch with `Missing required fields:
-  Service host` (pointer `#/resource`) means the definitions' `inputs` no longer match the
-  form** (verified 2026-10-19: 26 definitions still passed `cluster.resource` after the forms
-  took the cluster as the top-level `resource` on 2026-10-12; the breakage surfaced only
-  once the cluster was active again, as skips until then). PROBE reads only the target
-  system from `inputs` and accepts both shapes, so nothing warns before the platform does.
-  Regenerate the definitions from the recorded tests
-  (`workflows/probe/scripts/import_workflow_tests.py`) and dry-run each against its YAML;
-  the same dry-run tells a bad input shape from a stopped cluster, which validates with the
-  right shape.
+  Service host` (`#/resource`) is a definition whose `inputs` no longer match the form**
+  (verified 2026-10-19: 26 definitions still passed `cluster.resource` after the forms took
+  the cluster as the top-level `resource` on 2026-10-12; PROBE accepts both, so nothing
+  warns). Regenerate them with `workflows/probe/scripts/import_workflow_tests.py` and
+  dry-run each against its YAML: a stopped cluster validates with the right shape, so the
+  dry-run tells the two apart.
 
 ## Shell scripting
 

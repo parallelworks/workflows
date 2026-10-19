@@ -2,12 +2,36 @@
 
 const url = (path) => new URL(path, document.baseURI).toString();
 
+// The platform's icons (@parallelworks/ui/icons): one path on a 16px grid with a
+// 1.5px stroke, drawn inline so they work under the <base> the page sets.
+const ICONS = {
+  success: "M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12ZM5.25 8.25 7 10l3.5-4",
+  fail: "M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12ZM6 6l4 4M10 6l-4 4",
+  skip: "M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12ZM5.25 8h5.5",
+  running: "M14 8a6 6 0 1 1-6-6",
+  notRunning: "M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12Z",
+  check: "M3.5 8.5 6.5 11.5 12.5 4.5",
+  close: "M4 4l8 8M12 4l-8 8",
+  minus: "M3 8h10",
+  arrowDown: "M8 2.75v10.5M3.75 9 8 13.25 12.25 9",
+  arrowUp: "M8 13.25V2.75M3.75 7 8 2.75 12.25 7",
+  info: "M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12ZM8 7.5v3.5M8 5h.01",
+  warning: "M7.13 2.5a1 1 0 0 1 1.74 0l5.5 9.75a1 1 0 0 1-.87 1.5H2.5a1 1 0 0 1-.87-1.5ZM8 6.5v2.75M8 11.25h.01",
+  error: "M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12ZM8 4.75v3.75M8 11h.01",
+};
+
+function icon(name, cls = "") {
+  return `<svg class="icon ${cls}" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
+}
+
+// Each status reads in a tone and an icon, as a run's status does on the platform:
+// running turns in the warning tone, pass and fail in success and error, skip muted.
 const STATUS = {
-  pass: { label: "pass", icon: "✓" },
-  fail: { label: "fail", icon: "✕" },
-  skip: { label: "skip", icon: "–" },
-  running: { label: "running", icon: "◌" },
-  none: { label: "never run", icon: "·" },
+  pass: { label: "pass", icon: "success", cell: "check" },
+  fail: { label: "fail", icon: "fail", cell: "close" },
+  skip: { label: "skip", icon: "skip", cell: "minus" },
+  running: { label: "running", icon: "running", cell: "" },
+  none: { label: "never run", icon: "notRunning", cell: "" },
 };
 const HISTORY_CELLS = 12;
 
@@ -18,6 +42,7 @@ const state = {
   timer: null,
   artifacts: [],
   records: null,
+  updatedAt: null,
 };
 
 const el = {};
@@ -26,8 +51,8 @@ for (const id of [
   "f-status", "f-search", "f-changes", "f-clear", "t-tests", "t-pass", "t-fail", "t-skip",
   "t-regressions", "t-last", "t-last-detail", "tile-fail", "tile-regressions", "matrix", "table-count",
   "tests-body", "suites-body", "drawer", "drawer-backdrop", "d-workflow", "d-title", "d-chips", "d-close",
-  "d-admin", "d-rerun", "d-cancel", "d-delete", "d-admin-msg", "d-error", "d-facts", "d-history", "d-artifact", "d-file",
-  "d-log", "d-definition-path", "d-definition", "d-record", "foot-version", "foot-results",
+  "d-admin", "d-rerun", "d-cancel", "d-delete", "d-admin-msg", "d-error", "d-error-text", "d-facts", "d-history", "d-artifact", "d-file",
+  "d-log", "d-definition-path", "d-definition", "d-record", "foot-version", "foot-results", "notice-icon", "notice-text", "refresh-label",
 ]) el[id] = document.getElementById(id);
 
 // ---------------------------------------------------------------- utilities
@@ -73,22 +98,22 @@ function statusOf(test) {
 
 function chip(status, extraClass = "") {
   const s = STATUS[status] || STATUS.none;
-  return `<span class="chip chip-${esc(status)} ${extraClass}"><span class="chip-icon" aria-hidden="true">${s.icon}</span>${esc(s.label)}</span>`;
+  return `<span class="chip chip-${esc(status)} ${extraClass}">${icon(s.icon, "chip-icon")}${esc(s.label)}</span>`;
 }
 
 function changeChip(change) {
-  if (change === "regression") return `<span class="chip chip-regression"><span class="chip-icon" aria-hidden="true">▼</span>regression</span>`;
-  if (change === "recovery") return `<span class="chip chip-recovery"><span class="chip-icon" aria-hidden="true">▲</span>recovery</span>`;
+  if (change === "regression") return `<span class="chip chip-regression">${icon("arrowDown", "chip-icon")}regression</span>`;
+  if (change === "recovery") return `<span class="chip chip-recovery">${icon("arrowUp", "chip-icon")}recovery</span>`;
   return "";
 }
 
 function historyStrip(history) {
   const items = (history || []).slice(-HISTORY_CELLS);
   if (!items.length) return `<span class="muted">–</span>`;
-  return `<span class="hist" aria-label="Last ${items.length} results">` + items.map((h) => {
+  return `<span class="hist" role="group" aria-label="Last ${items.length} results">` + items.map((h) => {
     const s = STATUS[h.status] ? h.status : "none";
     const title = `${h.started_at || ""} ${s}${h.duration_s != null ? " " + fmtDuration(h.duration_s) : ""}${h.error ? " - " + h.error : ""}`;
-    return `<i class="h h-${s}" title="${esc(title)}" aria-label="${esc(title)}">${STATUS[s].icon}</i>`;
+    return `<i class="h h-${s}" role="img" title="${esc(title)}" aria-label="${esc(title)}">${STATUS[s].cell ? icon(STATUS[s].cell) : ""}</i>`;
   }).join("") + "</span>";
 }
 
@@ -115,7 +140,8 @@ function notice(message, kind = "info", source = "action") {
     el.notice.dataset.source = "";
     return;
   }
-  el.notice.textContent = message;
+  el["notice-text"].textContent = message;
+  el["notice-icon"].innerHTML = icon(kind === "error" ? "error" : kind === "warn" ? "warning" : "info");
   el.notice.dataset.kind = kind;
   el.notice.dataset.source = source;
   el.notice.hidden = false;
@@ -223,15 +249,15 @@ function matrixChip(test, cell) {
   const useName = new Set(labels).size !== labels.length;
   const label = useName || !test.node ? test.test : test.node;
   const s = statusOf(test);
-  const flag = test.change === "regression" ? `<span class="chip-flag" title="regression" aria-label="regression">▼</span>` : "";
-  return `<button type="button" class="chip chip-${s} chip-btn" data-id="${esc(test.id)}" title="${esc(test.id)}: ${esc(STATUS[s].label)}"><span class="chip-icon" aria-hidden="true">${STATUS[s].icon}</span>${esc(label)}${flag}</button>`;
+  const flag = test.change === "regression" ? `<span class="chip-flag" role="img" title="regression" aria-label="regression">${icon("arrowDown")}</span>` : "";
+  return `<button type="button" class="chip chip-${s} chip-md chip-btn" data-id="${esc(test.id)}" title="${esc(test.id)}: ${esc(STATUS[s].label)}">${icon(STATUS[s].icon, "chip-icon")}${esc(label)}${flag}</button>`;
 }
 
 function renderMatrix(tests) {
   if (!tests.length) { el.matrix.innerHTML = `<p class="empty">No tests match the filters.</p>`; return; }
   const systems = uniq(tests.map(systemKey)).sort();
   const workflows = uniq(tests.map((t) => t.workflow_name)).sort();
-  let html = `<table class="matrix"><thead><tr><th scope="col">Workflow</th>` +
+  let html = `<table class="table matrix"><thead><tr><th scope="col">Workflow</th>` +
     systems.map((s) => `<th scope="col">${esc(s)}</th>`).join("") + `</tr></thead><tbody>`;
   for (const w of workflows) {
     html += `<tr><th scope="row">${esc(w)}</th>`;
@@ -255,7 +281,7 @@ function renderTable(tests) {
     const commit = t.current && t.current.workflow && t.current.workflow.commit;
     return `<tr data-id="${esc(t.id)}" tabindex="0" aria-label="Open ${esc(t.id)}">
       <td class="status-cell">${chip(s)}${changeChip(t.change)}</td>
-      <td><div><strong>${esc(t.workflow_name)}</strong> <span class="muted">/ ${esc(t.test)}</span></div><div class="muted small">${esc(t.platform)} · ${esc(t.user)}</div></td>
+      <td><div class="name">${esc(t.workflow_name)} <span class="muted">/ ${esc(t.test)}</span></div><div class="subtitle">${esc(t.platform)} · ${esc(t.user)}</div></td>
       <td>${esc(t.system || "–")}</td>
       <td>${esc(t.node || (t.type === "kubernetes" ? "kubernetes" : "–"))}</td>
       <td>${historyStrip(t.history)}</td>
@@ -275,7 +301,11 @@ function renderSuites(runs) {
 
 function renderMeta(data) {
   const running = data.tests.filter((t) => t.running).length;
-  el["top-meta"].textContent = `Updated ${fmtDate(data.generated_at)}${running ? ` · ${running} running` : ""}${data.admin ? " · admin" : ""}`;
+  el["top-meta"].innerHTML =
+    (running ? `<span class="chip chip-running">${icon("running", "chip-icon")}${running} running</span>` : "") +
+    (data.admin ? `<span class="chip chip-info">admin</span>` : "");
+  el["refresh-label"].textContent = `Updated ${relTime(state.updatedAt)}`;
+  el.refresh.title = `Refresh. Data fetched ${fmtDate(state.updatedAt)}; the definitions and the bucket are reloaded on request.`;
   el["foot-version"].textContent = `PROBE ${data.version}`;
   el["foot-results"].textContent = data.bucket ? `Results bucket: ${data.bucket}` : (data.results_dir ? `Results: ${data.results_dir} (no bucket)` : "");
   el["run-all"].hidden = !data.admin;
@@ -309,6 +339,7 @@ async function load() {
     const response = await fetch(url("api/state"), { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     state.data = await response.json();
+    state.updatedAt = new Date().toISOString();
     document.body.classList.remove("is-stale");
     renderAll();
   } catch (error) {
@@ -330,7 +361,7 @@ function schedule() {
 
 function fact(label, value, mono = false) {
   if (value == null || value === "") return "";
-  return `<div><dt>${esc(label)}</dt><dd class="${mono ? "mono" : ""}">${esc(value)}</dd></div>`;
+  return `<div><dt>${esc(label)}</dt><dd${mono ? ' class="mono"' : ""}>${esc(value)}</dd></div>`;
 }
 
 function fillDrawerHeader(test) {
@@ -344,7 +375,7 @@ function fillDrawerHeader(test) {
     (o.cleanup ? `<span class="chip chip-plain${o.cleanup === "leftover" ? " chip-warn" : ""}">cleanup ${esc(o.cleanup)}</span>` : "");
   const failedAt = o.failed_at ? ` (at ${o.failed_at})` : "";
   el["d-error"].hidden = !o.error;
-  el["d-error"].textContent = o.error ? `${s === "skip" ? "Skipped" : "Error"}${failedAt}: ${o.error}` : "";
+  el["d-error-text"].textContent = o.error ? `${s === "skip" ? "Skipped" : "Error"}${failedAt}: ${o.error}` : "";
   el["d-facts"].innerHTML =
     fact("System", test.system) + fact("Node", test.node) + fact("Type", test.type) + fact("Resource", test.resource, true) +
     fact("Workflow", test.launch_target || (w.repo ? `${w.repo}/${w.path}@${w.ref}` : null), true) +
@@ -475,20 +506,27 @@ async function post(path, body) {
 
 // Embedded in the platform's session view, window.confirm is blocked, so a
 // destructive button asks for a second click within a few seconds instead.
+function labelOf(button) {
+  return button.querySelector(".btn-label") || button;
+}
+
+function disarm(button) {
+  clearTimeout(button._disarm);
+  button.dataset.armed = "";
+  button.classList.remove("is-armed");
+  labelOf(button).textContent = button.dataset.label;
+}
+
 function armed(button, label) {
   if (button.dataset.armed === "1") {
-    clearTimeout(button._disarm);
-    button.dataset.armed = "";
-    button.textContent = button.dataset.label;
+    disarm(button);
     return true;
   }
-  button.dataset.label = button.dataset.label || button.textContent;
+  button.dataset.label = button.dataset.label || labelOf(button).textContent;
   button.dataset.armed = "1";
-  button.textContent = label;
-  button._disarm = setTimeout(() => {
-    button.dataset.armed = "";
-    button.textContent = button.dataset.label;
-  }, 6000);
+  button.classList.add("is-armed");
+  labelOf(button).textContent = label;
+  button._disarm = setTimeout(() => disarm(button), 6000);
   return false;
 }
 
@@ -558,21 +596,31 @@ async function runAll() {
     notice(`Could not start the suite: ${error.message}`, "error");
   } finally {
     el["run-all"].disabled = false;
-    el["run-all"].textContent = el["run-all"].dataset.label || "Run all";
+    disarm(el["run-all"]);
+    labelOf(el["run-all"]).textContent = el["run-all"].dataset.label || "Run all";
   }
 }
 
 // ---------------------------------------------------------------- theme
 
-function applyTheme(theme) {
-  if (theme) document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
-  try { if (theme) window.localStorage.setItem("probe-theme", theme); else window.localStorage.removeItem("probe-theme"); } catch (e) { /* storage unavailable */ }
+// The color preference: light, dark, or the device's (no attribute), the three the
+// platform offers. styles.css turns the attribute into the color-scheme that the
+// light-dark() tokens follow, so no color is picked here.
+const MODES = ["system", "light", "dark"];
+const MODE_LABEL = { system: "follows the device", light: "light", dark: "dark" };
+
+function applyTheme(mode) {
+  if (mode === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = mode;
+  try { if (mode === "system") window.localStorage.removeItem("probe-theme"); else window.localStorage.setItem("probe-theme", mode); } catch (e) { /* storage unavailable */ }
+  const next = MODES[(MODES.indexOf(mode) + 1) % MODES.length];
+  const label = `Theme ${MODE_LABEL[mode]}. Switch to ${next === "system" ? "the device's" : next}`;
+  el.theme.setAttribute("aria-label", label);
+  el.theme.title = label;
 }
 
 function toggleTheme() {
-  const current = document.documentElement.dataset.theme ||
-    (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  applyTheme(current === "dark" ? "light" : "dark");
+  const current = document.documentElement.dataset.theme || "system";
+  applyTheme(MODES[(MODES.indexOf(current) + 1) % MODES.length]);
 }
 
 // ---------------------------------------------------------------- events
@@ -595,17 +643,18 @@ el["f-clear"].addEventListener("click", () => {
 });
 el.refresh.addEventListener("click", async () => {
   el.refresh.disabled = true;
+  el.refresh.setAttribute("aria-busy", "true");
+  el["refresh-label"].textContent = "Refreshing";
   if (state.data && state.data.bucket) {
-    el.refresh.textContent = "Refreshing";
     try {
       await post("api/refresh", {});
       notice("");
     } catch (error) {
       notice(`Could not refresh from the bucket: ${error.message}`, "error");
     }
-    el.refresh.textContent = "Refresh";
   }
   await load();
+  el.refresh.removeAttribute("aria-busy");
   el.refresh.disabled = false;
 });
 el.theme.addEventListener("click", toggleTheme);
@@ -633,4 +682,5 @@ el["d-cancel"].addEventListener("click", cancelSelected);
 el["d-delete"].addEventListener("click", deleteSelected);
 window.addEventListener("hashchange", () => { state.filters = readFilters(); renderAll(); });
 
+applyTheme(document.documentElement.dataset.theme || "system");
 load().then(() => { if (state.filters.test) openDrawer(state.filters.test); });

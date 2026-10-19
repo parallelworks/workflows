@@ -209,6 +209,9 @@ def _under(child: Path, parent: Path) -> bool:
 class Handler(SimpleHTTPRequestHandler):
     cfg: Config = None  # set by serve()
     server_version = "probe/" + __version__
+    # Python 3.8's table has no entry for the variable fonts the page loads
+    extensions_map = dict(SimpleHTTPRequestHandler.extensions_map,
+                          **{".css": "text/css", ".js": "text/javascript", ".woff2": "font/woff2"})
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(self.cfg.web_dir), **kwargs)
@@ -265,6 +268,8 @@ class Handler(SimpleHTTPRequestHandler):
         path = (getattr(self, "path", "") or "").split("?")[0]
         if path.endswith((".js", ".css", ".html")) or "/api/" in path:
             self.send_header("Cache-Control", "no-store")
+        elif path.endswith(".woff2"):
+            self.send_header("Cache-Control", "public, max-age=86400")
         super().end_headers()
 
     def log_message(self, fmt, *args):

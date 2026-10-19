@@ -3,6 +3,7 @@
 // server backed by the mock pw CLI. Needs Node 22+ (global WebSocket) and Chrome.
 const { spawn } = require("child_process");
 const fs = require("fs");
+const path = require("path");
 
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const URL = process.argv[2];
@@ -68,6 +69,34 @@ async function main() {
     check("table renders rows", (await rows()) === 5, `rows=${await rows()}`);
     check("admin: Run all visible", !(await hidden("#run-all")));
 
+    // UI_SHOTS=<dir>: full-page screenshots of the page in light and dark and of the
+    // drawer, to look at after a change to the look (both modes, the platform's look).
+    if (process.env.UI_SHOTS) {
+      fs.mkdirSync(process.env.UI_SHOTS, { recursive: true });
+      const shot = async (name) => {
+        const metrics = await send("Page.getLayoutMetrics");
+        const height = Math.ceil((metrics.result.cssContentSize || metrics.result.contentSize).height);
+        await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: Math.max(1000, height), deviceScaleFactor: 1, mobile: false });
+        await sleep(300);
+        const reply = await send("Page.captureScreenshot", { format: "png" });
+        await send("Emulation.clearDeviceMetricsOverride");
+        fs.writeFileSync(path.join(process.env.UI_SHOTS, name + ".png"), Buffer.from(reply.result.data, "base64"));
+        console.log(`SHOT  ${name}.png`);
+      };
+      await evaluate(`document.documentElement.dataset.theme = "light"`);
+      await shot("dashboard-light");
+      await evaluate(`document.documentElement.dataset.theme = "dark"`);
+      await shot("dashboard-dark");
+      await click(".chip-btn[data-id]");
+      await until(`document.getElementById("d-artifact").options.length > 0`, 10000, "artifact list for the screenshot");
+      await sleep(500);
+      await shot("drawer-dark");
+      await evaluate(`document.documentElement.dataset.theme = "light"`);
+      await shot("drawer-light");
+      await click("#d-close");
+      await evaluate(`(() => { delete document.documentElement.dataset.theme; try { localStorage.removeItem("probe-theme"); } catch (e) {} })()`);
+    }
+
     // theme
     const before = await evaluate(`document.documentElement.dataset.theme || "auto"`);
     await click("#theme");
@@ -123,7 +152,7 @@ async function main() {
     check("refresh pulls the bucket", callsAfter === callsBefore + 1, `pulls ${callsBefore} -> ${callsAfter}`);
 
     // rerun test from the drawer
-    const countBefore = await evaluate(`Number(document.getElementById("d-facts").textContent.match(/Records(\\d+)/)?.[1] || 0)`);
+    const countBefore = await evaluate(`Number(document.getElementById("d-facts").textContent.match(/Records\\s*(\\d+)/)?.[1] || 0)`);
     await click("#d-rerun");
     await until(`/started|failed/i.test(document.getElementById("d-admin-msg").textContent)`, 10000, "rerun message");
     check("rerun test starts", (await text("#d-admin-msg")).includes("Rerun started"), await text("#d-admin-msg"));
@@ -136,7 +165,7 @@ async function main() {
     await until(`/canceled|failed/i.test(document.getElementById("d-admin-msg").textContent)`, 10000, "cancel message");
     check("cancel run", (await text("#d-admin-msg")).includes("canceled"), await text("#d-admin-msg"));
     await until(`document.querySelector("#d-chips .chip-running") === null`, 60000, "run finished");
-    const countAfter = await evaluate(`Number(document.getElementById("d-facts").textContent.match(/Records(\\d+)/)?.[1] || 0)`);
+    const countAfter = await evaluate(`Number(document.getElementById("d-facts").textContent.match(/Records\\s*(\\d+)/)?.[1] || 0)`);
     check("rerun appended a record", countAfter === countBefore + 1, `${countBefore} -> ${countAfter}`);
     await click("#d-close");
 

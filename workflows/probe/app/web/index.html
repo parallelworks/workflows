@@ -16,66 +16,93 @@
       var base = document.createElement("base");
       base.href = window.location.origin + path;
       document.head.appendChild(base);
+      // The color mode, before the first paint: light-dark() in theme.css follows
+      // the color-scheme styles.css sets from this attribute; unset, it follows the device.
       var theme = null;
       try { theme = window.localStorage.getItem("probe-theme"); } catch (e) { theme = null; }
       if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
     })();
   </script>
+  <link rel="stylesheet" href="fonts.css">
+  <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <header class="top">
-    <div class="brand">
-      <span class="brand-mark">PROBE</span>
-      <span class="brand-sub">Workflow compatibility across connected systems</span>
-    </div>
-    <div class="top-meta" id="top-meta" aria-live="polite"></div>
-    <div class="top-actions">
-      <button id="run-all" class="btn" type="button" hidden>Run all</button>
-      <button id="refresh" class="btn" type="button" title="Reload the test definitions and the results from the bucket">Refresh</button>
-      <button id="theme" class="btn" type="button" aria-label="Toggle light and dark theme">Theme</button>
+  <header class="page-header">
+    <div class="page-header-bar">
+      <div class="page-header-trail">
+        <span class="page-mark" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.25 8H12l-2 5.5-4-11L4 8H1.75"/></svg>
+        </span>
+        <h1 class="page-title">PROBE</h1>
+        <p class="page-description">Workflow compatibility across connected systems</p>
+        <div id="top-meta" class="page-badges" aria-live="polite"></div>
+      </div>
+      <div class="page-actions">
+        <button id="run-all" class="btn btn-primary" type="button" hidden>
+          <svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.25 2.5v11L13.75 8Z"/></svg>
+          <span class="btn-label">Run all</span>
+        </button>
+        <button id="refresh" class="btn btn-ghost btn-refresh" type="button" title="Reload the test definitions and the results from the bucket">
+          <svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 0 1-8.9 3.1M3 8a5 5 0 0 1 8.9-3.1M12 2.5v2.5H9.5M4 13.5V11h2.5"/></svg>
+          <span id="refresh-label" class="btn-label">Refresh</span>
+        </button>
+        <button id="theme" class="btn btn-ghost btn-icon" type="button" aria-label="Theme follows the device. Switch to light">
+          <svg class="icon theme-icon" data-mode="system" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 2.5h9a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1ZM5.5 13.5h5M8 10.5v3M4 4v5M5.1 4v5M6.2 4v5M7.25 4v5M8 2.5v8"/></svg>
+          <svg class="icon theme-icon" data-mode="light" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8 1.75v1.5M8 12.75v1.5M1.75 8h1.5M12.75 8h1.5M3.6 3.6l1.05 1.05M11.35 11.35l1.05 1.05M3.6 12.4l1.05-1.05M11.35 4.65l1.05-1.05"/></svg>
+          <svg class="icon theme-icon" data-mode="dark" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2a4 4 0 0 0 6 6 6 6 0 1 1-6-6Z"/></svg>
+        </button>
+      </div>
     </div>
   </header>
 
   <main id="main">
-    <div id="notice" class="notice" hidden></div>
+    <div id="notice" class="callout" role="status" hidden>
+      <span id="notice-icon" class="callout-icon" aria-hidden="true"></span>
+      <p id="notice-text" class="callout-text"></p>
+    </div>
 
-    <section class="filters" aria-label="Filters">
-      <label>Platform <select id="f-platform"><option value="">All</option></select></label>
-      <label>User <select id="f-user"><option value="">All</option></select></label>
-      <label>System <select id="f-system"><option value="">All</option></select></label>
-      <label>Workflow <select id="f-workflow"><option value="">All</option></select></label>
-      <label>Status <select id="f-status"><option value="">All</option></select></label>
-      <label class="grow">Search <input id="f-search" type="search" placeholder="test id, system, slug, error"></label>
-      <label class="check"><input id="f-changes" type="checkbox"> Changes only</label>
-      <button id="f-clear" class="btn btn-quiet" type="button">Clear</button>
+    <section class="toolbar" aria-label="Filters">
+      <label class="field"><span class="field-label">Platform</span><span class="select"><select id="f-platform" class="control"><option value="">All</option></select><svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6"/></svg></span></label>
+      <label class="field"><span class="field-label">User</span><span class="select"><select id="f-user" class="control"><option value="">All</option></select><svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6"/></svg></span></label>
+      <label class="field"><span class="field-label">System</span><span class="select"><select id="f-system" class="control"><option value="">All</option></select><svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6"/></svg></span></label>
+      <label class="field"><span class="field-label">Workflow</span><span class="select"><select id="f-workflow" class="control"><option value="">All</option></select><svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6"/></svg></span></label>
+      <label class="field"><span class="field-label">Status</span><span class="select"><select id="f-status" class="control"><option value="">All</option></select><svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6"/></svg></span></label>
+      <label class="field grow"><span class="field-label">Search</span><span class="search"><svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 12A5 5 0 1 0 7 2a5 5 0 0 0 0 10ZM14 14l-3.5-3.5"/></svg><input id="f-search" class="control" type="search" placeholder="Test id, system, slug, error"></span></label>
+      <label class="field field-switch"><input id="f-changes" class="switch" type="checkbox"><span>Changes only</span></label>
+      <button id="f-clear" class="btn btn-ghost btn-sm" type="button">
+        <svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.75 2.75h10L8.25 8v4.5l-3 1.5V8ZM10.75 10.75l3 3M13.75 10.75l-3 3"/></svg>
+        <span class="btn-label">Clear</span>
+      </button>
     </section>
 
     <section class="tiles" aria-label="Summary">
-      <article class="tile"><p>Tests</p><strong id="t-tests">-</strong></article>
-      <article class="tile"><p>Passing</p><strong id="t-pass">-</strong></article>
-      <article class="tile" id="tile-fail"><p>Failing</p><strong id="t-fail">-</strong></article>
-      <article class="tile"><p>Skipped</p><strong id="t-skip">-</strong></article>
-      <article class="tile" id="tile-regressions"><p>Regressions</p><strong id="t-regressions">-</strong></article>
-      <article class="tile"><p>Last suite run</p><strong id="t-last" class="tile-text">-</strong><small id="t-last-detail"></small></article>
+      <article class="tile"><p class="tile-label">Tests</p><strong id="t-tests" class="tile-value">-</strong></article>
+      <article class="tile"><p class="tile-label">Passing</p><strong id="t-pass" class="tile-value">-</strong></article>
+      <article class="tile" id="tile-fail"><p class="tile-label">Failing</p><strong id="t-fail" class="tile-value">-</strong></article>
+      <article class="tile"><p class="tile-label">Skipped</p><strong id="t-skip" class="tile-value">-</strong></article>
+      <article class="tile" id="tile-regressions"><p class="tile-label">Regressions</p><strong id="t-regressions" class="tile-value">-</strong></article>
+      <article class="tile"><p class="tile-label">Last suite run</p><strong id="t-last" class="tile-value tile-text">-</strong><small id="t-last-detail" class="tile-detail"></small></article>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Compatibility matrix</h2>
-        <p class="hint">Workflows by system. Each chip is one test; click it for details.</p>
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Compatibility matrix</h2>
+          <p class="section-description">Workflows by system. Each badge is one test; select it for details.</p>
+        </div>
       </div>
       <div class="scroll" id="matrix"></div>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Tests</h2>
-        <p id="table-count" class="hint" aria-live="polite"></p>
+    <section class="section">
+      <div class="section-head">
+        <div><h2 class="section-title">Tests</h2></div>
+        <p id="table-count" class="section-count" aria-live="polite"></p>
       </div>
       <div class="scroll">
-        <table class="tests" id="tests-table">
+        <table class="table tests" id="tests-table">
           <thead>
             <tr>
               <th scope="col">Status</th>
@@ -83,7 +110,7 @@
               <th scope="col">System</th>
               <th scope="col">Node</th>
               <th scope="col">History</th>
-              <th scope="col">Duration</th>
+              <th scope="col" class="num">Duration</th>
               <th scope="col">Last run</th>
               <th scope="col">Commit</th>
             </tr>
@@ -93,15 +120,17 @@
       </div>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Suite runs</h2>
-        <p class="hint">One row per suite run label, newest first.</p>
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Suite runs</h2>
+          <p class="section-description">One row per suite run label, newest first.</p>
+        </div>
       </div>
       <div class="scroll">
-        <table class="suites">
+        <table class="table suites">
           <thead>
-            <tr><th scope="col">Suite run</th><th scope="col">Started</th><th scope="col">Tests</th><th scope="col">Pass</th><th scope="col">Fail</th><th scope="col">Skip</th></tr>
+            <tr><th scope="col">Suite run</th><th scope="col">Started</th><th scope="col" class="num">Tests</th><th scope="col" class="num">Pass</th><th scope="col" class="num">Fail</th><th scope="col" class="num">Skip</th></tr>
           </thead>
           <tbody id="suites-body"></tbody>
         </table>
@@ -112,49 +141,65 @@
   <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
   <aside id="drawer" class="drawer" hidden aria-label="Test details" role="dialog" aria-modal="true">
     <div class="drawer-head">
-      <div>
+      <div class="drawer-heading">
         <p class="eyebrow" id="d-workflow"></p>
-        <h2 id="d-title"></h2>
-        <div class="chips" id="d-chips"></div>
+        <h2 id="d-title" class="drawer-title"></h2>
+        <div class="badges" id="d-chips"></div>
       </div>
-      <button id="d-close" class="btn btn-quiet" type="button" aria-label="Close">Close</button>
+      <button id="d-close" class="btn btn-ghost btn-icon btn-sm" type="button" aria-label="Close">
+        <svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+      </button>
     </div>
-    <div id="d-admin" class="admin-actions" hidden>
-      <button id="d-rerun" class="btn" type="button">Rerun test</button>
-      <button id="d-cancel" class="btn btn-danger" type="button">Cancel run</button>
-      <button id="d-delete" class="btn btn-danger" type="button" hidden title="Remove every result of this test from the bucket and the dashboard">Delete results</button>
-      <span id="d-admin-msg" class="hint"></span>
-    </div>
-    <div id="d-error" class="banner banner-error" hidden></div>
-    <dl class="facts" id="d-facts"></dl>
-    <div class="tabs" role="tablist">
-      <button class="tab is-active" data-tab="history" role="tab" type="button">History</button>
-      <button class="tab" data-tab="log" role="tab" type="button">Log</button>
-      <button class="tab" data-tab="definition" role="tab" type="button">Definition</button>
-      <button class="tab" data-tab="record" role="tab" type="button">Record</button>
-    </div>
-    <section class="tab-panel" data-panel="history">
-      <div class="scroll">
-        <table class="history">
-          <thead><tr><th>Started</th><th>Status</th><th>Failed at</th><th>Duration</th><th>Run</th><th>Commit</th><th>Suite run</th><th>Error</th></tr></thead>
-          <tbody id="d-history"></tbody>
-        </table>
+    <div class="drawer-body">
+      <div id="d-admin" class="admin-actions" hidden>
+        <button id="d-rerun" class="btn btn-secondary" type="button">
+          <svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9L2.5 5.5M2.5 2.5v3h3"/></svg>
+          <span class="btn-label">Rerun test</span>
+        </button>
+        <button id="d-cancel" class="btn btn-outline btn-destructive" type="button">
+          <svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12ZM6.25 6.25h3.5v3.5h-3.5Z"/></svg>
+          <span class="btn-label">Cancel run</span>
+        </button>
+        <button id="d-delete" class="btn btn-outline btn-destructive" type="button" hidden title="Remove every result of this test from the bucket and the dashboard">
+          <svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M6 4V2.75A.75.75 0 0 1 6.75 2h2.5a.75.75 0 0 1 .75.75V4M4 4l.65 9.05a1 1 0 0 0 1 .95h4.7a1 1 0 0 0 1-.95L12 4M6.75 7v4M9.25 7v4"/></svg>
+          <span class="btn-label">Delete results</span>
+        </button>
+        <span id="d-admin-msg" class="admin-message"></span>
       </div>
-    </section>
-    <section class="tab-panel" data-panel="log" hidden>
-      <div class="log-controls">
-        <label>Execution <select id="d-artifact"></select></label>
-        <label>File <select id="d-file"></select></label>
+      <div id="d-error" class="callout callout-error" hidden>
+        <span class="callout-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12ZM8 4.75v3.75M8 11h.01"/></svg></span>
+        <p id="d-error-text" class="callout-text"></p>
       </div>
-      <pre class="code" id="d-log">Select an execution.</pre>
-    </section>
-    <section class="tab-panel" data-panel="definition" hidden>
-      <p class="hint" id="d-definition-path"></p>
-      <pre class="code" id="d-definition"></pre>
-    </section>
-    <section class="tab-panel" data-panel="record" hidden>
-      <pre class="code" id="d-record"></pre>
-    </section>
+      <dl class="facts" id="d-facts"></dl>
+      <div class="tabs" role="tablist">
+        <button class="tab is-active" data-tab="history" role="tab" type="button">History</button>
+        <button class="tab" data-tab="log" role="tab" type="button">Log</button>
+        <button class="tab" data-tab="definition" role="tab" type="button">Definition</button>
+        <button class="tab" data-tab="record" role="tab" type="button">Record</button>
+      </div>
+      <section class="tab-panel" data-panel="history">
+        <div class="scroll">
+          <table class="table history">
+            <thead><tr><th>Started</th><th>Status</th><th>Failed at</th><th class="num">Duration</th><th>Run</th><th>Commit</th><th>Suite run</th><th>Error</th></tr></thead>
+            <tbody id="d-history"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="tab-panel" data-panel="log" hidden>
+        <div class="log-controls">
+          <label class="field"><span class="field-label">Execution</span><span class="select"><select id="d-artifact" class="control"></select><svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6"/></svg></span></label>
+          <label class="field"><span class="field-label">File</span><span class="select"><select id="d-file" class="control"></select><svg class="icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6"/></svg></span></label>
+        </div>
+        <pre class="code" id="d-log">Select an execution.</pre>
+      </section>
+      <section class="tab-panel" data-panel="definition" hidden>
+        <p class="hint mono" id="d-definition-path"></p>
+        <pre class="code" id="d-definition"></pre>
+      </section>
+      <section class="tab-panel" data-panel="record" hidden>
+        <pre class="code" id="d-record"></pre>
+      </section>
+    </div>
   </aside>
 
   <footer class="foot">

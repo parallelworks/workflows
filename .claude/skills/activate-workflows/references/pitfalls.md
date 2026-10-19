@@ -533,6 +533,19 @@ A page a workflow draws itself follows the platform's theme contract
 
 ## `pw` CLI, auth and remote shells
 
+- **A credential handed to a workflow as an input is checked by the platform, not by the
+  form: an expired one fails the run at the first `pw` call that uses it** (verified
+  2026-10-19, PROBE run `wealthy-rattler` on gcptest). The dashboards' start scripts export
+  the `api_key` input as `PW_API_KEY` and run `pw endpoints run` with it; the input had the
+  CLI's own token from `~/.config/pw/credentials`, read seconds after its hourly expiry, and
+  both scripts died with `[ERROR] Unauthorized` (in `run.*.out` of the job dir; the step log
+  only says `pw endpoints run failed for probe-admin-<slug>`), while the YAML's key check
+  had passed because it tests only that the input is not empty. That token is refreshed
+  only when a `pw` command runs, so a script that reads it runs one first (`pw context
+  current`) and reads the file after; a long-lived service wants a real API key from the
+  account settings, which is what the input is for. A check that must fail the run with a
+  clear message goes before `pw endpoints run` (above), such as `pw auth whoami` with the key.
+
 - **A `pw` call inside the run gets `401 Unauthorized`:** the workflow (or the parent
   of the subworkflow making the call) lacks `permissions: ['*']`.
 - **`pw workflows run` with a relative YAML path:** CLIs before v7.105 parsed it as a git

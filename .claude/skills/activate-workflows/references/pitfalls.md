@@ -47,7 +47,7 @@
 - **A shown input without `label:` renders as its key name capitalized**
   (`Scheduler_directives`; verified 2026-10-19 on activate.parallel.works). `description:`
   is always visible under the label, `tooltip:` only behind the ?, so the sentence a user
-  must read goes in the description (AGENTS.md, "Form copy").
+  must read goes in the description (AGENTS.md, "Form text").
 - **An empty group item is default-filled** (verified 2026-09-24): a hidden input sent as
   `"render_settings": {"name": ""}` reached the workflow as its default, like a top-level
   input; only a **list-template** field keeps `""` (the list-template entry below). Reruns built from a past

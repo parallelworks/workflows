@@ -244,7 +244,7 @@ The form renders `description` under the label, always, and `tooltip` behind a ?
 input without `label` shows its key name capitalized (`Scheduler_directives`). The
 copy rules (sentence case, statements for booleans, a description for what the user
 must know before submitting, `step: 1` on counts, the walltime format): AGENTS.md,
-"Form copy".
+"Form text".
 
 ### Expressions & env
 - `${{ ... }}` — platform templating, evaluated **before** the shell sees the line

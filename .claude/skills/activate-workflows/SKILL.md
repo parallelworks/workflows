@@ -148,7 +148,7 @@ renders empty in the shell (verified for a numeric input): guard with `${var:-de
 quote every `${{ }}` interpolation. Write the form to be read, not hovered: every
 shown input labeled in sentence case, booleans as statements, a one-line `description`
 for what the user must know before submitting, the detail in the `tooltip`
-(AGENTS.md, "Form copy").
+(AGENTS.md, "Form text").
 
 **Code delivery: `parallelworks/checkout`, never base64.** The repo is fetched from
 GitHub at run time, so nothing you edit locally takes effect until it is pushed (both

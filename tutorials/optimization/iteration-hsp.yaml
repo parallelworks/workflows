@@ -185,7 +185,7 @@ jobs:
       batch_size:
         type: number
         label: Cases per iteration
-        description: Sizes the workers matrix, one slot per case.
+        description: Simulations run in parallel each iteration; the optimizer's population size.
         default: 8
         min: 1
         max: 256

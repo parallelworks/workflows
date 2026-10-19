@@ -408,7 +408,7 @@ jobs:
           batch_size:
             type: number
             label: Cases per iteration
-            description: Dakota's population size; sizes the workers matrix, surplus slots are skipped for free.
+            description: At most this many cases per iteration, run in parallel; Dakota may propose fewer.
             default: 4
             min: 1
             max: 256

@@ -178,8 +178,8 @@ jobs:
 
 ### Concepts introduced
 
-**The form copy.**
-A `label` in sentence case names the input. A `description` is the one line a user must read before submitting and shows under the label; a `tooltip` is detail behind a ?. A whole-number input carries `step: 1`. The conventions for all of this are in [AGENTS.md](../../AGENTS.md) under "Form copy".
+**The form text.**
+A `label` in sentence case names the input. A `description` is the one line a user must read before submitting and shows under the label; a `tooltip` is detail behind a ?. A whole-number input carries `step: 1`. The conventions for all of this are in [AGENTS.md](../../AGENTS.md) under "Form text".
 
 **[`needs`](https://parallelworks.com/docs/run/workflows/building-workflows/yaml-fields#jobsjobneeds) — ordering and parallelism.**
 By default every job in a workflow starts at the same time. `needs` makes a job wait for another to finish first. Here `run` lists `install` under `needs`, so the example is checked out and installed before `run` renders and serves it. (You will see jobs actually run *in parallel* in Stage 4.) Every job- and step-level key this tutorial uses — `needs`, `ssh`, `retry`, `cleanup`, and the rest — is documented in [YAML Fields](https://parallelworks.com/docs/run/workflows/building-workflows/yaml-fields).

@@ -271,7 +271,7 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
   guarded by `if:` against a runtime count; a step that waits on another job carries
   `early-cancel: any-job-failed`.
 
-### Form copy
+### Form text
 The launch form is read, not hovered: a user should know what a field does and what
 happens when it is left alone without opening its tooltip.
 - Every shown input has a `label`, in sentence case (`Walltime per case`); product

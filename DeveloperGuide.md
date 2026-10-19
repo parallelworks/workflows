@@ -188,9 +188,9 @@ Key parts to adapt:
 - the sparse-checkout paths (`workflows/my-workflow/app`, `tools/...`),
 - the `cat workflows/my-workflow/app/controller.sh` / `start-template.sh` lines,
 - the `service` input group (your form fields → `inputs.sh` variables),
-- the form copy: labels in sentence case, booleans as statements, a one-line
+- the form text: labels in sentence case, booleans as statements, a one-line
   `description` for what a user must know before submitting, the detail in the
-  `tooltip` (AGENTS.md, "Form copy").
+  `tooltip` (AGENTS.md, "Form text").
 
 **The other shapes** keep preprocessing and change what follows it:
 

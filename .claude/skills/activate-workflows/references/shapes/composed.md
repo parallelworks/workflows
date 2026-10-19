@@ -44,7 +44,7 @@ plain step, since there is no submitter for it to outlive:
 4. Publish the URL (`$OUTPUTS`, and a `::notice::` that also says how to remove it:
    `pw endpoints delete <name>`).
 5. Add a job `stop_server_if_unhealthy` with `needs: [preprocessing]` and
-   `if: ${{ !completed }}` that deletes the endpoint and kills the server from fixed
+   `if: ${{ !success() }}` that deletes the endpoint and kills the server from fixed
    paths, never from upstream outputs (a canceled job publishes none). A step
    `cleanup:` cannot do this: it runs when its job ends, success included, and would
    kill the server right after launch. The handler also runs when a caller's run is
@@ -86,7 +86,7 @@ listed, the runner's default lane.
   them (pitfalls, "A deterministic optimizer").
 - **The live page** is a call to `design-explorer` from preprocessing, before the
   work, with the study directory: the page follows the study as cases finish, and its
-  own `!completed` handler cleans up.
+  own `!success()` handler cleans up.
 - **The only coupling is files**: the driver writes `params.in` with the runner's
   design-parameter names, the runner writes `results.out` and `exit_code`
   ([../design-parameters.md](../design-parameters.md)).

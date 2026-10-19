@@ -18,12 +18,12 @@ scheduling.
    values.
 2. **run_cwl**: `script_submitter` runs `run-cwl.sh` (cwltool on the login node).
    On a cancel the submitter's cleanup runs `cancel.sh`, which `scancel`s a SLURM
-   job the CWL workflow left behind — nothing else runs after a user cancel
-   (the skill's pitfalls, 2026-10-12).
+   job the CWL workflow left behind — a job-level `cleanup:` list does not run
+   after a user cancel (the skill's pitfalls, 2026-10-12).
 3. **results** (login node): fails the run unless `cwl.exit` is `0` (the submitter
    never forwards the script's status), `job_status.txt` says `COMPLETED` and
    `slurm-output/mpitest.out` holds MPI output.
-4. **cancel_slurm_job** (`if: ${{ !completed }}`): the error-path belt and braces
+4. **cancel_slurm_job** (`if: ${{ !success() }}`): the error-path belt and braces
    for a SLURM job that outlived a failed cwltool.
 
 ## The CWL workflow (`app/cwl/`)

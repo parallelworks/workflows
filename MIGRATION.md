@@ -1082,7 +1082,7 @@ unchanged; the source was one self-contained YAML with the Python embedded in he
 **Judgment calls:** no script submitter (the server only runs on the login node and must
 outlive the run, as `dakota-openfoam`'s Pareto server; `wait_for_endpoint` without a skip
 file); the fixed name `apptest` is kept and a running instance is reused, only **Restart
-server** frees it (`hpc_status` frees its name every run); no `!completed` handler, since
+server** frees it (`hpc_status` frees its name every run); no `!success()` handler, since
 the source left the server up after a failed or cancelled run and workers-only runs rely
 on it; the form keeps its own groups (`server`, `services`, `app`, `workers`), which the
 launcher scripts and saved inputs address; one `general.yaml` (the form carries the
@@ -1512,11 +1512,13 @@ from the user workspace; here the login node sparse-checks-out
 - **A cancel cleans up.** A cancel kills cwltool on the login node but not a SLURM
   job it already submitted, and nothing YAML-side runs after a user cancel
   (pitfalls, 2026-10-12: a job-level `cleanup:` list, a step `if: canceled` and a
-  handler job were all skipped — three attempts). That is why cwltool runs under
-  `script_submitter`: its cleanup runs `cancel.sh`, which scancels any job id
+  handler job were all skipped — three attempts; the step and the handler used `if:`
+  keywords ACTIVATE v7.112 removed, which is likely why they were skipped). That is
+  why cwltool runs under `script_submitter`: its cleanup runs `cancel.sh`, which
+  scancels any job id
   recorded in the `cwl-tmp` staging dirs that `squeue` still lists (verified: a
   running 10-node job ended `CANCELLED`, nothing left). A `cancel_slurm_job`
-  handler (`if: ${{ !completed }}`) keeps the error path covered.
+  handler (`if: ${{ !success() }}`) keeps the error path covered.
 - **Installs are idempotent and absolute.** `install-mpi.sh` writes the load file
   last (a failed install never looks complete), clones spack `--depth 1`, installs
   under `service_parent_install_dir` (default `${HOME}/pw/software`) instead of

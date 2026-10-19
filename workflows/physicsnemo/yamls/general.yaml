@@ -237,7 +237,7 @@ jobs:
   # and the endpoint name, not job outputs: a canceled preprocessing publishes none.
   stop_server_if_unhealthy:
     needs: [preprocessing]
-    if: ${{ !completed }}
+    if: ${{ !success() }}
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:

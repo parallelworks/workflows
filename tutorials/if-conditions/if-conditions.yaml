@@ -1,29 +1,34 @@
-# if-conditions.yaml - what the `if:` keywords do, on steps and on jobs.
+# if-conditions.yaml - what the `if:` status functions do, on steps and on jobs.
 #
 # Pick an Outcome in the form (succeed / fail / cancel), run the workflow, and
 # compare which steps and jobs ran with which were skipped.
 #
-#   keyword      on a STEP: looks at its own job so far      on a JOB: looks at the jobs in `needs`
-#   ----------   -----------------------------------------   ---------------------------------------
-#   always       runs                                        runs
-#   never        skipped                                     skipped
-#   completed    no earlier step failed, job not canceled    every needed job completed
-#   error        an earlier step failed                      a needed job failed
-#   canceled     this job was canceled                       a needed job was canceled
-#   !completed   a step failed or the job was canceled       a needed job failed or was canceled
-#   !error       no earlier step failed                      no needed job failed
-#   !canceled    this job was not canceled                   no needed job was canceled
+#   condition      on a STEP: looks at its own job so far      on a JOB: looks at the jobs in `needs`
+#   ------------   -----------------------------------------   ---------------------------------------
+#   always         runs                                        runs
+#   false          skipped                                     skipped
+#   success()      no earlier step failed, job not canceled    no needed job failed or was canceled
+#   failure()      an earlier step failed                      a needed job failed
+#   cancelled()    this job was canceled                       a needed job was canceled
+#   !success()     a step failed or the job was canceled       a needed job failed or was canceled
+#   !failure()     no earlier step failed                      no needed job failed
+#   !cancelled()   this job was not canceled                   no needed job was canceled
 #
-# Leaving `if:` out behaves like `if: ${{ completed }}`.
-# The keywords are plain booleans, so they combine with inputs, outputs and
-# operators (&&, ||, !, ternary): see the `fallback` job.
+# Leaving `if:` out behaves like `if: ${{ success() }}`, and so does an `if:`
+# that calls no status function: `${{ inputs.debug == true }}` runs only when
+# nothing failed. Calling one replaces that check. `canceled()` is another
+# spelling of `cancelled()`. The word `always` on its own is the one keyword,
+# the same as `always()`; any other bare word is text, which is true, so
+# `${{ error }}` is the string "error", not a status check.
+# The functions combine with inputs, outputs and operators (&&, ||, !,
+# ternary): see the `fallback` job. Combine `always()`, not the word.
 
 # parallelworks/cancel-jobs needs the grant.
 permissions:
   - '*'
 
 jobs:
-  # ---- Part 1: `if:` on STEPS. Each keyword looks at what already happened in this job.
+  # ---- Part 1: `if:` on STEPS. Each function looks at what already happened in this job.
   work:
     steps:
       - name: Do the work
@@ -41,67 +46,68 @@ jobs:
           jobs:
             - work
 
-      - name: "if: completed (same as no if)"
-        if: ${{ completed }}
+      - name: "if: success() (same as no if)"
+        if: ${{ success() }}
         run: echo "ran because no earlier step failed and the job was not canceled"
 
-      - name: "if: error"
-        if: ${{ error }}
+      - name: "if: failure()"
+        if: ${{ failure() }}
         run: echo "ran because an earlier step failed"
 
-      - name: "if: canceled"
-        if: ${{ canceled }}
+      - name: "if: cancelled()"
+        if: ${{ cancelled() }}
         run: echo "ran because this job was canceled"
 
-      - name: "if: !completed"
-        if: ${{ !completed }}
+      - name: "if: !success()"
+        if: ${{ !success() }}
         run: echo "ran because a step failed OR the job was canceled"
 
       - name: "if: always"
         if: ${{ always }}
         run: echo "ran no matter what happened above"
 
-      - name: "if: never"
-        if: ${{ never }}
+      - name: "if: false"
+        if: ${{ false }}
         run: echo "you will never see this line"
 
-  # ---- Part 2: `if:` on JOBS. Each keyword looks at the jobs listed in `needs`.
-  on-completed:
+  # ---- Part 2: `if:` on JOBS. Each function looks at the jobs listed in `needs`.
+  on-success:
     needs:
       - work
-    if: ${{ completed }}
+    if: ${{ success() }}
     steps:
-      - run: echo "ran because work completed (same as leaving if out)"
+      - run: echo "ran because work succeeded (same as leaving if out)"
 
-  on-error:
+  on-failure:
     needs:
       - work
-    if: ${{ error }}
+    if: ${{ failure() }}
     steps:
       - run: echo "ran because work failed"
 
-  on-canceled:
+  on-cancelled:
     needs:
       - work
-    if: ${{ canceled }}
+    if: ${{ cancelled() }}
     steps:
       - run: echo "ran because work was canceled"
 
-  on-not-completed:
+  on-not-success:
     needs:
       - work
-    if: ${{ !completed }}
+    if: ${{ !success() }}
     steps:
       - run: echo "ran because work failed OR was canceled, so this is a good place for an alert"
 
   fallback:
     needs:
       - work
-    # Keywords are booleans, so an expression can choose one:
-    # "if the box is ticked, run on error; otherwise never run".
-    # `${{ error && inputs.fallback }}` would mean the same thing. The quotes are
-    # for YAML, which would otherwise read the " : " of the ternary as a mapping.
-    if: "${{ inputs.fallback ? error : never }}"
+    # Status functions are booleans, so they combine with inputs:
+    # "if the box is ticked, run when work failed; otherwise never run".
+    # `"${{ inputs.fallback ? failure() : false }}"` would mean the same thing;
+    # a ternary needs the quotes, because YAML would otherwise read its " : "
+    # as a mapping.
+    if: ${{ inputs.fallback && failure() }}
     steps:
       - run: echo "ran because work failed and the fallback box was ticked"
 

@@ -121,7 +121,7 @@ jobs:
   # while this workflow started its server ran this job and removed the endpoint.
   stop_server_if_unhealthy:
     needs: [preprocessing]
-    if: ${{ !completed }}
+    if: ${{ !success() }}
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:

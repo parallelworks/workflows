@@ -72,7 +72,7 @@ conclusions.
    exit-recording wrapper and the run template of a batch job); follow every path a
    YAML or a script composes to reach repo files.
 3. **Pitfalls.** List the constructs the change uses (`retry`, `matrix`,
-   `needs.*.outputs`, `if:` keywords, `pw endpoints run` flags, `--no-subdomain`,
+   `needs.*.outputs`, `if:` status functions, `pw endpoints run` flags, `--no-subdomain`,
    heredocs, traps, `set -e`, `python -c`, docker, singularity, conda, oras, module
    loads, ...) and grep `references/pitfalls.md` and `references/software/` for each.
    Compare the code with every entry that matches, and cite the entry.

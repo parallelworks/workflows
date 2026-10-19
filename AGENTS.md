@@ -103,7 +103,7 @@ or tunnel logic; write a new workflow so it can be called in turn.
 |---|---|---|---|---|
 | **Endpoint service** (most workflows) | the service answers its URL; it outlives the run until `pw endpoints delete` | `session_runner` (`script_submitter`) + `wait_for_endpoint` | `webshell` (smallest), `jupyterlab`, `streamlit` (Singularity), `ollama` | `shapes/endpoint.md` |
 | **Batch job** | the script finishes; the run fails when it fails | `script_submitter` once, then a step that reads the exit file the script wrote | `activate-batch` (smallest), `benchmarks`, `3dcs`, `cwl-mpi-hello-world`, `openfoam-naca`, `probe`'s `general_run_tests.yaml` | `shapes/batch.md` |
-| **Callable step** (login node only) | its steps finish; one `general.yaml` for every platform | plain `run:` steps; a detached `pw endpoints run` with a `!completed` handler when it serves a page | `doe`, `dakota`, `design-explorer`, `wait_for_endpoint` | `shapes/composed.md` |
+| **Callable step** (login node only) | its steps finish; one `general.yaml` for every platform | plain `run:` steps; a detached `pw endpoints run` with a `!success()` handler when it serves a page | `doe`, `dakota`, `design-explorer`, `wait_for_endpoint` | `shapes/composed.md` |
 | **Composed** | the study or loop finishes | `uses:` of the rows above: a matrix of evaluators, retry-as-loop, a live page | `doe-openfoam`, `dakota-openfoam`, `openfoam-naca`'s `*-restart.yaml` | `shapes/composed.md` |
 | **Kubernetes** | never: cancelling the run is the teardown | the sidecar pod jobs; no submitter, nothing checked out | `mlflow/yamls/k8s.yaml` (k8s-only), `openvscode/yamls/general_k8s.yaml` (hybrid) | `references/k8s-workflows.md` |
 
@@ -151,7 +151,7 @@ the same invariants:
 - A service that only ever runs on the login node (`design-explorer`, TensorBoard in
   `physicsnemo`) starts `pw endpoints run` detached from a plain step
   (`tutorials/endpoint-workflows` Stage 3) with a `stop_server_if_unhealthy` job under
-  `if: ${{ !completed }}`, instead of through the submitter.
+  `if: ${{ !success() }}`, instead of through the submitter.
 
 ### Batch job
 

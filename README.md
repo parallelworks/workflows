@@ -115,8 +115,9 @@ in the older form the upgrade playbook converts). [`optimization/`](tutorials/op
 builds an iterative loop — propose designs, evaluate them in parallel, decide, repeat
 until convergence — behind a file contract that `dakota-openfoam` fills with real tools.
 [`if-conditions/`](tutorials/if-conditions/)
-is a short standalone lesson on the `if:` status keywords (`always`, `never`, `completed`,
-`error`, `canceled` and their negations) on steps and on jobs.
+is a short standalone lesson on the `if:` status functions (`success()`, `failure()`,
+`cancelled()`, `always()` and their negations) on steps and on jobs, with what replaces
+the keywords ACTIVATE removed.
 
 ## Variants
 

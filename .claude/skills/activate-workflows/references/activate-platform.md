@@ -273,12 +273,17 @@ use. The job graph gives you sequencing, data flow, conditionals, and parallelis
 - **Conditional steps/jobs:** `if: ${{ needs.analyze.outputs.good_fit == 'true' }}`.
   String equality is reliable; compute booleans **upstream** (e.g. in Python) and
   emit them, rather than doing numeric comparisons inside the expression. `if:` also
-  takes **status keywords** — `always`, `never`, `completed`, `error`, `canceled` and
-  their negations (aliases `success`, `failure`, `cancelled`) — that look at the job's
-  earlier steps (on a step) or at the jobs in `needs` (on a job); no `if:` means
-  `if: ${{ completed }}`. They combine with expressions (`if: ${{ error && inputs.fallback }}`;
-  quote a ternary). `if: ${{ always }}` steps run in order and can be cancelled, unlike
-  `cleanup:`. See `tutorials/if-conditions/`.
+  calls **status functions** — `success()`, `failure()`, `cancelled()` (also
+  `canceled()`) and `always()`, negated with `!` — that look at the job's earlier
+  steps (on a step) or at the jobs in `needs` (on a job). No `if:`, or an `if:` that
+  calls none of them, also requires `success()`; calling one replaces that check.
+  They combine with expressions (`if: ${{ failure() && inputs.fallback }}`; quote a
+  ternary). The keywords ACTIVATE v7.69 added (`completed`, `error`, `canceled`,
+  `never`, their `!` forms, and `success`, `failure`, `cancelled` without parentheses)
+  were removed in v7.112: the word `always` alone is the one keyword left, and any
+  other bare word is a non-empty string, which is true (`${{ !completed }}` is always
+  false; pitfalls). `if: ${{ always }}` steps run in order and can be cancelled,
+  unlike `cleanup:`. See `tutorials/if-conditions/`.
 - **Fan-out / fan-in:** sibling jobs that share a common `needs` but don't depend on
   each other **run concurrently**; a downstream job with `needs: [w1, w2, w3]` joins
   them. (Verified: 3 workers logged the same finish second.) For N identical workers,
@@ -694,7 +699,7 @@ to your task.
 | **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` |
 | **Iterative loop over computed cases** (retry-as-loop + guarded static matrix) | `tutorials/optimization/` |
 | **Resubmit an interrupted simulation until it completes** (a walltime, a preempted or lost node, a cancel: checkpoints, a run script that resumes, the signal forwarded, retry-as-loop whose callee tells a final failure from an interruption) | `workflows/openfoam-naca/yamls/general-restart.yaml` (+ `hsp-restart`, `noaa-restart`; the README's "Resubmitting an interrupted case" is the walkthrough; the resume logic in `app/restart.sh`) |
-| **`if:` status keywords on steps and jobs** (`always`, `error`, `canceled`, `!completed`) | `tutorials/if-conditions/` |
+| **`if:` status functions on steps and jobs** (`success()`, `failure()`, `cancelled()`, `!success()`, `always`), and what replaced the removed keywords | `tutorials/if-conditions/` |
 | **Compose standalone workflows** (sampler or optimizer → matrix of evaluators → a live page; files as the only coupling) | `workflows/doe-openfoam/`, `workflows/dakota-openfoam/` (READMEs show the wiring); the file contract in [design-parameters.md](design-parameters.md) |
 | **A workflow others can call** (form as the interface, paths as inputs, one `general.yaml` for every platform) | `workflows/doe/`, `workflows/design-explorer/`, `workflows/wait_for_endpoint/` |
 | **Repo conventions and the human how-to** | `AGENTS.md`, `DeveloperGuide.md` |

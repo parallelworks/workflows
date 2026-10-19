@@ -157,21 +157,36 @@
   $OUTPUTS` also sends its `::notice::` lines there, and a `set -e` step without
   `pipefail` hides the program's failure behind `tee`'s success. Write `KEY=value` lines
   to a file and `cat` it into `$OUTPUTS` (`workflows/doe-openfoam`, Sample the Designs).
+- **`if:` status checks are the functions `success()`, `failure()`, `cancelled()`
+  (also `canceled()`) and `always()`; the keywords are gone** (ACTIVATE v7.112; every
+  platform runs a later version). The keywords v7.69 added — `completed`, `error`,
+  `canceled`, `never`, their `!` forms, and `success`, `failure`, `cancelled` without
+  parentheses — no longer exist: only the word `always` on its own is still a keyword.
+  Any other bare word is a non-empty string, which is true, and an `if:` that calls no
+  status function keeps the implicit `success()` check, so an old condition still loads
+  but means something else: `${{ !completed }}` and `${{ !error }}` are always false
+  (the job never runs), `${{ error }}` runs only when nothing failed, and
+  `${{ inputs.fallback ? error : never }}` runs whenever its needs succeeded. Write
+  `!success()` (a needed job failed or was cancelled; it keeps running through a
+  cancel), `failure()`, `cancelled()`, `!failure()`, and `false` for `never`; the
+  table is in `tutorials/if-conditions/`. Entries below verified before the change
+  name the keyword they used.
 - **A canceled job publishes no outputs, even for steps that completed** (verified
-  2026-10-01): a handler job with `if: ${{ !completed }}` that read
+  2026-10-01): a handler job with `if: ${{ !completed }}` (now `!success()`) that read
   `needs.preprocessing.outputs.SERVER_PID_FILE` after a run cancel failed at parse time
   with `output SERVER_PID_FILE from job preprocessing not found`, although the step that
   wrote the output had finished. Handlers that must work after a cancel read fixed
   paths (`${PW_PARENT_JOB_DIR}/<file>`) and inputs, never upstream outputs
   (`workflows/dakota-openfoam/yamls/general-naca.yaml`, `stop_server_if_unhealthy`).
-- **`if: ${{ !completed }}` jobs do run after `pw workflows runs cancel`** (verified
-  2026-10-01): the canceled run showed `preprocessing: canceled`, `wait_for_endpoint:
+- **A `!success()` handler job runs after `pw workflows runs cancel`** (verified
+  2026-10-01 as `if: ${{ !completed }}`, the keyword it replaces; not yet re-run with
+  the function): the canceled run showed `preprocessing: canceled`, `wait_for_endpoint:
   skipped-failed` and the handler job executed. That is the hook for "kill what a
   plain step started detached when the run did not get to its health check"; a
   step-level `cleanup:` is not, because cleanups always run at the end of their own
   job (docs: yaml-fields), which would kill a detached server right after launch.
-- **NOTHING in the YAML runs after a `pw workflows runs cancel` — only the submitter's
-  cleanup script does** (verified 2026-10-12, `workflows/cwl-mpi-hello-world`, three runs).
+- **After a `pw workflows runs cancel`, only the submitter's cleanup script was seen to
+  run** (verified 2026-10-12, `workflows/cwl-mpi-hello-world`, three runs).
   A plain step the cancel reached is killed with its remote process tree, but what that
   process had *submitted* (the SLURM job cwltool sbatch'd) survives, and every YAML-side
   cleanup hook was skipped: a job-level `cleanup:` list showed `(skipped, 0s)`
@@ -180,17 +195,22 @@
   `skipped-failed` (smashing-asp) — the if-conditions tutorial's cancel row holds for a
   `parallelworks/cancel-jobs` self-cancel while the run continues, not for a user cancel
   of the run (and contrast the 2026-10-01 entry above, where such a handler did run; do
-  not rely on it for a user cancel). What worked: run the process under
-  `script_submitter` with `define_cleanup_script: true` and a `cancel.sh` that scancels
-  the recorded job ids — on cancel the submitter killed the process group and `cancel.sh`
-  scancelled the running 10-node job (clever-blowfish). Handler jobs with
-  `if: ${{ !completed }}` remain the hook for the *error* path.
-- **A subworkflow's own `if: ${{ !completed }}` handler runs when the top-level run is
-  canceled** (verified 2026-10-08, run included-corgi): canceling a doe-openfoam run while its
-  nested `workflows/design-explorer` call had started its server showed that subworkflow's
-  `preprocessing` canceled and its `stop_server_if_unhealthy` completed, which deleted the
-  half-registered endpoint; no process was left. So a reusable workflow that starts something
-  detached can own its cleanup, and its callers need no handler of their own for it.
+  not rely on it for a user cancel). Both of those conditions are keywords ACTIVATE
+  v7.112 removed (the first entry of this group): as text, `canceled || !completed` is
+  true and keeps the implicit `success()` check, which a cancel fails, and that likely
+  explains the contrast. So only the `cleanup:` result is evidence about user cancels;
+  re-test `cancelled()` and `!success()` before relying on them for one. What worked:
+  run the process under `script_submitter` with `define_cleanup_script: true` and a
+  `cancel.sh` that scancels the recorded job ids — on cancel the submitter killed the
+  process group and `cancel.sh` scancelled the running 10-node job (clever-blowfish).
+  Handler jobs with `if: ${{ !success() }}` remain the hook for the *error* path.
+- **A subworkflow's own `if: ${{ !success() }}` handler runs when the top-level run is
+  canceled** (verified 2026-10-08 as `!completed`, run included-corgi): canceling a
+  doe-openfoam run while its nested `workflows/design-explorer` call had started its
+  server showed that subworkflow's `preprocessing` canceled and its
+  `stop_server_if_unhealthy` completed, which deleted the half-registered endpoint; no
+  process was left. So a reusable workflow that starts something detached can own its
+  cleanup, and its callers need no handler of their own for it.
 - **`retry.timeout` defaults to 30 s PER ATTEMPT** (documented in
   building-workflows/yaml-fields; bitten and verified 2026-09-29): a `retry:` block
   without `timeout:` cancels each attempt of that step ~25-30 s in — for a `uses:`
@@ -219,8 +239,10 @@
   by its own `if:` and after it completed, and stayed unrun (the run in error) after
   it failed. So an optional check job needs no special guard downstream. A job-level
   `if: ${{ !error }}` or `${{ !error && !canceled }}` never ran in the same probes,
-  even with its needed job completed; `pw workflows runs view` hides skipped jobs, so
-  a job missing from its listing was skipped.
+  even with its needed job completed: those keywords were already removed, and the
+  negation of the text `error` is always false (the status-functions entry above);
+  `!failure()` is the condition they meant. `pw workflows runs view` hides skipped
+  jobs, so a job missing from its listing was skipped.
 - **A nested workflow's jobs run in the caller step's directory,
   `subworkflows/<job>/step_<index>/` under the run's job directory, the same on every
   retry** (verified again 2026-10-16): its checkout and anything it creates relative to
@@ -339,7 +361,7 @@
 - **A login-node-only service can skip `script_submitter`**: start it with
   `setsid pw endpoints run ... > out 2>&1 < /dev/null &` from a plain step
   (`tutorials/endpoint-workflows/03-exit-workflow.yaml`), keep `wait_for_endpoint` as
-  the health check (no `skip_cleanups_file`), and add the `!completed` handler above
+  the health check (no `skip_cleanups_file`), and add the `!success()` handler above
   because an endpoint that never registered cannot be removed with `pw endpoints
   delete`. `workflows/dakota-openfoam` serves its Pareto page this way.
 - **A batch script killed by `scancel` runs its EXIT trap with `$?` = 0** (verified

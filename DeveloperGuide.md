@@ -199,7 +199,7 @@ Key parts to adapt:
   form that is its interface: every path it reads or writes is an input, so a caller
   passes paths under its own job dir. When it serves a page, it starts
   `pw endpoints run` detached from a step (`setsid`), calls `wait_for_endpoint`, and
-  adds a `stop_server_if_unhealthy` job under `if: ${{ !completed }}`
+  adds a `stop_server_if_unhealthy` job under `if: ${{ !success() }}`
   (`workflows/design-explorer`; the same wiring serves TensorBoard beside the training
   job of `workflows/physicsnemo`).
 - **Composed** — a YAML with no code of its own: `uses:` of the workflows above with

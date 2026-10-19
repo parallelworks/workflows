@@ -166,7 +166,7 @@ checks:
 |---|---|---|---|---|
 | **Endpoint service** (most workflows) | the service answers its URL; it outlives the run until `pw endpoints delete` | `session_runner` (`script_submitter`) + `wait_for_endpoint` | `workflows/webshell` | [shapes/endpoint.md](references/shapes/endpoint.md) |
 | **Batch job** | the script finishes; the run fails when it fails | `script_submitter` once, then a step that reads the exit file the script wrote | `workflows/activate-batch`, `workflows/benchmarks` | [shapes/batch.md](references/shapes/batch.md) |
-| **Callable step** (login node only) | its steps finish; one `general.yaml` for every platform | plain `run:` steps; a detached `pw endpoints run` with a `!completed` handler when it serves | `workflows/doe`, `workflows/design-explorer` | [shapes/composed.md](references/shapes/composed.md) |
+| **Callable step** (login node only) | its steps finish; one `general.yaml` for every platform | plain `run:` steps; a detached `pw endpoints run` with a `!success()` handler when it serves | `workflows/doe`, `workflows/design-explorer` | [shapes/composed.md](references/shapes/composed.md) |
 | **Composed** | the study or loop finishes | `uses:` of the rows above: a matrix of evaluators, retry-as-loop, a live page | `workflows/doe-openfoam`, `workflows/dakota-openfoam` | [shapes/composed.md](references/shapes/composed.md) |
 | **Kubernetes** | never: cancelling the run is the teardown | the sidecar pod jobs; no submitter, nothing checked out | `workflows/mlflow/yamls/k8s.yaml`, `workflows/openvscode/yamls/general_k8s.yaml` (hybrid) | [k8s-workflows.md](references/k8s-workflows.md) |
 
@@ -285,9 +285,10 @@ existing one.
   them to a file and `cat` it in, so a program's own output never lands there) and read
   `${{ needs.<job>.outputs.KEY }}`, listing every job whose outputs you read in
   `needs:`. Compute booleans upstream and drive `if:` with string equality; use the
-  status keywords (`always`, `error`, `canceled`, `!completed`) for handlers
-  (`tutorials/if-conditions/`). Fan out with a matrix (static: form inputs and literals;
-  guard a computed count with `if: ${{ matrix.job_id <= needs.X.outputs.N }}`) and join
+  status functions (`failure()`, `cancelled()`, `!success()`, `always`) for handlers
+  (`tutorials/if-conditions/`; the old keywords such as `!completed` are text now).
+  Fan out with a matrix (static: form inputs and literals; guard a computed count
+  with `if: ${{ matrix.job_id <= needs.X.outputs.N }}`) and join
   with `needs: [w1, w2, w3]`; retry or fail over with a step `retry` block and
   `PW_WORKFLOW_STEP_CURRENT_RETRY`, always with a `timeout` sized for the whole attempt
   (reference §3).

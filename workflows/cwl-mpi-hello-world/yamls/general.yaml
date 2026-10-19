@@ -9,7 +9,7 @@
 # CWL input file and the run script. The run completes when the SLURM job does
 # and fails loud when the job or any CWL step fails; on a cancel the submitter's
 # cleanup runs cancel.sh, which scancels a SLURM job the CWL workflow left behind
-# (plain steps and handler jobs are all skipped on a user cancel).
+# (a job-level cleanup: list is skipped on a user cancel).
 permissions:
   - '*'
 
@@ -200,13 +200,13 @@ jobs:
           cat slurm-output/mpitest.out
           echo "MPI_OUTPUT=${PWD}/slurm-output/mpitest.out" | tee -a $OUTPUTS
 
-  # belt and braces for the error path (a user cancel skips handler jobs and is
-  # cancel.sh's business): when cwltool died between the sbatch and the job's end,
-  # the job outlives the run. Fixed paths, not job outputs: a canceled job
-  # publishes none.
+  # belt and braces for the error path (a user cancel is cancel.sh's business, and
+  # cancel.sh only scancels a job SLURM still lists, so running it again here is
+  # harmless): when cwltool died between the sbatch and the job's end, the job
+  # outlives the run. Fixed paths, not job outputs: a canceled job publishes none.
   cancel_slurm_job:
     needs: [results]
-    if: ${{ !completed }}
+    if: ${{ !success() }}
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:

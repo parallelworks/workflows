@@ -145,7 +145,10 @@ whole when the resource has no scheduler (`${{ inputs.resource.schedulerType == 
 the rest of the form is grouped by what it configures (`service` for a served app,
 `case`, `doe`, `optimizer`, `software`, ... elsewhere). An optional input left unset
 renders empty in the shell (verified for a numeric input): guard with `${var:-default}` and
-quote every `${{ }}` interpolation.
+quote every `${{ }}` interpolation. Write the form to be read, not hovered: every
+shown input labeled in sentence case, booleans as statements, a one-line `description`
+for what the user must know before submitting, the detail in the `tooltip`
+(AGENTS.md, "Form copy").
 
 **Code delivery: `parallelworks/checkout`, never base64.** The repo is fetched from
 GitHub at run time, so nothing you edit locally takes effect until it is pushed (both

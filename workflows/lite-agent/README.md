@@ -16,7 +16,7 @@ a web UI — use the [Hermes Agent](../hermes-agent/) instead.)
 
 ## Use it
 
-1. Launch **Lite Agent**, pick your **cluster**, keep *Schedule Job?* **off**.
+1. Launch **Lite Agent**, pick your **cluster**, keep *Submit to the scheduler* **off**.
 2. Open ACTIVATE **Chat** and pick the `lite-agent` provider for that cluster.
 
 Ask it things like *"How busy is this machine?"*, *"Is there a GPU?"*, *"Start my

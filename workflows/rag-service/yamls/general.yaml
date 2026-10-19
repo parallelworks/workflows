@@ -142,10 +142,8 @@ jobs:
       resource:
         type: compute-clusters
         label: Cluster
+        description: The docs directory must exist on this cluster's shared filesystem.
         include-workspace: false
-        tooltip: >-
-          The cluster to run the retrieval service on. The docs directory
-          must exist on this cluster's shared filesystem.
       cluster:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
@@ -155,14 +153,15 @@ jobs:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
+            label: Submit to the scheduler
+            description: Otherwise the service runs on the login node.
             tooltip: >-
               Off: run on the login node. On: submit to the scheduler; the
               embedding model is served from a pre-populated cache so compute
               nodes need no internet.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -178,6 +177,7 @@ jobs:
                 resource: ${{ inputs.resource }}
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '08:00:00'
               gpus:
@@ -185,17 +185,18 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
-                tooltip: Extra #SBATCH directives, one per line.
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -205,9 +206,8 @@ jobs:
                 default: true
                 label: Is PBS enabled?
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
-                tooltip: Extra #PBS directives, one per line.
       service:
         type: group
         label: Settings
@@ -218,6 +218,7 @@ jobs:
             default: rag-service
           docs_dir:
             label: Documents directory
+            description: "Supported types: .pdf, .md, .txt, .csv, .log."
             type: string
             tooltip: >-
               Absolute path (on the cluster's shared filesystem) of the
@@ -225,6 +226,7 @@ jobs:
               .pdf, .md, .txt, .csv, .log.
           embedding_model_id:
             label: Embedding model
+            description: Downloaded once on the login node and cached for offline compute nodes.
             type: dropdown
             default: BAAI/bge-small-en-v1.5
             options:
@@ -246,21 +248,22 @@ jobs:
             type: number
             default: 700
             min: 100
+            step: 1
           chunk_overlap:
             label: Chunk overlap (characters)
             type: number
             default: 80
             min: 0
+            step: 1
           default_top_k:
             label: Default top_k
             type: number
             default: 8
             min: 1
+            step: 1
             tooltip: How many results /search returns when top_k is not given.
           table_name:
             label: Table name
+            description: Use different tables to serve several corpora from one cluster.
             type: string
             default: activate_rag
-            tooltip: >-
-              LanceDB table to index into. Use different tables to serve
-              several corpora from the same cluster.

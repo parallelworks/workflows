@@ -498,23 +498,20 @@ jobs:
         type: compute-resources
         label: Service host
         include-workspace: false
-        tooltip: Resource to host the service
       cluster:
         hidden: ${{ inputs.resource.type == 'kubernetes' || inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.type == 'kubernetes' || inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -528,9 +525,9 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
@@ -539,12 +536,14 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -552,7 +551,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -562,7 +561,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -571,7 +570,7 @@ jobs:
 
       service:
         type: group
-        label: MLflow Settings
+        label: MLflow settings
         hidden: ${{ inputs.resource.type == 'kubernetes' }}
         ignore: ${{ inputs.resource.type == 'kubernetes' }}
         items:
@@ -580,7 +579,8 @@ jobs:
             hidden: true
             default: mlflow
           backend_store_uri:
-            label: Backend Store URI
+            label: Backend store URI
+            description: Reuse the same value across runs to keep the history.
             type: string
             default: sqlite:///${HOME}/mlflow/mlflow.db
             tooltip: |
@@ -588,7 +588,7 @@ jobs:
               database URI (sqlite:///<path>, postgresql://..., mysql://...) or a local directory for
               MLflow's file store. Reuse the same value across runs to keep the history.
           artifacts_destination:
-            label: Artifacts Destination
+            label: Artifacts destination
             type: string
             default: ${HOME}/mlflow/artifacts
             tooltip: |
@@ -596,9 +596,11 @@ jobs:
               s3://, gs://, abfs://... location (mlflow server --artifacts-destination, with --serve-artifacts).
           port:
             label: Port
+            description: Leave empty for a free port; the address is written to tracking_uri in the job directory.
             type: number
             min: 1024
             max: 65535
+            step: 1
             optional: true
             tooltip: |
               Port the tracking server listens on, on every network interface of its node, so jobs on
@@ -606,46 +608,45 @@ jobs:
               the address is written to the tracking_uri file in the job directory. The endpoint URL
               serves the same server outside the cluster.
           additional_flags:
-            label: Additional Flags
+            label: Additional flags
             type: string
             optional: true
             tooltip: |
               Extra flags for the mlflow server command, e.g. --workers 2 or --app-name basic-auth.
               See https://mlflow.org/docs/latest/cli.html#mlflow-server
           job_execution:
-            label: Enable server-side job execution?
+            label: Enable server-side job execution
+            description: Adds about 1.8 GB of memory; experiment tracking does not need it.
             type: boolean
             default: false
             tooltip: |
-              MLflow 3's job runner executes GenAI evaluation and scorer jobs on the server. It adds
-              about 1.8 GB of memory (seven worker processes); experiment tracking does not need it.
+              MLflow 3's job runner executes GenAI evaluation and scorer jobs on the server (seven worker processes).
           conda_install:
-            label: Install MLflow in a Miniforge environment if not there?
+            label: Install MLflow in a Miniforge environment if missing
+            description: Otherwise give the command that loads an existing environment below.
             type: boolean
             default: true
-            tooltip: Select Yes to install MLflow in a Miniforge (conda-forge) environment and No to load an existing python environment
           parent_install_dir:
-            label: Parent Install Directory
+            label: Parent install directory
+            description: Needs enough free space for the installs.
             type: string
             default: ${HOME}/pw/software
             hidden: ${{ inputs.service.conda_install == false }}
             ignore: ${{ .hidden }}
-            tooltip: Software dependencies are installed in this directory. Ensure the directory has sufficient space!
           conda_install_dir:
-            label: Name of the Conda Installation Directory
+            label: Name of the Conda installation directory
             type: string
             default: .miniforge3-mlflow
             hidden: ${{ inputs.service.conda_install == false }}
             ignore: ${{ .hidden }}
-            tooltip: Ensure the directory has sufficient space for Conda and its packages.
           conda_env:
             label: Conda environment
+            description: MLflow is installed into it when missing.
             type: string
             default: base
             hidden: ${{ inputs.service.conda_install == false }}
             optional: ${{ .hidden }}
             ignore: ${{ .hidden }}
-            tooltip: Environment to activate. MLflow is installed into it when missing.
           load_env:
             label: Command to load MLflow to the PATH
             type: string
@@ -655,7 +656,7 @@ jobs:
             ignore: ${{ .hidden }}
             tooltip: Use a bash command, e.g. module load python; export PATH=${HOME}/.local/bin:${PATH} after a pip install --user mlflow
           install_instructions:
-            label: Select MLflow Installation
+            label: Select MLflow installation
             type: dropdown
             hidden: ${{ inputs.service.conda_install == false }}
             ignore: ${{ .hidden }}
@@ -668,16 +669,14 @@ jobs:
               - value: yaml
                 label: Provide custom Conda environment YAML file
           yaml:
-            label: Paste Conda Environment Defition YAML
+            label: Paste the Conda environment definition YAML
             type: editor
             hidden: ${{ inputs.service.install_instructions != 'yaml' ||  inputs.service.conda_install == false }}
             optional: ${{ .hidden }}
             ignore: ${{ .hidden }}
-            tooltip: Copy and paste a custom Conda environment definition YAML file
-
       k8s:
         type: group
-        label: Kubernetes Settings
+        label: Kubernetes settings
         hidden: ${{ inputs.resource.type != 'kubernetes' }}
         ignore: ${{ inputs.resource.type != 'kubernetes' }}
         items:
@@ -693,7 +692,7 @@ jobs:
             tooltip: Specify storage settings for Persistent Volume Claims (PVCs), including size, storage class, and mount path. The tracking data (sqlite database and artifacts) is kept on this volume.
             items:
               pvc:
-                label: Persistent Volume Claim
+                label: Persistent volume claim
                 type: dropdown
                 default: New
                 options:
@@ -702,11 +701,11 @@ jobs:
                   - value: New
                     label: Create New PVC
               pvc_mount_path:
-                label: Mount Path
+                label: Mount path
                 type: string
                 default: /mnt
               pvc_existing:
-                label: Select PVC Name
+                label: Select PVC name
                 type: kubernetes-pvc
                 clusterName: ${{ inputs.resource.name }}
                 namespace: ${{ inputs.k8s.namespace }}
@@ -714,29 +713,29 @@ jobs:
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
               pvc_storage_size:
-                label: Enter PVC Size
+                label: Enter PVC size
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc != New }}
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
                 default: 10Gi
               pvc_storage_class:
-                label: Enter PVC Storage Class
+                label: Enter PVC storage class
+                description: Leave blank for the default storage class of the cluster.
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc != New }}
                 ignore: ${{ .hidden }}
                 optional: true
-                tooltip: Leave blank to use the default storage class configured in the cluster.
               pvc_persist:
-                label: Persist PVC After Completion
+                label: Persist PVC after completion
+                description: Otherwise the PVC is deleted when the run ends.
                 type: boolean
                 default: false
                 hidden: ${{ inputs.k8s.volumes.pvc != 'New' }}
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
-                tooltip: If true, the PVC will persist after the job is canceled or completed. If false, it will be deleted.
               pvc_name:
-                label: Enter PVC Name
+                label: Enter PVC name
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc_persist == false || inputs.k8s.volumes.pvc != New  }}
                 ignore: ${{ .hidden }}
@@ -753,30 +752,30 @@ jobs:
                 items:
                   memory:
                     label: Memory
+                    description: For example 512Mi or 1Gi.
                     type: string
                     default: 1Gi
-                    tooltip: Specify the minimum memory required for the pod (e.g., 512Mi, 1Gi).
                   cpu:
                     label: CPU
+                    description: For example 0.5, 1 or 100m (millicores).
                     type: string
                     default: '1'
-                    tooltip: Specify the minimum CPU required for the pod (e.g., 0.5, 1, 100m). Use decimal values for partial CPUs or "m" for millicores (e.g., 100m = 0.1 CPU).
               limits:
                 type: group
                 label: Limits
                 items:
                   memory:
                     label: Memory
+                    description: For example 1Gi or 2Gi.
                     type: string
                     default: 2Gi
-                    tooltip: Set the maximum memory the pod can use (e.g., 1Gi, 2Gi).
                   cpu:
                     label: CPU
+                    description: For example 1, 2 or 500m.
                     type: string
                     default: '2'
-                    tooltip: Set the maximum CPU the pod can use (e.g., 1, 2, 500m).
                   select_gpu:
-                    label: Select GPU Device
+                    label: Select GPU device
                     type: dropdown
                     default: None
                     tooltip: Choose the type of GPU device for the deployment, if needed. Select "None" for CPU-only workloads or "Custom" to specify a custom GPU resource key.
@@ -792,7 +791,7 @@ jobs:
                       - value: Custom
                         label: Custom GPU Resource Key
                   gpu_resource_key:
-                    label: Custom GPU Resource Key
+                    label: Custom GPU resource key
                     type: string
                     hidden: ${{ inputs.k8s.resources.limits.select_gpu != Custom }}
                     ignore: ${{ .hidden }}
@@ -810,12 +809,11 @@ jobs:
                     step: 1
                     default: 1
                     min: 1
-                    tooltip: Specify the number of GPUs to allocate for the deployment.
                     hidden: ${{ inputs.k8s.resources.limits.select_gpu == None }}
                     ignore: ${{ .hidden }}
       service_k8s:
         type: group
-        label: Service Settings
+        label: Service settings
         hidden: ${{ inputs.resource.type != 'kubernetes' }}
         ignore: ${{ inputs.resource.type != 'kubernetes' }}
         items:
@@ -824,25 +822,29 @@ jobs:
             hidden: true
             default: mlflow
           image:
-            label: MLflow Image
+            label: MLflow image
             type: string
             default: ghcr.io/mlflow/mlflow:v3.17.0
             tooltip: Any image with the mlflow command on its PATH, e.g. ghcr.io/mlflow/mlflow:<version> (the official image) or ubuntu/mlflow:2.1.1_1.0-22.04.
           image_port:
-            label: MLflow Port
+            label: MLflow port
             type: number
             default: 5000
+            step: 1
             tooltip: Define the port on which the MLflow server runs inside the container.
           workers:
-            label: Worker Processes
+            label: Worker processes
+            description: Each takes about 250 MB; fit them to the pod's CPU and memory limits.
             type: number
             min: 1
+            step: 1
             default: 2
-            tooltip: Request-handling processes (mlflow server --workers); each takes about 250 MB. Fit them to the pod's CPU and memory limits.
+            tooltip: |
+              Request-handling processes (mlflow server --workers).
           job_execution:
-            label: Enable server-side job execution?
+            label: Enable server-side job execution
+            description: Adds about 1.8 GB of memory; experiment tracking does not need it.
             type: boolean
             default: false
             tooltip: |
-              MLflow 3's job runner executes GenAI evaluation and scorer jobs on the server. It adds
-              about 1.8 GB of memory (seven worker processes); experiment tracking does not need it.
+              MLflow 3's job runner executes GenAI evaluation and scorer jobs on the server (seven worker processes).

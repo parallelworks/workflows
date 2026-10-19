@@ -161,23 +161,20 @@ jobs:
         type: compute-clusters
         label: Service host
         include-workspace: false
-        tooltip: Resource to host the service
       cluster:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -200,7 +197,7 @@ jobs:
                 resource: ${{ inputs.resource }}
                 tooltip: '--partition=value SLURM directive'
               qos:
-                label: Quality of Service [QoS]
+                label: Quality of service (QoS)
                 type: slurm-qos
                 resource: ${{ inputs.resource }}
                 tooltip: '--qos=value slurm directive'
@@ -210,6 +207,7 @@ jobs:
                 label: Number of tasks
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--ntasks=value slurm directive'
                 ignore: ${{ 'existing' != inputs.resource.provider }}
                 hidden: ${{ .ignore }}
@@ -222,11 +220,13 @@ jobs:
                 hidden: true
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -234,7 +234,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -244,7 +244,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -252,7 +252,7 @@ jobs:
                   #PBS -l ngpus=1
       service:
         type: group
-        label: Jupyter Notebook Settings
+        label: Jupyter Notebook settings
         items:
           name:
             type: string
@@ -269,42 +269,41 @@ jobs:
             label: Directory to start Jupyter Notebook GUI
             type: string
             default: ${HOME}
-            tooltip: This is the directory that you start with when the Jupyter graphical user interface starts. The default value here is your home directory.
           conda_install:
-            label: Install Jupyter-Notebook If Not There?
+            label: Install Jupyter Notebook if missing
+            description: Otherwise give the command that loads an existing environment below.
             type: boolean
             default: true
-            tooltip: Select Yes to install Jupyter in miniconda environment and No to load an existing python environment
           use_conda:
-            label: Use Conda?
+            label: Use Conda
+            description: Otherwise load an existing environment with the command below.
             type: boolean
             default: false
             hidden: ${{ 'existing' != inputs.resource.provider  }}
             optional: ${{ .hidden }}
             ignore: ${{ .hidden }}
-            tooltip: Select Yes to install Jupyter in miniconda environment and No to load an existing python environment
           parent_install_dir:
-            label: Parent Install Directory
+            label: Parent install directory
+            description: Needs enough free space for the installs.
             type: string
             default: ${HOME}/pw/software
             hidden: ${{ inputs.service.conda_install == false || ('existing' == inputs.resource.provider &&  inputs.service.use_conda == false) }}
             ignore: ${{ .hidden }}
             tooltip: Software dependencies are installed in this directory. Defaults to ~/pw/software. Ensure the directory has sufficient space!
           conda_install_dir:
-            label: Name of the Conda Installation Directory
+            label: Name of the Conda installation directory
             type: string
             default: .miniconda3cn
             hidden: ${{ inputs.service.conda_install == false || ('existing' == inputs.resource.provider &&  inputs.service.use_conda == false) }}
             ignore: ${{ .hidden }}
-            tooltip: Ensure the directory has sufficient space for Conda and its packages.
           conda_env:
             label: Conda environment
+            description: Activated for the server; base lets you switch kernels to other environments.
             type: string
             default: base
             hidden: ${{ inputs.service.conda_install == false || ('existing' == inputs.resource.provider &&  inputs.service.use_conda == false) }}
             optional: ${{ .hidden }}
             ignore: ${{ .hidden }}
-            tooltip: Environment to active. The base environment enables changing kernel to other environments!
           load_env_tag_cloud:
             label: Command to load Jupyter Notebook to the PATH
             type: string
@@ -312,7 +311,6 @@ jobs:
             hidden: ${{ inputs.service.conda_install == true || ('existing' == inputs.resource.provider &&  inputs.service.use_conda == false) }}
             optional: ${{ .hidden }}
             ignore: ${{ .hidden }}
-            tooltip: Use a bash command
           load_env_tag_existing:
             label: Command to load Jupyter Notebook to the PATH
             type: string
@@ -320,9 +318,8 @@ jobs:
             hidden: ${{ 'existing' != inputs.resource.provider ||  inputs.service.use_conda == true }}
             optional: ${{ .hidden }}
             ignore: ${{ .hidden }}
-            tooltip: Use a bash command
           install_instructions_tag_cloud:
-            label: Install Instructions
+            label: Install instructions
             type: dropdown
             hidden: ${{ inputs.service.conda_install == false || ('existing' == inputs.resource.provider  &&  inputs.service.use_conda == false) }}
             ignore: ${{ .hidden }}
@@ -341,12 +338,11 @@ jobs:
             hidden: true
             ignore: ${{ inputs.service.conda_install == false || 'existing' != inputs.resource.provider ||  inputs.service.use_conda == true  }}
           yaml:
-            label: Paste Conda Environment Defition YAML
+            label: Paste the Conda environment definition YAML
             type: editor
             hidden: ${{ inputs.service.install_instructions_tag_cloud != yaml ||  inputs.service.conda_install == false  ||  ('existing' == inputs.resource.provider &&  inputs.service.use_conda == false) }}
             optional: ${{ .hidden }}
             ignore: ${{ .hidden }}
-            tooltip: Copy and paste a custom Conda environment definition YAML file
           install_kernels:
             label: Select additional kernels to install
             type: multi-dropdown

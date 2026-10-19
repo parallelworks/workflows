@@ -332,7 +332,7 @@ jobs:
     inputs:
       k8s:
         type: group
-        label: Kubernetes Settings
+        label: Kubernetes settings
         items:
           cluster:
             label: Kubernetes cluster
@@ -348,7 +348,7 @@ jobs:
             tooltip: Specify storage settings for Persistent Volume Claims (PVCs), including size, storage class, and mount path.
             items:
               pvc:
-                label: Persistent Volume Claim
+                label: Persistent volume claim
                 type: dropdown
                 default: New
                 options:
@@ -357,11 +357,11 @@ jobs:
                   - value: New
                     label: Create New PVC
               pvc_mount_path:
-                label: Mount Path
+                label: Mount path
                 type: string
                 default: /mnt
               pvc_existing:
-                label: Select PVC Name
+                label: Select PVC name
                 type: kubernetes-pvc
                 clusterName: ${{ inputs.k8s.cluster }}
                 namespace: ${{ inputs.k8s.namespace }}
@@ -369,29 +369,29 @@ jobs:
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
               pvc_storage_size:
-                label: Enter PVC Size
+                label: Enter PVC size
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc != New }}
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
                 default: 10Gi
               pvc_storage_class:
-                label: Enter PVC Storage Class
+                label: Enter PVC storage class
+                description: Leave blank for the default storage class of the cluster.
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc != New }}
                 ignore: ${{ .hidden }}
                 optional: true
-                tooltip: Leave blank to use the default storage class configured in the cluster.
               pvc_persist:
-                label: Persist PVC After Completion
+                label: Persist PVC after completion
+                description: Otherwise the PVC is deleted when the run ends.
                 type: boolean
                 default: false
                 hidden: ${{ inputs.k8s.volumes.pvc != 'New' }}
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
-                tooltip: If true, the PVC will persist after the job is canceled or completed. If false, it will be deleted.
               pvc_name:
-                label: Enter PVC Name
+                label: Enter PVC name
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc_persist == false || inputs.k8s.volumes.pvc != New  }}
                 ignore: ${{ .hidden }}
@@ -408,30 +408,30 @@ jobs:
                 items:
                   memory:
                     label: Memory
+                    description: For example 512Mi or 1Gi.
                     type: string
                     default: 2Gi
-                    tooltip: Specify the minimum memory required for the pod (e.g., 512Mi, 1Gi).
                   cpu:
                     label: CPU
+                    description: For example 0.5, 1 or 100m (millicores).
                     type: string
                     default: '2'
-                    tooltip: Specify the minimum CPU required for the pod (e.g., 0.5, 1, 100m). Use decimal values for partial CPUs or "m" for millicores (e.g., 100m = 0.1 CPU).
               limits:
                 type: group
                 label: Limits
                 items:
                   memory:
                     label: Memory
+                    description: For example 1Gi or 2Gi.
                     type: string
                     default: 4Gi
-                    tooltip: Set the maximum memory the pod can use (e.g., 1Gi, 2Gi).
                   cpu:
                     label: CPU
+                    description: For example 1, 2 or 500m.
                     type: string
                     default: '4'
-                    tooltip: Set the maximum CPU the pod can use (e.g., 1, 2, 500m).
                   select_gpu:
-                    label: Select GPU Device
+                    label: Select GPU device
                     type: dropdown
                     default: None
                     tooltip: Choose the type of GPU device for the deployment, if needed. Select "None" for CPU-only workloads or "Custom" to specify a custom GPU resource key.
@@ -447,7 +447,7 @@ jobs:
                       - value: Custom
                         label: Custom GPU Resource Key
                   gpu_resource_key:
-                    label: Custom GPU Resource Key
+                    label: Custom GPU resource key
                     type: string
                     hidden: ${{ inputs.k8s.resources.limits.select_gpu != Custom }}
                     ignore: ${{ .hidden }}
@@ -465,28 +465,28 @@ jobs:
                     step: 1
                     default: 1
                     min: 1
-                    tooltip: Specify the number of GPUs to allocate for the deployment.
                     hidden: ${{ inputs.k8s.resources.limits.select_gpu == None }}
                     ignore: ${{ .hidden }}
       service_k8s:
         type: group
-        label: Service Settings
+        label: Service settings
         items:
           name:
             type: string
             hidden: true
             default: kasmvnc
           image:
-            label: KasmVNC Image
+            label: KasmVNC image
             type: string
             default: kasmweb/desktop:1.16.0
             tooltip: Sample container from https://hub.docker.com/r/kasmweb/desktop
           image_port:
-            label: KasmVNC Port
+            label: KasmVNC port
             type: number
             default: 6901
+            step: 1
             tooltip: Define the port on which the KasmVNC runs inside the container. Default is 6901.
           password:
             label: Password
+            description: For the user kasm_user.
             type: password
-            tooltip: Type in a password for user kasm_user

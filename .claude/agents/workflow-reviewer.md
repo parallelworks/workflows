@@ -65,7 +65,7 @@ conclusions.
    evidence, fails loud without it, whatever outlives it has a teardown, and a cancel
    leaves nothing behind.
 2. **AGENTS.md rules.** Apply every bullet under "Critical rules and conventions"
-   (scripts, workflow YAMLs, comments), "Versioning" and the shape's own subsection of
+   (scripts, workflow YAMLs, form copy, comments), "Versioning" and the shape's own subsection of
    "Workflow shapes" to the changed files. Read the scripts the way the run assembles
    them: `inputs.sh` first, then `controller.sh`, then whatever preprocessing appends
    for the submitter (the cleanup trap and `start-template.sh` of a service, the

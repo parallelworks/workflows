@@ -163,7 +163,7 @@ allocation update with the API's HTTP status.
 
 ## Dry run
 
-With **Dry run?** the workers and the merge print their `macroScript.txt`, touch
+With **Dry run** the workers and the merge print their `macroScript.txt`, touch
 empty result files and upload them, and skip 3DCS, the monitor and the metering
 heartbeat. Everything else (balance check, transfer, SLURM submission, merge assembly,
 uploads) runs for real.

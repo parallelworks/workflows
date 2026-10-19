@@ -43,14 +43,15 @@ jobs:
     inputs:
       resource:
         type: compute-clusters
-        label: Resource Target
+        label: Resource target
         tooltip: The compute cluster to run the fractal example on.
         autoselect: true
         optional: false
       resolution:
         type: number
         label: Resolution
-        tooltip: Image size in pixels. Larger values look sharper but take longer to render.
+        description: Image size in pixels; larger looks sharper and takes longer to render.
         default: 2500
         min: 100
         max: 10000
+        step: 1

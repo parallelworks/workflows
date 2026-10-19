@@ -166,18 +166,16 @@ jobs:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -191,9 +189,9 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
@@ -202,12 +200,14 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -215,7 +215,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -225,7 +225,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -233,7 +233,7 @@ jobs:
                   #PBS -l ngpus=1
       service:
         type: group
-        label: PostgreSQL Settings
+        label: PostgreSQL settings
         items:
           name:
             type: string
@@ -246,29 +246,36 @@ jobs:
             tooltip: Superuser created with a new data directory (POSTGRES_USER).
           password:
             label: Password
+            description: A data directory keeps the user and password it was created with.
             type: password
-            tooltip: The user's password (POSTGRES_PASSWORD). A data directory keeps the user and password it was created with.
+            tooltip: |
+              The user's password (POSTGRES_PASSWORD).
           db:
             label: Database
+            description: Created if missing; defaults to the user's name.
             type: string
             default: postgres
             optional: true
-            tooltip: Database pgweb opens, created if it does not exist. Defaults to the user's name.
           port:
-            label: Database Port
+            label: Database port
+            description: Jobs on the cluster connect to <node>:<port>; from your computer, forward it with pw forward.
             type: number
             default: 5432
             min: 1
             max: 65535
-            tooltip: Port PostgreSQL listens on, on the node it runs on. Jobs on the cluster connect to <node>:<port>; from your computer, forward it with pw forward.
+            step: 1
+            tooltip: |
+              Port PostgreSQL listens on, on the node it runs on.
           data_dir:
-            label: Data Directory
+            label: Data directory
+            description: Reuse it to keep your databases across sessions; only one run at a time can serve it.
             type: string
             default: ${HOME}/postgres
             tooltip: |
-              Keeps the database cluster (in pgdata/). Reuse it to keep your databases across sessions; only one run at a time can serve it.
+              Keeps the database cluster (in pgdata/).
           image:
-            label: PostgreSQL Image
+            label: PostgreSQL image
+            description: A data directory only opens with the major version that created it.
             type: string
             default: postgres:18
             tooltip: |

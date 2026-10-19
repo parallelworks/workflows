@@ -158,6 +158,7 @@ jobs:
           cases_dir:
             type: string
             label: Study directory
+            description: A directory of case_<j>/ or iter_<N>/case_<j>/ directories; the page follows it as cases are added.
             tooltip: |
               Absolute path of the study on the resource: a directory of case
               directories, case_<j>/ or iter_<N>/case_<j>/, each with params.in,
@@ -174,7 +175,5 @@ jobs:
           links:
             type: editor
             label: Links
+            description: Buttons in the page header, one label=URL per line.
             optional: true
-            tooltip: |
-              Buttons in the page's header, one <label>=<URL> per line, for
-              example a documentation page or a related study.

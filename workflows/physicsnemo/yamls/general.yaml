@@ -339,21 +339,24 @@ jobs:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
+            label: Submit to the scheduler
+            description: Otherwise the training runs on the login node.
             tooltip: |
               Yes → The training is submitted to the scheduler using sbatch or qsub (GPU compute nodes)
               No  → It runs on the controller or login node (a single GPU server)
           gpus:
             type: number
             label: GPUs per job
+            description: Requested ahead of the directives below; 0 requests none.
             default: 1
             min: 0
             max: 8
+            step: 1
             hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false || inputs.service.device != 'gpu' }}
             ignore: ${{ .hidden }}
             tooltip: |
@@ -362,7 +365,7 @@ jobs:
               for a partition whose nodes all have GPUs but no GRES configured.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -374,16 +377,18 @@ jobs:
               partition:
                 type: slurm-partitions
                 label: SLURM partition
+                description: Pick a partition with GPU nodes.
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition with GPU nodes from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '02:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -391,7 +396,7 @@ jobs:
                   #SBATCH --mem=32G
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -401,7 +406,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 optional: true
                 tooltip: |
@@ -410,7 +415,7 @@ jobs:
                   #PBS -l select=1:ncpus=8:ngpus=1
       service:
         type: group
-        label: PhysicsNeMo Training
+        label: PhysicsNeMo training
         items:
           mode:
             type: dropdown
@@ -442,8 +447,10 @@ jobs:
           epochs:
             type: number
             label: Pseudo-epochs
+            description: 0 trains about half an hour; the examples' own 256 take hours.
             default: 0
             min: 0
+            step: 1
             hidden: ${{ inputs.service.mode != 'example' || inputs.service.example == 'ldc_pinns' }}
             ignore: ${{ .hidden }}
             tooltip: |
@@ -456,6 +463,7 @@ jobs:
             label: Iterations
             default: 10000
             min: 1
+            step: 1
             hidden: ${{ inputs.service.mode != 'example' || inputs.service.example != 'ldc_pinns' }}
             ignore: ${{ .hidden }}
             tooltip: Training iterations (the example's own count is 10000); the metrics are logged every 1% and the flow field is plotted every 10%.
@@ -464,6 +472,7 @@ jobs:
             label: Batch size
             default: 0
             min: 0
+            step: 1
             hidden: ${{ inputs.service.mode != 'example' || inputs.service.example == 'ldc_pinns' }}
             ignore: ${{ .hidden }}
             tooltip: training.batch_size; 0 keeps the example's (64 for the FNO, 8 for the Transolver)
@@ -479,6 +488,7 @@ jobs:
           custom_script:
             type: editor
             label: Script
+            description: Runs inside the container in /workspace; a non-zero exit fails the run.
             hidden: ${{ inputs.service.mode != 'custom' }}
             ignore: ${{ .hidden }}
             default: |
@@ -491,10 +501,10 @@ jobs:
               # Darcy2D generates its data on the GPU unless given the training device
               sed -i 's/dataloader = Darcy2D(/dataloader = Darcy2D(device=dist.device, /' train_fno_darcy.py
               python -u train_fno_darcy.py training.max_pseudo_epochs=4
-            tooltip: A bash script run inside the container in /workspace; the run fails when it exits non-zero.
           device:
             type: dropdown
             label: Device
+            description: GPU fails at once when the node has no working GPU; CPU never uses one.
             default: gpu
             options:
               - value: gpu
@@ -510,16 +520,15 @@ jobs:
             label: GPU index
             default: 0
             min: 0
+            step: 1
             hidden: ${{ inputs.service.device != 'gpu' || inputs.cluster.scheduler == true }}
             ignore: ${{ .hidden }}
             tooltip: Which GPU of the node to train on (nvidia-smi numbering). A scheduled job uses the GPU it was allocated.
           tensorboard:
             type: boolean
             label: TensorBoard
+            description: Served as the endpoint tensorboard-<run slug> until you delete it.
             default: true
-            tooltip: |
-              Serve TensorBoard over the run as the endpoint tensorboard-<run slug>, live during
-              the training and afterwards until you delete the endpoint.
       software:
         type: group
         label: Software
@@ -528,6 +537,7 @@ jobs:
           runtime:
             type: dropdown
             label: Container runtime
+            description: Docker needs about 50 GB free under /var/lib; Singularity builds a 13 GB SIF once on the login node.
             default: docker
             options:
               - value: docker
@@ -548,10 +558,10 @@ jobs:
           sif:
             type: string
             label: Singularity image file
+            description: Empty builds it once in the install directory.
             optional: true
             hidden: ${{ inputs.software.runtime != 'singularity' }}
             ignore: ${{ .hidden }}
-            tooltip: The path of a SIF built elsewhere from the image above; empty builds it once in the install directory.
           examples_ref:
             type: string
             label: PhysicsNeMo examples version

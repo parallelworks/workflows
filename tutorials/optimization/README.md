@@ -294,7 +294,7 @@ groups: pick the compute resource, and set the optimizer knobs — `max_iteratio
 (the generation *and* loop budget), `batch_size` (parallel cases per iteration,
 the width of the workers matrix), and `stall_generations` (declare convergence when the
 front's hypervolume improves by less than 0.001 over that many consecutive
-generations). Leave **Schedule Cases?** off to run every case on the login node,
+generations). Leave **Submit cases to the scheduler** off to run every case on the login node,
 or turn it on to give each case its own SLURM/PBS job with the walltime and
 directives from the form. Then click **Execute**.
 
@@ -313,7 +313,7 @@ job or process tree), skipped workers never start, and the loop keeps no daemons
 - **More iterations** — every platform iteration adds scheduling overhead (roughly
   a minute at small scale), so budget accordingly; the loop is restartable state,
   so a deeper search is just a bigger `max_iterations`.
-- **Real workloads** — with **Schedule Cases?** on, each case is its own scheduler
+- **Real workloads** — with **Submit cases to the scheduler** on, each case is its own scheduler
   job; multi-node solvers fit without touching the YAMLs (see the
   [swap notes](#swapping-in-dakota-and-openfoam)). One full generation — queue,
   node boot, every case — must fit the **Time budget per iteration** input: an
@@ -359,7 +359,7 @@ pieces swap out without touching either YAML.
 the objectives into `results.out` — same two files, same
 atomic-write-or-exit-nonzero rule. The `run.sh` template (in `optimizer.py`'s
 `write_cases`) is the place for module loads, environment setup, or `srun`
-decorations; with **Schedule Cases?** on, each case already gets its own scheduler
+decorations; with **Submit cases to the scheduler** on, each case already gets its own scheduler
 job, so parallel solvers fit as-is.
 
 **Optimizer → Dakota.** The contract to keep is exactly what each `optimizer.py`

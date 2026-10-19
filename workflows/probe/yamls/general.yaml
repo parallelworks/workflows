@@ -255,6 +255,7 @@ jobs:
       resource:
         type: compute-clusters
         label: Host
+        description: The user workspace, or a cluster login node with the pw CLI, python3 and git.
         include-workspace: true
         tooltip: |
           Where the dashboards run: the user workspace or the login node of a
@@ -263,6 +264,7 @@ jobs:
       api_key:
         type: password
         label: API key
+        description: Used by the dashboards after the run to refresh results and start runs.
         tooltip: |
           A platform API key of yours (account settings, API keys). The dashboards
           use it after this run completes: Refresh pulls the bucket with it and the

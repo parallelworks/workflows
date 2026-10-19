@@ -415,25 +415,22 @@ jobs:
     inputs:
       resource:
         type: compute-clusters
-        label: GPU Cluster
+        label: GPU cluster
         include-workspace: false
-        tooltip: Resource to host the vLLM server
       cluster:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -447,9 +444,9 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '04:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
@@ -458,12 +455,14 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -471,7 +470,7 @@ jobs:
                   #SBATCH --gres=gpu:1
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -481,7 +480,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 optional: true
                 tooltip: |
@@ -490,7 +489,7 @@ jobs:
                   #PBS -l ngpus=1
 
       runtype:
-        label: Deployment Type
+        label: Deployment type
         type: dropdown
         default: vllm
         tooltip: Deploy vLLM only or the full vLLM+RAG stack
@@ -502,11 +501,11 @@ jobs:
 
       model:
         type: group
-        label: Model Configuration
+        label: Model configuration
         items:
           source:
             type: dropdown
-            label: Model Source
+            label: Model source
             default: huggingface
             tooltip: Use a pre-downloaded model (local) or download from HuggingFace
             options:
@@ -516,7 +515,7 @@ jobs:
                 label: "🤗 HuggingFace Download"
           local_path:
             type: string
-            label: Model Path
+            label: Model path
             placeholder: /path/to/model/weights
             default: /models/Llama-3_3-Nemotron-Super-49B-v1_5
             prefillDefault: true
@@ -525,7 +524,7 @@ jobs:
             ignore: ${{ inputs.model.source != 'local' }}
           hf_model_id:
             type: string
-            label: HuggingFace Model ID
+            label: HuggingFace model ID
             placeholder: openai/gpt-oss-20b
             default: openai/gpt-oss-20b
             prefillDefault: true
@@ -533,16 +532,17 @@ jobs:
             hidden: ${{ inputs.model.source != 'huggingface' }}
             ignore: ${{ inputs.model.source != 'huggingface' }}
           hf_token:
-            label: HuggingFace Token
+            label: HuggingFace token
+            description: Required for gated models such as Llama.
             default: ${{ org.HF_TOKEN }}
             type: password
             optional: true
-            tooltip: Required for gated models (Llama, etc.)
             hidden: ${{ inputs.model.source != 'huggingface' }}
             ignore: ${{ inputs.model.source != 'huggingface' }}
           cache_dir:
             type: string
-            label: Model Cache Directory
+            label: Model cache directory
+            description: Downloaded once and reused by later runs; needs disk space.
             default: ~/pw/models
             prefillDefault: true
             tooltip: Directory to download the model into. The model is downloaded once and reused for subsequent runs. Ensure sufficient disk space.
@@ -550,7 +550,8 @@ jobs:
             ignore: ${{ inputs.model.source != 'huggingface' }}
           chat_template:
             type: string
-            label: Chat Template Override
+            label: Chat template override
+            description: Leave blank to auto-detect; needed for models whose tokenizer ships no template.
             optional: true
             default: ""
             tooltip: >
@@ -565,14 +566,14 @@ jobs:
 
       vllm:
         type: group
-        label: vLLM Settings
+        label: vLLM settings
         collapsed: true
         items:
           num_gpus:
             type: dropdown
             label: Number of GPUs
+            description: Tensor parallelism; must match the GPUs available.
             default: "1"
-            tooltip: Number of GPUs for tensor parallelism (must match available GPUs)
             options:
               - value: "1"
                 label: "1 GPU"
@@ -584,9 +585,9 @@ jobs:
                 label: "8 GPUs"
           gpu_memory:
             type: dropdown
-            label: GPU Memory Utilization
+            label: GPU memory utilization
+            description: Lower it on out-of-memory errors.
             default: "0.85"
-            tooltip: Fraction of GPU memory to use (lower if OOM errors occur)
             options:
               - value: "0.95"
                 label: "95% (Maximum)"
@@ -600,9 +601,9 @@ jobs:
                 label: "70% (Conservative)"
           max_model_len:
             type: dropdown
-            label: Max Context Length
+            label: Max context length
+            description: Lower values use less memory.
             default: "auto"
-            tooltip: Maximum sequence length. Lower values reduce memory usage.
             options:
               - value: "auto"
                 label: "Auto (use model default)"
@@ -620,9 +621,9 @@ jobs:
                 label: "128K tokens"
           dtype:
             type: dropdown
-            label: Data Type
+            label: Data type
+            description: Custom takes --dtype from the additional arguments.
             default: bfloat16
-            tooltip: Model precision. Select 'Custom' to specify via extra arguments.
             options:
               - value: bfloat16
                 label: "bfloat16 (Recommended for A100/H100)"
@@ -634,13 +635,12 @@ jobs:
                 label: "Custom (specify in extra args)"
           attention_backend:
             type: dropdown
-            label: vLLM Attention Backend
+            label: vLLM attention backend
             default: TRITON_ATTN
-            tooltip: Attention implementation used by vLLM
             options: [FLASH_ATTN, TRITON_ATTN, FLASHINFER, FLASHINFER_MLA, TRITON_MLA, CUTLASS_MLA, FLASHMLA, FLASHMLA_SPARSE, FLASH_ATTN_MLA, TORCH_SDPA, ROCM_ATTN, ROCM_AITER_MLA, ROCM_AITER_TRITON_MLA, ROCM_AITER_FA, PALLAS, IPEX, CPU_ATTN, NO_ATTENTION, CUSTOM]
           extra_args:
             type: string
-            label: Additional Arguments
+            label: Additional arguments
             default: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
             prefillDefault: true
             placeholder: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
@@ -649,21 +649,21 @@ jobs:
 
       rag:
         type: group
-        label: RAG Settings
+        label: RAG settings
         hidden: ${{ inputs.runtype != 'all' }}
         collapsed: true
         items:
           docsdir:
-            label: Documents Directory
+            label: Documents directory
+            description: Relative paths resolve inside the run directory.
             optional: true
             default: ./docs
             type: string
-            tooltip: Directory containing documents to index for RAG (relative paths resolve inside the run directory)
           max_tokens:
             type: dropdown
-            label: Max Response Tokens
+            label: Max response tokens
+            description: Longer responses use more memory.
             default: "8192"
-            tooltip: Maximum tokens the RAG service generates per response. Higher values allow longer responses but use more memory.
             options:
               - value: "2048"
                 label: "2K tokens"
@@ -676,10 +676,9 @@ jobs:
               - value: "32768"
                 label: "32K tokens"
           embedding_model_source:
-            label: Embedding Model Source
+            label: Embedding model source
             type: dropdown
             default: huggingface
-            tooltip: How to load the embedding model for RAG
             options:
               - value: local
                 label: "📁 Local Path (pre-staged weights)"
@@ -688,28 +687,27 @@ jobs:
               - value: bucket
                 label: "📥 Pull from bucket"
           embedding_model_id:
-            label: Embedding Model ID
+            label: Embedding model ID
             type: string
             default: sentence-transformers/all-MiniLM-L6-v2
             tooltip: HuggingFace model ID for embeddings (also used to resolve the bucket folder name)
             hidden: ${{ inputs.rag.embedding_model_source == 'local' }}
             ignore: ${{ inputs.rag.embedding_model_source == 'local' }}
           embedding_model_path:
-            label: Embedding Model Path
+            label: Embedding model path
             type: string
             optional: true
-            tooltip: Local path to an embedding model directory
             hidden: ${{ inputs.rag.embedding_model_source != 'local' }}
             ignore: ${{ inputs.rag.embedding_model_source != 'local' }}
           embedding_model_cache_dir:
-            label: Embedding Model Cache Directory
+            label: Embedding model cache directory
             type: string
             default: ~/pw/models
             tooltip: Directory to store the embedding model (HuggingFace or bucket)
             hidden: ${{ inputs.rag.embedding_model_source == 'local' }}
             ignore: ${{ inputs.rag.embedding_model_source == 'local' }}
           embedding_model_bucket:
-            label: Embedding Model Bucket
+            label: Embedding model bucket
             type: string
             default: pw://mshaxted/codeassist
             tooltip: Bucket base path containing embedding models by folder name
@@ -717,14 +715,14 @@ jobs:
             ignore: ${{ inputs.rag.embedding_model_source != 'bucket' }}
           systemprompt:
             type: string
-            label: System Prompt
+            label: System prompt
             textarea: true
             optional: true
             default: You are a careful assistant. Use ONLY the provided context blocks to answer. Each block is numbered [1], [2], … and includes source metadata. When you use information from a block, you MUST cite it inline with [n]. At the end of your response, include a 'References' section with one reference per line formatted as [n] file_path (chunk index). Do not invent citations or sources. If the context does not contain the answer, say so briefly.
 
       service:
         type: group
-        label: Advanced Settings
+        label: Advanced settings
         collapsed: true
         items:
           name:
@@ -732,23 +730,25 @@ jobs:
             hidden: true
             default: vllm
           parent_install_dir:
-            label: Parent Install Directory
+            label: Parent install directory
+            description: Needs enough free space for the container images.
             type: string
             default: ${HOME}/pw/software
             tooltip: The container image and tools are installed in this directory. Ensure it has sufficient space!
           container_uri:
-            label: vLLM Container
+            label: vLLM container
             type: string
             default: ghcr.io/parallelworks/vllm:v1.0
             tooltip: ORAS artifact containing the vLLM SIF image
           rag_container_uri:
-            label: RAG Container
+            label: RAG container
             type: string
             default: ghcr.io/parallelworks/rag:v1.0
             tooltip: ORAS artifact containing the RAG SIF image
             hidden: ${{ inputs.runtype != 'all' }}
           rundir:
-            label: RAG Run Directory
+            label: RAG run directory
+            description: Keep the path short.
             type: string
             default: ~/pw/workflows
             tooltip: The RAG stack is copied here from the checkout and runs from it. Keep the path short.

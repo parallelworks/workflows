@@ -218,7 +218,6 @@ jobs:
         type: compute-clusters
         label: Service host
         include-workspace: false
-        tooltip: Resource to host the service
       container_runtime:
         type: dropdown
         label: Run container using
@@ -234,18 +233,16 @@ jobs:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -268,7 +265,7 @@ jobs:
                 resource: ${{ inputs.resource }}
                 tooltip: '--qos=partition slurm directive'
               qos:
-                label: Quality of Service [QoS]
+                label: Quality of service (QoS)
                 type: slurm-qos
                 resource: ${{ inputs.resource }}
                 tooltip: '--qos=value slurm directive'
@@ -278,6 +275,7 @@ jobs:
                 label: CPUs per task
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
                 ignore: ${{ 'existing' != inputs.resource.provider }}
                 hidden: ${{ .ignore }}
@@ -285,11 +283,12 @@ jobs:
                 label: Number of nodes
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--nodes=value slurm directive'
                 ignore: ${{ 'existing' != inputs.resource.provider }}
                 hidden: ${{ .ignore }}
               node_type:
-                label: Node Type
+                label: Node type
                 type: dropdown
                 optional: true
                 default: ''
@@ -331,11 +330,13 @@ jobs:
                     - Intel
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '00:30:00'
-                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job (format: D-HH:MM:SS or HH:MM:SS, e.g. 7-00:00:00 or 01:00:00)'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -345,7 +346,7 @@ jobs:
                   ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -359,7 +360,7 @@ jobs:
                 type: string
                 tooltip: PBS account for job submission (-A)
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -379,7 +380,7 @@ jobs:
                   ##PBS -l select=1:ncpus=92:mpiprocs=92:nmlas=4
       service:
         type: group
-        label: LibreChat Settings
+        label: LibreChat settings
         collapsed: true
         items:
           librechat_dir:
@@ -394,12 +395,12 @@ jobs:
             tooltip: Path to the LibreChat YAML configuration file. Defaults to the standard location inside the LibreChat directory.
           librechat_db:
             type: string
-            label: LibreChat Database Directory
+            label: LibreChat database directory
             optional: true
             tooltip: Path to the directory where MongoDB stores its data. Defaults to the standard location inside the LibreChat directory.
           domain_client:
             type: dropdown
-            label: Domain Client
+            label: Domain client
             default: ACTIVATE
             tooltip: Select ACTIVATE if LibreChat will be accessed from the Activate platform, or LOCALHOST otherwise (e.g., accessed via localhost or through an SSH tunnel).
             options:
@@ -409,26 +410,26 @@ jobs:
                 value: LOCALHOST
       env_vars:
         type: group
-        label: Environment Variables
+        label: Environment variables
         collapsed: true
         items:
           GENAI_MIL_API_KEY:
             type: password
-            label: GENAI MIL API Key
+            label: GENAI MIL API key
             default: ''
           JWT_SECRET:
             type: password
-            label: JWT Secret
+            label: JWT secret
             default: ''
           JWT_REFRESH_SECRET:
             type: password
-            label: JWT Refresh Secret
+            label: JWT refresh secret
             default: ''
           LIBRECHAT_API_KEY:
             type: password
-            label: LibreChat API Key
+            label: LibreChat API key
             default: ''
           LANGFLOW_API_KEY:
             type: password
-            label: Langflow API Key
+            label: Langflow API key
             default: ''

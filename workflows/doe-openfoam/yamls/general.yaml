@@ -260,37 +260,34 @@ jobs:
         tooltip: Resource where the sampler, the Design Explorer server and all OpenFOAM cases run
       cluster:
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Cases?
+            label: Submit cases to the scheduler
+            description: Otherwise the cases run on the login node.
             hidden: ${{ inputs.resource.schedulerType == '' }}
             ignore: ${{ .hidden }}
-            tooltip: |
-              Yes → Each OpenFOAM case is submitted to the scheduler using sbatch, qsub, etc
-              No  → Cases run on the controller or login node instead
           cores_per_case:
             type: number
             label: Cores per case
+            description: MPI ranks per case. More than 1 pays off only from mesh multiplier 3 up.
             default: 1
             min: 1
             max: 64
+            step: 1
             tooltip: |
-              MPI ranks per OpenFOAM case. 1 runs the solvers serially; more
-              decomposes the mesh into N strips and runs potentialFoam and
-              simpleFoam under mpirun. Only pays off from mesh_scale 3-4 (2-4 ranks): at the
-              default mesh a decomposed case is slower than a serial one. The solver
-              caps the ranks at one per 1000 cells (5400 x mesh_scale^2 cells per
-              case, so 16 ranks need mesh_scale 2 or more): 16 ranks on the base
-              mesh diverged where 4 converged. Scheduled
-              cases request --nodes=1 --ntasks=N (PBS: select=1:ncpus=N:mpiprocs=N),
-              so N must fit one node; on the login node, up to max_parallel x N
-              ranks run at once.
+              More than 1 decomposes the mesh into N strips and runs potentialFoam and
+              simpleFoam under mpirun; at the default mesh a decomposed case is slower
+              than a serial one. The solver caps the ranks at one per 1000 cells
+              (5400 x mesh_scale^2 cells per case, so 16 ranks need mesh_scale 2 or more).
+              Scheduled cases request --nodes=1 --ntasks=N (PBS: select=1:ncpus=N:mpiprocs=N),
+              so N must fit one node; on the login node, up to Cases at a time x N ranks
+              run at once.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -304,14 +301,15 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime per case
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for each case'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -321,7 +319,7 @@ jobs:
                   a directive here repeating one of them takes precedence.
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -331,7 +329,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 optional: true
                 tooltip: |
@@ -341,7 +339,7 @@ jobs:
                   The workflow already sets -l select=1:ncpus=N:mpiprocs=N from Cores per case.
       doe:
         type: group
-        label: Design of Experiments
+        label: Design of experiments
         items:
           method:
             type: dropdown
@@ -374,6 +372,7 @@ jobs:
           cases_csv:
             type: editor
             label: Cases (CSV)
+            description: One row per case under a header of variable names, at most Number of cases rows.
             hidden: ${{ inputs.doe.method != 'csv' }}
             default: |
               max_camber,camber_position,thickness,angle_of_attack
@@ -383,124 +382,117 @@ jobs:
               0.02,0.40,0.09,4
               0.02,0.40,0.15,4
             tooltip: |
-              One row per case under a header naming the variables, at most
-              Number of cases rows. Paste from a spreadsheet (tabs) or type it
-              with commas, semicolons or spaces. A variable without a column is held at the
-              middle of its bounds in Design variables; a value outside the
-              bounds runs with a warning. Columns a study table also carries
-              (case, generation, status, the coefficients, Design Explorer's
-              in:/out:/img: columns) are skipped, so a previous doe.csv,
-              results.csv or data.csv pastes as it is.
+              Paste from a spreadsheet (tabs) or type it with commas, semicolons or
+              spaces. A variable without a column is held at the middle of its bounds
+              in Design variables; a value outside the bounds runs with a warning.
+              Columns a study table also carries (case, generation, status, the
+              coefficients, Design Explorer's in:/out:/img: columns) are skipped, so a
+              previous doe.csv, results.csv or data.csv pastes as it is.
           n_cases:
             type: number
             label: Number of cases
+            description: Full factorial and one at a time may use fewer; a pasted table needs at least its rows.
             default: 8
             min: 1
             max: 256
+            step: 1
             tooltip: |
-              Designs to sample and solve: the width of the workers matrix, one
-              slot per case, expanded at submission. A full factorial or
-              one-at-a-time design rounds down to its own size and the surplus
-              slots are skipped for free. With your own cases, the slots the
-              table's rows run in: at least the number of rows (a longer table
-              stops the run before any case is spent).
+              One slot of the workers matrix per case, expanded at submission: the
+              surplus slots of a smaller design are skipped for free, and a table with
+              more rows than this stops the run before any case is spent.
           max_parallel:
             type: number
             label: Cases at a time
+            description: Each case takes Cores per case cores; on the login node keep cases x cores within the node.
             default: 8
             min: 1
             max: 256
+            step: 1
             tooltip: |
-              How many cases run at once. On the login node, each case takes
-              Cores per case cores, so keep max_parallel x cores within the node;
-              with Schedule Cases on, this is how many scheduler jobs are queued
-              at once.
+              With cases submitted to the scheduler, this is how many jobs are queued at once.
           seed:
             type: number
             label: Random seed
+            description: The same seed and bounds give the same designs again.
             default: 4242
             min: 1
+            step: 1
             hidden: ${{ inputs.doe.method == 'csv' || inputs.doe.method == 'full_factorial' || inputs.doe.method == 'one_at_a_time' }}
-            tooltip: |
-              Seed of the Latin hypercube, random and Sobol (shift) samples; the
-              same seed and bounds give the same designs again. The grid designs
-              ignore it.
           mesh_scale:
             type: number
             label: Mesh resolution multiplier
+            description: Cost grows roughly with the cube; about 10 s per case at 1, 1 min at 2, 10 min at 4.
             default: 2
             min: 1
             max: 6
+            step: 1
             tooltip: |
-              The cost dial of every case: multiplies every cell count of the
-              C-grid around the airfoil, and the solver's iteration budget scales
-              with it, so cost grows roughly with the cube: ~10 s per case at 1,
-              ~1 min at 2, ~10 min at 4, ~35 min at 6 (one core). The mesh is
-              essentially converged by 3-4; the openfoam-naca README has the
-              measured accuracy table.
+              Multiplies every cell count of the C-grid around the airfoil, and the
+              solver's iteration budget scales with it (~35 min per case at 6 on one
+              core). The mesh is essentially converged by 3-4; the openfoam-naca README
+              has the measured accuracy table.
           variables:
             type: editor
             label: Design variables and bounds
+            description: One line per variable with its name, lower bound and upper bound. Keep the four names.
             default: |
               max_camber       0.0   0.06
               camber_position  0.3   0.6
               thickness        0.08  0.18
               angle_of_attack  0     10
             tooltip: |
-              One line per variable: <name> <lower> <upper>. Keep the four names
-              (the OpenFOAM case reads them); narrow the bounds to focus the
-              study, or give a variable equal bounds to hold it fixed (it then
-              takes no sampling dimension). With your own cases, a variable the
-              table has no column for is held at the middle of its bounds. The camber, position and thickness
-              box is where the mesh generator was validated; the angle of attack
-              is validated from -5 to 12 degrees.
+              The OpenFOAM case reads the four names. Narrow the bounds to focus the
+              study, or give a variable equal bounds to hold it fixed (it then takes no
+              sampling dimension). With your own cases, a variable the table has no
+              column for is held at the middle of its bounds. The camber, position and
+              thickness box is where the mesh generator was validated; the angle of
+              attack is validated from -5 to 12 degrees.
       postprocessing:
         type: group
         label: Postprocessing
         items:
           generate_images:
             type: boolean
-            label: Generate images and serve Design Explorer?
+            label: Generate images and serve Design Explorer
+            description: Renders every solved case with ParaView and serves a Design Explorer page that outlives the run.
             default: true
             tooltip: |
-              Yes → every solved case renders its fields with ParaView (pressure,
-              velocity, streamlines, eddy viscosity, wake, mesh) and a Design
-              Explorer page serves the study as a pw endpoint, design-explorer-<run
-              slug>: parallel coordinates over the inputs and the coefficients,
-              the images of each design on hover. ParaView comes from the
-              commands in Software Environment or, left empty, from the official
-              binaries the workflow downloads once (no sudo, ~830 MB).
-              No → the cases only report their coefficients; the results table is
-              still written (results.csv in the cases directory).
+              The page, design-explorer-<run slug>, shows parallel coordinates over the
+              inputs and the coefficients with the images of each design on hover, and
+              keeps serving until pw endpoints delete removes it. ParaView comes from
+              the commands in Software environment or, left empty, from the official
+              binaries the workflow downloads once (no sudo, ~830 MB). Off, the cases
+              only report their coefficients; results.csv is still written in the
+              cases directory.
       software:
         type: group
-        label: Software Environment
+        label: Software environment
         collapsed: true
         items:
           openfoam_load:
             type: editor
             label: OpenFOAM environment commands
+            description: Leave empty to install OpenFOAM v2412 from conda-forge once (no sudo, about 5 min).
             optional: true
             tooltip: |
               Shell commands that put blockMesh, potentialFoam and simpleFoam (and
               decomposePar, reconstructPar plus mpirun when Cores per case > 1) on
               PATH, one per line, e.g. `module load openfoam/2412` or `source
-              /opt/openfoam2412/etc/bashrc`. Leave empty to install OpenFOAM v2412
-              from conda-forge (no sudo, ~5 min once) under
+              /opt/openfoam2412/etc/bashrc`. The install goes under
               ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca.
               Every case sources these commands; `export MPIRUN="srun --mpi=pmix"`
               here replaces the default launcher `mpirun --bind-to none -np N`.
           paraview_load:
             type: editor
             label: ParaView environment commands
+            description: Leave empty to download the ParaView binaries once (about 830 MB, no sudo).
             optional: true
             hidden: ${{ inputs.postprocessing.generate_images == false }}
             ignore: ${{ .hidden }}
             tooltip: |
               Shell commands that put pvpython on PATH, one per line, e.g.
-              `module load paraview/5.13`. Leave empty to download the official
-              ParaView 6.1.1 Linux binaries (x86_64, no sudo, ~830 MB once, 2.7 GB
-              on disk) under
+              `module load paraview/5.13`. The download is ParaView 6.1.1 for x86_64
+              (2.7 GB on disk) under
               ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca/paraview;
-              they render without a display. A site build that needs an X server
-              is run under xvfb-run where that exists. Needs ParaView 5.10 or newer.
+              it renders without a display. A site build that needs an X server is run
+              under xvfb-run where that exists. Needs ParaView 5.10 or newer.

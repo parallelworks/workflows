@@ -169,23 +169,20 @@ jobs:
         type: compute-clusters
         label: Service host
         include-workspace: false
-        tooltip: Resource to host the Langflow service
       cluster:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -208,7 +205,7 @@ jobs:
                 resource: ${{ inputs.resource }}
                 tooltip: '--qos=partition slurm directive'
               qos:
-                label: Quality of Service [QoS]
+                label: Quality of service (QoS)
                 type: slurm-qos
                 resource: ${{ inputs.resource }}
                 tooltip: '--qos=value slurm directive'
@@ -218,6 +215,7 @@ jobs:
                 label: CPUs per task
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
                 ignore: ${{ 'existing' != inputs.resource.provider }}
                 hidden: ${{ .ignore }}
@@ -225,11 +223,12 @@ jobs:
                 label: Number of nodes
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--nodes=value slurm directive'
                 ignore: ${{ 'existing' != inputs.resource.provider }}
                 hidden: ${{ .ignore }}
               node_type:
-                label: Node Type
+                label: Node type
                 type: dropdown
                 optional: true
                 default: ''
@@ -271,11 +270,13 @@ jobs:
                     - Intel
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '00:30:00'
-                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job (format: D-HH:MM:SS or HH:MM:SS, e.g. 7-00:00:00 or 01:00:00)'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -285,7 +286,7 @@ jobs:
                   ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -299,7 +300,7 @@ jobs:
                 type: string
                 tooltip: PBS account for job submission (-A)
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -320,16 +321,16 @@ jobs:
 
       service:
         type: group
-        label: Langflow Settings
+        label: Langflow settings
         collapsed: true
         items:
           langflow_data_dir:
-            label: Langflow Data Directory
+            label: Langflow data directory
             type: string
             default: ${HOME}/pw/.langflow
             tooltip: Directory where Langflow stores flows and credentials. Persists between sessions if on a shared filesystem.
           langflow_config_dir:
-            label: Config Directory
+            label: Config directory
             type: string
             optional: true
             default: ${HOME}/pw/.langflow
@@ -339,7 +340,7 @@ jobs:
               personal components stored alongside your flows and data.
               Defaults to the same location as the data directory.
           langflow_components_path:
-            label: Custom Components Path
+            label: Custom components path
             type: string
             optional: true
             tooltip: |
@@ -347,7 +348,7 @@ jobs:
               dir, e.g. a git-managed repo or a shared team folder on the cluster.
               The path is bind-mounted into the container.
               Use this when components are version-controlled or shared across users;
-              use Config Directory/components/ for personal components instead.
+              use Config directory/components/ for personal components instead.
               Leave empty to use built-in components only.
           langflow_database_url:
             label: Database URL

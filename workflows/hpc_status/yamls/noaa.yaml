@@ -223,7 +223,8 @@ jobs:
         items:
           name:
             type: string
-            label: Endpoint Name
+            label: Endpoint name
+            description: A launch replaces the dashboard already running under this name.
             default: rdhpcs-status
             tooltip: >-
               Name of the endpoint session, shown in your sessions list. A launch
@@ -231,7 +232,8 @@ jobs:
               letters, digits and dashes; anything else becomes a dash.
           detach:
             type: boolean
-            label: Keep Serving After The Run Ends
+            label: Keep serving after the run ends
+            description: Off, cancelling the run stops the dashboard.
             default: true
             tooltip: >-
               On, the run finishes once the dashboard answers and the dashboard keeps
@@ -240,7 +242,8 @@ jobs:
               cancelling it stops everything.
           subdomain:
             type: string
-            label: Public Subdomain
+            label: Public subdomain
+            description: Blank derives status-<username>.
             optional: true
             default: ""
             tooltip: >-
@@ -250,7 +253,7 @@ jobs:
           sweep_concurrency:
             type: number
             step: 1
-            label: Clusters Swept At Once
+            label: Clusters swept at once
             default: 6
             min: 1
             tooltip: >-
@@ -261,7 +264,8 @@ jobs:
           port:
             type: number
             step: 1
-            label: Local Port
+            label: Local port
+            description: 0 lets the CLI pick a free port.
             default: 0
             min: 0
             tooltip: >-
@@ -270,9 +274,8 @@ jobs:
               predictable port, and note that 8080 is already Grafana.
           theme:
             type: dropdown
-            label: UI Theme
+            label: UI theme
             default: light
-            tooltip: Default color theme for the dashboard
             options:
               - label: Dark
                 value: dark
@@ -280,25 +283,23 @@ jobs:
                 value: light
           enable_cluster_pages:
             type: boolean
-            label: Enable Cluster Pages
+            label: Enable cluster pages
             default: true
             tooltip: Enable queue and quota monitoring pages
           enable_cluster_monitor:
             type: boolean
-            label: Enable Cluster Monitor
+            label: Enable cluster monitor
             default: true
             tooltip: Enable background cluster data collection
           cluster_monitor_interval:
             type: number
             step: 1
-            label: Refresh Interval
+            label: Refresh interval
+            description: In seconds, at least 60; 180 recommended on NOAA.
             default: 180
             min: 60
-            tooltip: >-
-              Data refresh interval in seconds (at least 60; 180 recommended for
-              NOAA - saccount_params and sreport take a few seconds per cluster)
           parent_install_dir:
-            label: Parent Install Directory
+            label: Parent install directory
             type: string
             hidden: true
             optional: true
@@ -315,12 +316,13 @@ jobs:
               whatever context the host's saved credentials are on
       cluster:
         type: group
-        label: Where To Run
+        label: Where to run
         collapsed: true
         items:
           resource:
             type: compute-clusters
-            label: Dashboard Host
+            label: Dashboard host
+            description: The user workspace needs no setup and is what you want unless you have a reason not to.
             include-workspace: true
             default: workspace
             tooltip: >-

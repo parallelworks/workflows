@@ -65,7 +65,7 @@ jobs:
         tooltip: Resource whose filesystem holds the cases. The sampler runs on its login node, in seconds.
       doe:
         type: group
-        label: Design of Experiments
+        label: Design of experiments
         items:
           method:
             type: dropdown
@@ -98,6 +98,7 @@ jobs:
           cases_csv:
             type: editor
             label: Cases (CSV)
+            description: One row per case under a header of variable names.
             hidden: ${{ inputs.doe.method != 'csv' }}
             default: |
               max_camber,camber_position,thickness,angle_of_attack
@@ -118,25 +119,24 @@ jobs:
           n_cases:
             type: number
             label: Number of cases
+            description: Full factorial and one at a time may use fewer.
             default: 8
             min: 1
             max: 1000
+            step: 1
             hidden: ${{ inputs.doe.method == 'csv' }}
-            tooltip: |
-              Designs to sample. A full factorial or one-at-a-time design rounds
-              down to its own size.
           seed:
             type: number
             label: Random seed
+            description: The same seed and bounds give the same designs again.
             default: 4242
             min: 1
+            step: 1
             hidden: ${{ inputs.doe.method == 'csv' || inputs.doe.method == 'full_factorial' || inputs.doe.method == 'one_at_a_time' }}
-            tooltip: |
-              Seed of the Latin hypercube, random and Sobol (shift) samples; the
-              same seed and bounds give the same designs again.
           variables:
             type: editor
             label: Design variables and bounds
+            description: One line per variable with its name, lower bound and upper bound; the names label the params.in files.
             default: |
               max_camber       0.0   0.06
               camber_position  0.3   0.6
@@ -152,6 +152,7 @@ jobs:
           cases_dir:
             type: string
             label: Cases directory
+            description: Must not hold case directories already; empty uses cases/ under the run's job directory.
             optional: true
             tooltip: |
               Absolute path on the resource where case_<j>/params.in and doe.csv

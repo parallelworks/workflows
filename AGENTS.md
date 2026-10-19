@@ -271,6 +271,22 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
   guarded by `if:` against a runtime count; a step that waits on another job carries
   `early-cancel: any-job-failed`.
 
+### Form copy
+The launch form is read, not hovered: a user should know what a field does and what
+happens when it is left alone without opening its tooltip.
+- Every shown input has a `label`, in sentence case (`Walltime per case`); product
+  names keep their casing (`SLURM`, `OpenFOAM`, `Design Explorer`). A boolean's label
+  states what on does (`Submit cases to the scheduler`), never a question.
+- `description` is the one sentence a user must know before submitting: what an empty
+  or off value does, a prerequisite or side effect (an install, a download, an endpoint
+  that outlives the run), a format, a limit. `tooltip` holds the rest, behind the ?.
+  Neither restates the label; a tooltip that only does that is dropped.
+- Whole-number inputs carry `step: 1`; a walltime carries its format as a description
+  (`HH:MM:SS, or D-HH:MM:SS for runs over a day.`).
+- The shared cluster block reads the same everywhere: `Submit to the scheduler` with
+  `Otherwise the job runs on the login node.`, `SLURM directives`, `PBS directives`,
+  `Scheduler directives`.
+
 ### Comments
 - Default to no comments. Only add one when the WHY is non-obvious: a hidden
   constraint, a subtle invariant, a workaround for a specific bug. No WHAT comments.

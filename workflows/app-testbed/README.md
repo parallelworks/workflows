@@ -162,7 +162,7 @@ scheduler problems reproduce here with the same symptoms.
     verification.
 - **Worker sites** - a list; one worker per entry. Each entry has an
   optional name (blank = `worker-<hostname>`), a working directory, and
-  a **Submit via scheduler?** toggle with per-scheduler directive
+  a **Submit to the scheduler** toggle with per-scheduler directive
   groups shown based on the resource's scheduler type: partition,
   account and QoS pickers, CPUs per task, walltime, and an additional
   `#SBATCH` directives editor for SLURM; an account string (`-A`)

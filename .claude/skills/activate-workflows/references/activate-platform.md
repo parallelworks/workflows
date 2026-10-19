@@ -240,6 +240,12 @@ when the run has no value); a `dropdown` whose `options` are keyed by another in
 (organization variables set by admins, e.g. `${{ org.JUICE_TOKEN }}`), `var.<NAME>`
 (your own variables, `pw variables`, secret by default) and `${{ .hidden }}`.
 
+The form renders `description` under the label, always, and `tooltip` behind a ?; an
+input without `label` shows its key name capitalized (`Scheduler_directives`). The
+copy rules (sentence case, statements for booleans, a description for what the user
+must know before submitting, `step: 1` on counts, the walltime format): AGENTS.md,
+"Form copy".
+
 ### Expressions & env
 - `${{ ... }}` — platform templating, evaluated **before** the shell sees the line
   (inputs, `needs.*.outputs`, `org.*`, comparisons). The parser is whitespace-sensitive

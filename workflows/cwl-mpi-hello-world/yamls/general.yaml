@@ -233,10 +233,13 @@ jobs:
           np:
             type: number
             label: Number of MPI processes
+            description: Match it to the nodes x tasks per node the directives request.
             default: 4
             min: 1
             max: 100
-            tooltip: mpirun -np N inside the SLURM job; match it to the nodes x tasks per node the directives request
+            step: 1
+            tooltip: |
+              mpirun -np N inside the SLURM job.
           scheduler_directives:
             type: editor
             label: Scheduler directives
@@ -251,14 +254,14 @@ jobs:
               run's output directory.
       software:
         type: group
-        label: Software Environment
+        label: Software environment
         collapsed: true
         items:
           install_mpi:
             type: boolean
-            label: Install Intel oneAPI MPI?
+            label: Install Intel oneAPI MPI
+            description: Installed once with spack under ${HOME}/pw/software; otherwise give the load command below.
             default: true
-            tooltip: Installs Intel oneAPI MPI with spack under ${HOME}/pw/software once; later runs reuse it. Otherwise give the command that loads an MPI below.
           load_mpi:
             type: string
             label: Command to load MPI
@@ -268,9 +271,9 @@ jobs:
             tooltip: 'The command that puts mpicc and mpirun on PATH, for example: module load module-name or source path/to/env.sh'
           install_cwltool:
             type: boolean
-            label: Install cwltool?
+            label: Install cwltool
+            description: Installed once under its own Miniconda in ${HOME}/pw/software; otherwise give the load command below.
             default: true
-            tooltip: Installs cwltool under its own Miniconda in ${HOME}/pw/software once; later runs reuse it. Otherwise give the command that loads cwltool below.
           load_cwltool:
             type: string
             label: Command to load cwltool

@@ -218,10 +218,11 @@ jobs:
     inputs:
       head:
         type: group
-        label: Dashboard Host
+        label: Dashboard host
         items:
           resource:
             label: Resource
+            description: Runs only the dashboard; a cloud login node can dispatch only to itself.
             type: compute-clusters
             include-workspace: true
             autoselect: true
@@ -233,7 +234,7 @@ jobs:
 
       targets:
         type: list
-        label: Compute Sites
+        label: Compute sites
         min: 1
         tooltip: Add one or more compute sites. Each site renders its share of the tiles in parallel and streams them to the dashboard.
         template:
@@ -241,21 +242,16 @@ jobs:
             label: Resource
             type: compute-clusters
             include-workspace: false
-            tooltip: Select a compute resource for rendering tiles.
-
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
+            label: Submit to the scheduler
+            description: Otherwise the tiles render on the login node.
             hidden: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' }}
             ignore: ${{ .hidden }}
-            tooltip: |
-              Yes - Tiles render on compute nodes allocated with srun.
-              No  - Tiles render on the login/controller node.
-
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' || inputs.targets.[index].scheduler == false }}
             ignore: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' || inputs.targets.[index].scheduler == false }}
             collapsed: true
@@ -273,10 +269,8 @@ jobs:
                 label: Partition
                 optional: true
                 resource: ${{ inputs.targets.[index].resource }}
-                tooltip: Select a SLURM partition
-
               qos:
-                label: Quality of Service [QoS]
+                label: Quality of service (QoS)
                 type: slurm-qos
                 resource: ${{ inputs.targets.[index].resource }}
                 tooltip: '--qos=value slurm directive'
@@ -298,13 +292,14 @@ jobs:
 
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: "00:05:00"
                 tooltip: '--time= limit of the srun allocation'
 
               scheduler_directives:
                 type: editor
-                label: Additional Directives
+                label: Additional directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix; they are
@@ -315,7 +310,7 @@ jobs:
 
       render_settings:
         type: group
-        label: Render Settings
+        label: Render settings
         items:
           name:
             type: string
@@ -323,7 +318,7 @@ jobs:
             default: burst-render
             tooltip: Endpoint name prefix; an empty value falls back to burst-render
           parent_install_dir:
-            label: Parent Install Directory
+            label: Parent install directory
             type: string
             hidden: true
             optional: true
@@ -334,7 +329,7 @@ jobs:
 
           grid_size:
             type: dropdown
-            label: Grid Size
+            label: Grid size
             tooltip: Number of tiles per side (total tiles = N x N)
             default: "8"
             options:
@@ -349,7 +344,7 @@ jobs:
 
           image_size:
             type: dropdown
-            label: Tile Resolution
+            label: Tile resolution
             tooltip: Size of each tile in pixels
             default: "256"
             options:
@@ -362,7 +357,7 @@ jobs:
 
           palette:
             type: dropdown
-            label: Color Palette
+            label: Color palette
             default: electric
             options:
               - value: electric
@@ -376,7 +371,7 @@ jobs:
 
           parallelism:
             type: dropdown
-            label: Worker Threads
+            label: Worker threads
             tooltip: Number of parallel render processes per node. Auto uses all available CPU cores.
             default: "1"
             options:

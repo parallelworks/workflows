@@ -159,18 +159,16 @@ jobs:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -184,9 +182,9 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
@@ -195,12 +193,14 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -208,7 +208,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -218,7 +218,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -226,7 +226,7 @@ jobs:
                   #PBS -l ngpus=1
       service:
         type: group
-        label: Grafana Settings
+        label: Grafana settings
         collapsed: true
         items:
           name:
@@ -234,45 +234,50 @@ jobs:
             hidden: true
             default: grafana
           rundir:
-            label: Run Directory
+            label: Run directory
+            description: Reuse it to keep the metrics history and the dashboards; only one run at a time can serve it.
             type: string
             default: ${HOME}/grafana-prometheus
             tooltip: |
               Keeps the Prometheus time series (data/prometheus/), Grafana's database with its users, dashboards and settings (data/grafana/) and the generated configuration. Reuse it to keep the metrics history and the dashboards of earlier sessions; only one run at a time can serve it.
           admin_password:
-            label: Admin Password
+            label: Admin password
+            description: Set when the run directory is first initialized; later sessions keep the current one.
             type: password
             default: changeme
             tooltip: |
-              Password of Grafana's admin user, set when the Run Directory is first initialized. Later sessions keep the current password; change it in Grafana. Visitors are signed in anonymously as Admin; the platform login protects the endpoint.
+              Password of Grafana's admin user, set when the run directory is first initialized. Later sessions keep the current password; change it in Grafana. Visitors are signed in anonymously as Admin; the platform login protects the endpoint.
           retention:
-            label: Prometheus Retention
+            label: Prometheus retention
+            description: A number with a unit, such as 15d, 12h or 4w.
             type: string
             default: 15d
             tooltip: |
               How long Prometheus keeps the metrics (--storage.tsdb.retention.time), a number with a unit such as 15d, 12h or 4w.
           agent_metrics:
-            label: Platform Agent Metrics
+            label: Platform agent metrics
+            description: Only when the service runs on the login node.
             type: boolean
             default: false
             tooltip: |
               Start the platform agent's experimental Prometheus exporter beside the stack (pw agent start-existing --experimental-prometheus-exporter) and scrape it as the pw-agent job: the login node's CPU, memory and storage as the platform agent measures them, which node-exporter already reports in more detail. Only when the service runs on the login node; that agent also listens on an SSH server and proxy port of its own for the life of the stack.
           extra_targets:
-            label: Extra Scrape Targets
+            label: Extra scrape targets
+            description: One host:port per line.
             type: editor
             optional: true
             tooltip: |
               Additional Prometheus scrape targets, one host:port per line, for exporters already running elsewhere. A service on the host that runs the stack is host.docker.internal:<port> from inside the containers.
           grafana_image:
-            label: Grafana Image
+            label: Grafana image
+            description: Pin a tag to lock the version.
             type: string
             default: grafana/grafana:13.2.3
-            tooltip: Docker image. Pin a tag to lock the version.
           prometheus_image:
-            label: Prometheus Image
+            label: Prometheus image
+            description: Pin a tag to lock the version.
             type: string
             default: prom/prometheus:v3.15.0
-            tooltip: Docker image. Pin a tag to lock the version.
           node_exporter_image:
             type: string
             hidden: true

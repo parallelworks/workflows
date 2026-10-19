@@ -217,23 +217,23 @@ jobs:
         tooltip: Resource where Dakota, Design Explorer and all OpenFOAM cases run
       cluster:
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Cases?
+            label: Submit cases to the scheduler
+            description: Otherwise the cases run on the login node.
             hidden: ${{ inputs.resource.schedulerType == '' }}
             ignore: ${{ .hidden }}
-            tooltip: |
-              Yes → Each OpenFOAM case is submitted to the scheduler using sbatch, qsub, etc
-              No  → Cases run on the controller or login node instead
           cores_per_case:
             type: number
             label: Cores per case
+            description: MPI ranks per case. More than 1 pays off only from mesh multiplier 3 up.
             default: 1
             min: 1
             max: 64
+            step: 1
             tooltip: |
               MPI ranks per OpenFOAM case. 1 runs the solvers serially; more
               decomposes the mesh into N strips and runs potentialFoam and
@@ -247,7 +247,7 @@ jobs:
               at once.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -261,14 +261,15 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime per case
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for each case'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -278,7 +279,7 @@ jobs:
                   a directive here repeating one of them takes precedence.
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -288,7 +289,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 optional: true
                 tooltip: |
@@ -298,14 +299,16 @@ jobs:
                   The workflow already sets -l select=1:ncpus=N:mpiprocs=N from Cores per case.
       optimizer:
         type: group
-        label: Optimizer Settings
+        label: Optimizer settings
         items:
           max_iterations:
             type: number
             label: Maximum iterations
+            description: Also the retry budget; a crashed and retried iteration consumes one.
             default: 10
             min: 1
             max: 50
+            step: 1
             tooltip: |
               Generation budget: the loop stops with the front found so far after
               this many evaluated generations, even if Dakota wants to continue.
@@ -314,9 +317,11 @@ jobs:
           batch_size:
             type: number
             label: Cases per iteration
+            description: Dakota's population size; sizes the workers matrix, surplus slots are skipped for free.
             default: 4
             min: 1
             max: 256
+            step: 1
             tooltip: |
               OpenFOAM cases evaluated in parallel each iteration (Dakota MOGA's
               population size). Sizes the workers matrix of iteration-naca.yaml:
@@ -329,6 +334,7 @@ jobs:
             default: 3
             min: 1
             max: 20
+            step: 1
             tooltip: |
               Declare convergence when the Pareto front's normalized hypervolume
               improves by less than 0.001 over this many consecutive generations.
@@ -336,9 +342,11 @@ jobs:
           mesh_scale:
             type: number
             label: Mesh resolution multiplier
+            description: Cost grows roughly with the cube; about 10 s per case at 1, 1 min at 2, 10 min at 4.
             default: 2
             min: 1
             max: 6
+            step: 1
             tooltip: |
               The cost dial: multiplies every cell count of the C-grid around the
               airfoil, and the solver's iteration budget scales with it, so cost
@@ -348,6 +356,7 @@ jobs:
           iteration_timeout:
             type: string
             label: Time budget per iteration
+            description: Units like 30s, 10m or 12h; it must cover queue time and node boot for a whole generation.
             default: 2d
             tooltip: |
               Maximum wall time for one generation: propose + evaluate every case
@@ -357,7 +366,7 @@ jobs:
               budget); tighten it if you want faster failure detection.
       problem:
         type: group
-        label: Design Problem
+        label: Design problem
         collapsed: true
         items:
           angle_of_attack:
@@ -370,6 +379,7 @@ jobs:
           variables:
             type: editor
             label: Design variables and bounds
+            description: One line per NACA parameter with its name, lower bound and upper bound. Keep the three names.
             default: |
               max_camber       0.0   0.06
               camber_position  0.3   0.6
@@ -387,34 +397,37 @@ jobs:
           seed:
             type: number
             label: Dakota seed
+            description: Fixed for the run; change it to get a different search.
             default: 4242
             min: 1
-            tooltip: Fixed for the run (Dakota's restart replay requires a deterministic method); change it to get a different search.
+            step: 1
       postprocessing:
         type: group
         label: Postprocessing
         items:
           generate_images:
             type: boolean
-            label: Generate images?
+            label: Generate images
+            description: Renders every case with ParaView for Design Explorer; about 5 s per case.
             default: false
             tooltip: |
               Yes → every OpenFOAM case renders its fields with ParaView (pressure,
               velocity, streamlines, eddy viscosity, wake, mesh), and Design
               Explorer (design-explorer-<run slug>) shows them for every design:
               in its gallery, its case panel and on hover. ParaView comes from
-              the commands in Software Environment or, left empty, from the
+              the commands in Software environment or, left empty, from the
               official binaries the workflow downloads once (no sudo, ~830 MB);
               rendering adds about 5 s per case.
               No → Design Explorer without images.
       software:
         type: group
-        label: Software Environment
+        label: Software environment
         collapsed: true
         items:
           openfoam_load:
             type: editor
             label: OpenFOAM environment commands
+            description: Leave empty to install OpenFOAM v2412 from conda-forge once (no sudo, about 5 min).
             optional: true
             tooltip: |
               Shell commands that put blockMesh, potentialFoam and simpleFoam (and
@@ -428,6 +441,7 @@ jobs:
           dakota_load:
             type: editor
             label: Dakota environment commands
+            description: Leave empty to install Dakota 6.16 from conda-forge once.
             optional: true
             tooltip: |
               Shell commands that put `dakota` on PATH, e.g. `module load dakota`.
@@ -436,13 +450,14 @@ jobs:
           paraview_load:
             type: editor
             label: ParaView environment commands
+            description: Leave empty to download the ParaView binaries once (about 830 MB, no sudo).
             optional: true
             hidden: ${{ inputs.postprocessing.generate_images == false }}
             ignore: ${{ .hidden }}
             tooltip: |
               Shell commands that put pvpython on PATH, one per line, e.g.
-              `module load paraview/5.13`. Leave empty to download the official
-              ParaView 6.1.1 Linux binaries (x86_64, no sudo, ~830 MB once, 2.7 GB
-              on disk) under
+              `module load paraview/5.13`. The download is ParaView 6.1.1 for x86_64
+              (2.7 GB on disk) under
               ${service_parent_install_dir:-$HOME/pw/software}/openfoam-naca/paraview;
-              they render without a display. Needs ParaView 5.10 or newer.
+              it renders without a display. A site build that needs an X server is run
+              under xvfb-run where that exists. Needs ParaView 5.10 or newer.

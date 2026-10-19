@@ -158,18 +158,16 @@ jobs:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -183,9 +181,9 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
@@ -194,12 +192,14 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -207,7 +207,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -217,7 +217,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -225,7 +225,7 @@ jobs:
                   #PBS -l ngpus=1
       service:
         type: group
-        label: pgAdmin 4 Settings
+        label: pgAdmin 4 settings
         items:
           name:
             type: string
@@ -233,42 +233,48 @@ jobs:
             default: pgadmin4
           email:
             label: Email
+            description: Created with a new data directory; a reused one keeps its account.
             type: string
             default: admin@example.com
             tooltip: |
               The account you log in with (PGADMIN_DEFAULT_EMAIL). It is created with a new data directory; a reused one keeps the account it was created with. Reserved domains such as .local or .test are rejected.
           password:
             label: Password
+            description: A data directory keeps the email and password it was created with.
             type: password
-            tooltip: The account's password (PGADMIN_DEFAULT_PASSWORD). A data directory keeps the email and password it was created with.
+            tooltip: |
+              The account's password (PGADMIN_DEFAULT_PASSWORD).
           data_dir:
-            label: Data Directory
+            label: Data directory
+            description: Reuse it to keep the setup of earlier sessions.
             type: string
             default: ${HOME}/pgadmin4
             tooltip: |
               Keeps the account, the registered servers and their saved passwords, the preferences, and the account's files (backups, exports) in storage/. Reuse it to keep the setup of earlier sessions.
           server:
             type: group
-            label: PostgreSQL Server to Register
+            label: PostgreSQL server to register
             collapsed: true
             tooltip: One server registered in pgAdmin when the data directory is new (a reused data directory keeps its own list). Leave Host empty to register none.
             items:
               host:
                 label: Host
+                description: Leave empty to register no server.
                 type: string
                 optional: true
                 tooltip: |
-                  Host name or IP of the server as seen from the node pgAdmin runs on, e.g. the node a postgres workflow run printed. Leave empty to register no server.
+                  Host name or IP of the server as seen from the node pgAdmin runs on, e.g. the node a postgres workflow run printed.
               port:
                 label: Port
                 type: number
                 default: 5432
                 min: 1
                 max: 65535
+                step: 1
                 hidden: ${{ inputs.service.server.host == '' }}
                 ignore: ${{ .hidden }}
               db:
-                label: Maintenance Database
+                label: Maintenance database
                 type: string
                 default: postgres
                 hidden: ${{ inputs.service.server.host == '' }}
@@ -281,7 +287,8 @@ jobs:
                 ignore: ${{ .hidden }}
                 tooltip: pgAdmin asks for the password when you connect; it can save it.
           image:
-            label: pgAdmin 4 Image
+            label: pgAdmin 4 image
+            description: Pin a tag to lock the version.
             type: string
             default: dpage/pgadmin4:9.18
             tooltip: Docker image from https://hub.docker.com/r/dpage/pgadmin4. Pin a tag to lock the version.

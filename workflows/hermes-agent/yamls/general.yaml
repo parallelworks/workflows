@@ -155,7 +155,7 @@ jobs:
         type: compute-clusters
         label: Cluster
         include-workspace: false
-        tooltip: The cluster to run Hermes on. Keep "Schedule Job" off so it stays on the login node (where it has internet for install + model calls).
+        tooltip: The cluster to run Hermes on. Keep "Submit to the scheduler" off so it stays on the login node (where it has internet for install + model calls).
       cluster:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
@@ -165,14 +165,15 @@ jobs:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
+            label: Submit to the scheduler
+            description: Keep off so the agent stays on the login node.
             tooltip: |
               Keep this off. Hermes must stay on the login node so the platform
               can reach it and so it has the internet access its brain and
               installer need.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -188,6 +189,7 @@ jobs:
                 resource: ${{ inputs.resource }}
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
               gpus:
@@ -195,17 +197,18 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
-                tooltip: Extra #SBATCH directives, one per line.
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -215,9 +218,8 @@ jobs:
                 default: true
                 label: Is PBS enabled?
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
-                tooltip: Extra #PBS directives, one per line.
       service:
         type: group
         label: Settings
@@ -241,6 +243,7 @@ jobs:
               it as an OpenAI model in the platform Chat instead.
           marker:
             label: Fleet marker
+            description: Only agents launched with this same marker are discovered and coordinated.
             hidden: ${{ inputs.service.interface != 'chat' }}
             ignore: ${{ .hidden }}
             type: string
@@ -251,6 +254,7 @@ jobs:
               (e.g. "gpuworker") to keep separate fleets apart. (Ignored in dashboard mode.)
           hermes_model:
             label: Model
+            description: Must support tool calling; any id from pw ai models ls or the Chat picker's short name.
             type: string
             default: org:glm/glm-5.1
             tooltip: >-
@@ -271,6 +275,7 @@ jobs:
               resolve_model helper (isolated from the system Python).
           hermes_version:
             label: Hermes version
+            description: Change it only to adopt a release you have verified.
             type: string
             default: v2026.6.19
             tooltip: >-
@@ -294,6 +299,7 @@ jobs:
               launch; edit to change its tone, rules, or expertise.
           data_dir:
             label: Data directory
+            description: Persists across runs, so a rerun resumes where you left off.
             type: string
             default: ~/.hermes-agent
             tooltip: >-
@@ -302,6 +308,6 @@ jobs:
               workflow resumes where you left off. Absolute path, or one starting with ~.
           fresh_start:
             label: Start fresh
+            description: "Wipes the data directory first: history, skills and memory."
             type: boolean
             default: false
-            tooltip: Wipe the data directory before starting — clears all saved history, skills, and memory.

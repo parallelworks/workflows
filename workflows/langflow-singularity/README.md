@@ -7,7 +7,7 @@ This version runs Langflow inside a **Singularity/Apptainer container**, making 
 ## Getting Started
 
 1. Select a **Service host** cluster from the form.
-2. Optionally enable **Schedule Job?** to run on a compute node instead of the login node.
+2. Optionally enable **Submit to the scheduler** to run on a compute node instead of the login node.
 3. Adjust **Install Directory**, **Langflow Data Directory**, and the optional advanced settings if needed.
 4. Click **Launch**. The first run downloads the Singularity container (~2–4 GB); subsequent runs reuse the cached container and start in seconds.
 5. Click the session URL in the platform once it turns active. Your browser will open the Langflow canvas.

@@ -137,13 +137,15 @@ jobs:
         label: Attempt of the parent's retried Iterate step (0-based)
         default: 0
         min: 0
+        step: 1
       resource:
         type: compute-clusters
         label: Resource
         optional: false
       scheduler:
         type: boolean
-        label: Schedule cases?
+        label: Submit cases to the scheduler
+        description: Otherwise the cases run on the login node.
         default: false
       slurm:
         type: group
@@ -164,11 +166,12 @@ jobs:
             optional: true
           qos:
             type: string
-            label: Quality of Service
+            label: Quality of service
             optional: true
           time:
             type: string
             label: Walltime
+            description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
             default: '01:00:00'
           scheduler_directives:
             type: editor
@@ -190,35 +193,45 @@ jobs:
       cores_per_case:
         type: number
         label: MPI ranks per OpenFOAM case
+        description: MPI ranks per case. More than 1 pays off only from mesh multiplier 3 up.
         default: 1
         min: 1
+        step: 1
       batch_size:
         type: number
         label: Cases per iteration
+        description: Dakota's population size; sizes the workers matrix, surplus slots are skipped for free.
         default: 4
         min: 1
         max: 256
+        step: 1
       max_iterations:
         type: number
         label: Generation budget
+        description: Also the retry budget; a crashed and retried iteration consumes one.
         default: 10
         min: 1
+        step: 1
       stall_generations:
         type: number
         label: Stagnation window
         default: 3
         min: 1
+        step: 1
       seed:
         type: number
         label: Dakota seed
         default: 4242
         min: 1
+        step: 1
       mesh_scale:
         type: number
         label: Mesh resolution multiplier
+        description: Cost grows roughly with the cube; about 10 s per case at 1, 1 min at 2, 10 min at 4.
         default: 2
         min: 1
         max: 6
+        step: 1
       angle_of_attack:
         type: number
         label: Angle of attack (degrees)
@@ -248,6 +261,7 @@ jobs:
       generate_images:
         type: boolean
         label: Render each case's fields with ParaView (images/ in the case directory)
+        description: Renders every case with ParaView for Design Explorer; about 5 s per case.
         default: false
       paraview_load:
         type: editor

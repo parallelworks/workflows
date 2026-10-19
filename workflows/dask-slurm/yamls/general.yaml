@@ -231,10 +231,8 @@ jobs:
       resource:
         type: compute-clusters
         label: SLURM cluster
+        description: Only a SLURM cluster works; the scheduler runs on its login node and the workers are sbatch jobs.
         include-workspace: false
-        tooltip: |
-          The Dask scheduler and its dashboard run on this cluster's login node, and the
-          workers are SLURM jobs submitted there with sbatch: only a SLURM cluster works.
       not_slurm:
         label: Not a SLURM cluster
         type: string
@@ -247,11 +245,11 @@ jobs:
         hidden: ${{ inputs.resource.schedulerType != 'slurm' }}
         ignore: ${{ inputs.resource.schedulerType != 'slurm' }}
         type: group
-        label: SLURM Cluster
+        label: SLURM cluster
         items:
           slurm:
             type: group
-            label: Dask Worker Jobs
+            label: Dask worker jobs
             hidden: ${{ inputs.resource.schedulerType != 'slurm' }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' }}
             items:
@@ -265,6 +263,7 @@ jobs:
                 label: Cores per job
                 type: number
                 min: 1
+                step: 1
                 default: 2
                 tooltip: |
                   CPU cores of one worker job (SLURMCluster cores): the Dask threads of the job, split
@@ -282,34 +281,36 @@ jobs:
                 type: number
                 optional: true
                 min: 1
+                step: 1
                 tooltip: |
                   Dask worker processes of one job (SLURMCluster processes), each with cores / processes
                   threads. Empty for Dask's default (about the square root of the cores); 1 keeps numpy
                   work in one process, the core count gives pure-Python work a process per core.
               walltime:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
-                tooltip: '--time of the worker jobs (HH:MM:SS); a worker ends with its job and the cluster requests another while there is work'
+                tooltip: '--time of the worker jobs; a worker ends with its job and the cluster requests another while there is work'
               min_jobs:
                 label: Minimum jobs
+                description: 0 lets every worker leave once the work is done.
                 type: number
                 min: 0
+                step: 1
                 default: 0
-                tooltip: Worker jobs the cluster keeps even when idle (cluster.adapt minimum_jobs); 0 lets every worker leave once the work is done
               max_jobs:
                 label: Maximum jobs
                 type: number
                 min: 1
+                step: 1
                 default: 4
                 tooltip: Worker jobs the cluster may run at once (cluster.adapt maximum_jobs)
               mem_directive:
                 label: Request memory from SLURM
+                description: Off on the platform's cloud clusters, which have no memory accounting and reject --mem.
                 type: boolean
                 default: false
-                tooltip: |
-                  Yes → the worker jobs ask SLURM for "Memory per job" (#SBATCH --mem)
-                  No  → the directive is skipped: the platform's cloud clusters have no memory accounting and reject it
               interface:
                 label: Network interface
                 type: string
@@ -327,7 +328,7 @@ jobs:
 
       service:
         type: group
-        label: Dask Settings
+        label: Dask settings
         items:
           name:
             type: string
@@ -372,14 +373,16 @@ jobs:
               1-second rows.
           workload_timeout:
             label: Workload timeout (minutes)
+            description: Queueing and node boot included; past it the run fails and the cluster stops.
             type: number
             min: 1
+            step: 1
             default: 30
             hidden: ${{ inputs.service.workload == 'none' }}
             ignore: ${{ .hidden }}
-            tooltip: Each workload must finish within this time, queueing and node boot included, or the run fails and the cluster is stopped
           keep_alive:
             label: Keep the cluster alive after the workloads
+            description: On, stop them with pw endpoints delete dask-<run-slug>; off, the run leaves no endpoint.
             type: boolean
             default: true
             hidden: ${{ inputs.service.workload == 'none' }}
@@ -389,32 +392,31 @@ jobs:
                     above the minimum leave on their own); stop them with pw endpoints delete dask-<run-slug>
               No  → the run stops the cluster once the workloads are done and leaves no endpoint behind
           conda_install:
-            label: Install Dask in a Miniforge environment if not there?
+            label: Install Dask in a Miniforge environment if missing
+            description: Otherwise give the command that loads an existing environment below.
             type: boolean
             default: true
-            tooltip: Select Yes to install Dask, distributed and dask-jobqueue in a Miniforge (conda-forge) environment and No to load an existing Python environment that has them
           parent_install_dir:
-            label: Parent Install Directory
+            label: Parent install directory
+            description: Needs enough free space for the installs.
             type: string
             default: ${HOME}/pw/software
             hidden: ${{ inputs.service.conda_install == false }}
             ignore: ${{ .hidden }}
-            tooltip: Software dependencies are installed in this directory. Ensure the directory has sufficient space!
           conda_install_dir:
-            label: Name of the Conda Installation Directory
+            label: Name of the Conda installation directory
             type: string
             default: .miniforge3-dask
             hidden: ${{ inputs.service.conda_install == false }}
             ignore: ${{ .hidden }}
-            tooltip: Ensure the directory has sufficient space for Conda and its packages.
           conda_env:
             label: Conda environment
+            description: Dask is installed into it when missing.
             type: string
             default: base
             hidden: ${{ inputs.service.conda_install == false }}
             optional: ${{ .hidden }}
             ignore: ${{ .hidden }}
-            tooltip: Environment to activate. Dask is installed into it when missing.
           load_env:
             label: Command to load a Python environment with Dask
             type: string
@@ -424,7 +426,7 @@ jobs:
             ignore: ${{ .hidden }}
             tooltip: A bash command that puts a python with dask, distributed, dask-jobqueue, bokeh, numpy and pandas on the PATH, e.g. module load python; source ~/venvs/dask/bin/activate
           install_instructions:
-            label: Select Dask Installation
+            label: Select Dask installation
             type: dropdown
             hidden: ${{ inputs.service.conda_install == false }}
             ignore: ${{ .hidden }}
@@ -437,9 +439,8 @@ jobs:
               - value: yaml
                 label: Provide custom Conda environment YAML file
           yaml:
-            label: Paste Conda Environment Definition YAML
+            label: Paste the Conda environment definition YAML
             type: editor
             hidden: ${{ inputs.service.install_instructions != 'yaml' || inputs.service.conda_install == false }}
             optional: ${{ .hidden }}
             ignore: ${{ .hidden }}
-            tooltip: Copy and paste a custom Conda environment definition YAML file with dask, distributed, dask-jobqueue, bokeh, numpy and pandas

@@ -563,7 +563,7 @@ jobs:
   execute:
     inputs:
       resource:
-        label: Resource Target
+        label: Resource target
         type: compute-clusters
         autoselect: true
         optional: false
@@ -572,57 +572,51 @@ jobs:
         type: string
         default: '#!/bin/bash'
       rundir:
-        label: Run Directory
+        label: Run directory
+        description: Leave blank to use the job's own directory.
         type: string
         optional: true
         default: ''
-        tooltip: The directory in which the script will be executed. Leave blank to use the job's own directory.
+        tooltip: |
+          The directory the script runs in.
       use_existing_script:
         type: boolean
         default: false
-        label: Use Existing Script?
-        tooltip: |
-          Yes → Provide path to an existing script on the target resource.
-          No  → Type the script
+        label: Use an existing script
+        description: Otherwise type the script below.
       script:
-        label: Type Script
+        label: Script
+        description: Without the shebang and the scheduler directives.
         type: editor
         hidden: ${{ inputs.use_existing_script == true }}
         ignore: ${{ .hidden }}
-        tooltip: Type the script to run without shebang and scheduler directives.
         default: |
           echo "$(date) Running in directory ${PWD} on ${HOSTNAME}"
       script_path:
-        label: Script Path
+        label: Script path
+        description: An existing script on the target resource.
         type: string
         hidden: ${{ inputs.use_existing_script == false }}
         ignore: ${{ .hidden }}
-        tooltip: Provide path to an existing script on the target resource.
       scheduler:
         type: boolean
         default: false
-        label: Schedule Job?
+        label: Submit to the scheduler
+        description: Otherwise the job runs on the login node.
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ .hidden }}
-        tooltip: |
-          Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-          No  → Job is executed in the controller or login node instead
       use_scheduler_agent:
         type: boolean
         ignore: ${{ inputs.scheduler == false }}
         hidden: ${{ .ignore }}
         default: false
-        label: Use parallelworks/scheduler-agent?
-        tooltip: |
-          Yes → Provision the compute node using parallelworks/scheduler-agent
-          No  → Directly use sbatch, qsub, etc to submit the job
+        label: Use the parallelworks/scheduler-agent
+        description: Otherwise the job is submitted directly with sbatch or qsub.
       submit_and_exit:
         type: boolean
         default: false
-        label: Submit and Exit?
-        tooltip: |
-          No  → Wait for the script to finish and stream its output to the logs (default).
-          Yes → Submit the script and exit immediately; it keeps running on the resource (output not streamed).
+        label: Submit and exit
+        description: Otherwise the run waits for the script and streams its output; on, the script keeps running unattended.
       skip_cleanups_file:
         type: string
         optional: true
@@ -634,7 +628,7 @@ jobs:
           run directory. Leave empty to always run the cleanups.
       slurm:
         type: group
-        label: SLURM Directives
+        label: SLURM directives
         hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
         ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
         items:
@@ -657,7 +651,7 @@ jobs:
             resource: ${{ inputs.resource }}
             tooltip: '--partition=partition slurm directive'
           qos:
-            label: Quality of Service [QoS]
+            label: Quality of service (QoS)
             type: slurm-qos
             resource: ${{ inputs.resource }}
             tooltip: '--qos=value slurm directive'
@@ -667,18 +661,20 @@ jobs:
             label: CPUs per task
             type: number
             default: 1
+            step: 1
             tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
             ignore: ${{ 'existing' != inputs.resource.provider }}
             hidden: ${{ .ignore }}
           nodes:
-            label: Number of Nodes
+            label: Number of nodes
             type: number
             default: 1
+            step: 1
             tooltip: '--nodes=value slurm directive'
             ignore: ${{ 'existing' != inputs.resource.provider }}
             hidden: ${{ .ignore }}
           node_type:
-            label: Node Type
+            label: Node type
             type: dropdown
             optional: true
             default: ""
@@ -721,11 +717,13 @@ jobs:
 
           time:
             label: Walltime
+            description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
             type: string
             default: '00:30:00'
-            tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job (format: D-HH:MM:SS or HH:MM:SS, e.g. 7-00:00:00 or 01:00:00)'
+            tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
           scheduler_directives:
             type: editor
+            label: Scheduler directives
             optional: true
             tooltip: |
               Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -735,7 +733,7 @@ jobs:
               ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
       pbs:
         type: group
-        label: PBS Directives
+        label: PBS directives
         hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.scheduler == false }}
         ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.scheduler == false }}
         items:
@@ -748,7 +746,7 @@ jobs:
             label: Account
             type: string
           scheduler_directives:
-            label: Scheduler Directives
+            label: Scheduler directives
             type: editor
             tooltip: |
               Add extra PBS directives, one per line, using the #PBS prefix. For example:

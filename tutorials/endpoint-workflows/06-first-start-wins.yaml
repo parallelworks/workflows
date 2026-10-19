@@ -31,33 +31,32 @@ jobs:
       resolution:
         type: number
         label: Resolution
-        tooltip: Image size in pixels. Larger values look sharper but take longer to render.
+        description: Image size in pixels; larger looks sharper and takes longer to render.
         default: 2500
         min: 100
         max: 10000
+        step: 1
       workers:
         type: list
-        label: Compute Resources
+        label: Compute resources
         tooltip: The resources that race. Every worker starts a render; the first endpoint up wins and the rest stand down.
         template:
           resource:
             type: compute-clusters
-            label: Resource Target
+            label: Resource target
             tooltip: The compute cluster to run the fractal example on.
             autoselect: true
             optional: false
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
             hidden: ${{ inputs.workers.[index].resource.schedulerType == '' }}
             ignore: ${{ .hidden }}
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
             ignore: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
             items:
@@ -71,14 +70,15 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.workers.[index].resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '00:30:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -86,7 +86,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
             ignore: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
             items:
@@ -96,7 +96,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:

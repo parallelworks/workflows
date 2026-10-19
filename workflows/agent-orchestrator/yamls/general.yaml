@@ -165,6 +165,7 @@ jobs:
             default: agent-orchestrator
           marker:
             label: Fleet marker
+            description: Only agents launched with this same marker are discovered and coordinated.
             type: string
             default: worker
             tooltip: >-
@@ -185,6 +186,7 @@ jobs:
             tooltip: Instructions that define how the orchestrator coordinates the cluster agents.
           model:
             label: Model
+            description: Must support tool calling; any id from pw ai models ls or the Chat picker's short name.
             type: string
             default: org:glm/glm-5.1
             tooltip: >-

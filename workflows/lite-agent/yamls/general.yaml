@@ -150,7 +150,7 @@ jobs:
         type: compute-clusters
         label: Cluster
         include-workspace: false
-        tooltip: The cluster to run this agent on. Keep "Schedule Job" off so it stays on the login node.
+        tooltip: The cluster to run this agent on. Keep "Submit to the scheduler" off so it stays on the login node.
       cluster:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
@@ -160,14 +160,15 @@ jobs:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
+            label: Submit to the scheduler
+            description: Keep off so the agent stays on the login node.
             tooltip: |
               Keep this off. The agent must stay on the login node so the
               orchestrator can reach it and so it has the internet access its
               brain needs.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -183,6 +184,7 @@ jobs:
                 resource: ${{ inputs.resource }}
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
               gpus:
@@ -190,17 +192,18 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
-                tooltip: Extra #SBATCH directives, one per line.
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -210,9 +213,8 @@ jobs:
                 default: true
                 label: Is PBS enabled?
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
-                tooltip: Extra #PBS directives, one per line.
       service:
         type: group
         label: Settings
@@ -223,6 +225,7 @@ jobs:
             default: lite-agent
           marker:
             label: Fleet marker
+            description: Only agents launched with this same marker are discovered and coordinated.
             type: string
             default: worker
             tooltip: >-
@@ -231,6 +234,7 @@ jobs:
               "gpuworker") to keep separate fleets apart.
           system_prompt:
             label: System prompt
+            description: "{cluster} is replaced with the cluster name at runtime."
             type: editor
             default: >-
               You are an agent running on the compute cluster '{cluster}'. Use the
@@ -239,11 +243,9 @@ jobs:
               training, big downloads), submit it to the scheduler or start it in the
               background and report how to check on it; do not block waiting for it to
               finish. Keep answers concise and specific to this cluster.
-            tooltip: >-
-              Instructions that define the agent's behavior. "{cluster}" is replaced
-              with the cluster name at runtime.
           model:
             label: Model
+            description: Must support tool calling; any id from pw ai models ls or the Chat picker's short name.
             type: string
             default: org:glm/glm-5.1
             tooltip: >-

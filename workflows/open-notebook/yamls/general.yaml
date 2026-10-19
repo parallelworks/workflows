@@ -144,18 +144,16 @@ jobs:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -169,9 +167,9 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
@@ -180,12 +178,14 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -193,7 +193,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -203,7 +203,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -211,7 +211,7 @@ jobs:
                   #PBS -l ngpus=1
       service:
         type: group
-        label: Open Notebook Settings
+        label: Open Notebook settings
         collapsed: true
         items:
           name:
@@ -219,26 +219,30 @@ jobs:
             hidden: true
             default: open-notebook
           open_notebook_image:
-            label: Open Notebook Image
+            label: Open Notebook image
+            description: Pin a tag to lock the version.
             type: string
             default: lfnovo/open_notebook:v1-latest
             tooltip: Docker image for Open Notebook. Use a specific tag (e.g. lfnovo/open_notebook:v1.2.3) to pin a version, or keep the default (v1-latest) to always pull the latest stable release.
           opennotebook_encryption_key:
-            label: Encryption Key
+            label: Encryption key
+            description: Use the same value every restart to keep access to existing data.
             type: password
             tooltip: Secret string used to encrypt stored API keys and sensitive data. Required. Use the same value every time you restart this session to retain access to your existing data.
           notebook_data_dir:
-            label: Notebook Data Directory
+            label: Notebook data directory
+            description: Reuse a stable path across sessions to keep your notebooks and sources.
             type: string
             default: ./notebook_data
             tooltip: Path on the service node where Open Notebook stores its data files. Set this to a stable, persistent path (e.g. ${HOME}/open-notebook/data) and reuse it across sessions to preserve your notebooks and sources.
           surrealdb_image:
-            label: SurrealDB Image
+            label: SurrealDB image
             type: string
             default: surrealdb/surrealdb:v2
             tooltip: Docker image for SurrealDB, the database backend used by Open Notebook. Change only if you need to pin a specific SurrealDB version.
           surreal_data_dir:
-            label: Surreal Data Directory
+            label: Surreal data directory
+            description: Must be persistent and different from the notebook data directory.
             type: string
             default: ./surreal_data
-            tooltip: Path on the service node where SurrealDB stores its database files. Must be a persistent location if you want your data to survive session restarts. Should be different from the Notebook Data Directory.
+            tooltip: Path on the service node where SurrealDB stores its database files. Must be a persistent location if you want your data to survive session restarts. Should be different from the notebook data directory.

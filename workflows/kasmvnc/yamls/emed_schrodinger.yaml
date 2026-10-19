@@ -191,13 +191,12 @@ jobs:
         default: kasmvnc-singularity
       cluster:
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           resource:
             type: compute-clusters
             label: Service host
             include-workspace: false
-            tooltip: Resource to host the service
             autoselect: true
           scheduler:
             type: boolean
@@ -209,13 +208,13 @@ jobs:
               No  → Job is executed in the controller or login node instead
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
               slurm_options:
                 type: dropdown
-                label: Select Cluster
+                label: Select cluster
                 optional: true
                 default: ''
                 options:
@@ -231,16 +230,16 @@ jobs:
               partition_default:
                 type: slurm-partitions
                 label: SLURM partition
+                description: Leave empty to let SLURM pick.
                 ignore: ${{ 'hpc4' == inputs.cluster.slurm.slurm_options }}
                 hidden: ${{ .ignore }}
                 optional: true
                 resource: ${{ inputs.cluster.resource }}
-                tooltip: Select a partition from the drop down menu. Leave empty to let SLURM pick a partition.
               partition_hpc4:
                 type: dropdown
                 label: SLURM partition
+                description: Leave empty to let SLURM pick.
                 optional: true
-                tooltip: Select a partition from the drop down menu. Leave empty to let SLURM pick a partition.
                 ignore: ${{ 'hpc4' != inputs.cluster.slurm.slurm_options }}
                 hidden: ${{ .ignore }}
                 default: normal
@@ -260,6 +259,7 @@ jobs:
                 label: CPUs per task
                 min: 1
                 max: 32
+                step: 1
                 default: 1
                 tooltip: '--cpus-per-task=value slurm directive'
                 ignore: ${{ ('existing' != inputs.cluster.resource.provider && 'managed-cluster' != inputs.cluster.resource.provider) }}
@@ -286,6 +286,7 @@ jobs:
                 hidden: ${{ .ignore }}
                 min: 1
                 max: 4
+                step: 1
                 default: 1
                 tooltip: '--gres=gpu:X slurm directive'
               gres_gpu_hpc4:
@@ -296,15 +297,18 @@ jobs:
                 optional: ${{ .hidden }}
                 min: 1
                 max: 4
+                step: 1
                 default: 1
                 tooltip: '--gres=gpu:X slurm directive'
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -312,7 +316,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -322,7 +326,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -331,7 +335,7 @@ jobs:
 
       desktop:
         type: group
-        label: Desktop Settings
+        label: Desktop settings
         collapsed: true
         items:
           kasmvnc_os:
@@ -355,7 +359,8 @@ jobs:
             default: maestro
           container_mount_paths:
             type: editor
-            label: Additional Mount Paths
+            label: Additional mount paths
+            description: One directory per line; a missing path is skipped with a warning.
             optional: true
             tooltip: |
               Extra directories to bind-mount into the container, one per line.

@@ -145,23 +145,20 @@ jobs:
         type: compute-clusters
         label: Service host
         include-workspace: false
-        tooltip: Resource to host the service
       cluster:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -184,7 +181,7 @@ jobs:
                 resource: ${{ inputs.resource }}
                 tooltip: '--qos=partition slurm directive'
               qos:
-                label: Quality of Service [QoS]
+                label: Quality of service (QoS)
                 type: slurm-qos
                 resource: ${{ inputs.resource }}
                 tooltip: '--qos=value slurm directive'
@@ -194,6 +191,7 @@ jobs:
                 label: CPUs per task
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
                 ignore: ${{ 'existing' != inputs.resource.provider }}
                 hidden: ${{ .ignore }}
@@ -201,11 +199,12 @@ jobs:
                 label: Number of nodes
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--nodes=value slurm directive'
                 ignore: ${{ 'existing' != inputs.resource.provider }}
                 hidden: ${{ .ignore }}
               node_type:
-                label: Node Type
+                label: Node type
                 type: dropdown
                 optional: true
                 default: ""
@@ -247,11 +246,13 @@ jobs:
                     - Intel
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: 00:30:00
-                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job (format: D-HH:MM:SS or HH:MM:SS, e.g. 7-00:00:00 or 01:00:00)'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -262,7 +263,7 @@ jobs:
                   ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -276,7 +277,7 @@ jobs:
                 type: string
                 tooltip: PBS account for job submission (-A)
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -297,7 +298,7 @@ jobs:
 
       service:
         type: group
-        label: VS Code Settings
+        label: VS Code settings
         items:
           download_url:
             label: Download URL
@@ -306,16 +307,16 @@ jobs:
             tooltip: Downloads or uses the code-server server version specified in the URL
           password:
             label: Password for IDE session
+            description: Leave blank for no password.
             type: password
             optional: true
-            tooltip: Enter password or leave blank for no password
           directory:
             label: Directory to open in VS Code
             type: string
             default: ${HOME}
-            tooltip: Directory to open in VS code
           subdomain:
             label: Subdomain of the IDE URL
+            description: Reuse the same subdomain every run so VS Code keeps its sign-ins and settings per URL.
             type: string
             optional: true
             tooltip: |
@@ -324,8 +325,7 @@ jobs:
               and trusted folders per URL, and a new URL starts from scratch. Default:
               vscode-<namespace>-<cluster>-<user>. Pick another label to run a second IDE on the same cluster.
           parent_install_dir:
-            label: Parent Install Directory
+            label: Parent install directory
+            description: Needs enough free space for the installs.
             type: string
             default: ${HOME}/pw/software
-            tooltip: Software dependencies are installed in this directory. Ensure the directory has sufficient space!
-

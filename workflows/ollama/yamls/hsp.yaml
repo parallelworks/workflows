@@ -270,23 +270,20 @@ jobs:
         type: compute-clusters
         label: Service host
         include-workspace: false
-        tooltip: Resource to host the service
       cluster:
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -309,7 +306,7 @@ jobs:
                 resource: ${{ inputs.resource }}
                 tooltip: '--qos=partition slurm directive'
               qos:
-                label: Quality of Service [QoS]
+                label: Quality of service (QoS)
                 type: slurm-qos
                 resource: ${{ inputs.resource }}
                 tooltip: '--qos=value slurm directive'
@@ -319,6 +316,7 @@ jobs:
                 label: CPUs per task
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
                 ignore: ${{ 'existing' != inputs.resource.provider }}
                 hidden: ${{ .ignore }}
@@ -326,11 +324,12 @@ jobs:
                 label: Number of nodes
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--nodes=value slurm directive'
                 ignore: ${{ 'existing' != inputs.resource.provider }}
                 hidden: ${{ .ignore }}
               node_type:
-                label: Node Type
+                label: Node type
                 type: dropdown
                 optional: true
                 default: ''
@@ -372,11 +371,13 @@ jobs:
                     - Intel
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '00:30:00'
-                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job (format: D-HH:MM:SS or HH:MM:SS, e.g. 7-00:00:00 or 01:00:00)'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 default: |
                   #SBATCH --gres=gpu:1
@@ -393,7 +394,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -407,7 +408,7 @@ jobs:
                 type: string
                 tooltip: PBS account for job submission (-A)
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 default: |
                   # Parameters that apply to all sites
@@ -430,7 +431,7 @@ jobs:
 
       service:
         type: group
-        label: Ollama Settings
+        label: Ollama settings
         items:
           name:
             label: Runtime
@@ -447,6 +448,7 @@ jobs:
                 value: ollama-gguf-container
           models:
             label: Models to serve
+            description: Space or comma separated Ollama names or Hugging Face GGUF references; mind disk and memory.
             type: string
             default: huggingface.co/culturerevolt/gemma-4-12b-heretic-abliterated-GGUF:Q4_K_M
             tooltip: |
@@ -468,7 +470,8 @@ jobs:
               assembles for itself, so the models keep the names set above rather than
               the reference they were pulled with.
           context_length:
-            label: Context Length
+            label: Context length
+            description: Default serves the model's trained window, which costs memory; pick a fixed size on a small or shared GPU.
             type: dropdown
             default: max
             tooltip: |
@@ -504,11 +507,13 @@ jobs:
             tooltip: How long a model stays loaded in memory after its last request (OLLAMA_KEEP_ALIVE), e.g. 5m, 1h, or -1 to keep it loaded forever
           preload:
             label: Preload models
+            description: Combine with Keep models loaded = -1 to keep them in memory permanently.
             type: boolean
             default: true
-            tooltip: Load the requested models into memory as soon as the server starts, so the first request does not wait for the model to load. Combine with Keep models loaded = -1 to keep them in memory permanently.
+            tooltip: |
+              Load the requested models into memory as soon as the server starts, so the first request does not wait.
           models_dir:
-            label: Model Directory
+            label: Model directory
             type: string
             optional: true
             tooltip: |
@@ -525,6 +530,7 @@ jobs:
               the right trade for a cache that can be pulled again.
           model_names:
             label: Serve models as
+            description: Leave empty for the default short names; the name is the model id the platform chat shows.
             type: string
             optional: true
             tooltip: |
@@ -537,6 +543,7 @@ jobs:
               repository name is long.
           endpoint_name:
             label: Endpoint name
+            description: Defaults to <runtime>-<run slug>; a fixed name keeps chat model ids stable across relaunches.
             type: string
             optional: true
             tooltip: |

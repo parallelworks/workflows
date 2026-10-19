@@ -120,13 +120,15 @@ jobs:
         label: Attempt of the parent's retried Iterate step (0-based)
         default: 0
         min: 0
+        step: 1
       resource:
         type: compute-clusters
         label: Resource
         optional: false
       scheduler:
         type: boolean
-        label: Schedule cases?
+        label: Submit cases to the scheduler
+        description: Otherwise the cases run on the login node.
         default: false
       slurm:
         type: group
@@ -147,11 +149,12 @@ jobs:
             optional: true
           qos:
             type: string
-            label: Quality of Service
+            label: Quality of service
             optional: true
           time:
             type: string
             label: Walltime
+            description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
             default: '01:00:00'
           scheduler_directives:
             type: editor
@@ -173,19 +176,24 @@ jobs:
       batch_size:
         type: number
         label: Cases per iteration
+        description: Sizes the workers matrix, one slot per case.
         default: 8
         min: 1
         max: 256
+        step: 1
       max_iterations:
         type: number
         label: Generation budget
+        description: Also the retry budget; a crashed and retried iteration consumes one.
         default: 10
         min: 1
+        step: 1
       stall_generations:
         type: number
         label: Stagnation window
         default: 3
         min: 1
+        step: 1
       state_dir:
         type: string
         label: Absolute path of the optimizer state directory

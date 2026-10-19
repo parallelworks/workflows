@@ -1,5 +1,5 @@
 ## Jupyter Interactive Session
-This workflow starts a Jupyter server on a scheduled compute node or on the controller/login node, depending on the **Schedule Job?** setting. When scheduled, the job is submitted via `sbatch` (SLURM) or `qsub` (PBS).
+This workflow starts a Jupyter server on a scheduled compute node or on the controller/login node, depending on the **Submit to the scheduler** setting. When scheduled, the job is submitted via `sbatch` (SLURM) or `qsub` (PBS).
 
 #### Instructions
 

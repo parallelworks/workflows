@@ -5,7 +5,7 @@ browser — on a cluster, exposed through a platform endpoint.
 
 ## Inputs
 
-- **Service host** — the cluster that runs the IDE. With **Schedule Job?**
+- **Service host** — the cluster that runs the IDE. With **Submit to the scheduler**
   enabled the service is submitted to a compute node via SLURM/PBS (with the
   usual directive inputs); otherwise it runs on the login/controller node.
 - **Download URL** — the code-server release tarball to install.

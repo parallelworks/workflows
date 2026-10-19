@@ -28,12 +28,12 @@ Launch [Open Notebook](https://github.com/lfnovo/open-notebook) as an interactiv
 | **SurrealDB Image** | Docker image for the SurrealDB backend. Defaults to `surrealdb/surrealdb:v2`. Change only to pin a specific version. |
 | **Surreal Data Directory** | Path where SurrealDB stores its database files. Must be persistent and different from the Notebook Data Directory. |
 
-### Compute Cluster Settings
+### Compute cluster settings
 
 | Field | Description |
 |-------|-------------|
 | **Service host** | The compute resource where the session runs. Docker must be available on this host. |
-| **Schedule Job?** | Set to Yes to submit the session to the SLURM or PBS scheduler. Set to No (default) to run on the controller/login node. |
+| **Submit to the scheduler** | Set to Yes to submit the session to the SLURM or PBS scheduler. Set to No (default) to run on the controller/login node. |
 | **Walltime** | Maximum runtime when using a scheduler (default: 1 hour). |
 
 ## Requirements

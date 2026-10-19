@@ -117,20 +117,18 @@ jobs:
         tooltip: Resource where the optimizer and all simulation cases run
       cluster:
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Cases?
+            label: Submit cases to the scheduler
+            description: Otherwise the cases run on the login node.
             hidden: ${{ inputs.resource.schedulerType == '' }}
             ignore: ${{ .hidden }}
-            tooltip: |
-              Yes → Each case is submitted to the scheduler using sbatch, qsub, etc
-              No  → Cases run on the controller or login node instead
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -151,9 +149,8 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               qos:
-                label: Quality of Service [QoS]
+                label: Quality of service (QoS)
                 type: slurm-qos
                 resource: ${{ inputs.resource }}
                 tooltip: '--qos=value slurm directive'
@@ -161,11 +158,13 @@ jobs:
                 hidden: ${{ .ignore }}
               time:
                 label: Walltime per case
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for each case'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -175,7 +174,7 @@ jobs:
                   --nodes=1 and --ntasks=1 after these directives.
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -185,7 +184,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 optional: true
                 tooltip: |
@@ -194,14 +193,16 @@ jobs:
                   #PBS -l ngpus=1
       optimizer:
         type: group
-        label: Optimizer Settings
+        label: Optimizer settings
         items:
           max_iterations:
             type: number
             label: Maximum iterations
+            description: Also the retry budget; a crashed and retried iteration consumes one.
             default: 10
             min: 1
             max: 50
+            step: 1
             tooltip: |
               Generation budget: the optimizer stops with the front found so far after
               this many evaluated generations. Also the loop's retry budget, so a
@@ -209,9 +210,11 @@ jobs:
           batch_size:
             type: number
             label: Cases per iteration
+            description: Sizes the workers matrix, one slot per case.
             default: 8
             min: 1
             max: 256
+            step: 1
             tooltip: |
               Simulations submitted in parallel each iteration (the EA population).
               Sizes the workers matrix of iteration-noaa.yaml: one worker slot
@@ -222,12 +225,14 @@ jobs:
             default: 3
             min: 1
             max: 20
+            step: 1
             tooltip: |
               Declare convergence when the Pareto front's hypervolume improves by less
               than 0.001 over this many consecutive generations.
           iteration_timeout:
             type: string
             label: Time budget per iteration
+            description: Units like 30s, 10m or 12h; it must cover queue time and node boot for a whole generation.
             default: 2d
             tooltip: |
               Maximum wall time for one generation: propose + evaluate every case

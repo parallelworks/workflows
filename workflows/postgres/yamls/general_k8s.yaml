@@ -631,18 +631,16 @@ jobs:
         hidden: ${{ inputs.resource.type == 'kubernetes' || inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.type == 'kubernetes' || inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -656,9 +654,9 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
@@ -667,12 +665,14 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -680,7 +680,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -690,7 +690,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -699,7 +699,7 @@ jobs:
 
       service:
         type: group
-        label: PostgreSQL Settings
+        label: PostgreSQL settings
         hidden: ${{ inputs.resource.type == 'kubernetes' }}
         ignore: ${{ inputs.resource.type == 'kubernetes' }}
         items:
@@ -714,30 +714,37 @@ jobs:
             tooltip: Superuser created with a new data directory (POSTGRES_USER).
           password:
             label: Password
+            description: A data directory keeps the user and password it was created with.
             type: password
             optional: ${{ inputs.resource.type == 'kubernetes' }}
-            tooltip: The user's password (POSTGRES_PASSWORD). A data directory keeps the user and password it was created with.
+            tooltip: |
+              The user's password (POSTGRES_PASSWORD).
           db:
             label: Database
+            description: Created if missing; defaults to the user's name.
             type: string
             default: postgres
             optional: true
-            tooltip: Database pgweb opens, created if it does not exist. Defaults to the user's name.
           port:
-            label: Database Port
+            label: Database port
+            description: Jobs on the cluster connect to <node>:<port>; from your computer, forward it with pw forward.
             type: number
             default: 5432
             min: 1
             max: 65535
-            tooltip: Port PostgreSQL listens on, on the node it runs on. Jobs on the cluster connect to <node>:<port>; from your computer, forward it with pw forward.
+            step: 1
+            tooltip: |
+              Port PostgreSQL listens on, on the node it runs on.
           data_dir:
-            label: Data Directory
+            label: Data directory
+            description: Reuse it to keep your databases across sessions; only one run at a time can serve it.
             type: string
             default: ${HOME}/postgres
             tooltip: |
-              Keeps the database cluster (in pgdata/). Reuse it to keep your databases across sessions; only one run at a time can serve it.
+              Keeps the database cluster (in pgdata/).
           image:
-            label: PostgreSQL Image
+            label: PostgreSQL image
+            description: A data directory only opens with the major version that created it.
             type: string
             default: postgres:18
             tooltip: |
@@ -749,7 +756,7 @@ jobs:
 
       k8s:
         type: group
-        label: Kubernetes Settings
+        label: Kubernetes settings
         hidden: ${{ inputs.resource.type != 'kubernetes' }}
         ignore: ${{ inputs.resource.type != 'kubernetes' }}
         items:
@@ -765,7 +772,7 @@ jobs:
             tooltip: Specify storage settings for Persistent Volume Claims (PVCs), including size, storage class, and mount path. The database cluster is kept on this volume, in pgdata/.
             items:
               pvc:
-                label: Persistent Volume Claim
+                label: Persistent volume claim
                 type: dropdown
                 default: New
                 options:
@@ -774,11 +781,11 @@ jobs:
                   - value: New
                     label: Create New PVC
               pvc_mount_path:
-                label: Mount Path
+                label: Mount path
                 type: string
                 default: /mnt
               pvc_existing:
-                label: Select PVC Name
+                label: Select PVC name
                 type: kubernetes-pvc
                 clusterName: ${{ inputs.resource.name }}
                 namespace: ${{ inputs.k8s.namespace }}
@@ -786,29 +793,29 @@ jobs:
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
               pvc_storage_size:
-                label: Enter PVC Size
+                label: Enter PVC size
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc != New }}
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
                 default: 10Gi
               pvc_storage_class:
-                label: Enter PVC Storage Class
+                label: Enter PVC storage class
+                description: Leave blank for the default storage class of the cluster.
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc != New }}
                 ignore: ${{ .hidden }}
                 optional: true
-                tooltip: Leave blank to use the default storage class configured in the cluster.
               pvc_persist:
-                label: Persist PVC After Completion
+                label: Persist PVC after completion
+                description: Otherwise the PVC, and the databases on it, is deleted when the run ends.
                 type: boolean
                 default: false
                 hidden: ${{ inputs.k8s.volumes.pvc != 'New' }}
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
-                tooltip: If true, the PVC (and the databases on it) will persist after the job is canceled or completed. If false, it will be deleted.
               pvc_name:
-                label: Enter PVC Name
+                label: Enter PVC name
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc_persist == false || inputs.k8s.volumes.pvc != New  }}
                 ignore: ${{ .hidden }}
@@ -825,31 +832,31 @@ jobs:
                 items:
                   memory:
                     label: Memory
+                    description: For example 512Mi or 1Gi.
                     type: string
                     default: 512Mi
-                    tooltip: Specify the minimum memory required for the pod (e.g., 512Mi, 1Gi).
                   cpu:
                     label: CPU
+                    description: For example 0.5, 1 or 100m (millicores).
                     type: string
                     default: '1'
-                    tooltip: Specify the minimum CPU required for the pod (e.g., 0.5, 1, 100m). Use decimal values for partial CPUs or "m" for millicores (e.g., 100m = 0.1 CPU).
               limits:
                 type: group
                 label: Limits
                 items:
                   memory:
                     label: Memory
+                    description: For example 1Gi or 2Gi; shared memory up to 256Mi counts against it.
                     type: string
                     default: 1Gi
-                    tooltip: Set the maximum memory the pod can use (e.g., 1Gi, 2Gi). Shared memory (/dev/shm, up to 256Mi) counts against it.
                   cpu:
                     label: CPU
+                    description: For example 1, 2 or 500m.
                     type: string
                     default: '2'
-                    tooltip: Set the maximum CPU the pod can use (e.g., 1, 2, 500m).
       service_k8s:
         type: group
-        label: PostgreSQL Settings
+        label: PostgreSQL settings
         hidden: ${{ inputs.resource.type != 'kubernetes' }}
         ignore: ${{ inputs.resource.type != 'kubernetes' }}
         items:
@@ -864,17 +871,20 @@ jobs:
             tooltip: Superuser created with a new volume (POSTGRES_USER).
           password:
             label: Password
+            description: A volume keeps the user and password it was created with.
             type: password
             optional: ${{ inputs.resource.type != 'kubernetes' }}
-            tooltip: The user's password (POSTGRES_PASSWORD). A volume keeps the user and password it was created with.
+            tooltip: |
+              The user's password (POSTGRES_PASSWORD).
           db:
             label: Database
+            description: Created if missing; defaults to the user's name.
             type: string
             default: postgres
             optional: true
-            tooltip: Database pgweb opens, created if it does not exist. Defaults to the user's name.
           image:
-            label: PostgreSQL Image
+            label: PostgreSQL image
+            description: A volume only opens with the major version that created it.
             type: string
             default: postgres:18
             tooltip: |

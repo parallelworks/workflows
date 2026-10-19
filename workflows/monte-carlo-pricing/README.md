@@ -110,7 +110,7 @@ The jobs follow the repository's endpoint pattern:
   run there; `setup_site.sh` uses the site's `python3` when it has numpy and otherwise
   builds a numpy virtualenv once at `~/pw/software/monte-carlo-pricing/site-venv` (with
   no way to install numpy, the simulator falls back to pure Python, about 20× slower). With
-  **Schedule Job?** on, a TCP proxy on the site's login node exposes the tunnel to the
+  **Submit to the scheduler** on, a TCP proxy on the site's login node exposes the tunnel to the
   compute nodes and the batches run under `srun`. The site needs no GitHub access and
   always runs the code the dashboard host checked out. This does need the platform SSH
   key (`~/.ssh/pwcli`) on the dashboard host, which the user workspace and on-prem
@@ -130,7 +130,7 @@ alone does not raise it).
 | Input | Description | Default |
 |-------|-------------|---------|
 | Dashboard Host | Login node, cloud VM or the user workspace that serves the dashboard and dispatches the sites | — |
-| Compute Sites | One entry per site: resource, **Schedule Job?** (SLURM only) and its partition, node count, walltime and extra directives | — |
+| Compute Sites | One entry per site: resource, **Submit to the scheduler** (SLURM only) and its partition, node count, walltime and extra directives | — |
 | Option Type | Asian call/put (arithmetic average), European call/put (with the Black-Scholes benchmark), barrier up-and-out call | Asian Call |
 | Spot Price (S0) | Current underlying asset price | 100 |
 | Strike Price (K) | Option strike price | 100 |

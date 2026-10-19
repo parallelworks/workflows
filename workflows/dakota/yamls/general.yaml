@@ -109,11 +109,12 @@ jobs:
         tooltip: Resource whose filesystem holds the study (the state directory and the case directories the evaluator reads and writes). Dakota itself runs on its login node.
       problem:
         type: group
-        label: Problem Definition
+        label: Problem definition
         items:
           variables:
             type: editor
             label: Design variables
+            description: One line per variable with its name, lower bound and upper bound; the names label the params.in files.
             default: |
               max_camber       0.0   0.06
               camber_position  0.3   0.6
@@ -126,17 +127,16 @@ jobs:
           objectives:
             type: string
             label: Objectives
+            description: Both minimized, in the order the evaluator writes them; negate a quantity to maximize it.
             default: drag_coefficient neg_lift_coefficient
-            tooltip: |
-              The two objectives, both minimized, in the order the evaluator
-              writes them to results.out (negate a quantity to maximize it).
       optimizer:
         type: group
-        label: Optimizer Settings
+        label: Optimizer settings
         items:
           state_dir:
             type: string
             label: State directory
+            description: Point successive runs at the same directory to continue the study; empty starts a fresh one.
             optional: true
             tooltip: |
               Absolute path of the study on the resource: Dakota's restart file,
@@ -150,6 +150,7 @@ jobs:
             default: 4
             min: 1
             max: 64
+            step: 1
             tooltip: |
               Dakota MOGA's population size: at most this many new designs are
               proposed per step. Fewer can come back when offspring duplicate
@@ -157,16 +158,18 @@ jobs:
           max_generations:
             type: number
             label: Maximum generations
+            description: The study stops with the front found so far after this many generations.
             default: 10
             min: 1
             max: 500
-            tooltip: The study stops with the front found so far once this many generations were evaluated, even if Dakota wants to continue.
+            step: 1
           stall_generations:
             type: number
             label: Stagnation window
             default: 3
             min: 1
             max: 20
+            step: 1
             tooltip: |
               Declare convergence when the Pareto front's normalized hypervolume
               improves by less than 0.001 over this many consecutive generations.
@@ -174,20 +177,19 @@ jobs:
           seed:
             type: number
             label: Dakota seed
+            description: Fixed per study; change it only together with a fresh state directory.
             default: 4242
             min: 1
-            tooltip: |
-              Fixed per study: the restart replay that resumes Dakota between
-              steps requires a deterministic method. Change it only together with
-              a fresh state directory.
+            step: 1
       software:
         type: group
-        label: Software Environment
+        label: Software environment
         collapsed: true
         items:
           dakota_load:
             type: editor
             label: Dakota environment commands
+            description: Leave empty to install Dakota 6.16 from conda-forge once (needs internet on the login node).
             optional: true
             tooltip: |
               Shell commands that put `dakota` on PATH, e.g. `module load dakota`.

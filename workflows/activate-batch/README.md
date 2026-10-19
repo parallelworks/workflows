@@ -17,14 +17,14 @@ completes when the commands finish and **fails when they fail**.
    hostname, date, user and directory, your commands, and a completion footer.
 2. **script_submitter** submits that file through the shared
    [`script_submitter/v3.6`](../script_submitter/) subworkflow (`use_existing_script`),
-   on the login node or via `sbatch`/`qsub` depending on **Schedule Job?**. The
+   on the login node or via `sbatch`/`qsub` depending on **Submit to the scheduler**. The
    submitter streams `run.<id>.out` to the log while the job runs and, if the run is
    cancelled, kills the process or `scancel`s/`qdel`s the job.
 3. **Check Exit Status** reads `commands.exit` and fails the run when it is not `0`.
 
 ## Inputs
 
-- **Compute resource** / **Schedule Job?** / **SLURM Directives** / **PBS Directives**:
+- **Compute resource** / **Submit to the scheduler** / **SLURM directives** / **PBS directives**:
   the same cluster form as every workflow here. Account, QoS, node counts, memory and
   the like go in the scheduler directives editor, one `#SBATCH`/`#PBS` line each.
 - **Commands to Execute**: the commands, one per line. They run under `set -e`, so

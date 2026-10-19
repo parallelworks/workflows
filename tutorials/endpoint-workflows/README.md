@@ -154,17 +154,18 @@ jobs:
     inputs:                                   # The form users fill in before running the workflow
       resource:
         type: compute-clusters                # Renders a cluster picker
-        label: Resource Target
+        label: Resource target
         tooltip: The compute cluster to run the fractal example on.
         autoselect: true
         optional: false
       resolution:
         type: number                          # Renders a validated number field
         label: Resolution
-        tooltip: Image size in pixels. Larger values look sharper but take longer to render.
+        description: Image size in pixels; larger looks sharper and takes longer to render.
         default: 2500
         min: 100
         max: 10000
+        step: 1                               # Whole numbers only
       port:
         type: number
         label: Port
@@ -172,9 +173,13 @@ jobs:
         default: 8000
         min: 1024
         max: 65535
+        step: 1
 ```
 
 ### Concepts introduced
+
+**The form copy.**
+A `label` in sentence case names the input. A `description` is the one line a user must read before submitting and shows under the label; a `tooltip` is detail behind a ?. A whole-number input carries `step: 1`. The conventions for all of this are in [AGENTS.md](../../AGENTS.md) under "Form copy".
 
 **[`needs`](https://parallelworks.com/docs/run/workflows/building-workflows/yaml-fields#jobsjobneeds) — ordering and parallelism.**
 By default every job in a workflow starts at the same time. `needs` makes a job wait for another to finish first. Here `run` lists `install` under `needs`, so the example is checked out and installed before `run` renders and serves it. (You will see jobs actually run *in parallel* in Stage 4.) Every job- and step-level key this tutorial uses — `needs`, `ssh`, `retry`, `cleanup`, and the rest — is documented in [YAML Fields](https://parallelworks.com/docs/run/workflows/building-workflows/yaml-fields).
@@ -434,7 +439,7 @@ Until now everything ran on the **controller** (login) node. Heavy work belongs 
           echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
 ```
 
-**`script_submitter`** takes it from there: it submits the script with `sbatch`/`qsub` (or runs it over SSH when *Schedule Job?* is off), streams the job's output into the run's logs, watches it, and — if the run is canceled — tears the job down. You only fill in its inputs. Two of them are new in this stage, `submit_and_exit` and `skip_cleanups_file`:
+**`script_submitter`** takes it from there: it submits the script with `sbatch`/`qsub` (or runs it over SSH when *Submit to the scheduler* is off), streams the job's output into the run's logs, watches it, and — if the run is canceled — tears the job down. You only fill in its inputs. Two of them are new in this stage, `submit_and_exit` and `skip_cleanups_file`:
 
 ```yaml
   script_submitter:
@@ -532,7 +537,7 @@ The wait step's tools are Stage 3's — `retry` until the endpoint shows up, `$O
 The name becomes `fractal-<run-slug>-<resource-name>-wN`. `PW_RUN_SLUG` is *run-scoped* — in Stage 5 every matrix worker shares it — and a run can even target the *same resource* twice, so the resource name alone is not unique either. The worker's matrix index is exported as `PW_MATRIX_INDEX` (`0`, `1`, …) — set even here, inside the subworkflow the matrix job invokes, and unset when the workflow runs on its own — so `install` appends it as `-w0`, `-w1`, …, and publishes the finished name as the `ENDPOINT_NAME` output — one place builds the name, every other job just reads it. The shared `fractal-<run-slug>-` prefix is what lets Stage 6 find *all* of this run's endpoints.
 
 **A form that adapts to the resource.**
-The "Schedule Job?" toggle and the `slurm`/`pbs` groups only appear when they apply: `hidden`/`ignore` key off `inputs.resource.schedulerType` (`slurm`, `pbs`, or empty) and `inputs.scheduler`. [`slurm-partitions`](https://parallelworks.com/docs/run/workflows/building-workflows/inputs-and-expressions#slurm-partitions) is a **dynamic dropdown** that fetches its choices from the chosen cluster. The hidden `is_enabled` boolean (default `true`, sent only when the group is active) is what tells the subworkflow which path to take.
+The "Submit to the scheduler" toggle and the `slurm`/`pbs` groups only appear when they apply: `hidden`/`ignore` key off `inputs.resource.schedulerType` (`slurm`, `pbs`, or empty) and `inputs.scheduler`. [`slurm-partitions`](https://parallelworks.com/docs/run/workflows/building-workflows/inputs-and-expressions#slurm-partitions) is a **dynamic dropdown** that fetches its choices from the chosen cluster. The hidden `is_enabled` boolean (default `true`, sent only when the group is active) is what tells the subworkflow which path to take.
 
 **Deleting the endpoint cancels the job — same as Stage 3.**
 `pw endpoints delete fractal-<run-slug>-<resource-name>` kills the tree wherever it landed — login node or compute node — the script exits, and a scheduled job releases its node back to the scheduler. This wait → skip → cancel shape is exactly the one the repo's production session workflows use (e.g. `workflows/jupyterlab/yamls/general.yaml`).
@@ -565,7 +570,7 @@ jobs:
           pbs:    # ... same idea ...
 ```
 
-The form replaces the single resource block with a **[`list`](https://parallelworks.com/docs/run/workflows/building-workflows/inputs-and-expressions#list)** input the user can grow: each entry has the shape defined under `template:` — a resource picker plus the same "Schedule Job?"/SLURM/PBS controls as Stage 4, nested one level deeper.
+The form replaces the single resource block with a **[`list`](https://parallelworks.com/docs/run/workflows/building-workflows/inputs-and-expressions#list)** input the user can grow: each entry has the shape defined under `template:` — a resource picker plus the same "Submit to the scheduler"/SLURM/PBS controls as Stage 4, nested one level deeper.
 
 ### Concepts introduced
 
@@ -667,7 +672,7 @@ Stage 5 ran the whole list at once; Stage 6 ran the whole list and kept one. Sta
   workers: [ A, B, C ]
 
   attempt 0 ── Stage 4 on A ──▶ endpoint up? ── yes ──▶ done: run completes, page serves
-                                    │ no (error, or Attempt Timeout)
+                                    │ no (error, or Attempt timeout)
   attempt 1 ── Stage 4 on B ──▶ endpoint up? ── yes ──▶ done
                                     │ no
   attempt 2 ── Stage 4 on C ──▶ …      (list exhausted ⇒ the run fails)
@@ -706,7 +711,7 @@ The form is Stage 5's `workers` list unchanged — only the tooltip differs: the
 ### Concepts introduced
 
 **`retry` as a failover loop.**
-A step's `retry` re-runs it while it exits non-zero — and a `uses:` step exits non-zero when its subworkflow fails. So "retry the Stage 4 call, one attempt per worker" *is* the failover: the first attempt whose endpoint comes up returns success and the loop stops; an attempt that errors — or hangs past the **Attempt Timeout** input (default `1h`) — is cut short, and the next one starts after `interval`. The timeout covers the whole attempt, queue wait included: a job that sits queued past it is `scancel`/`qdel`ed by the submitter's still-armed cleanups (Stage 4's skip file has not been touched yet) before the next resource is tried.
+A step's `retry` re-runs it while it exits non-zero — and a `uses:` step exits non-zero when its subworkflow fails. So "retry the Stage 4 call, one attempt per worker" *is* the failover: the first attempt whose endpoint comes up returns success and the loop stops; an attempt that errors — or hangs past the **Attempt timeout** input (default `1h`) — is cut short, and the next one starts after `interval`. The timeout covers the whole attempt, queue wait included: a job that sits queued past it is `scancel`/`qdel`ed by the submitter's still-armed cleanups (Stage 4's skip file has not been touched yet) before the next resource is tried.
 
 **Sizing the loop from the list.**
 `Count Workers` publishes `NUM_WORKERS`, and the very next step's `max-retries` reads it as `${{ needs.fractal_demo.outputs.NUM_WORKERS - 1 }}`: outputs written earlier in a job are readable later in the same job, and expressions can do arithmetic. First try + N−1 retries = exactly one attempt per worker.

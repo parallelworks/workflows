@@ -144,18 +144,16 @@ jobs:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -169,9 +167,9 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
@@ -180,12 +178,14 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -193,7 +193,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -203,7 +203,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -211,7 +211,7 @@ jobs:
                   #PBS -l ngpus=1
       service:
         type: group
-        label: File Browser Settings
+        label: File Browser settings
         collapsed: true
         items:
           name:
@@ -219,13 +219,13 @@ jobs:
             hidden: true
             default: filebrowser
           data_dir:
-            label: Root Directory
+            label: Root directory
+            description: Served and written as your user; ${HOME} browses your whole home directory.
             type: string
             default: ${HOME}/filebrowser/data
-            tooltip: |
-              The directory File Browser serves. Files are read and written as your user. Set it to ${HOME} to browse your whole home directory.
           rundir:
-            label: Run Directory
+            label: Run directory
+            description: Reuse it to keep the users, settings and shares of earlier sessions.
             type: string
             default: ${HOME}/filebrowser
             tooltip: |
@@ -243,15 +243,16 @@ jobs:
               Platform login only: the endpoint already requires the platform login, and whoever opens it is signed in as File Browser's admin user.
               File Browser users: File Browser asks for its own username and password, so several users with their own permissions and home folders can share the instance. Manage them as admin in Settings.
           admin_password:
-            label: Admin Password
+            label: Admin password
+            description: Leave empty to keep the current one; a first start generates one and prints it in the log.
             type: password
             optional: true
             hidden: ${{ inputs.service.auth_method != 'json' }}
             ignore: ${{ .hidden }}
             tooltip: |
-              Password of the admin user, set when the database is created and updated on later starts. Leave it empty to keep the current one; the first start then generates one and prints it in the run log.
+              Password of the admin user, set when the database is created and updated on later starts.
           image:
-            label: File Browser Image
+            label: File Browser image
+            description: Pin a tag to lock the version.
             type: string
             default: filebrowser/filebrowser:v2.50.0
-            tooltip: Docker image. Pin a tag to lock the version.

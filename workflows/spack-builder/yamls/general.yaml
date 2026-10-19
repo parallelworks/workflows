@@ -49,7 +49,7 @@ permissions: ['*']
 
       cluster:
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           resource:
             type: compute-clusters
@@ -63,7 +63,8 @@ permissions: ['*']
           scheduler:
             type: boolean
             default: true
-            label: Inspect a compute node?
+            label: Inspect a compute node
+            description: Otherwise the login node is inspected, which is right only when it matches the compute nodes.
             hidden: ${{ inputs.cluster.resource.schedulerType == '' }}
             ignore: ${{ .hidden }}
             tooltip: |
@@ -94,7 +95,7 @@ permissions: ['*']
                            physical cores; on PBS request them in the build directives.
           slurm:
             type: group
-            label: SLURM Directives (hardware inspection job, and the build when it runs on a worker)
+            label: SLURM directives (hardware inspection job, and the build when it runs on a worker)
             hidden: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.cluster.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -106,13 +107,12 @@ permissions: ['*']
               partition:
                 type: slurm-partitions
                 label: SLURM partition
+                description: The partition the stack is for; a heterogeneous cluster needs one run per node type.
                 optional: true
                 resource: ${{ inputs.cluster.resource }}
-                tooltip: >-
-                  The partition holding the nodes this stack is FOR. Pick the one you
-                  will run on; a heterogeneous cluster needs one run per node type.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '00:20:00'
                 tooltip: >-
@@ -120,6 +120,7 @@ permissions: ['*']
                   to power on, so the default leaves room for that.
               build_time:
                 label: Build walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '08:00:00'
                 hidden: ${{ inputs.cluster.build_on != 'compute' }}
@@ -130,15 +131,18 @@ permissions: ['*']
                   runs out of walltime is killed and the run fails.
               gpus:
                 label: Number of GPUs
+                description: Request one when building the GPU path.
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 tooltip: >-
                   Request a GPU here when building the GPU path, so inspection lands on
                   a node that actually has one and can report its compute capability.
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix:
@@ -146,7 +150,7 @@ permissions: ['*']
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives (hardware inspection job, and the build when it runs on a worker)
+            label: PBS directives (hardware inspection job, and the build when it runs on a worker)
             hidden: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.cluster.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -156,7 +160,7 @@ permissions: ['*']
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 optional: true
                 tooltip: |
@@ -191,6 +195,7 @@ permissions: ['*']
           spack_version:
             type: string
             label: Spack version (git tag)
+            description: Must be a v1.x tag.
             default: v1.2.2
             tooltip: >-
               Must be a v1.x tag. Compilers are dependencies in v1 and the
@@ -198,6 +203,7 @@ permissions: ['*']
           install_prefix:
             type: string
             label: Spack root
+            description: On a filesystem shared between the login and compute nodes.
             default: ${HOME}/spack
             tooltip: >-
               Must be on a filesystem shared between the login and compute nodes.
@@ -205,6 +211,7 @@ permissions: ['*']
           buildcache_path:
             type: string
             label: Binary build cache
+            description: Later runs install from it instead of recompiling.
             default: ${HOME}/spack-buildcache
             tooltip: >-
               Directory-backed Spack mirror. Every package built here is pushed to it,
@@ -212,6 +219,7 @@ permissions: ['*']
           module_root:
             type: string
             label: Module tree root
+            description: Leave blank for <Spack root>/share/spack/modules.
             default: ${HOME}/pw/software/modules
             tooltip: >-
               Where Spack writes the TCL module tree. Modules land in
@@ -225,6 +233,7 @@ permissions: ['*']
             default: 8
             min: 1
             max: 192
+            step: 1
             tooltip: >-
               When the build runs on a worker, this is capped at the worker's
               physical cores (hyperthreads are not counted) and at the CPUs the job
@@ -232,6 +241,7 @@ permissions: ['*']
           concretize_only:
             type: boolean
             label: Dry run
+            description: Stops after concretizing, before the long compile.
             default: false
             tooltip: >-
               Build workflow stops after concretizing. Bootstrap Spack, set up the build 
@@ -248,11 +258,8 @@ permissions: ['*']
           build_gpu:
             type: boolean
             label: Build the GPU path
+            description: Adds a CUDA-aware OpenMPI and a GROMACS+cuda; the CPU builds happen regardless.
             default: false
-            tooltip: >-
-              Opt-in. Adds a CUDA-aware OpenMPI and a GROMACS+cuda built against it.
-              The CPU MPIs and CPU GROMACS are always built regardless.
-
           overrides_header:
             type: header
             text: Manual overrides (advanced — all three together or none)
@@ -260,6 +267,7 @@ permissions: ['*']
           use_overrides:
             type: boolean
             label: Skip hardware inspection
+            description: Then set the target, fabric and CUDA arch below; no worker node is allocated.
             default: false
             tooltip: >-
               When on, you MUST set the whole profile manually including the target, 
@@ -268,9 +276,9 @@ permissions: ['*']
           override_target:
             type: string
             label: Spack microarch target
+            description: For example x86_64_v3, zen4 or neoverse_v1.
             placeholder: x86_64_v4
             hidden: ${{ !inputs.service.use_overrides }}
-            tooltip: e.g. x86_64_v3, x86_64_v4, neoverse_v1, zen4, cascadelake.
           override_fabric:
             type: dropdown
             label: Fabric profile

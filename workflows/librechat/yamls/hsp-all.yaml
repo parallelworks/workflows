@@ -644,12 +644,10 @@ jobs:
         type: compute-clusters
         label: LibreChat host
         include-workspace: false
-        tooltip: Resource to host the service
       langflow_resource:
         type: compute-clusters
         label: Langflow host
         include-workspace: false
-        tooltip: Resource to host the service
       container_runtime:
         type: dropdown
         label: Run container using
@@ -665,18 +663,16 @@ jobs:
         hidden: ${{ inputs.librechat_resource.schedulerType == '' }}
         ignore: ${{ inputs.librechat_resource.schedulerType == '' }}
         type: group
-        label: Librechat Cluster Settings
+        label: LibreChat cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.librechat_resource.schedulerType != 'slurm' || inputs.librechat_cluster.scheduler == false }}
             ignore: ${{ inputs.librechat_resource.schedulerType != 'slurm' || inputs.librechat_cluster.scheduler == false }}
             items:
@@ -699,7 +695,7 @@ jobs:
                 resource: ${{ inputs.librechat_resource }}
                 tooltip: '--qos=partition slurm directive'
               qos:
-                label: Quality of Service [QoS]
+                label: Quality of service (QoS)
                 type: slurm-qos
                 resource: ${{ inputs.librechat_resource }}
                 tooltip: '--qos=value slurm directive'
@@ -709,6 +705,7 @@ jobs:
                 label: CPUs per task
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
                 ignore: ${{ 'existing' != inputs.librechat_resource.provider }}
                 hidden: ${{ .ignore }}
@@ -716,11 +713,12 @@ jobs:
                 label: Number of nodes
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--nodes=value slurm directive'
                 ignore: ${{ 'existing' != inputs.librechat_resource.provider }}
                 hidden: ${{ .ignore }}
               node_type:
-                label: Node Type
+                label: Node type
                 type: dropdown
                 optional: true
                 default: ""
@@ -762,11 +760,13 @@ jobs:
                     - Intel
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '00:30:00'
-                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job (format: D-HH:MM:SS or HH:MM:SS, e.g. 7-00:00:00 or 01:00:00)'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -776,7 +776,7 @@ jobs:
                   ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.librechat_resource.schedulerType != 'pbs' || inputs.librechat_cluster.scheduler == false }}
             ignore: ${{ inputs.librechat_resource.schedulerType != 'pbs' || inputs.librechat_cluster.scheduler == false }}
             items:
@@ -789,7 +789,7 @@ jobs:
                 label: Account
                 type: string
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -811,18 +811,16 @@ jobs:
         hidden: ${{ inputs.langflow_resource.schedulerType == '' }}
         ignore: ${{ inputs.langflow_resource.schedulerType == '' }}
         type: group
-        label: Langflow Cluster Settings
+        label: Langflow cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.langflow_resource.schedulerType != 'slurm' || inputs.langflow_cluster.scheduler == false }}
             ignore: ${{ inputs.langflow_resource.schedulerType != 'slurm' || inputs.langflow_cluster.scheduler == false }}
             items:
@@ -845,7 +843,7 @@ jobs:
                 resource: ${{ inputs.langflow_resource }}
                 tooltip: '--qos=partition slurm directive'
               qos:
-                label: Quality of Service [QoS]
+                label: Quality of service (QoS)
                 type: slurm-qos
                 resource: ${{ inputs.langflow_resource }}
                 tooltip: '--qos=value slurm directive'
@@ -855,6 +853,7 @@ jobs:
                 label: CPUs per task
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
                 ignore: ${{ 'existing' != inputs.langflow_resource.provider }}
                 hidden: ${{ .ignore }}
@@ -862,11 +861,12 @@ jobs:
                 label: Number of nodes
                 type: number
                 default: 1
+                step: 1
                 tooltip: '--nodes=value slurm directive'
                 ignore: ${{ 'existing' != inputs.langflow_resource.provider }}
                 hidden: ${{ .ignore }}
               node_type:
-                label: Node Type
+                label: Node type
                 type: dropdown
                 optional: true
                 default: ""
@@ -908,11 +908,13 @@ jobs:
                     - Intel
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '00:30:00'
-                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job (format: D-HH:MM:SS or HH:MM:SS, e.g. 7-00:00:00 or 01:00:00)'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -922,7 +924,7 @@ jobs:
                   ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.langflow_resource.schedulerType != 'pbs' || inputs.langflow_cluster.scheduler == false }}
             ignore: ${{ inputs.langflow_resource.schedulerType != 'pbs' || inputs.langflow_cluster.scheduler == false }}
             items:
@@ -935,7 +937,7 @@ jobs:
                 label: Account
                 type: string
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -955,14 +957,16 @@ jobs:
                   ##PBS -l select=1:ncpus=92:mpiprocs=92:nmlas=4
       librechat:
         type: group
-        label: LibreChat Settings
+        label: LibreChat settings
         collapsed: true
         items:
           dir:
             type: string
             label: LibreChat directory
+            description: Defaults to a shared location so chat history and uploads persist.
             default: ${HOME}/pw/LibreChat
-            tooltip: Path where the LibreChat repository is cloned. Defaults to a shared location so chat history and uploads persist across sessions.
+            tooltip: |
+              Path where the LibreChat repository is cloned.
           config:
             type: string
             label: LibreChat config file
@@ -970,12 +974,12 @@ jobs:
             tooltip: Path to the LibreChat YAML configuration file. Defaults to the standard location inside the LibreChat directory.
           db:
             type: string
-            label: LibreChat Database Directory
+            label: LibreChat database directory
             optional: true
             tooltip: Path to the directory where MongoDB stores its data. Defaults to the standard location inside the LibreChat directory.
           domain_client:
             type: dropdown
-            label: Domain Client
+            label: Domain client
             default: ACTIVATE
             tooltip: Select ACTIVATE if LibreChat will be accessed from the Activate platform, or LOCALHOST otherwise (e.g., accessed via localhost or through an SSH tunnel).
             options:
@@ -985,16 +989,17 @@ jobs:
                 value: LOCALHOST
       langflow:
         type: group
-        label: Langflow Settings
+        label: Langflow settings
         collapsed: true
         items:
           data_dir:
-            label: Langflow Data Directory
+            label: Langflow data directory
+            description: Persists between sessions on a shared filesystem.
             type: string
             default: ${HOME}/pw/.langflow
-            tooltip: Directory where Langflow stores flows and credentials. Persists between sessions if on a shared filesystem.
           config_dir:
-            label: Config Directory
+            label: Config directory
+            description: Components under <config dir>/components/ are auto-discovered at startup.
             type: string
             optional: true
             default: ${HOME}/pw/.langflow
@@ -1004,7 +1009,8 @@ jobs:
               personal components stored alongside your flows and data.
               Defaults to the same location as the data directory.
           components_path:
-            label: Custom Components Path
+            label: Custom components path
+            description: Leave empty to use built-in components only.
             type: string
             optional: true
             tooltip: |
@@ -1012,10 +1018,11 @@ jobs:
               dir, e.g. a git-managed repo or a shared team folder on the cluster.
               The path is bind-mounted into the container.
               Use this when components are version-controlled or shared across users;
-              use Config Directory/components/ for personal components instead.
+              use Config directory/components/ for personal components instead.
               Leave empty to use built-in components only.
           database_url:
             label: Database URL
+            description: SQLite or PostgreSQL; defaults to a persistent SQLite file in your home.
             type: string
             default: sqlite:////${HOME}/pw/.langflow/langflow.db
             tooltip: |
@@ -1024,7 +1031,8 @@ jobs:
               The database directory is bind-mounted automatically.
               Defaults to a persistent SQLite file in the home directory.
           llm_model:
-            label: LLM Model
+            label: LLM model
+            description: Leave empty to use the first model connected to the platform.
             type: string
             optional: true
             tooltip: |
@@ -1035,7 +1043,8 @@ jobs:
               model connected to the platform; the run fails if none are
               connected.
           rag_db_dir:
-            label: RAG Database Directory
+            label: RAG database directory
+            description: Mounted at /data inside the container.
             type: string
             optional: true
             prefillDefault: true
@@ -1046,15 +1055,17 @@ jobs:
               container, so the db_path in the proxy flow configs must be
               /data (or a path under it).
           enable_hftei:
-            label: Start HFTEI Embeddings Server?
+            label: Start the HFTEI embeddings server
+            description: Requires the HFTEI model directory.
             type: boolean
             default: true
             tooltip: |
               Starts a HuggingFace Text Embeddings Inference (TEI) server next
               to Langflow. The RAG flows use it to embed queries before
-              searching the vector database. Requires HFTEI Model Directory.
+              searching the vector database. Requires HFTEI model directory.
           hftei_model_dir:
-            label: HFTEI Model Directory
+            label: HFTEI model directory
+            description: Downloaded into it when missing.
             type: string
             default: ${PROJECTS_HOME}/hsp/models/MPNet-V2
             hidden: ${{ inputs.langflow.enable_hftei == false }}
@@ -1073,7 +1084,7 @@ jobs:
             tooltip: |
               Master switch for the OpenAI-compatible Langflow proxy that exposes
               each Langflow flow as a model in LibreChat. true (default) starts it
-              (also requires Langflow Proxy Path). false or empty runs the plain
+              (also requires Langflow proxy path). false or empty runs the plain
               Langflow + LibreChat workflow — no proxy, no flow auto-import, and no
               LibreChat "Langflow" endpoint.
           import_bundled_flows:
@@ -1084,10 +1095,10 @@ jobs:
             tooltip: |
               When true, the flows shipped in this repo
               (langflow-singularity/flows: chatbot, rag_chatbot) are imported
-              alongside the user's own flows from <Langflow Proxy Path>/flows.
-              Set false to import only the flows in <Langflow Proxy Path>/flows.
+              alongside the user's own flows from <Langflow proxy path>/flows.
+              Set false to import only the flows in <Langflow proxy path>/flows.
           proxy_dir:
-            label: Langflow Proxy Path
+            label: Langflow proxy path
             type: string
             prefillDefault: true
             default: ${PROJECTS_HOME}/hsp/tools/langflow_proxy-main
@@ -1095,15 +1106,15 @@ jobs:
             tooltip: |
               Path on the service host to the langflow_proxy code (the directory
               that contains the 'langflow_proxy/' Python package). Required when
-              Start Langflow Proxy? is true. An OpenAI-compatible proxy is launched
+              Start the Langflow proxy is on. An OpenAI-compatible proxy is launched
               alongside Langflow (on a port allocated at runtime) and registered in
               LibreChat as the "Langflow" endpoint, exposing each Langflow flow as a
-              selectable model. Flow JSONs in <Langflow Proxy Path>/flows are
+              selectable model. Flow JSONs in <Langflow proxy path>/flows are
               auto-imported into Langflow on startup (owned by the superuser).
               NOTE: assumes Langflow and LibreChat share the service host
-              (Schedule Job? = No), so LibreChat can reach the proxy on localhost.
+              (Submit to the scheduler off), so LibreChat can reach the proxy on localhost.
           proxy_flows_file:
-            label: Proxy Flow Configs File
+            label: Proxy flow configs file
             type: string
             optional: true
             tooltip: |
@@ -1123,26 +1134,26 @@ jobs:
 
       env_vars:
         type: group
-        label: Environment Variables
+        label: Environment variables
         collapsed: true
         items:
           GENAI_MIL_API_KEY:
             type: password
-            label: GENAI MIL API Key
+            label: GENAI MIL API key
             default: ''
           JWT_SECRET:
             type: password
-            label: JWT Secret
+            label: JWT secret
             default: ''
           JWT_REFRESH_SECRET:
             type: password
-            label: JWT Refresh Secret
+            label: JWT refresh secret
             default: ''
           LIBRECHAT_API_KEY:
             type: password
-            label: LibreChat API Key
+            label: LibreChat API key
             default: ''
           LANGFLOW_API_KEY:
             type: password
-            label: Langflow API Key
+            label: Langflow API key
             default: ''

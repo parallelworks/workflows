@@ -298,20 +298,18 @@ jobs:
     inputs:
       head:
         type: group
-        label: Head Node
+        label: Head node
         items:
           resource:
             label: Resource
+            description: The resource that runs the Ray head node.
             type: compute-clusters
             include-workspace: true
             autoselect: true
-            tooltip: |
-              Select the same resource running the Ray head node.
-              This is used to read cluster coordination files and dispatch workers.
-
       cluster_job_dir:
         type: string
-        label: Cluster Job Directory
+        label: Cluster job directory
+        description: auto finds the latest Ray cluster run.
         default: "auto"
         tooltip: |
           The job directory of the running Ray cluster workflow. Set to "auto" to
@@ -320,28 +318,23 @@ jobs:
 
       workers:
         type: list
-        label: New Compute Workers
+        label: New compute workers
         tooltip: Add one or more compute worker sites to attach to the existing Ray cluster.
         template:
           resource:
             label: Resource
             type: compute-clusters
             include-workspace: false
-            tooltip: Select a compute resource for new Ray workers.
-
           scheduler:
             type: boolean
             default: true
-            label: Schedule Job?
+            label: Submit to the scheduler
+            description: Otherwise the workers run on the login node over SSH.
             hidden: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' && inputs.workers.[index].resource.schedulerType != 'pbs' }}
             ignore: ${{ .hidden }}
-            tooltip: |
-              Yes - Workers are submitted to the scheduler using sbatch, qsub, etc. (recommended)
-              No  - Workers run directly on the login/controller node via SSH.
-
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
             items:
               is_disabled:
@@ -355,7 +348,6 @@ jobs:
                 label: Partition
                 optional: true
                 resource: ${{ inputs.workers.[index].resource }}
-                tooltip: Select a SLURM partition
                 ignore: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
 
               account:
@@ -375,17 +367,17 @@ jobs:
 
               nodes:
                 label: Nodes
+                description: Each node runs a Ray worker.
                 type: number
                 slider: true
                 default: 1
                 min: 1
                 max: 16
                 step: 1
-                tooltip: Number of compute nodes to request. Each node runs a Ray worker.
                 ignore: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
 
               gres:
-                label: GPUs per Node (gres)
+                label: GPUs per node (gres)
                 type: dropdown
                 default: ""
                 tooltip: "GPUs per node (--gres). For example, 4 GPUs/node × 2 nodes = 8 GPUs total."
@@ -404,22 +396,24 @@ jobs:
 
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: "01:00:00"
-                tooltip: "SLURM walltime (HH:MM:SS). Workers terminate when this expires."
+                tooltip: "Workers terminate when this expires."
                 ignore: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
 
               scheduler_directives:
                 type: editor
-                label: Additional Directives
+                label: Additional directives
                 default: "##SBATCH --constraint=mla  # uncomment for Navy and AFRL DSRC systems"
                 optional: true
-                tooltip: Additional SLURM directives (include #SBATCH prefix)
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix.
                 ignore: ${{ inputs.workers.[index].resource.schedulerType != 'slurm' || inputs.workers.[index].scheduler == false }}
 
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
             items:
               is_disabled:
@@ -430,9 +424,11 @@ jobs:
 
               queue:
                 label: Queue
+                description: Leave empty for the default queue.
                 type: string
                 optional: true
-                tooltip: PBS queue name (-q). Leave empty to use the default queue.
+                tooltip: |
+                  PBS queue name (-q).
                 ignore: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
 
               account:
@@ -444,17 +440,18 @@ jobs:
 
               nodes:
                 label: Nodes
+                description: Each node runs a Ray worker.
                 type: number
                 slider: true
                 default: 1
                 min: 1
                 max: 16
                 step: 1
-                tooltip: Number of compute nodes to request. Each node runs a Ray worker.
                 ignore: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
 
               select:
-                label: Resource Selection
+                label: Resource selection
+                description: Overrides the Nodes slider when set.
                 type: string
                 optional: true
                 placeholder: "1:ncpus=44:ngpus=4"
@@ -463,26 +460,28 @@ jobs:
 
               walltime:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: "01:00:00"
-                tooltip: "PBS walltime (HH:MM:SS). Workers terminate when this expires."
+                tooltip: "Workers terminate when this expires."
                 ignore: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
 
               scheduler_directives:
-                label: Additional Directives
+                label: Additional directives
                 type: editor
-                tooltip: Additional PBS directives (include #PBS prefix)
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix.
                 optional: true
                 ignore: ${{ inputs.workers.[index].resource.schedulerType != 'pbs' || inputs.workers.[index].scheduler == false }}
 
       ray_settings:
         type: group
-        label: Ray Configuration
+        label: Ray configuration
         items:
           ray_version:
             type: dropdown
-            label: Ray Version
-            tooltip: Must match the Ray version of the running cluster
+            label: Ray version
+            description: Must match the Ray version of the running cluster.
             default: "2.40.0"
             options:
               - value: "2.40.0"

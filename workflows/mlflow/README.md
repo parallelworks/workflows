@@ -59,7 +59,7 @@ export MLFLOW_TRACKING_TOKEN=<your pw API key>
 - **Additional Flags**: anything else for
   [`mlflow server`](https://mlflow.org/docs/latest/cli.html#mlflow-server), e.g.
   `--workers 2` or `--app-name basic-auth`.
-- **Enable server-side job execution?**: MLflow 3's job runner, which executes GenAI
+- **Enable server-side job execution**: MLflow 3's job runner, which executes GenAI
   evaluation and scorer jobs on the server. Off by default: it is seven worker processes
   of about 250 MB each on top of the request workers (about 250 MB each, four by default),
   and experiment tracking does not use it.

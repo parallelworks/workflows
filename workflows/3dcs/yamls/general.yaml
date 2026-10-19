@@ -392,31 +392,32 @@ jobs:
       resource:
         type: compute-clusters
         label: Compute resource
+        description: A SLURM cluster with 3DCS installed; every worker and the merge run as SLURM jobs.
         include-workspace: false
-        tooltip: SLURM cluster with 3DCS installed. Every worker and the merge run as SLURM jobs.
       cluster:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             items:
               partition:
                 type: slurm-partitions
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '999:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit of every worker and the merge'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. With --exclusive every
@@ -425,18 +426,17 @@ jobs:
                   #SBATCH --exclusive
       service:
         type: group
-        label: 3DCS Options
+        label: 3DCS options
         items:
           dry_run:
-            label: Dry run?
+            label: Dry run
+            description: Generates the macroScript.txt files and runs every step except 3DCS itself.
             type: boolean
             default: false
-            tooltip: Dry run generates the macroScript.txt files and executes every step of the workflow except running 3DCS
           version:
-            label: 3DCS Version
+            label: 3DCS version
             type: dropdown
             default: 8.2.0.0
-            tooltip: Select the 3DCS version
             options:
               - value: 8.2.0.0
                 label: 8.2.0.0
@@ -445,7 +445,7 @@ jobs:
               - value: 7.10.0.2
                 label: 7.10.0.2
           analysis_type:
-            label: Analysis Type
+            label: Analysis type
             type: dropdown
             tooltip: Select Monte Carlo simulation or contributor analysis (sensitivity)
             default: montecarlo
@@ -456,39 +456,42 @@ jobs:
                 label: Contributor Analysis
           bucket:
             label: Bucket
+            description: Input files are downloaded from it and outputs uploaded to it.
             type: bucket
-            tooltip: Select the storage bucket used to download input files and upload output files.
           model_directory:
-            label: Model Path
+            label: Model path
+            description: Holds the model (one .wtx file) and every file it references.
             type: string
-            tooltip: Directory within the bucket with the model (one .wtx file) and all the files it references
           output_directory:
-            label: Output Path
+            label: Output path
+            description: Within the bucket; it cannot be inside the model path.
             type: string
-            tooltip: Output directory within the bucket to store outputs and logs. It cannot be inside the Model Path!
           num_seeds:
-            label: Number of Monte Carlo Simulations
+            label: Number of Monte Carlo simulations
             type: number
             min: 1
             max: 100000
+            step: 1
             default: 2000
             hidden: ${{ 'montecarlo' != inputs.service.analysis_type }}
             ignore: ${{ .hidden }}
             optional: ${{ .hidden }}
           concurrency:
-            label: Number of Workers
+            label: Number of workers
+            description: One SLURM job per worker.
             type: number
             min: 1
             max: 40
+            step: 1
             default: 1
-            tooltip: Number of workers used to run the simulations. A SLURM job is submitted for each worker.
           thread:
-            label: Number of Threads per Worker
+            label: Number of threads per worker
+            description: N threads need more than N times the memory of one.
             type: number
             min: 1
             max: 64
+            step: 1
             default: 1
-            tooltip: Number of threads used to run the simulation. Be aware that N threads require more than N times the memory needed for a single thread.
           metering_user:
             label: Metering User
             type: string

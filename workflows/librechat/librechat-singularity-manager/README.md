@@ -28,7 +28,7 @@ A **librechat-singularity** session must already be running on the same resource
 
 ## Important Notes
 
-- The manager must run on the **same node** as the LibreChat session. Both sessions should use `Schedule Job? = No` (login node) unless you have a way to target the same compute node.
+- The manager must run on the **same node** as the LibreChat session. Both sessions should use `Submit to the scheduler = No` (login node) unless you have a way to target the same compute node.
 - Restarting a service does **not** stop the workflow job or affect other services. Ports are preserved between restarts.
 - If the librechat-singularity session is stopped, the manager will show all services as stopped. Restart scripts are still present on disk; the manager will attempt to run them but they will fail if the ports are no longer allocated.
 

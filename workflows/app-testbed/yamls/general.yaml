@@ -145,11 +145,9 @@ jobs:
         items:
           deploy_server:
             label: Deploy server
+            description: Off leaves an already running server untouched, for workers-only runs.
             type: boolean
             default: true
-            tooltip: |
-              Off: leave any already-running server untouched, e.g. for
-              workers-only runs against a live server.
           restart_server:
             label: Restart server if already running
             type: boolean
@@ -171,8 +169,10 @@ jobs:
             label: Server port
             type: number
             default: 8090
+            step: 1
           wait_for_workers:
             label: Wait for workers to connect
+            description: On, the run fails unless every worker connects.
             type: boolean
             default: true
             tooltip: |
@@ -209,7 +209,8 @@ jobs:
             type: string
             default: ~/app-testbed-worker
           scheduler:
-            label: Submit via scheduler?
+            label: Submit to the scheduler
+            description: Otherwise the worker runs on the site's login node.
             type: boolean
             default: false
             tooltip: |
@@ -239,9 +240,11 @@ jobs:
                 label: CPUs per task
                 type: number
                 default: 1
+                step: 1
                 tooltip: CPUs for the worker job (--cpus-per-task)
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: "01:00:00"
               scheduler_directives:

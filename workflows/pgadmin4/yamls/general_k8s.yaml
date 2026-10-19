@@ -527,18 +527,16 @@ jobs:
         hidden: ${{ inputs.resource.type == 'kubernetes' || inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.type == 'kubernetes' || inputs.resource.schedulerType == '' }}
         type: group
-        label: Compute Cluster Settings
+        label: Compute cluster settings
         items:
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
-            tooltip: |
-              Yes → Job is submitted to the scheduler using sbatch, qsub, etc
-              No  → Job is executed in the controller or login node instead
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             items:
@@ -552,9 +550,9 @@ jobs:
                 label: SLURM partition
                 optional: true
                 resource: ${{ inputs.resource }}
-                tooltip: Select a partition from the drop down menu.
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: '01:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
@@ -563,12 +561,14 @@ jobs:
                 type: number
                 optional: true
                 min: 0
+                step: 1
                 default: 0
                 hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
                 ignore: ${{ .hidden }}
                 tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
               scheduler_directives:
                 type: editor
+                label: Scheduler directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
@@ -576,7 +576,7 @@ jobs:
                   #SBATCH --nodelist=<node-name>
           pbs:
             type: group
-            label: PBS Directives
+            label: PBS directives
             hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
             items:
@@ -586,7 +586,7 @@ jobs:
                 default: true
                 label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
               scheduler_directives:
-                label: Scheduler Directives
+                label: Scheduler directives
                 type: editor
                 tooltip: |
                   Add extra PBS directives, one per line, using the #PBS prefix. For example:
@@ -595,7 +595,7 @@ jobs:
 
       service:
         type: group
-        label: pgAdmin 4 Settings
+        label: pgAdmin 4 settings
         hidden: ${{ inputs.resource.type == 'kubernetes' }}
         ignore: ${{ inputs.resource.type == 'kubernetes' }}
         items:
@@ -605,43 +605,49 @@ jobs:
             default: pgadmin4
           email:
             label: Email
+            description: Created with a new data directory; a reused one keeps its account.
             type: string
             default: admin@example.com
             tooltip: |
               The account you log in with (PGADMIN_DEFAULT_EMAIL). It is created with a new data directory; a reused one keeps the account it was created with. Reserved domains such as .local or .test are rejected.
           password:
             label: Password
+            description: A data directory keeps the email and password it was created with.
             type: password
             optional: ${{ inputs.resource.type == 'kubernetes' }}
-            tooltip: The account's password (PGADMIN_DEFAULT_PASSWORD). A data directory keeps the email and password it was created with.
+            tooltip: |
+              The account's password (PGADMIN_DEFAULT_PASSWORD).
           data_dir:
-            label: Data Directory
+            label: Data directory
+            description: Reuse it to keep the setup of earlier sessions.
             type: string
             default: ${HOME}/pgadmin4
             tooltip: |
               Keeps the account, the registered servers and their saved passwords, the preferences, and the account's files (backups, exports) in storage/. Reuse it to keep the setup of earlier sessions.
           server:
             type: group
-            label: PostgreSQL Server to Register
+            label: PostgreSQL server to register
             collapsed: true
             tooltip: One server registered in pgAdmin when the data directory is new (a reused data directory keeps its own list). Leave Host empty to register none.
             items:
               host:
                 label: Host
+                description: Leave empty to register no server.
                 type: string
                 optional: true
                 tooltip: |
-                  Host name or IP of the server as seen from the node pgAdmin runs on, e.g. the node a postgres workflow run printed. Leave empty to register no server.
+                  Host name or IP of the server as seen from the node pgAdmin runs on, e.g. the node a postgres workflow run printed.
               port:
                 label: Port
                 type: number
                 default: 5432
                 min: 1
                 max: 65535
+                step: 1
                 hidden: ${{ inputs.service.server.host == '' }}
                 ignore: ${{ .hidden }}
               db:
-                label: Maintenance Database
+                label: Maintenance database
                 type: string
                 default: postgres
                 hidden: ${{ inputs.service.server.host == '' }}
@@ -654,14 +660,15 @@ jobs:
                 ignore: ${{ .hidden }}
                 tooltip: pgAdmin asks for the password when you connect; it can save it.
           image:
-            label: pgAdmin 4 Image
+            label: pgAdmin 4 image
+            description: Pin a tag to lock the version.
             type: string
             default: dpage/pgadmin4:9.18
             tooltip: Docker image from https://hub.docker.com/r/dpage/pgadmin4. Pin a tag to lock the version.
 
       k8s:
         type: group
-        label: Kubernetes Settings
+        label: Kubernetes settings
         hidden: ${{ inputs.resource.type != 'kubernetes' }}
         ignore: ${{ inputs.resource.type != 'kubernetes' }}
         items:
@@ -677,7 +684,7 @@ jobs:
             tooltip: Specify storage settings for Persistent Volume Claims (PVCs), including size and storage class. pgAdmin's account, servers and files are kept on this volume, in pgadmin4/.
             items:
               pvc:
-                label: Persistent Volume Claim
+                label: Persistent volume claim
                 type: dropdown
                 default: New
                 options:
@@ -686,7 +693,7 @@ jobs:
                   - value: New
                     label: Create New PVC
               pvc_existing:
-                label: Select PVC Name
+                label: Select PVC name
                 type: kubernetes-pvc
                 clusterName: ${{ inputs.resource.name }}
                 namespace: ${{ inputs.k8s.namespace }}
@@ -694,29 +701,29 @@ jobs:
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
               pvc_storage_size:
-                label: Enter PVC Size
+                label: Enter PVC size
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc != New }}
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
                 default: 1Gi
               pvc_storage_class:
-                label: Enter PVC Storage Class
+                label: Enter PVC storage class
+                description: Leave blank for the default storage class of the cluster.
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc != New }}
                 ignore: ${{ .hidden }}
                 optional: true
-                tooltip: Leave blank to use the default storage class configured in the cluster.
               pvc_persist:
-                label: Persist PVC After Completion
+                label: Persist PVC after completion
+                description: Otherwise the PVC, and the setup on it, is deleted when the run ends.
                 type: boolean
                 default: false
                 hidden: ${{ inputs.k8s.volumes.pvc != 'New' }}
                 ignore: ${{ .hidden }}
                 optional: ${{ .hidden }}
-                tooltip: If true, the PVC (and the pgAdmin setup on it) will persist after the job is canceled or completed. If false, it will be deleted.
               pvc_name:
-                label: Enter PVC Name
+                label: Enter PVC name
                 type: string
                 hidden: ${{ inputs.k8s.volumes.pvc_persist == false || inputs.k8s.volumes.pvc != New  }}
                 ignore: ${{ .hidden }}
@@ -733,31 +740,31 @@ jobs:
                 items:
                   memory:
                     label: Memory
+                    description: For example 512Mi or 1Gi.
                     type: string
                     default: 512Mi
-                    tooltip: Specify the minimum memory required for the pod (e.g., 512Mi, 1Gi).
                   cpu:
                     label: CPU
+                    description: For example 0.5, 1 or 100m (millicores).
                     type: string
                     default: 500m
-                    tooltip: Specify the minimum CPU required for the pod (e.g., 0.5, 1, 100m). Use decimal values for partial CPUs or "m" for millicores (e.g., 100m = 0.1 CPU).
               limits:
                 type: group
                 label: Limits
                 items:
                   memory:
                     label: Memory
+                    description: For example 1Gi or 2Gi.
                     type: string
                     default: 1Gi
-                    tooltip: Set the maximum memory the pod can use (e.g., 1Gi, 2Gi).
                   cpu:
                     label: CPU
+                    description: For example 1, 2 or 500m.
                     type: string
                     default: '1'
-                    tooltip: Set the maximum CPU the pod can use (e.g., 1, 2, 500m).
       service_k8s:
         type: group
-        label: pgAdmin 4 Settings
+        label: pgAdmin 4 settings
         hidden: ${{ inputs.resource.type != 'kubernetes' }}
         ignore: ${{ inputs.resource.type != 'kubernetes' }}
         items:
@@ -767,17 +774,21 @@ jobs:
             default: pgadmin4
           email:
             label: Email
+            description: Created with a new volume; an existing one keeps its account.
             type: string
             default: admin@example.com
             tooltip: |
               The account you log in with (PGADMIN_DEFAULT_EMAIL). It is created with a new volume; an existing one keeps the account it was created with. Reserved domains such as .local or .test are rejected.
           password:
             label: Password
+            description: A volume keeps the email and password it was created with.
             type: password
             optional: ${{ inputs.resource.type != 'kubernetes' }}
-            tooltip: The account's password (PGADMIN_DEFAULT_PASSWORD). A volume keeps the email and password it was created with.
+            tooltip: |
+              The account's password (PGADMIN_DEFAULT_PASSWORD).
           image:
-            label: pgAdmin 4 Image
+            label: pgAdmin 4 image
+            description: Pin a tag to lock the version.
             type: string
             default: dpage/pgadmin4:9.18
             tooltip: Docker image from https://hub.docker.com/r/dpage/pgadmin4. Pin a tag to lock the version.

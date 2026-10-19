@@ -82,7 +82,7 @@ SLURM jobs and leaves only the endpoint.
 
 ## Images (optional)
 
-Turn on **Generate images?** (off by default) and every case renders its flow
+Turn on **Generate images** (off by default) and every case renders its flow
 fields with ParaView (pressure, velocity, streamlines, eddy viscosity, wake,
 mesh); the page then shows them in its gallery, its case panel and on hover.
 ParaView comes from **ParaView environment commands** or, left empty, from the

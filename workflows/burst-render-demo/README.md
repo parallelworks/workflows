@@ -62,7 +62,7 @@ The jobs follow the repository's endpoint pattern:
 - **A site on another resource** is reached with `ssh` over `pw ssh --proxy-command`
   carrying a reverse tunnel back to the dashboard port. The three render scripts are
   copied to `~/pw/jobs/burst_render_remote/<run-slug>/app/` over that same SSH path and
-  run there; with **Schedule Job?** on, a TCP proxy on the site's login node exposes the
+  run there; with **Submit to the scheduler** on, a TCP proxy on the site's login node exposes the
   tunnel to the compute nodes and the tiles render under `srun`. The site needs no
   GitHub access and always runs the code the dashboard host checked out. This does need
   the platform SSH key (`~/.ssh/pwcli`) on the dashboard host, which the user workspace
@@ -79,7 +79,7 @@ across the tasks by `SLURM_PROCID`.
 | Input | Description |
 |-------|-------------|
 | Dashboard Host | Login node, cloud VM or the user workspace that serves the dashboard and dispatches the sites |
-| Compute Sites | One entry per site: resource, **Schedule Job?** (SLURM only) and its partition, node count, walltime and extra directives |
+| Compute Sites | One entry per site: resource, **Submit to the scheduler** (SLURM only) and its partition, node count, walltime and extra directives |
 | Grid Size | Tiles per side (total = N x N): 4x4, 8x8, 16x16, 32x32 |
 | Tile Resolution | 128, 256 or 512 pixels per tile |
 | Color Palette | Electric, Fire, Ocean, Cosmic |

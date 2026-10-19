@@ -234,10 +234,11 @@ jobs:
     inputs:
       head:
         type: group
-        label: Dashboard Host
+        label: Dashboard host
         items:
           resource:
             label: Resource
+            description: Runs only the dashboard; a cloud login node can dispatch only to itself.
             type: compute-clusters
             include-workspace: true
             autoselect: true
@@ -249,7 +250,7 @@ jobs:
 
       targets:
         type: list
-        label: Compute Sites
+        label: Compute sites
         min: 1
         tooltip: Add one or more compute sites. Each site simulates its share of the batches in parallel and streams the results to the dashboard.
         template:
@@ -257,21 +258,16 @@ jobs:
             label: Resource
             type: compute-clusters
             include-workspace: false
-            tooltip: Select a compute resource for simulation.
-
           scheduler:
             type: boolean
             default: false
-            label: Schedule Job?
+            label: Submit to the scheduler
+            description: Otherwise the batches run on the login node.
             hidden: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' }}
             ignore: ${{ .hidden }}
-            tooltip: |
-              Yes - Batches run on compute nodes allocated with srun.
-              No  - Batches run on the login/controller node.
-
           slurm:
             type: group
-            label: SLURM Directives
+            label: SLURM directives
             hidden: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' || inputs.targets.[index].scheduler == false }}
             ignore: ${{ inputs.targets.[index].resource.schedulerType != 'slurm' || inputs.targets.[index].scheduler == false }}
             collapsed: true
@@ -281,8 +277,6 @@ jobs:
                 label: Partition
                 optional: true
                 resource: ${{ inputs.targets.[index].resource }}
-                tooltip: Select a SLURM partition
-
               nodes:
                 label: Nodes
                 type: dropdown
@@ -298,13 +292,14 @@ jobs:
 
               time:
                 label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
                 type: string
                 default: "00:05:00"
                 tooltip: '--time= limit of the srun allocation'
 
               scheduler_directives:
                 type: editor
-                label: Additional Directives
+                label: Additional directives
                 optional: true
                 tooltip: |
                   Add extra SLURM directives, one per line, using the #SBATCH prefix; they are
@@ -315,7 +310,7 @@ jobs:
 
       simulation_settings:
         type: group
-        label: Option & Simulation Parameters
+        label: Option & simulation parameters
         items:
           name:
             type: string
@@ -323,7 +318,7 @@ jobs:
             default: monte-carlo
             tooltip: Endpoint name prefix; an empty value falls back to monte-carlo
           parent_install_dir:
-            label: Parent Install Directory
+            label: Parent install directory
             type: string
             hidden: true
             default: ${HOME}/pw/software
@@ -331,8 +326,7 @@ jobs:
 
           option_type:
             type: dropdown
-            label: Option Type
-            tooltip: Type of exotic option to price
+            label: Option type
             default: asian_call
             options:
               - value: asian_call
@@ -348,7 +342,7 @@ jobs:
 
           spot_price:
             type: number
-            label: Spot Price (S0)
+            label: Spot price (S0)
             tooltip: Current price of the underlying asset
             default: 100
             min: 1
@@ -358,8 +352,7 @@ jobs:
 
           strike_price:
             type: number
-            label: Strike Price (K)
-            tooltip: Option strike price
+            label: Strike price (K)
             default: 100
             min: 1
             max: 500
@@ -369,7 +362,7 @@ jobs:
           volatility:
             type: number
             label: Volatility (sigma)
-            tooltip: Annualized volatility (e.g., 0.2 = 20%)
+            description: 0.2 means 20% a year.
             default: 0.2
             min: 0.01
             max: 2.0
@@ -378,8 +371,8 @@ jobs:
 
           risk_free_rate:
             type: number
-            label: Risk-Free Rate (r)
-            tooltip: Annualized risk-free interest rate (e.g., 0.05 = 5%)
+            label: Risk-free rate (r)
+            description: 0.05 means 5% a year.
             default: 0.05
             min: 0
             max: 0.5
@@ -388,8 +381,8 @@ jobs:
 
           time_to_expiry:
             type: number
-            label: Time to Expiry (T)
-            tooltip: Time to option expiry in years
+            label: Time to expiry (T)
+            description: In years.
             default: 1.0
             min: 0.1
             max: 5.0
@@ -398,8 +391,8 @@ jobs:
 
           barrier_level:
             type: number
-            label: Barrier Level
-            tooltip: Barrier price level — the option is knocked out if the underlying crosses this level
+            label: Barrier level
+            description: The option is knocked out when the underlying crosses it.
             default: 150
             min: 1
             max: 500
@@ -409,8 +402,8 @@ jobs:
 
           monitoring_points:
             type: number
-            label: Monitoring Points
-            tooltip: Number of time steps for path simulation (252 = daily for 1 year)
+            label: Monitoring points
+            description: Time steps per path; 252 is daily for a year.
             default: 252
             min: 10
             max: 1000
@@ -419,7 +412,7 @@ jobs:
 
           total_simulations:
             type: dropdown
-            label: Total Simulations
+            label: Total simulations
             tooltip: Total number of Monte Carlo paths to simulate across all sites
             default: "500000"
             options:
@@ -436,8 +429,8 @@ jobs:
 
           batch_size:
             type: dropdown
-            label: Batch Size
-            tooltip: Number of paths per batch (smaller = more frequent dashboard updates)
+            label: Batch size
+            description: Smaller batches update the dashboard more often.
             default: "10000"
             options:
               - value: "5000"
@@ -451,7 +444,7 @@ jobs:
 
           parallelism:
             type: dropdown
-            label: Worker Threads
+            label: Worker threads
             tooltip: Number of parallel simulation processes per node. Auto uses all available CPU cores.
             default: "auto"
             options:

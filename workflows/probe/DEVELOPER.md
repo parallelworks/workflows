@@ -66,7 +66,8 @@ workflow's own page:
   [`@parallelworks/ui`](https://github.com/parallelworks/foundation/tree/canary/packages/ui)
   (the default theme, light and dark as `light-dark()` pairs) and `fonts.css` the Geist
   faces; `bash tools/ui/sync-theme.sh workflows/probe/app/web` rewrites them from the
-  pinned package version (its header says which) and is the only way to change them.
+  version the header of `theme.css` names (`-v` moves to another) and is the only way
+  to change them.
 - `styles.css` reads nothing but those tokens, and each of its blocks names the
   component of the package it mirrors (the page header bar, `buttonClasses`, `fieldBox`,
   `StatusBadge` and its tones, `Table`, `Section`, `Tabs`, `Drawer`, `DescriptionList`,

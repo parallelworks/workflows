@@ -4,16 +4,20 @@
 # packages/ui) and the Geist fonts the platform renders with. The app's own stylesheet
 # then reads only those tokens, so it looks like the platform in light and dark.
 #
-#   bash tools/ui/sync-theme.sh workflows/<name>/app/web            # @parallelworks/ui at the pinned version
+#   bash tools/ui/sync-theme.sh workflows/<name>/app/web            # the version the directory has
+#                                                                   # (a first run: the default below)
 #   bash tools/ui/sync-theme.sh -v 0.70.0 workflows/<name>/app/web  # another version, or "latest"
 #   bash tools/ui/sync-theme.sh -s ../foundation/packages/ui/src/styles workflows/<name>/app/web
 #                                                                   # a local checkout of the foundation repo
 #
 # Writes theme.css (the token block only; the file's Tailwind utilities need a build),
-# fonts.css and the two variable woff2 files into the directory. Idempotent.
+# fonts.css and the two variable woff2 files into the directory. The header of theme.css
+# records the version, and a plain rerun refreshes that same version, so the vendored
+# files are the one place the version lives. Idempotent.
 set -euo pipefail
 
-VERSION="0.68.0"
+DEFAULT_VERSION="0.68.0"
+VERSION=""
 SOURCE=""
 while getopts "v:s:h" opt; do
   case "${opt}" in
@@ -34,8 +38,13 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 
 if [ -z "${SOURCE}" ]; then
+  if [ -z "${VERSION}" ]; then
+    # the version the directory already has, so a plain rerun refreshes rather than downgrades
+    VERSION="$(sed -n 's/.*Source: @parallelworks\/ui \([0-9][0-9A-Za-z.+-]*\).*/\1/p' "${DEST}/theme.css" 2>/dev/null | head -1)"
+    VERSION="${VERSION:-${DEFAULT_VERSION}}"
+  fi
   if [ "${VERSION}" = latest ]; then
-    VERSION="$(curl -fsSL https://registry.npmjs.org/@parallelworks/ui/latest | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')"
+    VERSION="$(curl -fsSL https://registry.npmjs.org/@parallelworks/ui/latest | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
     [ -n "${VERSION}" ] || { echo "could not resolve the latest version" >&2; exit 1; }
   fi
   echo "fetching @parallelworks/ui@${VERSION}"
@@ -44,6 +53,7 @@ if [ -z "${SOURCE}" ]; then
   SOURCE="${WORK}/package/dist/styles"
   ORIGIN="@parallelworks/ui ${VERSION} (npm)"
 else
+  [ -z "${VERSION}" ] || echo "note: -v ${VERSION} is ignored with -s; the files come from ${SOURCE}" >&2
   ORIGIN="@parallelworks/ui from ${SOURCE}"
   if [ -f "${SOURCE}/../../package.json" ]; then
     ORIGIN="@parallelworks/ui $(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "${SOURCE}/../../package.json" | head -1) (${SOURCE})"

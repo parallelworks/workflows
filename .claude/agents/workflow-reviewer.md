@@ -125,7 +125,8 @@ conclusions.
    directory); the checkout `branch:` is `canary` unless the caller says the branch is
    still in development. A page the workflow draws itself reads its colors only from
    the `--theme-*` tokens of a vendored `theme.css` with the Geist fonts beside it and
-   draws the platform's icons inline (`references/app-ui.md`): a hex color, another
+   draws the platform's icons inline (`references/app-ui.md`): a hex color (other than
+   white on a `-solid` fill or a switch's knob, and a backdrop's black at 40%), another
    font or icon set, or a single color mode in its stylesheet is a finding.
 
 ## Report

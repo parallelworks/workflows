@@ -14,7 +14,7 @@ generates for the default theme in light and dark, and the Geist fonts the platf
 renders with.
 
 ```bash
-bash tools/ui/sync-theme.sh workflows/<name>/app/web                 # the pinned version
+bash tools/ui/sync-theme.sh workflows/<name>/app/web                 # the version the directory has
 bash tools/ui/sync-theme.sh -v latest workflows/<name>/app/web       # or any version
 bash tools/ui/sync-theme.sh -s ../foundation/packages/ui/src/styles workflows/<name>/app/web
                                                                      # a local checkout
@@ -23,6 +23,8 @@ bash tools/ui/sync-theme.sh -s ../foundation/packages/ui/src/styles workflows/<n
 It writes four files, all to commit (about 120 KB, almost all of it the two variable
 fonts): `theme.css` (the token block alone; the package's file also holds Tailwind
 utilities that need a build), `fonts.css`, `Geist-Variable.woff2` and
-`GeistMono-Variable.woff2`. The header of `theme.css` records the version it came from.
-It is idempotent: rerun it when the platform's theme changes (the package's
-`CHANGELOG.md`) and commit the diff. Needs `curl` and `tar`, or a local checkout.
+`GeistMono-Variable.woff2`. The header of `theme.css` records the version it came from,
+and that is the one place the version lives: a plain rerun refreshes the same version
+(a directory without a `theme.css` gets the script's default), `-v` moves to another or
+to `latest`. Rerun it when the platform's theme changes (the package's `CHANGELOG.md`)
+and commit the diff. Needs `curl`, `tar` and `python3`, or a local checkout.

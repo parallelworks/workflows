@@ -20,7 +20,7 @@ GitHub; the npm tarball holds only the built `dist/`, which is what
 | Read | For |
 |---|---|
 | `packages/ui/README.md` | the package's contract: **Which component?** (one component per need), **Themes** (how the tokens are generated, what each line and status token is for), **Buttons and spinners**, **Icons**, **Host chrome** (the `--layer-*` stacking scale) |
-| `packages/ui/src/styles/theme.css` | the default theme's tokens for both modes, between the `generated:start` and `generated:end` markers, and the font stack (`--font-sans`, `--font-mono`) |
+| `packages/ui/src/styles/theme.css` | the default theme's tokens for both modes, between the `generated:start` and `generated:end` markers; the font stack (`--font-sans`, `--font-mono`) sits outside them in a Tailwind `@theme` block, so a page defines its own two variables (PROBE's `styles.css` does) |
 | `packages/ui/src/styles/base.css` | the page defaults: body font and colors, `border-color` on every element, the stacking scale |
 | `packages/ui/src/theme/model.ts` | the presets; `navy` is the platform's default (light: base `#f3f4f6`, accent `#06354f`; dark: base `#111418`, accent `#5b9ccf`) |
 | `packages/ui/src/components/<Component>.tsx` | a component's classes are its recipe: `buttonClasses.ts`, `fieldBox.ts`, `tone.ts`, `StatusBadge.tsx`, `RunStatusIcon.tsx`, `Table.tsx`, `Tabs.tsx`, `Section.tsx`, `Drawer.tsx`, `DescriptionList.tsx`, `Callout.tsx`, `EmptyState.tsx`, `PageHeader.tsx`, `floating.ts` (popups, tooltips) |
@@ -65,8 +65,10 @@ look by vendoring the contract and following the recipes.
 
    It writes `theme.css` (the generated token block only; the rest of the package's
    file is Tailwind that needs a build), `fonts.css` and the two `.woff2` files. The
-   header of `theme.css` records the version; rerun the script when the platform's
-   theme changes (the package's `CHANGELOG.md`). Link them before the page's own sheet:
+   header of `theme.css` records the version, and that header is the one place the
+   version lives: a plain rerun refreshes the same version, `-v` moves to another. Rerun
+   it when the platform's theme changes (the package's `CHANGELOG.md`). Link them before
+   the page's own sheet:
 
    ```html
    <link rel="stylesheet" href="fonts.css">
@@ -85,6 +87,9 @@ look by vendoring the contract and following the recipes.
    :root[data-theme="dark"] { color-scheme: dark; }
    ```
 
+   `light-dark()`, `color-mix()` and subgrid are 2023 to 2024 CSS, the platform's own
+   baseline; a browser without them shows the page unstyled in both modes.
+
 3. **Write the page's stylesheet against the tokens alone**: no hex color, no other
    font, and the package's component recipes translated to CSS. Name the component each
    block mirrors, so a change in the package has one place to land. The recipes, from
@@ -93,7 +98,7 @@ look by vendoring the contract and following the recipes.
    | Component | Recipe |
    |---|---|
    | Page (`base.css`) | `font-family: "Geist Sans", system-ui, sans-serif`; mono `"Geist Mono", ui-monospace, Menlo, Consolas, monospace`; body `background: var(--theme-app-bg); color: var(--theme-app)`; `*, ::before, ::after { border-color: var(--theme-border) }`; antialiased. Content padding `1rem`. |
-   | Page header bar (`PageHeader`) | `3rem` tall, `padding: 0 1rem`, `border-bottom`, the page background, sticky at `z-index: var(--layer-header)`; the trail at `0.8125rem`, the page's name its one `h1` at weight 500; the page's commands at the end, `gap: 0.25rem`. |
+   | Page header bar (`PageHeader`) | `3rem` tall, `padding: 0 1rem`, `border-bottom`, the page background; the page pins it (`position: sticky; top: 0; z-index: var(--layer-header)`, which the package leaves to the host); the trail at `0.8125rem`, the page's name its one `h1` at weight 500; the page's commands at the end, `gap: 0.25rem`. |
    | Panel, section card (`panel`, `Section variant="card"`) | `border: 1px solid var(--theme-border); border-radius: 0.75rem; background: var(--theme-panel-bg)`; header `padding: 1rem` (`0.75rem 1rem` dense), title `1rem` weight 600, description `0.875rem` muted. |
    | Button (`buttonClasses`) | `inline-flex; gap: 0.375rem; border-radius: 0.375rem; font-weight: 500; white-space: nowrap`; sizes md `height 2rem; padding 0 0.75rem; font-size 0.875rem` (icon `1rem`), sm `1.75rem / 0 0.625rem / 0.75rem` (icon `0.875rem`), xs `1.5rem / 0 0.5rem / 0.75rem`; icon-only is a square of the height. Variants: **primary** `background accent; color accent-text; hover accent-hover`; **secondary** `border border; background panel-bg; color app; hover background hover`; **outline** `border border; color muted; hover background muted-panel-bg and color app`; **ghost** no border, otherwise outline; **danger** `background error-solid; color white; hover at 90%`. Focus `outline: 2px solid var(--theme-focus); outline-offset: 1px`; disabled `opacity: 0.5; cursor: not-allowed`. A destructive action that confirms on a second press takes the danger look while armed. |
    | Field (`fieldBox`, `Field`) | md `height 2rem; padding 0 0.75rem; font-size 0.875rem`, sm `1.75rem / 0 0.5rem / 0.75rem` for toolbars and table cells; `border: 1px solid var(--theme-border-field); border-radius: 0.375rem; background: var(--theme-input-bg)`; placeholder `--theme-placeholder`; hover `border-color: var(--theme-border-strong)`; focus `border-color: var(--theme-focus); box-shadow: 0 0 0 1px var(--theme-focus)`; invalid `--theme-error`; disabled `background input-disabled-bg; color placeholder`. The label over it, weight 500. A search box carries the search icon at its left. |
@@ -135,6 +140,7 @@ Vite build, `import '@parallelworks/ui/fonts.css'` and `import '@parallelworks/u
 (the prebuilt sheet, in its own cascade layer) or `theme.css` + `base.css` in a Tailwind
 v4 build with the `@source` lines the README gives, the app under `UIProvider`, the
 components from the README's "Which component?" table, and the mode applied with
+`useApplyTheme(theme, mode)` (it sets `color-scheme` too), or outside React with
 `applyTheme(root, generateTheme(schemeFor(DEFAULT_THEME, mode)))` plus
 `root.style.colorScheme = mode`. Build with Vite's `base: './'` so the bundle runs under
 any endpoint prefix.
@@ -152,7 +158,11 @@ README.
 - Both modes work and are chosen the platform's way: light, dark, or the device's,
   through `color-scheme`; nothing is hard-coded for one mode.
 - Every color is a `--theme-*` token read for its role: words in `-text` shades,
-  graphics in the vivid shade, fills in `-muted`, a danger fill in `-solid`.
+  graphics in the vivid shade, fills in `-muted`, a fill under white in `-solid`. The
+  only literal colors are the recipes' own: white on a `-solid` fill (a danger button,
+  a status cell with a white glyph) and on a switch's knob, and the drawer backdrop's
+  `rgba(0, 0, 0, 0.4)`; a fill under white text or a white glyph never takes the vivid
+  shade, which only reaches the 3:1 of graphics.
 - The type is Geist Sans and Geist Mono at the package's sizes (`0.875rem` body copy
   in tables and controls, `0.75rem` labels and badges, `1rem` section titles).
 - Controls, badges, tables, tabs and drawers follow the recipes above, in the

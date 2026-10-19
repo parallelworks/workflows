@@ -184,12 +184,13 @@ main > * { min-width: 0; }
 .chip-flag { display: inline-flex; margin-left: 0.125rem; color: var(--theme-error); }
 .chip-flag svg { width: 0.75rem; height: 0.75rem; }
 
-/* history strip: one cell per execution in the status's vivid shade, its glyph inside */
+/* history strip: one cell per execution, its glyph in white on the status's solid shade (the
+   fill solved for white text; the vivid shade only reaches the 3:1 of graphics) */
 .hist { display: inline-flex; gap: 2px; vertical-align: middle; }
 .hist .h { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 3px; background: var(--theme-muted-text-color); color: #fff; font-style: normal; }
 .hist .h svg { width: 10px; height: 10px; stroke-width: 2.25; }
-.hist .h-pass { background: var(--theme-success); }
-.hist .h-fail { background: var(--theme-error); }
+.hist .h-pass { background: var(--theme-success-solid); }
+.hist .h-fail { background: var(--theme-error-solid); }
 .hist .h-skip { background: var(--theme-muted-panel-bg); color: var(--theme-muted-text-color); }
 .hist .h-none { background: transparent; border: 1px solid var(--theme-border); color: var(--theme-muted-text-color); }
 

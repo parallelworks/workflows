@@ -283,7 +283,7 @@ jobs:
             default: true
           use_conda:
             label: Use Conda
-            description: Otherwise pip installs it into your home with the system Python.
+            description: Otherwise the command below installs it with pip into your home.
             type: boolean
             default: false
             hidden: ${{ 'existing' != inputs.resource.provider  }}

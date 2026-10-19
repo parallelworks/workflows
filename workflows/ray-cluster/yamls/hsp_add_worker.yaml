@@ -460,7 +460,7 @@ jobs:
 
               walltime:
                 label: Walltime
-                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
+                description: HH:MM:SS.
                 type: string
                 default: "01:00:00"
                 tooltip: "Workers terminate when this expires."

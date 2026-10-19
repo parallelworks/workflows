@@ -808,7 +808,7 @@ jobs:
                 optional: true
               pvc_persist:
                 label: Persist PVC after completion
-                description: Otherwise the PVC, and the databases on it, is deleted when the run ends.
+                description: Otherwise the PVC and the databases on it are deleted when the run ends.
                 type: boolean
                 default: false
                 hidden: ${{ inputs.k8s.volumes.pvc != 'New' }}

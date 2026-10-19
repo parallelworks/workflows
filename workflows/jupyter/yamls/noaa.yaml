@@ -276,7 +276,7 @@ jobs:
             default: true
           use_conda:
             label: Use Conda
-            description: Otherwise load an existing environment with the command below.
+            description: Otherwise the command below installs it with pip into your home.
             type: boolean
             default: false
             hidden: ${{ 'existing' != inputs.resource.provider  }}

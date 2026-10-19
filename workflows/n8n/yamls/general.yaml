@@ -249,7 +249,7 @@ jobs:
             tooltip: n8n Docker image version tag (e.g. 1.123.4 or latest). The Singularity runtime uses the prebuilt ghcr.io/parallelworks/n8n:2.0 image instead.
           n8n_data_dir:
             label: n8n data directory
-            description: Persists between sessions on a shared filesystem.
+            description: Persists between sessions when on a shared filesystem.
             type: string
             default: ${HOME}/pw/n8n
             tooltip: |

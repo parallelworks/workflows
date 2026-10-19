@@ -763,7 +763,7 @@ jobs:
         items:
           data_dir:
             label: Langflow data directory
-            description: Persists between sessions on a shared filesystem.
+            description: Persists between sessions when on a shared filesystem.
             type: string
             default: ${HOME}/pw/.langflow
           config_dir:

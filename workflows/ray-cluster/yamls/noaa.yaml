@@ -472,7 +472,7 @@ jobs:
 
               walltime:
                 label: Walltime
-                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
+                description: HH:MM:SS.
                 type: string
                 default: "01:00:00"
                 tooltip: "Workers terminate when this expires. Use a longer walltime for cluster_only mode or large workloads."
@@ -532,7 +532,7 @@ jobs:
           run_user_script:
             type: boolean
             label: Run user script
-            description: Otherwise the cluster stays alive until you cancel the workflow.
+            description: Otherwise the cluster keeps running after the run completes, until you delete the endpoint.
             default: false
             hidden: ${{ inputs.workload_settings.workload_type != 'cluster_only' }}
             ignore: ${{ inputs.workload_settings.workload_type != 'cluster_only' }}
@@ -549,7 +549,7 @@ jobs:
           keep_alive:
             type: boolean
             label: Keep cluster alive after script
-            description: Otherwise the workflow ends when the script finishes.
+            description: Otherwise the cluster is torn down when the script finishes.
             default: false
             hidden: ${{ inputs.workload_settings.workload_type != 'cluster_only' || inputs.workload_settings.run_user_script == false }}
             ignore: ${{ inputs.workload_settings.workload_type != 'cluster_only' || inputs.workload_settings.run_user_script == false }}

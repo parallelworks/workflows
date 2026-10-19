@@ -708,6 +708,7 @@ to your task.
 | **`if:` status functions on steps and jobs** (`success()`, `failure()`, `cancelled()`, `!success()`, `always`), and what replaced the removed keywords | `tutorials/if-conditions/` |
 | **Compose standalone workflows** (sampler or optimizer → matrix of evaluators → a live page; files as the only coupling) | `workflows/doe-openfoam/`, `workflows/dakota-openfoam/` (READMEs show the wiring); the file contract in [design-parameters.md](design-parameters.md) |
 | **A workflow others can call** (form as the interface, paths as inputs, one `general.yaml` for every platform) | `workflows/doe/`, `workflows/design-explorer/`, `workflows/wait_for_endpoint/` |
+| **A page the workflow draws itself, in the platform's look** (the vendored theme contract, the component recipes, inline icons, light and dark, a server under the endpoint prefix) | `workflows/probe/app/web/` (+ `app/probe/server.py`); [app-ui.md](app-ui.md); `tools/ui/sync-theme.sh` |
 | **Repo conventions and the human how-to** | `AGENTS.md`, `DeveloperGuide.md` |
 
 Conventions every workflow here follows: scripts idempotent; the service binds the port

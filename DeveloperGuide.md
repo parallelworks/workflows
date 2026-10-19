@@ -140,6 +140,13 @@ Requirements:
   `screen` session, a docker container, an app that daemonizes and re-parents to PID 1
   (RStudio's `rsession`). The submitter runs it on cancel. A service with nothing of
   the kind needs none (`webshell` writes one only when it attaches to `screen`).
+- **A page the workflow draws itself looks like the platform.** Vendor the theme
+  contract of [`@parallelworks/ui`](https://github.com/parallelworks/foundation) with
+  `bash tools/ui/sync-theme.sh workflows/my-workflow/app/web` (the `--theme-*` tokens
+  and the Geist fonts), write the page's stylesheet against those tokens following the
+  package's component recipes, and draw its icons inline:
+  [references/app-ui.md](.claude/skills/activate-workflows/references/app-ui.md);
+  `workflows/probe/app/web` is the worked example. A third-party app keeps its own UI.
 
 A **batch** script does something else: it records its own exit status, because
 `script_submitter` never forwards it,

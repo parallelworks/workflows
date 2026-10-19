@@ -157,6 +157,10 @@ effect once pushed to the referenced branch (**canary**).
 - [docs/ai-workflow-development/](docs/ai-workflow-development/) — building workflows
   with AI agents; the `activate-workflows` Claude Code skill lives at
   [.claude/skills/activate-workflows/](.claude/skills/activate-workflows/)
+- [app-ui.md](.claude/skills/activate-workflows/references/app-ui.md) — the UI of a
+  workflow's own web app, in the platform's look: the theme contract of
+  [`@parallelworks/ui`](https://github.com/parallelworks/foundation), vendored with
+  `tools/ui/sync-theme.sh`
 - [MIGRATION.md](MIGRATION.md) — the consolidation map: where every file came from,
   what stayed behind, and why
 - Official platform docs:

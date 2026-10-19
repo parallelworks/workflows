@@ -123,7 +123,10 @@ conclusions.
    workflow has a row in the root `README.md` index and a thumbnail under `thumbnails/`;
    nothing but runtime files sits under `app/` (a glob in preprocessing sweeps the whole
    directory); the checkout `branch:` is `canary` unless the caller says the branch is
-   still in development.
+   still in development. A page the workflow draws itself reads its colors only from
+   the `--theme-*` tokens of a vendored `theme.css` with the Geist fonts beside it and
+   draws the platform's icons inline (`references/app-ui.md`): a hex color, another
+   font or icon set, or a single color mode in its stylesheet is a finding.
 
 ## Report
 

@@ -31,6 +31,7 @@ file):
 | [references/design-parameters.md](references/design-parameters.md) | A driver (`doe`, `dakota`) and a runner (`openfoam-naca`) exchange designs: the `params.in` / `results.out` contract. |
 | [references/session-to-endpoint-upgrade.md](references/session-to-endpoint-upgrade.md) | Converting an older session-tunnel workflow to the endpoint pattern. |
 | [references/software/](references/software/) | One piece of software (OpenFOAM, Dakota, ParaView, conda, Singularity/SIF, MPI benchmarks, dask-jobqueue, PhysicsNeMo, PostgreSQL, ...): one file per tool. |
+| [references/app-ui.md](references/app-ui.md) | The workflow serves a page it draws itself (a dashboard, a viewer, a small form): the platform's look from the foundation repo's theme contract (`@parallelworks/ui`): the tokens and fonts to vendor, the component recipes, the icons, the React path, how to verify. |
 
 **The platform docs are authoritative and change over time; this skill is a snapshot.**
 When the two conflict, trust the docs and harden the skill (Step 5):
@@ -113,7 +114,9 @@ standalone from a clean shell with no manual setup. No YAML yet.
 
 - A web service binds the port it is given (an argument or `$PORT`) on `0.0.0.0` and
   serves everything its page needs. Prefer the standard library and preinstalled tools,
-  so the controller script has nothing to install.
+  so the controller script has nothing to install. A page the workflow draws itself
+  takes the platform's look from the start: the tokens and fonts to vendor, the
+  component recipes and the icons are in [references/app-ui.md](references/app-ui.md).
 - Drive it the way the platform will: `python3 server.py --port 8731 …` in the
   background, then `curl localhost:8731/...` on every route.
 - Keep each piece a real file: they go into `workflows/<name>/app/` and are checked out

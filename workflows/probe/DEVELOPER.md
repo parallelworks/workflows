@@ -10,7 +10,8 @@ app/probe/runner.py         one run of the suite: gate, launch, poll, verdict, c
 app/probe/results.py        results tree: one record.json per execution directory, state and history
 app/probe/server.py         dashboard server: static web/ plus the JSON API
 app/probe/tests_source.py   fetch the test definitions directory from its git repository (probe fetch-tests)
-app/web/                    index.html, app.js, styles.css (no build step, no external assets)
+app/web/                    index.html, app.js, styles.css; theme.css, fonts.css and the two Geist fonts
+                            vendored from @parallelworks/ui (no build step, no external assets)
 selftest/                   offline unit tests with a mock pw CLI, browser check
 scripts/import_workflow_tests.py  converts this repository's recorded tests into definitions
 yamls/general.yaml          platform workflow: the two dashboards
@@ -51,7 +52,38 @@ protocol (`selftest/ui_check.js`): filters, search, theme, matrix chips, the dra
 its tabs, artifact files, Refresh (bucket pull), Rerun test, Cancel run, Run all with
 its second-click confirmation, and the refusal of an overlapping run. Needs Chrome and
 Node 22 or newer. Destructive buttons ask for a second click instead of
-`window.confirm`, which the platform blocks inside its session frame.
+`window.confirm`, which the platform blocks inside its session frame. With
+`UI_SHOTS=<dir>` it also saves full-page screenshots of the page in light and dark and
+of the drawer, to look at after a change to the look.
+
+## The dashboard's look
+
+The page looks like the platform because it is drawn on the platform's theme contract,
+the way `.claude/skills/activate-workflows/references/app-ui.md` describes for any
+workflow's own page:
+
+- `app/web/theme.css` holds the `--theme-*` tokens of
+  [`@parallelworks/ui`](https://github.com/parallelworks/foundation/tree/canary/packages/ui)
+  (the default theme, light and dark as `light-dark()` pairs) and `fonts.css` the Geist
+  faces; `bash tools/ui/sync-theme.sh workflows/probe/app/web` rewrites them from the
+  pinned package version (its header says which) and is the only way to change them.
+- `styles.css` reads nothing but those tokens, and each of its blocks names the
+  component of the package it mirrors (the page header bar, `buttonClasses`, `fieldBox`,
+  `StatusBadge` and its tones, `Table`, `Section`, `Tabs`, `Drawer`, `DescriptionList`,
+  `Callout`), so a change there has one place to land here.
+- The color mode is the platform's choice of three: light, dark, or the device's. The
+  theme button cycles them; `data-theme` on the root, set before the first paint from
+  `localStorage`, becomes the `color-scheme` the tokens follow.
+- Icons are the package's glyphs (`src/icons.tsx`), drawn inline by `icon()` in
+  `app.js` and in `index.html`, since the page's `<base>` would break `<use>` fragment
+  references. A status reads as the platform draws a run's: pass as success, fail as
+  error, running turning in the warning tone, skip and never run muted.
+- `server.py` names the MIME types of the fonts, styles and script, whatever the login
+  node's Python has in its table, and lets the fonts cache for a day.
+
+Check a change with the browser check's screenshots (above) and, on the platform, by
+fetching `theme.css` and a font through the endpoint with the API key, as the skill
+reference's "Verify" section says.
 
 ## One test execution
 
@@ -196,10 +228,11 @@ fetched from GitHub at run time: push the branch and point both YAMLs' checkout
 
 ## End-to-end tests of PROBE itself
 
-`tests/general/gcpsmall.json` starts the dashboards on `pw://alvaro/gcpsmall` and
+`tests/general/gcpsmall.json` starts the dashboards on `pw://alvaro/gcpsmall`
+(`tests/general/gcptest.json` the same on `pw://alvaro/gcptest`) and
 `tests/general_run_tests/gcpsmall.json` runs one PROBE test (the `script_submitter`
-canary) through `general_run_tests.yaml`; both read and write the production results
-bucket. The dashboards test takes its API key from the environment at launch
+canary) through `general_run_tests.yaml`; all of them read and write the production
+results bucket. The dashboards test takes its API key from the environment at launch
 (`_test.secrets`: `PROBE_API_KEY`), so the key is never in the test file:
 
 ```bash

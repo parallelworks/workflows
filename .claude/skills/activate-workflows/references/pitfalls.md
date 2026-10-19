@@ -15,8 +15,8 @@
 >
 > Sections: validation · inputs and expressions · jobs, outputs, matrix and retries ·
 > resources, nodes and filesystems · `script_submitter` and scheduler jobs · endpoints and
-> the service · `pw` CLI, auth and remote shells · code delivery and tests · shell
-> scripting · software, sites and figures.
+> the service · the app's own web page · `pw` CLI, auth and remote shells · code delivery
+> and tests · shell scripting · software, sites and figures.
 
 ## Validation: `--dry-run`, variants and YAML parsing
 
@@ -504,6 +504,32 @@
 - **Prove the risky/novel mechanism on real infra early**, before the full workflow
   is wired. For a distributed piece (e.g. cross-node `pw ssh` calls), stage the
   script on the target node and exercise it directly, then wrap it in YAML.
+
+## The app's own web page
+
+A page a workflow draws itself follows the platform's theme contract
+([app-ui.md](app-ui.md)); what adopting it taught (PROBE's dashboards, 2026-10-19):
+
+- **`light-dark()` tokens follow `color-scheme`, not a class or a token swap.** The
+  vendored `theme.css` pairs every token's two values with `light-dark()`; the root's
+  `color-scheme` decides which shows (`light dark`: the device; `light` or `dark`: pinned).
+  A mode toggle therefore sets one attribute on the root before the first paint and a
+  rule maps it to `color-scheme`; redefining the tokens per mode would drift from the
+  platform's palette. Verified 2026-10-19 with the browser check's screenshots of both
+  modes (`UI_SHOTS`).
+- **Draw icons inline; `<use href="#id">` and a `<base>` don't mix.** A page served
+  under an endpoint prefix sets a `<base>` from its location so relative URLs resolve
+  under the prefix; a fragment-only reference then resolves against that base rather than
+  the page, and points at another document whenever the page's URL differs from it
+  (`index.html`, no trailing slash). Each icon is an inline `<svg><path/></svg>` with the
+  package's path (`workflows/probe/app/web/app.js`, `icon()`), which also needs no sprite
+  request through the proxy. Avoided by design, not run-verified.
+- **Name the MIME types the page's server sends.** Python's `http.server` takes them
+  from the running interpreter's `mimetypes` table, which differs between the 3.6 to 3.12
+  the login nodes run (3.9 on `gcptest` says `application/javascript` for `.js`, a Mac's
+  3.9 `text/javascript`); the handler's `extensions_map` names `font/woff2`, `text/css`
+  and `text/javascript` so every node serves the same. Verified 2026-10-19
+  (`workflows/probe/app/probe/server.py`).
 
 ## `pw` CLI, auth and remote shells
 

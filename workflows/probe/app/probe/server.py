@@ -209,7 +209,8 @@ def _under(child: Path, parent: Path) -> bool:
 class Handler(SimpleHTTPRequestHandler):
     cfg: Config = None  # set by serve()
     server_version = "probe/" + __version__
-    # Python 3.8's table has no entry for the variable fonts the page loads
+    # Named here so every Python the login nodes run (3.6 to 3.12) serves the page's
+    # fonts and scripts with these types, whatever its own mimetypes table says
     extensions_map = dict(SimpleHTTPRequestHandler.extensions_map,
                           **{".css": "text/css", ".js": "text/javascript", ".woff2": "font/woff2"})
 

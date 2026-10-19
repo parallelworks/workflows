@@ -55,11 +55,14 @@ workflows/doe/, workflows/dakota/, workflows/openfoam-naca/, workflows/design-ex
                              # of their own
 workflows/probe/             # PROBE: runs a platform's workflow tests (definitions in a tests repository,
                              # parallelworks/probe-tests-activate-parallel-works for activate.parallel.works)
-                             # and serves the results dashboards; app/ holds its Python code
+                             # and serves the results dashboards; app/ holds its Python code and, under
+                             # app/web, the dashboards' page in the platform's look
 tools/oras, tools/utils      # shared runtime tools, referenced as tools/... from run dirs
                              # (tools/utils/{miniforge,prepare-env}.sh: conda installs + env files;
                              # tools/utils/check-params.sh: the design-parameters check)
 tools/tests/                 # the test runner (run-workflow-test.py) and its README
+tools/ui/                    # sync-theme.sh: vendors the platform's theme contract (@parallelworks/ui
+                             # tokens + Geist fonts) into a workflow app's web directory
 tutorials/                   # staged, runnable lessons on the workflow system
 docs/                        # developer + AI docs
 .claude/skills/activate-workflows/  # Claude Code skill for building workflows here
@@ -233,6 +236,15 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
   verify anonymous access before shipping.
 - `set -o pipefail` and `set -x` so the trace in `run.<JOBID>.out` shows every command;
   fail loud on a missing path or a bad input rather than carrying on.
+
+### A page the workflow draws itself
+- It looks like the platform: colors only from the `--theme-*` tokens of a `theme.css`
+  vendored from `@parallelworks/ui` (the [foundation](https://github.com/parallelworks/foundation)
+  repo) with `tools/ui/sync-theme.sh`, the Geist fonts beside it, light and dark through
+  `color-scheme`, the package's component recipes and its icons drawn inline. The how,
+  the React path and the worked example (`workflows/probe/app/web`):
+  `.claude/skills/activate-workflows/references/app-ui.md`. A third-party app a
+  workflow serves keeps its own UI.
 
 ### Workflow YAMLs
 - **The repo is fetched from GitHub at runtime**: `parallelworks/checkout` steps pull

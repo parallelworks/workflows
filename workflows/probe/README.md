@@ -125,7 +125,11 @@ The workflow is responsible for failing its run when its service is not healthy 
 completing once it is; PROBE trusts the run status. A workflow whose run stays alive to serve
 (the older `sessions:` pattern) cannot be tested: its run never completes. The tests recorded
 under `workflows/<name>/tests/<variant>/` in this repository convert into definitions with
-`scripts/import_workflow_tests.py`.
+`scripts/import_workflow_tests.py`. `inputs` must follow the workflow's current form: PROBE
+only reads the target system from it, so a form change (the cluster moved from
+`cluster.resource` to the top-level `resource` on 2026-10-12) shows up as every test of that
+workflow failing at launch with `Missing required fields`. Regenerate the definitions from
+the recorded tests then, or dry-run one: `pw workflows run --dry-run <yaml> -i '<inputs>'`.
 
 ## Results
 

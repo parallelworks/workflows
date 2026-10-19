@@ -627,6 +627,17 @@ A page a workflow draws itself follows the platform's theme contract
   tests of one resource sequentially (one `run-workflow-test.py` invocation takes several
   test files and runs them in order).
 
+- **Every PROBE test of a workflow failing at launch with `Missing required fields:
+  Service host` (pointer `#/resource`) means the definitions' `inputs` no longer match the
+  form** (verified 2026-10-19: 26 definitions still passed `cluster.resource` after the forms
+  took the cluster as the top-level `resource` on 2026-10-12; the breakage surfaced only
+  once the cluster was active again, as skips until then). PROBE reads only the target
+  system from `inputs` and accepts both shapes, so nothing warns before the platform does.
+  Regenerate the definitions from the recorded tests
+  (`workflows/probe/scripts/import_workflow_tests.py`) and dry-run each against its YAML;
+  the same dry-run tells a bad input shape from a stopped cluster, which validates with the
+  right shape.
+
 ## Shell scripting
 
 - **Never paste JSON into a `python -c` source string.** In `json.loads('''${SITES_JSON}''')`

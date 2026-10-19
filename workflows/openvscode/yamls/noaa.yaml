@@ -59,7 +59,7 @@ jobs:
                 mfe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Mercury
                 ufe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Ursa
                 gaea[0-9]*.ncrc.gov) PROJECTS_HOME=/usw/rdhpcs/software/pw ;; # Gaea
-                an[0-9]*.princeton.rdhpcs.noaa.gov) PROJECTS_HOME="${HOME}/pw" ;; # PPAN
+                an[0-9]*.princeton.rdhpcs.noaa.gov) PROJECTS_HOME=/app/pw ;; # PPAN
                 # Unknown host: keep the old default of /contrib/pw when present
                 *) [ -d /contrib/pw ] && PROJECTS_HOME=/contrib/pw || PROJECTS_HOME="${HOME}/pw" ;;
               esac
@@ -182,6 +182,7 @@ jobs:
         label: Password for IDE session
         description: Leave blank for no password.
         type: password
+        optional: true
       resource:
         type: compute-clusters
         label: Service host
@@ -284,7 +285,7 @@ jobs:
             label: Parent install directory
             type: string
             optional: true
-            tooltip: 'Default: the shared cluster software directory (/contrib/pw on Hera, Mercury, and Ursa; /usw/rdhpcs/software/pw on Gaea) when code-server is already staged there or your account maintains it; otherwise ${HOME}/pw. Make sure there is enough disk space available!'
+            tooltip: 'Default: the shared cluster software directory (/contrib/pw on Hera, Mercury, and Ursa; /usw/rdhpcs/software/pw on Gaea; /app/pw on PPAN) when code-server is already staged there or your account maintains it; otherwise ${HOME}/pw. Make sure there is enough disk space available!'
           download_url:
             label: Download URL
             type: string

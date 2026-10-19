@@ -1,7 +1,7 @@
 {
   "_test": {
     "timeout_s": 3600,
-    "warm_marker": "${HOME}/pw/code-server-4.105.1-linux-amd64/bin/code-server",
+    "warm_marker": "/app/pw/code-server-4.105.1-linux-amd64/bin/code-server",
     "leftover_patterns": [
       "code-server",
       "pw endpoints run"

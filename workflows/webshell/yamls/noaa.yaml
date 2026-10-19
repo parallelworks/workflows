@@ -56,7 +56,7 @@ jobs:
                 mfe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Mercury
                 ufe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Ursa
                 gaea[0-9]*.ncrc.gov) PROJECTS_HOME=/usw/rdhpcs/software/pw ;; # Gaea
-                an[0-9]*.princeton.rdhpcs.noaa.gov) PROJECTS_HOME="${HOME}/pw" ;; # PPAN
+                an[0-9]*.princeton.rdhpcs.noaa.gov) PROJECTS_HOME=/app/pw ;; # PPAN
                 # Unknown host: keep the old default of /contrib/pw when present
                 *) [ -d /contrib/pw ] && PROJECTS_HOME=/contrib/pw || PROJECTS_HOME="${HOME}/pw" ;;
               esac

@@ -89,7 +89,8 @@ jobs:
               mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
               ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
               gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
-              *) shared="" ;;                                                    # PPAN, cloud clusters
+              an[0-9]*.princeton.rdhpcs.noaa.gov) shared=/app/pw ;;              # PPAN
+              *) shared="" ;;                                                    # cloud clusters
             esac
             install_dir="${HOME}/pw/software"
             if [ -n "${shared}" ] && mkdir -p "${shared}/${service_conda_install_dir}" 2> /dev/null; then
@@ -448,8 +449,8 @@ jobs:
             tooltip: |
               Software dependencies are installed in this directory. Leave empty for the cluster's shared
               software tree when this account can write there (/contrib/pw on Hera, Mercury and Ursa,
-              /usw/rdhpcs/software/pw on Gaea), ${HOME}/pw/software otherwise. Ensure the directory has
-              sufficient space!
+              /usw/rdhpcs/software/pw on Gaea, /app/pw on PPAN), ${HOME}/pw/software otherwise.
+              Ensure the directory has sufficient space!
           conda_install_dir:
             label: Name of the Conda installation directory
             type: string

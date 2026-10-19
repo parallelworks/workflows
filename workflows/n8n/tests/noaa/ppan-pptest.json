@@ -1,7 +1,7 @@
 {
   "_test": {
     "timeout_s": 3600,
-    "warm_marker": "${HOME}/pw/containers/n8n.sif",
+    "warm_marker": "/app/pw/containers/n8n.sif",
     "leftover_patterns": [
       "n8n",
       "pw endpoints run"

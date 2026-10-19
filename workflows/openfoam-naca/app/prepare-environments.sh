@@ -38,7 +38,8 @@ case "${RESOURCE_IP}" in
     mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
     ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
     gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
-    *) shared="" ;;                                                    # PPAN, cloud clusters, every other platform
+    an[0-9]*.princeton.rdhpcs.noaa.gov) shared=/app/pw ;;              # PPAN
+    *) shared="" ;;                                                    # cloud clusters, every other platform
 esac
 if [ -n "${shared}" ] && mkdir -p "${shared}/openfoam-naca" 2>/dev/null; then
     export service_parent_install_dir="${shared}"

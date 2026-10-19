@@ -2,8 +2,8 @@
   "_test": {
     "timeout_s": 2400,
     "warm_marker": [
-      "${HOME}/pw/ollama-gguf/bin/ollama",
-      "${HOME}/pw/ollama-gguf/models"
+      "/app/pw/ollama-gguf/bin/ollama",
+      "/app/pw/ollama-gguf/models"
     ],
     "leftover_patterns": [
       "ollama",

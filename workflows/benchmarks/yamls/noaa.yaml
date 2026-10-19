@@ -92,7 +92,8 @@ jobs:
               mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
               ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
               gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
-              *) shared="" ;;                                                    # PPAN, cloud clusters
+              an[0-9]*.princeton.rdhpcs.noaa.gov) shared=/app/pw ;;              # PPAN
+              *) shared="" ;;                                                    # cloud clusters
             esac
             install_dir="${HOME}/pw/software"
             if [ -n "${shared}" ] && mkdir -p "${shared}/benchmarks" 2> /dev/null; then
@@ -452,4 +453,5 @@ jobs:
               and reused by later runs; the conda-forge OpenMPI, when used, goes under
               <install directory>/benchmarks/miniforge. Leave empty for the cluster's shared
               software tree when this account can write there (/contrib/pw on Hera, Mercury
-              and Ursa, /usw/rdhpcs/software/pw on Gaea), ${HOME}/pw/software otherwise.
+              and Ursa, /usw/rdhpcs/software/pw on Gaea, /app/pw on PPAN), ${HOME}/pw/software
+              otherwise.

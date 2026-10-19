@@ -19,7 +19,7 @@
 # account and QoS for on-prem `existing` resources). The case's core request
 # reaches that submitter through its ntasks and nodes inputs, which it writes
 # after the directives on `existing` resources. The conda-forge install goes to
-# the cluster's shared software tree (/contrib/pw, /usw/rdhpcs/software/pw) when
+# the cluster's shared software tree (/contrib/pw, /usw/rdhpcs/software/pw, /app/pw) when
 # this account can write there: NOAA home directories are small.
 #
 # With postprocessing.generate_images, the case ends by rendering its fields to
@@ -400,8 +400,8 @@ jobs:
               /opt/openfoam2412/etc/bashrc`. Leave empty to install OpenFOAM v2412
               from conda-forge (no sudo, ~5 min once) under openfoam-naca/ in the
               cluster's shared software directory (/contrib/pw on Hera, Mercury
-              and Ursa, /usw/rdhpcs/software/pw on Gaea) when this account can
-              write there, else under $HOME/pw/software.
+              and Ursa, /usw/rdhpcs/software/pw on Gaea, /app/pw on PPAN) when
+              this account can write there, else under $HOME/pw/software.
               The case sources these commands; `export MPIRUN="srun --mpi=pmix"`
               here replaces the default launcher `mpirun --bind-to none -np N`.
           paraview_load:

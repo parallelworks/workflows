@@ -288,8 +288,8 @@ use. The job graph gives you sequencing, data flow, conditionals, and parallelis
   `never`, their `!` forms, and `success`, `failure`, `cancelled` without parentheses)
   were removed in v7.112: the word `always` alone is the one keyword left, and any
   other bare word is a non-empty string, which is true (`${{ !completed }}` is always
-  false; pitfalls). `if: ${{ always }}` steps run in order and can be cancelled,
-  unlike `cleanup:`. See `tutorials/if-conditions/`.
+  false; pitfalls). `if: ${{ always }}` steps run in order and, like `cleanup:`
+  steps, keep running through a cancel. See `tutorials/if-conditions/`.
 - **Fan-out / fan-in:** sibling jobs that share a common `needs` but don't depend on
   each other **run concurrently**; a downstream job with `needs: [w1, w2, w3]` joins
   them. (Verified: 3 workers logged the same finish second.) For N identical workers,

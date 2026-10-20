@@ -200,41 +200,46 @@ pg_port=$(free_port)
 web_port=$(free_port)
 pg_password=$(cat "${service_rundir}/.pgpassword")
 
+# Apptainer evaluates --env-file like a shell script, so every value is
+# single-quoted (a space in the OIDC scope aborted every container start)
+envline() {
+    printf "%s='%s'\n" "$1" "$(printf '%s' "$2" | sed "s/'/'\\\\''/g")"
+}
 set +x
 (
     umask 077
     {
-        echo "DATABASE_URL=postgres://openproject:${pg_password}@127.0.0.1:${pg_port}/openproject"
-        echo "SECRET_KEY_BASE=$(cat "${service_rundir}/.secret_key_base")"
-        echo "OPENPROJECT_HOST__NAME=${host}"
-        echo "OPENPROJECT_HTTPS=true"
-        echo "OPENPROJECT_DEFAULT__LANGUAGE=en"
-        echo "OPENPROJECT_RAILS__CACHE__STORE=file_store"
+        envline DATABASE_URL "postgres://openproject:${pg_password}@127.0.0.1:${pg_port}/openproject"
+        envline SECRET_KEY_BASE "$(cat "${service_rundir}/.secret_key_base")"
+        envline OPENPROJECT_HOST__NAME "${host}"
+        envline OPENPROJECT_HTTPS "true"
+        envline OPENPROJECT_DEFAULT__LANGUAGE "en"
+        envline OPENPROJECT_RAILS__CACHE__STORE "file_store"
         if [ -n "${base_path}" ]; then
-            echo "OPENPROJECT_RAILS__RELATIVE__URL__ROOT=${base_path}"
+            envline OPENPROJECT_RAILS__RELATIVE__URL__ROOT "${base_path}"
         fi
         if [ -n "${service_admin_password}" ]; then
-            echo "OPENPROJECT_SEED_ADMIN_USER_PASSWORD=${service_admin_password}"
-            echo "OPENPROJECT_SEED_ADMIN_USER_PASSWORD_RESET=false"
+            envline OPENPROJECT_SEED_ADMIN_USER_PASSWORD "${service_admin_password}"
+            envline OPENPROJECT_SEED_ADMIN_USER_PASSWORD_RESET "false"
         fi
         if [ -n "${oidc_client_id}" ]; then
             # Applied by the seeder on every boot; the provider's slug is the first
             # word after OPENID__CONNECT_, and the redirect URI OpenProject uses is
             # <public URL>/auth/<slug>/callback
             issuer="https://${platform_host}/api/oidc"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_DISPLAY__NAME=${oidc_display_name}"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_IDENTIFIER=${oidc_client_id}"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_SECRET=${oidc_client_secret}"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_ISSUER=${issuer}"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_AUTHORIZATION__ENDPOINT=${issuer}/authorize"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_TOKEN__ENDPOINT=${issuer}/token"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_USERINFO__ENDPOINT=${issuer}/userinfo"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_END__SESSION__ENDPOINT=${issuer}/end_session"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_JWKS__URI=https://${platform_host}/api/platform/keys"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_POST__LOGOUT__REDIRECT__URI=${public_url}"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_SCOPE=openid profile email"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_ATTRIBUTE__MAP_LOGIN=preferred_username"
-            echo "OPENPROJECT_OPENID__CONNECT_ACTIVATE_ATTRIBUTE__MAP_EMAIL=email"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_DISPLAY__NAME "${oidc_display_name}"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_IDENTIFIER "${oidc_client_id}"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_SECRET "${oidc_client_secret}"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_ISSUER "${issuer}"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_AUTHORIZATION__ENDPOINT "${issuer}/authorize"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_TOKEN__ENDPOINT "${issuer}/token"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_USERINFO__ENDPOINT "${issuer}/userinfo"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_END__SESSION__ENDPOINT "${issuer}/end_session"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_JWKS__URI "https://${platform_host}/api/platform/keys"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_POST__LOGOUT__REDIRECT__URI "${public_url}"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_SCOPE "openid profile email"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_ATTRIBUTE__MAP_LOGIN "preferred_username"
+            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_ATTRIBUTE__MAP_EMAIL "email"
         fi
     } > "${env_file}"
     printf '127.0.0.1:%s:*:openproject:%s\n' "${pg_port}" "${pg_password}" > "${service_rundir}/.pgpass"

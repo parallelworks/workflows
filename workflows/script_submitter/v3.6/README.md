@@ -165,7 +165,7 @@ jobs:
 | `shebang` | Script shebang (default: `#!/bin/bash`) | No |
 | `scheduler` | Submit to job scheduler (true/false) | No |
 | `use_scheduler_agent` | Use the scheduler agent instead of direct submission (true/false, default: false) | No |
-| `define_cleanup_script` | Run a custom cleanup script when the workflow is canceled (true/false, default: false) | No |
+| `define_cleanup_script` | Run a custom cleanup script when the workflow is canceled (true/false, default: false). Pass it even when `false`: left out, the platform requires `cleanup_script_path` | Yes |
 | `cleanup_script_path` | Path to the cleanup script on the remote resource (required when `define_cleanup_script: true`) | No |
 | `submit_and_exit` | Submit the script and exit immediately without monitoring; the job or process keeps running on the resource (true/false, default: false) | No |
 | `skip_cleanups_file` | Path to a file checked when the workflow ends: if it exists, all cleanup steps are skipped and the job or process is left running. Hidden input intended for subworkflow use | No |

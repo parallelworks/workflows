@@ -29,7 +29,11 @@
 - **`Could not parse subworkflow` on `--dry-run`:** a non-optional subworkflow input
   with no default is missing from your `with:` block; the message never names it.
   Hidden+ignored inputs don't count — compare your block against the fields the
-  subworkflow's form shows for the values you pass.
+  subworkflow's form shows for the values you pass. A `script_submitter` call that
+  leaves out `define_cleanup_script` fails this way on every variant: the flag's
+  `default: false` does not reach `cleanup_script_path`'s `hidden:` test, so the path
+  counts as required. Pass `define_cleanup_script: false` explicitly (verified
+  2026-10-20; four `hsp` callers broke when the `hsp` submitter declared the flag).
 - **Wrong deployment variant / mismatched resource form:** `general`'s slurm/pbs
   fields passed to an `emed`/`noaa`/`hsp` subworkflow are NOT rejected by `--dry-run`
   (unknown fields pass silently; verified 2026-09-16), so the mismatch surfaces only
@@ -346,7 +350,7 @@
   shape must go through the submitter's `ntasks` and `nodes` inputs, not through a
   directive (`workflows/openfoam-naca/yamls/noaa.yaml` passes `ntasks: cores_per_case`,
   `nodes: 1`, and composes the same two directives for every other resource). `hsp`
-  also has no `define_cleanup_script` input and guards an empty `slurm.time`.
+  also guards an empty `slurm.time`.
 - **Nested subworkflow job dirs live under the parent run's** (HSP, Nautilus, 2026-10-05):
   the subworkflow a `uses:` step at index k of job J ran has its job dir at
   `<run dir>/subworkflows/J/step_k/`, recursively, with its own `logs/`, `subworkflows/`

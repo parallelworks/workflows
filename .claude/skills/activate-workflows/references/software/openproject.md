@@ -87,7 +87,14 @@
   `OmniAuth SSO strategy <slug> is only available for Enterprise Editions`. The provider
   row is still created and `available`. A trial token requested in Administration →
   Enterprise edition is stored in the database; `script/import_enterprise_token <file>`
-  (run as `app` in `/app`) imports a token file. Do not work around the gate: it is a
+  (run as `app` in `/app`) imports a token file (prints subscriber, domain, plan, validity;
+  the domain must equal `Setting.host_name`). Verified 2026-10-20 with a trial token:
+  the running puma honoured it within about 15 s, no restart needed (`supervisorctl`
+  in the all-in-one image has no control section anyway). Probe the result with
+  `EnterpriseToken.allows_to?(:sso_auth_providers)` (`EnterpriseToken.current` no
+  longer exists in 17). The login page's button links to `/login/omniauth/<slug>`;
+  OmniAuth 2 answers a plain `GET /auth/<slug>` with 404 whether or not SSO is
+  enabled, so that route proves nothing. Do not work around the gate: it is a
   license restriction.
 - **Admin seed:** `OPENPROJECT_SEED_ADMIN_USER_PASSWORD` (+ `_PASSWORD_RESET=false`,
   `_NAME`, `_MAIL`) apply only when the database is first seeded; the default is

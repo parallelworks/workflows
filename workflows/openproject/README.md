@@ -36,8 +36,8 @@ token, this is how to connect it to ACTIVATE:
    once). An application is registered for one exact redirect URI, and that URI is
    built from the OpenProject address, which the form's **Subdomain** decides:
    `https://<subdomain>.<sessions domain>/auth/activate/callback`. With the default
-   subdomain and user `alvaro` on activate.parallel.works, that is
-   `https://openproject-alvaro.activate.pw/auth/activate/callback`. Launching with
+   subdomain on activate.parallel.works, that is
+   `https://openproject-<user>.activate.pw/auth/activate/callback`. Launching with
    another subdomain later means registering (or updating) the application for the
    new address, or the sign-in stops at a redirect URI error.
 

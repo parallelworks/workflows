@@ -5,3 +5,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-20T11:34:37Z,warm,pass,ok,1054ae2,c37a825,eef523b,0452096,0452096,openproject,alvaro,neutral-giraffe,100,
 2026-10-20T13:46:11Z,warm,fail,ok,6b9b28d,c37a825,eef523b,affa331,affa331,openproject-oidc,alvaro,unique-satyr,38,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"
 2026-10-20T13:52:52Z,warm,pass,ok,3e6a386,c37a825,eef523b,dc72044,dc72044,openproject-oidc,alvaro,fond-rat,116,
+2026-10-20T14:07:31Z,warm,fail,,8ee08d7,c37a825,eef523b,0f8dc7c,0f8dc7c,openproject-oidc,alvaro,,5,"launch failed: { |   ""detail"": ""Missing required fields: Client secret"", |   ""errors"": [ |     { |       ""code"": ""invalid"", |       ""detail"": ""This value isn't valid."", |       ""pointer"": ""#/oidc/client_secret"", |       ""type"": ""/problems/invalid"" |     } |   ], |   ""status"": 400, |   ""title"": ""Bad "

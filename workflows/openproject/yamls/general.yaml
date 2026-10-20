@@ -24,7 +24,7 @@ jobs:
           sed -i 's/=\(.*\)/="\1"/' inputs.sh
           # An Enterprise token spans several lines, so it goes into its own file
           cat <<'EOF' > enterprise-token.txt
-          ${{ inputs.service.enterprise_token }}
+          ${{ inputs.oidc.enterprise_token }}
           EOF
           tr -d '\r' < enterprise-token.txt | sed '/^[[:space:]]*$/d; /^undefined$/d' > enterprise-token.tmp
           mv enterprise-token.tmp enterprise-token.txt
@@ -277,30 +277,31 @@ jobs:
             type: string
             hidden: true
             default: ${HOME}/pw/software
-          enterprise_token:
-            label: Enterprise token
-            description: OpenProject shows Sign in with ACTIVATE (like every SSO provider) only with an active Enterprise edition token; a trial requested inside OpenProject is kept in the run directory instead.
-            type: editor
-            optional: true
-            tooltip: |
-              Paste the token block (-----BEGIN OPENPROJECT-ENTERPRISE-TOKEN----- ... -----END ...). It is imported once into the database of the run directory. Without a token OpenProject still runs with its own user accounts.
       oidc:
         type: group
         label: Sign in with ACTIVATE
+        description: Lets users sign in to OpenProject with their ACTIVATE account. Leave the whole group empty for OpenProject's own accounts only.
         collapsed: true
         items:
           client_id:
             label: Client ID
-            description: Of the application an organization admin registered for this OpenProject URL; empty disables Sign in with ACTIVATE.
+            description: The pwapp_ ID of the application an organization admin registered for this OpenProject URL; empty means no ACTIVATE sign-in is configured.
             type: string
             optional: true
             tooltip: |
-              Organization -> Settings -> Applications: kind web, redirect URI https://<subdomain>.<sessions domain>/auth/activate/callback, post-logout redirect URI https://<subdomain>.<sessions domain>/, scopes openid profile email, consent none. The client ID starts with pwapp_.
+              Organization -> Settings -> Applications (behind the OIDC Applications preview): kind web, consent none, scopes openid profile email, redirect URI https://<subdomain>.<sessions domain>/auth/activate/callback, post-logout redirect URI https://<subdomain>.<sessions domain>/. The redirect URI is matched exactly, so it must carry the subdomain this run pins. The provider is written into OpenProject's database on every start and stays there: a later run without a client ID keeps the stored one (remove it under Administration -> Authentication -> OpenID providers).
           client_secret:
             label: Client secret
             description: Required with a client ID; shown once when the secret is created, an organization admin can reveal it again on the application's page.
             type: password
             optional: true
+          enterprise_token:
+            label: OpenProject Enterprise token
+            description: Needed once per run directory, the Sign in with ACTIVATE button is hidden until OpenProject holds a valid Enterprise edition token; it is imported into the database on the first run that carries it.
+            type: editor
+            optional: true
+            tooltip: |
+              OpenProject (Community edition) accepts the OIDC configuration but hides every single sign-on provider until an Enterprise edition token is active. Paste the whole block (-----BEGIN OPENPROJECT-EE TOKEN----- ... -----END ...): the launcher imports it once and keeps a marker in the run directory, so later runs on the same run directory can leave this empty. A token is bound to the OpenProject host name (the subdomain) and has an expiry date. A free trial requested inside OpenProject (Administration -> Enterprise edition) is stored the same way. Without a token OpenProject runs with its own accounts only.
           display_name:
             type: string
             hidden: true

@@ -62,16 +62,20 @@ a proxy in front of the app that sets `X-Forwarded-Proto: https`.
    (its `sso_auth_providers` feature; Community edition filters every OpenID Connect
    and SAML provider out at login, logging `OmniAuth SSO strategy activate is only
    available for Enterprise Editions`). The provider is configured either way. To
-   see the button: start a free trial under Administration → Enterprise edition
-   (the token is stored in the database, which the run directory keeps), or paste a
-   token into the form's **Enterprise token**, which the launcher imports once.
+   see the button: paste a token into the form's **OpenProject Enterprise token** (the
+   launcher imports it once; the run directory's database keeps it), or start a free
+   trial under Administration → Enterprise edition, which stores it the same way.
 4. The platform's session proxy rewrites any redirect to another host onto the
    OpenProject host, which would send the browser to `<OpenProject>/api/oidc/authorize`
    instead of the platform. The Singularity runtime's nginx therefore answers such a
    redirect with a small page that navigates to the platform itself; the Docker runtime
    (Apache inside the image) cannot, so Sign in with ACTIVATE needs the Singularity
    runtime until the proxy is fixed.
-5. Users sign in with the **ACTIVATE** button on `/login`; a first sign-in creates
+5. Open OpenProject in its own tab (`https://<subdomain>.<sessions domain>/`). Inside
+   the platform's embedded session view the app sits in an iframe on another site: the
+   browser withholds the platform's cookie from it and the platform refuses to start a
+   sign-in in a frame (`login_required`), so the ACTIVATE button fails there.
+6. Users sign in with the **ACTIVATE** button on `/login`; a first sign-in creates
    their OpenProject account from the ID token (login = ACTIVATE username). ACTIVATE
    releases `name` but no family name, so OpenProject asks a new user to complete the
    last name once. Sign-out ends the ACTIVATE session too (RP-initiated logout) and
@@ -97,10 +101,18 @@ a proxy in front of the app that sets `X-Forwarded-Proto: https`.
 - **OpenProject image** (Docker only, default `openproject/openproject:17`): keep the
   major version of an existing run directory; a new major may need the PostgreSQL data
   upgraded first. The Singularity image is pinned in `openproject-singularity/controller.sh`.
-- **Enterprise token** (optional): imported once per token into the run directory's
-  database.
-- **Client ID**, **Client secret**: the registered application; both empty = no
-  ACTIVATE sign-in, OpenProject's own accounts only.
+- **Sign in with ACTIVATE** group, all optional:
+  - **Client ID** and **Client secret**: the registered application. Both empty = no
+    ACTIVATE sign-in is configured; OpenProject's own accounts only. The provider is
+    written into the database on every start and stays there, so a later run without a
+    client ID keeps the stored one (remove it under Administration → Authentication →
+    OpenID providers).
+  - **OpenProject Enterprise token**: the sign-in button is hidden until OpenProject
+    holds a valid Enterprise edition token (Community edition hides every SSO provider).
+    Paste it once per run directory: the launcher imports it into the database and
+    keeps a marker, later runs can leave it empty. The token is bound to the
+    OpenProject host name and has an expiry date; a free trial requested inside
+    OpenProject is stored the same way.
 
 ## Requirements
 

@@ -62,26 +62,29 @@ fi
 export service_rundir
 export env_file="${PWD}/openproject-${PW_JOB_ID}.env"
 
-# The services run detached from the endpoint's process tree (nohup, PID files),
-# so teardown needs cancel.sh (run by the cleanup trap) to stop them: TERM for
-# nginx, the worker and puma, INT (fast shutdown) for PostgreSQL
+# Each service runs in its own process group (setsid), detached from the
+# endpoint's process tree, so teardown needs cancel.sh (run by the cleanup
+# trap) to signal the groups: TERM for nginx, the worker and puma, INT (fast
+# shutdown) for PostgreSQL. Signalling the group, not the container starter,
+# is what reaches the process inside the container when the starter has
+# already exited (the good_job worker outlived a TERM to its starter)
 cat > cancel.sh <<CANCELEOF
 #!/bin/bash
 run_dir="${service_rundir}/run"
 for svc in nginx worker web; do
-    pid=\$(cat "\${run_dir}/\${svc}.pid" 2>/dev/null) && kill -TERM "\${pid}" 2>/dev/null
+    pid=\$(cat "\${run_dir}/\${svc}.pid" 2>/dev/null) && kill -TERM -- "-\${pid}" 2>/dev/null
 done
-pid=\$(cat "\${run_dir}/postgres.pid" 2>/dev/null) && kill -INT "\${pid}" 2>/dev/null
+pid=\$(cat "\${run_dir}/postgres.pid" 2>/dev/null) && kill -INT -- "-\${pid}" 2>/dev/null
 for i in \$(seq 1 30); do
     alive=0
     for svc in nginx worker web postgres; do
-        pid=\$(cat "\${run_dir}/\${svc}.pid" 2>/dev/null) && kill -0 "\${pid}" 2>/dev/null && alive=1
+        pid=\$(cat "\${run_dir}/\${svc}.pid" 2>/dev/null) && kill -0 -- "-\${pid}" 2>/dev/null && alive=1
     done
     [ "\${alive}" = 0 ] && break
     sleep 1
 done
 for svc in nginx worker web postgres; do
-    pid=\$(cat "\${run_dir}/\${svc}.pid" 2>/dev/null) && kill -KILL "\${pid}" 2>/dev/null
+    pid=\$(cat "\${run_dir}/\${svc}.pid" 2>/dev/null) && kill -KILL -- "-\${pid}" 2>/dev/null
 done
 rm -f "\${run_dir}"/*.pid ${env_file}
 CANCELEOF
@@ -91,7 +94,7 @@ chmod +x cancel.sh
 # stale PID files from a killed run are cleaned up here
 for svc in nginx worker web postgres; do
     pid=$(cat "${service_rundir}/run/${svc}.pid" 2>/dev/null)
-    if [ -n "${pid}" ] && ! kill -0 "${pid}" 2>/dev/null; then
+    if [ -n "${pid}" ] && ! kill -0 -- "-${pid}" 2>/dev/null; then
         rm -f "${service_rundir}/run/${svc}.pid"
     fi
 done
@@ -238,29 +241,33 @@ set +x
 )
 set -x
 
-# One command line for every container process: the image's read-only paths
+# One option list for every container process: the image's read-only paths
 # the app writes to are bound from the run directory, the host environment is
-# dropped, the app's comes from the env file
-run_in_container() {
-    singularity exec --cleanenv --writable-tmpfs \
-        --bind "${service_rundir}" \
-        --bind "${service_rundir}/tmp:/app/tmp" \
-        --bind "${service_rundir}/log:/app/log" \
-        --bind "${service_rundir}/files:/app/files" \
-        --bind "${service_rundir}/assets:/var/openproject/assets" \
-        --env-file "${env_file}" \
-        --env PGPASSFILE="${service_rundir}/.pgpass" \
-        --pwd /app \
-        "$@"
-}
+# dropped, the app's comes from the env file (a later --env overrides it)
+container_args=(
+    --cleanenv --writable-tmpfs
+    --bind "${service_rundir}"
+    --bind "${service_rundir}/tmp:/app/tmp"
+    --bind "${service_rundir}/log:/app/log"
+    --bind "${service_rundir}/files:/app/files"
+    --bind "${service_rundir}/assets:/var/openproject/assets"
+    --env-file "${env_file}"
+    --env PGPASSFILE="${service_rundir}/.pgpass"
+    --pwd /app
+)
+# Background services are started as plain commands (nohup cannot run a shell
+# function), each as the leader of its own process group, so the PID file holds
+# a PGID that cancel.sh can signal as a whole
 start_bg() {
     local name=$1
     shift
-    nohup "$@" > "${log_dir}/${name}.log" 2>&1 &
+    setsid nohup "$@" > "${log_dir}/${name}.log" 2>&1 < /dev/null &
     echo $! > "${run_dir}/${name}.pid"
 }
 pg() {
-    run_in_container "${container_ref}" "/usr/lib/postgresql/17/bin/$@"
+    local tool=$1
+    shift
+    singularity exec "${container_args[@]}" "${container_ref}" "/usr/lib/postgresql/17/bin/${tool}" "$@"
 }
 
 if [ ! -f "${service_rundir}/pgdata/PG_VERSION" ]; then
@@ -274,7 +281,7 @@ fi
 # A killed server leaves postmaster.pid behind, which makes the next one start
 # in crash recovery; the lock above guarantees no live server holds it
 rm -f "${service_rundir}/pgdata/postmaster.pid"
-start_bg postgres run_in_container "${container_ref}" /usr/lib/postgresql/17/bin/postgres \
+start_bg postgres singularity exec "${container_args[@]}" "${container_ref}" /usr/lib/postgresql/17/bin/postgres \
     -D "${service_rundir}/pgdata" -p "${pg_port}" \
     -c listen_addresses=127.0.0.1 -c unix_socket_directories=/tmp
 for i in $(seq 1 60); do
@@ -295,15 +302,15 @@ fi
 # OpenID Connect provider from the env file. Fail here, with the log, rather
 # than start a web server on a half-migrated database
 echo "::notice::Migrating and seeding the database"
-if ! run_in_container "${container_ref}" ./docker/prod/seeder > "${log_dir}/seeder.log" 2>&1; then
+if ! singularity exec "${container_args[@]}" "${container_ref}" ./docker/prod/seeder > "${log_dir}/seeder.log" 2>&1; then
     tail -n 60 "${log_dir}/seeder.log"
     echo "::error title=Error::The OpenProject seeder failed (log above)"
     exit 1
 fi
 grep -i 'OpenID provider' "${log_dir}/seeder.log" || true
 
-start_bg web run_in_container --env PORT="${web_port}" --env BIND=127.0.0.1 "${container_ref}" ./docker/prod/web
-start_bg worker run_in_container "${container_ref}" ./docker/prod/worker
+start_bg web singularity exec "${container_args[@]}" --env PORT="${web_port}" --env BIND=127.0.0.1 "${container_ref}" ./docker/prod/web
+start_bg worker singularity exec "${container_args[@]}" "${container_ref}" ./docker/prod/worker
 
 # nginx in front of puma sets X-Forwarded-Proto: the platform proxy forwards
 # http, under which OpenProject's HTTPS mode redirects every page to itself and
@@ -311,8 +318,9 @@ start_bg worker run_in_container "${container_ref}" ./docker/prod/worker
 # directory, so it runs unprivileged
 nginx_dir="${service_rundir}/nginx"
 mkdir -p "${nginx_dir}"/{body,proxy,fastcgi,uwsgi,scgi}
+# nginx's own pid file stays out of run/, where nginx.pid holds the process group
 cat > "${nginx_dir}/nginx.conf" <<NGINXEOF
-pid ${run_dir}/nginx.pid;
+pid ${nginx_dir}/nginx-master.pid;
 error_log ${log_dir}/nginx-error.log warn;
 worker_processes 2;
 events { worker_connections 1024; }
@@ -343,7 +351,7 @@ http {
     }
 }
 NGINXEOF
-start_bg nginx run_in_container "${container_ref}" nginx -p "${nginx_dir}" -c "${nginx_dir}/nginx.conf" -g 'daemon off;'
+start_bg nginx singularity exec "${container_args[@]}" "${container_ref}" nginx -p "${nginx_dir}" -c "${nginx_dir}/nginx.conf" -g 'daemon off;'
 nginx_pid=$(cat "${run_dir}/nginx.pid")
 
 # The login page, probed through nginx without a forwarded protocol like the
@@ -353,7 +361,7 @@ code=""
 for i in $(seq 1 180); do
     for svc in postgres web nginx; do
         pid=$(cat "${run_dir}/${svc}.pid" 2>/dev/null)
-        if [ -z "${pid}" ] || ! kill -0 "${pid}" 2>/dev/null; then
+        if [ -z "${pid}" ] || ! kill -0 -- "-${pid}" 2>/dev/null; then
             tail -n 40 "${log_dir}/${svc}.log"
             echo "::error title=Error::${svc} exited during start-up (log above)"
             exit 1
@@ -382,7 +390,7 @@ if [ -s "${service_enterprise_token_file}" ]; then
     marker="${service_rundir}/.enterprise-token-$(sha256sum "${service_enterprise_token_file}" | cut -c1-16)"
     if [ -f "${marker}" ]; then
         echo "::notice::Enterprise token already imported into ${service_rundir}"
-    elif run_in_container --bind "$(dirname "${service_enterprise_token_file}")" "${container_ref}" \
+    elif singularity exec "${container_args[@]}" --bind "$(dirname "${service_enterprise_token_file}")" "${container_ref}" \
             bundle exec ruby script/import_enterprise_token "${service_enterprise_token_file}"; then
         touch "${marker}"
     else

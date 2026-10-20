@@ -322,10 +322,16 @@ start_bg worker singularity exec "${container_args[@]}" "${container_ref}" ./doc
 
 # nginx in front of puma sets X-Forwarded-Proto: the platform proxy forwards
 # http, under which OpenProject's HTTPS mode redirects every page to itself and
-# drops its Secure session cookie. Every path nginx writes is in the run
+# drops its Secure session cookie. The same proxy also rewrites every redirect
+# to another host onto the session's own host (meproxy rewriteLocationHeader),
+# which would send the browser to <this host>/api/oidc/authorize instead of
+# the platform's sign-in: nginx intercepts a 3xx whose target is external and
+# answers a 200 page that navigates there itself (redirects within this host
+# are re-issued as they were). Every path nginx writes is in the run
 # directory, so it runs unprivileged
 nginx_dir="${service_rundir}/nginx"
 mkdir -p "${nginx_dir}"/{body,proxy,fastcgi,uwsgi,scgi}
+host_re=$(printf '%s' "${host}" | sed 's/[.]/\\./g')
 # nginx's own pid file stays out of run/, where nginx.pid holds the process group
 cat > "${nginx_dir}/nginx.conf" <<NGINXEOF
 pid ${nginx_dir}/nginx-master.pid;
@@ -343,6 +349,11 @@ http {
     client_max_body_size 0;
     server_tokens off;
     map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }
+    map \$upstream_http_location \$hop_external {
+        default 0;
+        ~^https?://${host_re}(/|\$|[?#]) 0;
+        ~^https?:// 1;
+    }
     server {
         listen 127.0.0.1:${PORT};
         location ${base_path:-/} {
@@ -355,6 +366,15 @@ http {
             proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection \$connection_upgrade;
             proxy_read_timeout 600s;
+            proxy_intercept_errors on;
+            error_page 301 302 303 307 308 = @hop;
+        }
+        location @hop {
+            add_header Set-Cookie \$upstream_http_set_cookie;
+            add_header Cache-Control no-store;
+            if (\$hop_external = 0) { return 302 \$upstream_http_location; }
+            default_type text/html;
+            return 200 '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=\$upstream_http_location"><title>Redirecting</title></head><body><p>Continue to <a href="\$upstream_http_location">sign in</a>.</p></body></html>';
         }
     }
 }

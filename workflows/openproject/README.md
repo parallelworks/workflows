@@ -94,9 +94,6 @@ a proxy in front of the app that sets `X-Forwarded-Proto: https`.
   user; Docker as root and its `postgres` user, so removing a Docker run directory needs
   `sudo rm -rf`. One run per run directory at a time (a lock file); a second run on the
   same directory fails and leaves the first one running.
-- **Admin password** (optional): seeds the `admin` user when the run directory is first
-  initialized (at least 10 characters). Empty keeps OpenProject's default `admin` /
-  `admin`, which must be changed at the first login.
 - **OpenProject image** (Docker only, default `openproject/openproject:17`): keep the
   major version of an existing run directory; a new major may need the PostgreSQL data
   upgraded first. The Singularity image is pinned in `openproject-singularity/controller.sh`.

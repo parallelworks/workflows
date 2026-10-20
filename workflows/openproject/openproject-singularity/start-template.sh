@@ -14,7 +14,6 @@
 #   - service_parent_install_dir: where containers/openproject.sif lives
 #   - service_rundir: pgdata/, assets/, tmp/, log/, files/, run/, nginx/, secrets
 #   - service_subdomain: subdomain label of the URL (default openproject-<PW_USER>)
-#   - service_admin_password: optional; seeds the admin user of a new run directory
 #   - service_enterprise_token_file: optional; an OpenProject Enterprise token to import
 #   - oidc_client_id, oidc_client_secret, oidc_display_name: optional ACTIVATE OIDC client
 ################################################################################
@@ -214,10 +213,6 @@ app_env OPENPROJECT_DEFAULT__LANGUAGE "en"
 app_env OPENPROJECT_RAILS__CACHE__STORE "file_store"
 if [ -n "${base_path}" ]; then
     app_env OPENPROJECT_RAILS__RELATIVE__URL__ROOT "${base_path}"
-fi
-if [ -n "${service_admin_password}" ]; then
-    app_env OPENPROJECT_SEED_ADMIN_USER_PASSWORD "${service_admin_password}"
-    app_env OPENPROJECT_SEED_ADMIN_USER_PASSWORD_RESET "false"
 fi
 if [ -n "${oidc_client_id}" ]; then
     # Applied by the seeder on every boot; the provider's slug is the first

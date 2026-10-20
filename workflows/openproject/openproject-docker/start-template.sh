@@ -13,7 +13,6 @@
 #   - service_rundir: holds pgdata/, assets/, .secret_key_base and .lock
 #   - service_image: the openproject/openproject image
 #   - service_subdomain: subdomain label of the URL (default openproject-<PW_USER>)
-#   - service_admin_password: optional; seeds the admin user of a new run directory
 #   - service_enterprise_token_file: optional; an OpenProject Enterprise token to import
 #   - oidc_client_id, oidc_client_secret, oidc_display_name: optional ACTIVATE OIDC client
 ################################################################################
@@ -153,10 +152,6 @@ set +x
         echo "OPENPROJECT_DEFAULT__LANGUAGE=en"
         if [ -n "${base_path}" ]; then
             echo "OPENPROJECT_RAILS__RELATIVE__URL__ROOT=${base_path}"
-        fi
-        if [ -n "${service_admin_password}" ]; then
-            echo "OPENPROJECT_SEED_ADMIN_USER_PASSWORD=${service_admin_password}"
-            echo "OPENPROJECT_SEED_ADMIN_USER_PASSWORD_RESET=false"
         fi
         if [ -n "${oidc_client_id}" ]; then
             # Seeded into the database on every boot by the image's db:seed; the

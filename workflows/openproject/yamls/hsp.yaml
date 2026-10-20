@@ -34,7 +34,6 @@ jobs:
           PATH=$HOME/pw:$PATH
           service_rundir="${{ inputs.service.rundir }}"
           service_subdomain="${{ inputs.service.subdomain }}"
-          service_admin_password="${{ inputs.service.admin_password }}"
           service_enterprise_token_file="${PW_PARENT_JOB_DIR}/enterprise-token.txt"
           oidc_client_id="${{ inputs.oidc.client_id }}"
           oidc_client_secret="${{ inputs.oidc.client_secret }}"
@@ -355,13 +354,6 @@ jobs:
             default: ${HOME}/openproject
             tooltip: |
               Holds pgdata/ (PostgreSQL), assets/ (attachments) and the generated secrets. Singularity writes it as your user; Docker as root and the container's postgres user, so deleting a Docker run directory needs sudo and the Singularity runtime refuses it. One OpenProject per run directory at a time.
-          admin_password:
-            label: Admin password
-            description: Applied when the run directory is first initialized; empty keeps OpenProject's default admin / admin with a forced change at first login.
-            type: password
-            optional: true
-            tooltip: |
-              At least 10 characters. Later sessions keep the current password; change it in OpenProject.
       oidc:
         type: group
         label: Sign in with ACTIVATE

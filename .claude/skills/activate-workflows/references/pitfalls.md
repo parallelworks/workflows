@@ -413,8 +413,12 @@
 
 ## Endpoints and the service
 
-- **Service must bind `0.0.0.0` on the port `pw endpoints run` assigned** (`{port}` /
-  `$PORT`; not `127.0.0.1`, not a fixed port) or the tunnel can't reach it / the port clashes.
+- **The service listens on the port `pw endpoints run` assigned** (`{port}` / `$PORT`,
+  never a fixed port of its own, or the tunnel forwards to nothing and ports clash).
+  The tunnel client runs on the service's node, so the loopback is enough:
+  `openproject`, `pydio-cells` and `pgadmin4` publish on `127.0.0.1:${PORT}` (verified on
+  login and compute nodes). `0.0.0.0` only matters when another node must reach the
+  service directly.
 - **The start script returned early, or a teardown left a process:** `pw endpoints run`
   stays in the foreground (it blocks for the service's life; a server started in the
   background needs a `wait` or `sleep inf` after it), or the submitter sees the script end

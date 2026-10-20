@@ -29,6 +29,7 @@ file):
 | [references/shapes/](references/shapes/) | The jobs after preprocessing for each workflow shape (endpoint service, batch job, callable step, composed workflow): what "done" means, the teardown, the test. Step 2 picks one. |
 | [references/k8s-workflows.md](references/k8s-workflows.md) | The target is a Kubernetes cluster: no login node, no `script_submitter`, its own dev loop, tests and debugging. |
 | [references/design-parameters.md](references/design-parameters.md) | A driver (`doe`, `dakota`) and a runner (`openfoam-naca`) exchange designs: the `params.in` / `results.out` contract. |
+| [references/oidc-sign-in.md](references/oidc-sign-in.md) | The served app signs users in with their ACTIVATE account (OIDC): registering the app, pinning the subdomain, what the session proxy does to the sign-in and the proxy to put in front, testing without a browser. |
 | [references/session-to-endpoint-upgrade.md](references/session-to-endpoint-upgrade.md) | Converting an older session-tunnel workflow to the endpoint pattern. |
 | [references/software/](references/software/) | One piece of software (OpenFOAM, Dakota, ParaView, conda, Singularity/SIF, MPI benchmarks, dask-jobqueue, PhysicsNeMo, PostgreSQL, ...): one file per tool. |
 | [references/app-ui.md](references/app-ui.md) | The workflow serves a page it draws itself (a dashboard, a viewer, a small form): the platform's look from the foundation repo's theme contract (`@parallelworks/ui`): the tokens and fonts to vendor, the component recipes, the icons, the React path, how to verify. |

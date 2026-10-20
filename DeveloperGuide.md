@@ -53,7 +53,8 @@ unclear or behaves differently:
 [endpoint sessions](https://parallelworks.com/docs/run/sessions/endpoints) ·
 [`pw endpoints` CLI](https://parallelworks.com/docs/cli/pw/endpoints).
 An app that signs its users in with their ACTIVATE account (OIDC): the recipe and the
-proxy constraints are in the platform reference, §10 "Signing users in with ACTIVATE";
+proxy constraints are in
+[references/oidc-sign-in.md](.claude/skills/activate-workflows/references/oidc-sign-in.md);
 `workflows/openproject` is the worked example.
 
 **Develop on the target machine first.** Pick the resource (`pw cluster ls`, it must be

@@ -452,7 +452,7 @@
   header-echo server): an app in HTTPS mode redirects every page to itself, never writes
   its Secure cookie and fails its CSRF origin check ("The OpenProject cookie is missing"),
   while an exempt health route still answers 200. Set the header in a proxy of your own
-  and probe a real page: reference §10 "Signing users in with ACTIVATE".
+  and probe a real page: [oidc-sign-in.md](oidc-sign-in.md).
 - **PID files in a shared run directory let a refused run kill the live one** (verified
   2026-10-20, `workflows/openproject`): a second run on the same run directory lost the
   lock and exited, and the start script's cleanup trap then ran `cancel.sh`, which
@@ -481,7 +481,7 @@
 - **The session proxy rewrites every redirect to another host onto the session's own
   host** (verified 2026-10-20): an OIDC/OAuth sign-in or RP-initiated logout never reaches
   the identity provider. Intercept external 3xx in your own proxy and answer a hop page:
-  reference §10 "Signing users in with ACTIVATE".
+  [oidc-sign-in.md](oidc-sign-in.md).
 - **A hidden, ignored input is still validated as required at launch** (verified
   2026-10-20, `workflows/openproject`): a `password` field with `hidden: ${{ inputs.x == '' }}`
   and `ignore: ${{ .hidden }}` but no `optional: true` failed every launch without it
@@ -493,7 +493,7 @@
 - **An app that signs users in with ACTIVATE (OIDC)** (verified 2026-10-20,
   `workflows/openproject`) needs an app registered for its exact URL, a pinned subdomain
   and a proxy of its own in front; the recipe, the claims and how far curl can test the
-  flow are in reference §10 "Signing users in with ACTIVATE".
+  flow are in [oidc-sign-in.md](oidc-sign-in.md).
 - **`pw agent open-port` is a TOCTOU trap for slow-starting services:** the port
   sits unbound while the service boots (a SIF conversion takes ~1 min), and busy
   siblings on the node (MATLAB's dynamic services) steal it from the ephemeral

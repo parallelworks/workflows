@@ -153,8 +153,8 @@ the same invariants:
   the running instance on purpose unless **Restart server** is on.
 - An app that **signs users in with ACTIVATE** (OIDC) is registered once for its exact
   URL, so it pins its subdomain, and needs a proxy of its own in front to undo what the
-  session proxy does to the sign-in. The recipe is the platform reference's §10
-  "Signing users in with ACTIVATE"; `workflows/openproject` is the worked example.
+  session proxy does to the sign-in. The recipe:
+  `.claude/skills/activate-workflows/references/oidc-sign-in.md` (`workflows/openproject`).
 - A service that only ever runs on the login node (`design-explorer`, TensorBoard in
   `physicsnemo`) starts `pw endpoints run` detached from a plain step
   (`tutorials/endpoint-workflows` Stage 3) with a `stop_server_if_unhealthy` job under

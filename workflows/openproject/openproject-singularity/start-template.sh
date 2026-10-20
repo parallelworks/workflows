@@ -242,6 +242,11 @@ if [ -n "${oidc_client_id}" ]; then
     app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_ATTRIBUTE__MAP_LOGIN "preferred_username"
     app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_ATTRIBUTE__MAP_EMAIL "email"
 fi
+# The port changes every run, so the client password file is rewritten each time
+(
+    umask 077
+    printf '127.0.0.1:%s:*:openproject:%s\n' "${pg_port}" "${pg_password}" > "${service_rundir}/.pgpass"
+)
 set -x
 
 # One option list for every container process: the image's read-only paths
@@ -295,9 +300,10 @@ if ! pg pg_isready -h 127.0.0.1 -p "${pg_port}"; then
     echo "::error title=Error::PostgreSQL did not start (log above)"
     exit 1
 fi
-if ! pg psql -h 127.0.0.1 -p "${pg_port}" -U openproject -d postgres -tAc \
+# -w: never prompt for a password; a broken .pgpass must fail, not hang
+if ! pg psql -w -h 127.0.0.1 -p "${pg_port}" -U openproject -d postgres -tAc \
         "SELECT 1 FROM pg_database WHERE datname = 'openproject'" | grep -q 1; then
-    pg createdb -h 127.0.0.1 -p "${pg_port}" -U openproject openproject || exit 1
+    pg createdb -w -h 127.0.0.1 -p "${pg_port}" -U openproject openproject || exit 1
 fi
 
 # Schema load or migrations, then db:seed, which also creates or updates the

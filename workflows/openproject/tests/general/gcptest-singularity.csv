@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-20T09:24:51Z,warm,fail,ok,5e9ce3c,c37a825,eef523b,c438bb5,c438bb5,openproject,alvaro,alert-hippo,122,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"
 2026-10-20T09:48:10Z,warm,pass,ok,395c2bf,c37a825,eef523b,3d2bb03,3d2bb03,openproject,alvaro,workable-lobster,100,
+2026-10-20T10:22:47Z,warm,fail,ok,278e1d7,c37a825,eef523b,d968fba,d968fba,openproject,alvaro,certain-wallaby,1835,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"

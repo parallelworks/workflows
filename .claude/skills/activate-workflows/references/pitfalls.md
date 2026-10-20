@@ -482,6 +482,12 @@
   host** (verified 2026-10-20): an OIDC/OAuth sign-in or RP-initiated logout never reaches
   the identity provider. Intercept external 3xx in your own proxy and answer a hop page:
   reference §10 "Signing users in with ACTIVATE".
+- **A hidden, ignored input is still validated as required at launch** (verified
+  2026-10-20, `workflows/openproject`): a `password` field with `hidden: ${{ inputs.x == '' }}`
+  and `ignore: ${{ .hidden }}` but no `optional: true` failed every launch without it
+  (`Missing required fields: Client secret`, HTTP 400), also from the CLI. A field that
+  only matters with another one stays `optional: true` (or gets a default), and the
+  controller enforces the pairing with a clear `::error`.
 - **An app that signs users in with ACTIVATE (OIDC)** (verified 2026-10-20,
   `workflows/openproject`) needs an app registered for its exact URL, a pinned subdomain
   and a proxy of its own in front; the recipe, the claims and how far curl can test the

@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: openproject-oidc
           sparse_checkout:
             - workflows/openproject/${{ inputs.service.container_runtime }}
             - tools/oras
@@ -33,7 +33,7 @@ jobs:
           cat <<'EOF' >> inputs.sh
           PATH=$HOME/pw:$PATH
           service_rundir="${{ inputs.service.rundir }}"
-          service_parent_install_dir="${{ inputs.parent_install_dir }}"
+          service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
           service_subdomain="${{ inputs.service.subdomain }}"
           service_enterprise_token_file="${PW_PARENT_JOB_DIR}/enterprise-token.txt"
           oidc_client_id="${{ inputs.oidc.client_id }}"
@@ -197,12 +197,6 @@ jobs:
         type: compute-clusters
         label: Service host
         include-workspace: false
-      parent_install_dir:
-        label: Install directory
-        description: Needs about 1 GB free.
-        type: string
-        optional: true
-        tooltip: 'Parent directory for software installation. Default: the shared cluster software directory (/contrib/pw on Hera, Mercury, and Ursa; /usw/rdhpcs/software/pw on Gaea) when the OpenProject image is already staged there or your account maintains it; otherwise ${HOME}/pw. Ensure you have ~1 GB of free quota available.'
       cluster:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
@@ -305,6 +299,12 @@ jobs:
             type: string
             hidden: true
             default: openproject-singularity
+          parent_install_dir:
+            label: Install directory
+            description: Needs about 1 GB free.
+            type: string
+            optional: true
+            tooltip: 'Parent directory for software installation. Default: the shared cluster software directory (/contrib/pw on Hera, Mercury, and Ursa; /usw/rdhpcs/software/pw on Gaea) when the OpenProject image is already staged there or your account maintains it; otherwise ${HOME}/pw. Ensure you have ~1 GB of free quota available.'
           subdomain:
             label: Subdomain
             description: Label of the URL, https://<label>.<sessions domain>, the same on every run; empty uses openproject-<your username>.

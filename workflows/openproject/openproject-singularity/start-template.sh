@@ -192,7 +192,6 @@ free_port() {
 }
 pg_port=$(free_port)
 web_port=$(free_port)
-pg_password=$(cat "${service_rundir}/.pgpassword")
 
 # The app's environment goes in as APPTAINERENV_*/SINGULARITYENV_* host variables:
 # they reach the container even with --cleanenv and, unlike --env, stay out of
@@ -205,6 +204,7 @@ app_env() {
     export "APPTAINERENV_$1=${value}" "SINGULARITYENV_$1=${value}"
 }
 set +x
+pg_password=$(cat "${service_rundir}/.pgpassword")
 app_env DATABASE_URL "postgres://openproject:${pg_password}@127.0.0.1:${pg_port}/openproject"
 app_env SECRET_KEY_BASE "$(cat "${service_rundir}/.secret_key_base")"
 app_env OPENPROJECT_HOST__NAME "${host}"

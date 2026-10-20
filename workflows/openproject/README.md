@@ -6,7 +6,10 @@ Gantt, wiki, meetings, time tracking) served through a `pw` endpoint named
 through the platform's OpenID Connect provider. Two runtimes, chosen with **Run
 container using**: **Singularity** (default) runs everything as your user from one
 prebuilt SIF; **Docker** runs the official all-in-one image as root. The run completes
-once OpenProject's login page answers; the service runs until the endpoint is deleted.
+once OpenProject's login page answers; the service runs until
+`pw endpoints delete openproject-<run-slug>`, which stops PostgreSQL, OpenProject and
+nginx, or removes the container. A new run directory starts with OpenProject's default
+administrator, `admin` / `admin`, which must be changed at the first login.
 
 ## How it works
 

@@ -294,14 +294,14 @@ jobs:
             label: Client secret
             description: Required with a client ID; shown once when the secret is created, an organization admin can reveal it again on the application's page.
             type: password
-            optional: ${{ .hidden }}
+            optional: true
             hidden: ${{ inputs.oidc.client_id == '' }}
             ignore: ${{ .hidden }}
           enterprise_token:
             label: OpenProject Enterprise token
-            description: The Sign in with ACTIVATE button is hidden until OpenProject holds a valid Enterprise edition token; imported into the run directory's database the first time, checked on later runs.
+            description: Required with a client ID until the run directory holds an imported token; the Sign in with ACTIVATE button is hidden until OpenProject has a valid Enterprise edition token.
             type: editor
-            optional: ${{ .hidden }}
+            optional: true
             hidden: ${{ inputs.oidc.client_id == '' }}
             ignore: ${{ .hidden }}
             tooltip: |

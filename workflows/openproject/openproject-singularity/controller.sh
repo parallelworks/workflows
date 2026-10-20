@@ -57,9 +57,15 @@ if [ -n "${not_owned}" ]; then
     exit 1
 fi
 
-if [ -n "${oidc_client_id}" ] && [ -z "${oidc_client_secret}" ]; then
-    echo "::error title=Error::Sign in with ACTIVATE needs the client secret of application ${oidc_client_id}"
-    exit 1
+if [ -n "${oidc_client_id}" ]; then
+    if [ -z "${oidc_client_secret}" ]; then
+        echo "::error title=Error::Sign in with ACTIVATE needs the client secret of application ${oidc_client_id}"
+        exit 1
+    fi
+    if ! [ -s "${service_enterprise_token_file}" ] && ! ls "${rundir}"/.enterprise-token-* >/dev/null 2>&1; then
+        echo "::error title=Error::Sign in with ACTIVATE needs an OpenProject Enterprise token: ${rundir} holds none yet and the form's token is empty"
+        exit 1
+    fi
 fi
 if [ -z "${oidc_client_id}" ] && [ -n "${oidc_client_secret}" ]; then
     echo "::error title=Error::Sign in with ACTIVATE needs the client ID that goes with the client secret"

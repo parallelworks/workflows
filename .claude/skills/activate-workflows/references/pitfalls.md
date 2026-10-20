@@ -485,8 +485,10 @@
 - **A hidden, ignored input is still validated as required at launch** (verified
   2026-10-20, `workflows/openproject`): a `password` field with `hidden: ${{ inputs.x == '' }}`
   and `ignore: ${{ .hidden }}` but no `optional: true` failed every launch without it
-  (`Missing required fields: Client secret`, HTTP 400), also from the CLI. A field that
-  only matters with another one stays `optional: true` (or gets a default), and the
+  (`Missing required fields: Client secret`, HTTP 400), also from the CLI, and
+  `optional` takes no expression: `optional: ${{ .hidden }}` and
+  `optional: ${{ inputs.x == '' }}` both left the field required. A field that only
+  matters with another one stays `optional: true` (or gets a default), and the
   controller enforces the pairing with a clear `::error`.
 - **An app that signs users in with ACTIVATE (OIDC)** (verified 2026-10-20,
   `workflows/openproject`) needs an app registered for its exact URL, a pinned subdomain

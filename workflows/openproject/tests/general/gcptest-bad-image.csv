@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-20T14:16:04Z,,fail,,f1b738e,c37a825,eef523b,8d964a8,8d964a8,openproject-oidc,alvaro,,10,"launch failed: { |   ""detail"": ""Missing required fields: Client secret, OpenProject Enterprise token"", |   ""errors"": [ |     { |       ""code"": ""invalid"", |       ""detail"": ""This value isn't valid."", |       ""pointer"": ""#/oidc/client_secret"", |       ""type"": ""/problems/invalid"" |     }, |     { |    "

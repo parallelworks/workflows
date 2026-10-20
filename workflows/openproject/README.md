@@ -106,10 +106,12 @@ a proxy in front of the app that sets `X-Forwarded-Proto: https`.
     The provider is written into the database on every start and stays there, so a
     later run without a client ID keeps the stored one (remove it under Administration
     → Authentication → OpenID providers).
-  - **Client secret** and **OpenProject Enterprise token**: required with a client ID.
-    The sign-in button is hidden until OpenProject holds a valid Enterprise edition
-    token (Community edition hides every SSO provider); the launcher imports the token
-    into the run directory's database the first time and only checks it afterwards.
+  - **Client secret** and **OpenProject Enterprise token**: shown once a client ID is
+    typed and checked when the run starts: the secret is always required, the token
+    until the run directory holds an imported one. The sign-in button is hidden until
+    OpenProject holds a valid Enterprise edition token (Community edition hides every
+    SSO provider); the launcher imports the token into the run directory's database
+    the first time and only checks it afterwards.
     The token is bound to the OpenProject host name and has an expiry date; a free
     trial requested inside OpenProject is stored the same way.
 

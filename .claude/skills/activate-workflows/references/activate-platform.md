@@ -504,9 +504,14 @@ run_my_job:
 > never names the field. The check honors the subworkflow's `hidden`/`ignore` rules
 > under the values you pass: `script_submitter` with `define_cleanup_script: false`
 > accepts a missing `cleanup_script_path` (dry-run and real run both pass) and rejects
-> it once `define_cleanup_script: true`. `--dry-run` does NOT flag unknown fields
+> it once `define_cleanup_script: true`. It also rejects it when `define_cleanup_script`
+> is left out, on every variant: the flag's `default: false` does not reach
+> `cleanup_script_path`'s `hidden:` test, so always pass the flag, `false` when unused
+> (verified 2026-10-20, dry-runs on gcptest). `--dry-run` does NOT flag unknown fields
 > (`partition_default` passed to `general`, or `general`'s `slurm.partition` passed to
-> `emed`) — they pass silently. (`hsp` has no `cleanup_script_path` input at all.)
+> `emed`) — they pass silently, and at run time an undeclared field still reaches the
+> subworkflow as `inputs.<field>` (verified 2026-10-20: the `hsp` submitter, before it
+> declared the cleanup inputs, ran the caller's cleanup script).
 
 > **Best practice — paths inside the submitted script:** `script_submitter` `cd`s
 > into `rundir` before running your script, so reference files **relative to rundir**

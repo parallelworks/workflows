@@ -115,6 +115,15 @@ a proxy in front of the app that sets `X-Forwarded-Proto: https`.
     The token is bound to the OpenProject host name and has an expiry date; a free
     trial requested inside OpenProject is stored the same way.
 
+## Variants
+
+`general.yaml` offers both runtimes. `hsp.yaml` (activate.hpc.mil) and `noaa.yaml`
+(noaa.parallel.works) carry those platforms' scheduler forms and submitters, run the
+Singularity runtime only (the runtime input is hidden) and take the platforms' install
+directories: `${PROJECTS_HOME}/hsp` on HSP, the shared software directory or the
+form's **Install directory** on NOAA (`${HOME}/pw` on a cloud cluster). Register the
+OIDC application on that platform; the issuer follows `PW_PLATFORM_HOST`.
+
 ## Requirements
 
 Singularity: `singularity`/`apptainer` on the service node (loaded through `module` when

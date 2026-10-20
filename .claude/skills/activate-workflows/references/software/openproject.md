@@ -22,9 +22,11 @@
 - **Writable paths** bound from the run directory: `/app/tmp` (pids, file cache),
   `/app/log`, `/app/files`, `/var/openproject/assets` (attachments); plus
   `--writable-tmpfs` for the rest (nginx's compiled-in `/var/log/nginx`). Run with
-  `--cleanenv` and an `--env-file`: host module environments (`LD_LIBRARY_PATH`,
-  `GEM_*`) must not reach Ruby, and `pw endpoints run` exports `PORT`, which the web
-  process must get as its own value (`--env PORT=<puma port>`).
+  `--cleanenv`, the app's variables exported as `APPTAINERENV_*`/`SINGULARITYENV_*` with
+  `$`, backticks and backslashes escaped (pitfalls, "Passing secrets and values with
+  spaces into Apptainer"; an `--env-file` broke on the OIDC scope's spaces): host module
+  environments (`LD_LIBRARY_PATH`, `GEM_*`) must not reach Ruby, and `pw endpoints run`
+  exports `PORT`, which the web process must get as its own value (`--env PORT=<puma port>`).
 - **PostgreSQL as the user:** `initdb -D <rundir>/pgdata -U openproject --auth-host=scram-sha-256
   --auth-local=trust --pwfile=<file>` then `postgres -D ... -p <port> -c listen_addresses=127.0.0.1
   -c unix_socket_directories=/tmp`; `pg_isready`/`psql -h 127.0.0.1`. The loopback is

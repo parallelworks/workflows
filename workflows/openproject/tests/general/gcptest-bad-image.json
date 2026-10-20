@@ -16,9 +16,10 @@
     "scheduler": false
   },
   "service": {
-    "container_runtime": "openproject-docker"
+    "container_runtime": "openproject-docker",
+    "subdomain": "openproject-alvaro-docker",
+    "rundir": "${HOME}/openproject-docker",
+    "image": "openproject/openproject:no-such-tag"
   },
-  "oidc": {
-    "client_id": "pwapp_254b29d69085165ecabd10ceeab31a88"
-  }
+  "oidc": {}
 }

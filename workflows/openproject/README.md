@@ -6,8 +6,7 @@ Gantt, wiki, meetings, time tracking) served through a `pw` endpoint named
 through the platform's OpenID Connect provider. Two runtimes, chosen with **Run
 container using**: **Singularity** (default) runs everything as your user from one
 prebuilt SIF; **Docker** runs the official all-in-one image as root. The run completes
-once OpenProject's login page answers; the service runs until
-`pw endpoints delete openproject-<run-slug>`.
+once OpenProject's login page answers; the service runs until the endpoint is deleted.
 
 ## How it works
 
@@ -102,17 +101,17 @@ a proxy in front of the app that sets `X-Forwarded-Proto: https`.
   major version of an existing run directory; a new major may need the PostgreSQL data
   upgraded first. The Singularity image is pinned in `openproject-singularity/controller.sh`.
 - **Sign in with ACTIVATE** group, all optional:
-  - **Client ID** and **Client secret**: the registered application. Both empty = no
-    ACTIVATE sign-in is configured; OpenProject's own accounts only. The provider is
-    written into the database on every start and stays there, so a later run without a
-    client ID keeps the stored one (remove it under Administration → Authentication →
-    OpenID providers).
-  - **OpenProject Enterprise token**: the sign-in button is hidden until OpenProject
-    holds a valid Enterprise edition token (Community edition hides every SSO provider).
-    Paste it once per run directory: the launcher imports it into the database and
-    keeps a marker, later runs can leave it empty. The token is bound to the
-    OpenProject host name and has an expiry date; a free trial requested inside
-    OpenProject is stored the same way.
+  - **Client ID**: the registered application; empty = no ACTIVATE sign-in is
+    configured, OpenProject's own accounts only, and the two fields below stay hidden.
+    The provider is written into the database on every start and stays there, so a
+    later run without a client ID keeps the stored one (remove it under Administration
+    → Authentication → OpenID providers).
+  - **Client secret** and **OpenProject Enterprise token**: required with a client ID.
+    The sign-in button is hidden until OpenProject holds a valid Enterprise edition
+    token (Community edition hides every SSO provider); the launcher imports the token
+    into the run directory's database the first time and only checks it afterwards.
+    The token is bound to the OpenProject host name and has an expiry date; a free
+    trial requested inside OpenProject is stored the same way.
 
 ## Requirements
 

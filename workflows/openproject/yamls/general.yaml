@@ -294,18 +294,18 @@ jobs:
             label: Client secret
             description: Required with a client ID; shown once when the secret is created, an organization admin can reveal it again on the application's page.
             type: password
-            optional: true
+            optional: ${{ .hidden }}
             hidden: ${{ inputs.oidc.client_id == '' }}
             ignore: ${{ .hidden }}
           enterprise_token:
             label: OpenProject Enterprise token
-            description: Needed once per run directory, the Sign in with ACTIVATE button is hidden until OpenProject holds a valid Enterprise edition token; it is imported into the database on the first run that carries it.
+            description: The Sign in with ACTIVATE button is hidden until OpenProject holds a valid Enterprise edition token; imported into the run directory's database the first time, checked on later runs.
             type: editor
-            optional: true
+            optional: ${{ .hidden }}
             hidden: ${{ inputs.oidc.client_id == '' }}
             ignore: ${{ .hidden }}
             tooltip: |
-              OpenProject (Community edition) accepts the OIDC configuration but hides every single sign-on provider until an Enterprise edition token is active. Paste the whole block (-----BEGIN OPENPROJECT-EE TOKEN----- ... -----END ...): the launcher imports it once and keeps a marker in the run directory, so later runs on the same run directory can leave this empty. A token is bound to the OpenProject host name (the subdomain) and has an expiry date. A free trial requested inside OpenProject (Administration -> Enterprise edition) is stored the same way. Without a token OpenProject runs with its own accounts only.
+              OpenProject (Community edition) accepts the OIDC configuration but hides every single sign-on provider until an Enterprise edition token is active. Paste the whole block (-----BEGIN OPENPROJECT-EE TOKEN----- ... -----END ...): the launcher imports it the first time and keeps a marker in the run directory, so later runs only check it. A token is bound to the OpenProject host name (the subdomain) and has an expiry date; a free trial requested inside OpenProject (Administration -> Enterprise edition) is stored the same way.
           display_name:
             type: string
             hidden: true

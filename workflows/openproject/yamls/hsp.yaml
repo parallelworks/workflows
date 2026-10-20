@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: openproject-oidc
+          branch: canary
           sparse_checkout:
             - workflows/openproject/${{ inputs.service.container_runtime }}
             - tools/oras

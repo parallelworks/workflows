@@ -94,7 +94,7 @@ a proxy in front of the app that sets `X-Forwarded-Proto: https`.
   seeder logs), `files/`, `run/` (PID files) and `nginx/`. Singularity writes it as your
   user; Docker as root and its `postgres` user, so removing a Docker run directory needs
   `sudo rm -rf`. One run per run directory at a time (a lock file); a second run on the
-  same directory fails.
+  same directory fails and leaves the first one running.
 - **Admin password** (optional): seeds the `admin` user when the run directory is first
   initialized (at least 10 characters). Empty keeps OpenProject's default `admin` /
   `admin`, which must be changed at the first login.
@@ -146,7 +146,7 @@ OPENPROJECT_TEST_OIDC_CLIENT_SECRET=... python3 tools/tests/run-workflow-test.py
 ```
 
 The Singularity tests use their own subdomain and run directories (`openproject-alvaro-sif`,
-`${HOME}/openproject-sif*`) so they never collide with a running Docker instance; the
+`${HOME}/openproject-sif-test`, `${HOME}/openproject-sif-compute`) so they never collide with a running Docker instance; the
 second runs the service in a SLURM job on a compute node. The Docker tests use the
 defaults; `gcptest-oidc` launches with the application registered for
 `openproject-alvaro.activate.pw` and is skipped when the variable is unset;

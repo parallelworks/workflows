@@ -17,7 +17,7 @@
   "service": {
     "container_runtime": "openproject-singularity",
     "subdomain": "openproject-alvaro-sif",
-    "rundir": "${HOME}/openproject-sif"
+    "rundir": "${HOME}/openproject-sif-test"
   },
   "oidc": {}
 }

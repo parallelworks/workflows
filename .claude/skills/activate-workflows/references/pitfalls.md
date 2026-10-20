@@ -465,6 +465,13 @@
   `X-Forwarded-Host` = the public host, `X-Forwarded-For`, `X-Forwarded-By-Ingress`,
   **`X-Pw-User` (the visitor's username) and `X-Pw-User-Token`**; `Authorization` and
   the platform cookie are stripped.
+- **PID files in a shared run directory let a refused run kill the live one** (verified
+  2026-10-20, `workflows/openproject`): a second run on the same run directory lost the
+  lock and exited, and the start script's cleanup trap then ran `cancel.sh`, which
+  read the PID files the live run had written there and stopped its services (the
+  endpoint went `stopped`). Keep PID files in the run's own job directory (`${PWD}/run`
+  of the start script) so a cleanup can only reach what that run started; the lock
+  stays in the run directory.
 - **Killing a `singularity exec` starter does not reliably stop the process inside**
   (verified 2026-10-20, `workflows/openproject` Singularity launcher): a TERM to the
   starter PID of `good_job start` ended the starter and left the worker running, while

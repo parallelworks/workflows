@@ -34,8 +34,12 @@ fi
 container_sif=${service_parent_install_dir}/containers/openproject.sif
 sandbox_dir=${service_parent_install_dir}/containers/openproject-sandbox
 
-mkdir -p "${service_rundir}"/{pgdata,assets,tmp,log,files,run,nginx}
+mkdir -p "${service_rundir}"/{pgdata,assets,tmp,log,files,nginx}
 chmod 700 "${service_rundir}/pgdata"
+# PID files live with this run, not in the shared run directory: a second run
+# that is refused the lock must not find, and stop, the live run's services
+pid_dir="${PWD}/run"
+mkdir -p "${pid_dir}"
 
 # Load singularity/apptainer if not already in PATH
 if ! which singularity &> /dev/null; then
@@ -59,7 +63,7 @@ if ! [ -f "${container_sif}" ]; then
     exit 1
 fi
 
-export service_rundir
+export service_rundir pid_dir
 
 # Each service runs in its own process group (setsid), detached from the
 # endpoint's process tree, so teardown needs cancel.sh (run by the cleanup
@@ -69,7 +73,7 @@ export service_rundir
 # already exited (the good_job worker outlived a TERM to its starter)
 cat > cancel.sh <<CANCELEOF
 #!/bin/bash
-run_dir="${service_rundir}/run"
+run_dir="${pid_dir}"
 for svc in nginx worker web; do
     pid=\$(cat "\${run_dir}/\${svc}.pid" 2>/dev/null) && kill -TERM -- "-\${pid}" 2>/dev/null
 done
@@ -89,14 +93,6 @@ rm -f "\${run_dir}"/*.pid
 CANCELEOF
 chmod +x cancel.sh
 
-# A run directory another OpenProject run holds is refused later by the lock;
-# stale PID files from a killed run are cleaned up here
-for svc in nginx worker web postgres; do
-    pid=$(cat "${service_rundir}/run/${svc}.pid" 2>/dev/null)
-    if [ -n "${pid}" ] && ! kill -0 -- "-${pid}" 2>/dev/null; then
-        rm -f "${service_rundir}/run/${svc}.pid"
-    fi
-done
 
 # Host environments (module paths, LD_LIBRARY_PATH on HPC) must not leak into
 # the container; the app's environment comes from the image and the env file
@@ -181,7 +177,7 @@ if [ -z "${host}" ]; then
 fi
 base_path="${PW_ENDPOINT_PATH%/}"
 public_url="https://${host}${base_path}/"
-run_dir="${service_rundir}/run"
+run_dir="${pid_dir}"
 log_dir="${service_rundir}/log"
 
 # Two servers on one pgdata would both start and corrupt it; the lock is held

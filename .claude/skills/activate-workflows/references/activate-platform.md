@@ -871,9 +871,10 @@ redirect URI is matched exactly, so the endpoint pins its subdomain (`--subdomai
 §10 above) and the app learns its public host from `PW_ENDPOINT_HOST` inside the wrapped
 command. Worked example: `workflows/openproject` (the app's own OIDC client, configured
 from env). The session proxy strips `Authorization` and the platform cookie before
-forwarding; on canary (`meproxy/userheaders.go`, read 2026-10-20, not yet verified on a
-live run) it sets `X-PW-User` (the visitor's username) and `X-PW-User-Token` for session
-apps, which a header-trusting app could use instead of OIDC.
+forwarding and sets `X-Pw-User` (the visitor's username) and `X-Pw-User-Token` (verified
+live 2026-10-20 on activate.parallel.works, `meproxy/userheaders.go`), which a
+header-trusting app could use instead of OIDC. It also forwards `X-Forwarded-Proto: http`
+(pitfalls, "The endpoint proxy forwards").
 
 ### Apps that need a base path (path-based endpoints)
 

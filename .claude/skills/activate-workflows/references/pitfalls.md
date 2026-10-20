@@ -448,6 +448,17 @@
   the resource namespace, cluster and `PW_USER`), keep `--name <service>-${PW_RUN_SLUG}` for lookup,
   and check `pw endpoints list` for an endpoint already serving `https://<label>.`
   before launching (see `workflows/openvscode/app/start-template.sh`).
+- **The endpoint proxy forwards `X-Forwarded-Proto: http`** (verified 2026-10-20 with a
+  header-echo server behind `pw endpoints run` on activate.parallel.works): an app that
+  forces SSL (Rails `force_ssl`, OpenProject's `OPENPROJECT_HTTPS=true`) redirects every
+  page to its own https URL forever (`/login` → 301 `/login`), while a health route the
+  app exempts still answers 200, so `wait_for_endpoint` passes. Keep the app's HTTPS
+  mode (absolute URLs, OIDC redirect URIs) and turn off only its redirect
+  (`OPENPROJECT_HSTS=false` does exactly that), or send the header yourself from a proxy
+  you control. The same capture showed what else reaches the app: `Host` and
+  `X-Forwarded-Host` = the public host, `X-Forwarded-For`, `X-Forwarded-By-Ingress`,
+  **`X-Pw-User` (the visitor's username) and `X-Pw-User-Token`**; `Authorization` and
+  the platform cookie are stripped.
 - **An app that signs users in with ACTIVATE (OIDC) needs a pinned subdomain** (verified
   2026-10-20, `workflows/openproject`): the platform's OIDC applications match the
   redirect URI exactly (`https://<label>.<sessions domain>/<callback path>`), so the

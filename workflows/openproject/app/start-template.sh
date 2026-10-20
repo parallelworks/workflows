@@ -149,7 +149,12 @@ set +x
     {
         echo "SECRET_KEY_BASE=$(cat "${service_rundir}/.secret_key_base")"
         echo "OPENPROJECT_HOST__NAME=${host}"
+        # HTTPS mode keeps every absolute URL (and the OIDC redirect URI) https, but
+        # the platform proxy forwards X-Forwarded-Proto: http, so the SSL redirect
+        # would send /login to itself forever; HSTS=false turns off that redirect
+        # (config/environments/production.rb), nothing else
         echo "OPENPROJECT_HTTPS=true"
+        echo "OPENPROJECT_HSTS=false"
         echo "OPENPROJECT_DEFAULT__LANGUAGE=en"
         if [ -n "${base_path}" ]; then
             echo "OPENPROJECT_RAILS__RELATIVE__URL__ROOT=${base_path}"

@@ -292,8 +292,9 @@ jobs:
               Organization -> Settings -> Applications (behind the OIDC Applications preview): kind web, consent none, scopes openid profile email, redirect URI https://<subdomain>.<sessions domain>/auth/activate/callback, post-logout redirect URI https://<subdomain>.<sessions domain>/. The redirect URI is matched exactly, so it must carry the subdomain this run pins. The provider is written into OpenProject's database on every start and stays there: a later run without a client ID keeps the stored one (remove it under Administration -> Authentication -> OpenID providers).
           client_secret:
             label: Client secret
-            description: Shown once when the secret is created; an organization admin can reveal it again on the application's page.
+            description: Required with a client ID; shown once when the secret is created, an organization admin can reveal it again on the application's page.
             type: password
+            optional: true
             hidden: ${{ inputs.oidc.client_id == '' }}
             ignore: ${{ .hidden }}
           enterprise_token:

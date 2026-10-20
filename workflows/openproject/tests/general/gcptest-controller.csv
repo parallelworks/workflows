@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-20T08:00:07Z,cold,pass,ok,d6e35d3,c37a825,eef523b,e2e82c4,e2e82c4,openproject,alvaro,harmless-raccoon,116,
 2026-10-20T08:13:55Z,warm,pass,ok,42f924c,c37a825,eef523b,8719a67,8719a67,openproject,alvaro,smart-mink,100,
+2026-10-20T08:45:48Z,warm,pass,ok,8f62d87,c37a825,eef523b,6c0dff8,6c0dff8,openproject,alvaro,pet-iguana,100,

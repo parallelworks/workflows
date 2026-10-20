@@ -41,9 +41,13 @@ a proxy in front of the app that sets `X-Forwarded-Proto: https`.
 
 ## Sign in with ACTIVATE
 
-1. **Register the application** (an organization administrator, once; the
-   **Applications** page is behind the *OIDC Applications* preview):
-   Organization → Settings → Applications, or through the API:
+1. **Register the application** (an organization administrator, once). Turn on the
+   *OIDC Applications* feature preview in your account settings, then open
+   Organization → Settings → Applications and add a **web** application with the
+   redirect URI below: the page shows the client ID right away and the client secret
+   once you create one (shown a single time; an admin can reveal it again later). The
+   platform docs at <https://parallelworks.com/docs> do not cover this page yet. The
+   same registration through the API:
 
    ```bash
    pw api -X POST organizations/<org>/oidc/apps --input - <<'EOF'

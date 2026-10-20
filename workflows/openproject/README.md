@@ -16,6 +16,9 @@ completes once OpenProject answers; the container runs until
   memcached in one container, as root) behind `pw endpoints run`. The launcher waits for
   `/health_checks/default` before handing the container to the endpoint, so a boot
   that fails ends the run with the container's log. `cancel.sh` removes the container.
+  OpenProject runs in HTTPS mode (absolute URLs and the OIDC redirect URI are `https`)
+  with its own SSL redirect off (`OPENPROJECT_HSTS=false`), because the platform proxy
+  forwards `X-Forwarded-Proto: http`.
 - With a **Client ID** and **Client secret**, the container gets ACTIVATE as an OpenID
   Connect provider through OpenProject's `OPENPROJECT_OPENID__CONNECT_ACTIVATE_*`
   environment variables (issuer `https://<platform host>/api/oidc`, endpoints from the

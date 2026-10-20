@@ -474,6 +474,15 @@
   to see whether anything is left, `-KILL` after a grace period). `nohup` cannot run a
   shell function either: build the common `singularity exec` options as an array and
   pass plain commands.
+- **Passing secrets and values with spaces into Apptainer** (verified 2026-10-20,
+  apptainer 1.4.5, `workflows/openproject`): `--env-file` is evaluated like a shell
+  script, so `KEY=openid profile email` aborts every container start (`FATAL: while
+  setting environment`) and `$` in a password is expanded; quoting the file does not
+  survive either (`'\''` came out as `\'`). `--env KEY=VALUE` is literal but lands in
+  the process list. `APPTAINERENV_KEY`/`SINGULARITYENV_KEY` host variables reach the
+  container even with `--cleanenv` and stay out of `ps`, but `$…`, backticks and
+  backslashes are still expanded in them: escape those three (`sed 's/[\\$`]/\\&/g'`)
+  and the value arrives verbatim, double quotes included.
 - **An app that signs users in with ACTIVATE (OIDC) needs a pinned subdomain** (verified
   2026-10-20, `workflows/openproject`): the platform's OIDC applications match the
   redirect URI exactly (`https://<label>.<sessions domain>/<callback path>`), so the

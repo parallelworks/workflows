@@ -60,7 +60,6 @@ if ! [ -f "${container_sif}" ]; then
 fi
 
 export service_rundir
-export env_file="${PWD}/openproject-${PW_JOB_ID}.env"
 
 # Each service runs in its own process group (setsid), detached from the
 # endpoint's process tree, so teardown needs cancel.sh (run by the cleanup
@@ -86,7 +85,7 @@ done
 for svc in nginx worker web postgres; do
     pid=\$(cat "\${run_dir}/\${svc}.pid" 2>/dev/null) && kill -KILL -- "-\${pid}" 2>/dev/null
 done
-rm -f "\${run_dir}"/*.pid ${env_file}
+rm -f "\${run_dir}"/*.pid
 CANCELEOF
 chmod +x cancel.sh
 
@@ -200,55 +199,54 @@ pg_port=$(free_port)
 web_port=$(free_port)
 pg_password=$(cat "${service_rundir}/.pgpassword")
 
-# Apptainer evaluates --env-file like a shell script, so every value is
-# single-quoted (a space in the OIDC scope aborted every container start)
-envline() {
-    printf "%s='%s'\n" "$1" "$(printf '%s' "$2" | sed "s/'/'\\\\''/g")"
+# The app's environment goes in as APPTAINERENV_*/SINGULARITYENV_* host variables:
+# they reach the container even with --cleanenv and, unlike --env, stay out of
+# the process list. Apptainer still expands $, backticks and backslashes in
+# them (an --env-file is worse: evaluated like a shell script, it broke on a
+# space in the scope), so those are escaped; the value then arrives verbatim
+app_env() {
+    local value
+    value=$(printf '%s' "$2" | sed 's/[\\$`]/\\&/g')
+    export "APPTAINERENV_$1=${value}" "SINGULARITYENV_$1=${value}"
 }
 set +x
-(
-    umask 077
-    {
-        envline DATABASE_URL "postgres://openproject:${pg_password}@127.0.0.1:${pg_port}/openproject"
-        envline SECRET_KEY_BASE "$(cat "${service_rundir}/.secret_key_base")"
-        envline OPENPROJECT_HOST__NAME "${host}"
-        envline OPENPROJECT_HTTPS "true"
-        envline OPENPROJECT_DEFAULT__LANGUAGE "en"
-        envline OPENPROJECT_RAILS__CACHE__STORE "file_store"
-        if [ -n "${base_path}" ]; then
-            envline OPENPROJECT_RAILS__RELATIVE__URL__ROOT "${base_path}"
-        fi
-        if [ -n "${service_admin_password}" ]; then
-            envline OPENPROJECT_SEED_ADMIN_USER_PASSWORD "${service_admin_password}"
-            envline OPENPROJECT_SEED_ADMIN_USER_PASSWORD_RESET "false"
-        fi
-        if [ -n "${oidc_client_id}" ]; then
-            # Applied by the seeder on every boot; the provider's slug is the first
-            # word after OPENID__CONNECT_, and the redirect URI OpenProject uses is
-            # <public URL>/auth/<slug>/callback
-            issuer="https://${platform_host}/api/oidc"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_DISPLAY__NAME "${oidc_display_name}"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_IDENTIFIER "${oidc_client_id}"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_SECRET "${oidc_client_secret}"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_ISSUER "${issuer}"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_AUTHORIZATION__ENDPOINT "${issuer}/authorize"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_TOKEN__ENDPOINT "${issuer}/token"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_USERINFO__ENDPOINT "${issuer}/userinfo"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_END__SESSION__ENDPOINT "${issuer}/end_session"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_JWKS__URI "https://${platform_host}/api/platform/keys"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_POST__LOGOUT__REDIRECT__URI "${public_url}"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_SCOPE "openid profile email"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_ATTRIBUTE__MAP_LOGIN "preferred_username"
-            envline OPENPROJECT_OPENID__CONNECT_ACTIVATE_ATTRIBUTE__MAP_EMAIL "email"
-        fi
-    } > "${env_file}"
-    printf '127.0.0.1:%s:*:openproject:%s\n' "${pg_port}" "${pg_password}" > "${service_rundir}/.pgpass"
-)
+app_env DATABASE_URL "postgres://openproject:${pg_password}@127.0.0.1:${pg_port}/openproject"
+app_env SECRET_KEY_BASE "$(cat "${service_rundir}/.secret_key_base")"
+app_env OPENPROJECT_HOST__NAME "${host}"
+app_env OPENPROJECT_HTTPS "true"
+app_env OPENPROJECT_DEFAULT__LANGUAGE "en"
+app_env OPENPROJECT_RAILS__CACHE__STORE "file_store"
+if [ -n "${base_path}" ]; then
+    app_env OPENPROJECT_RAILS__RELATIVE__URL__ROOT "${base_path}"
+fi
+if [ -n "${service_admin_password}" ]; then
+    app_env OPENPROJECT_SEED_ADMIN_USER_PASSWORD "${service_admin_password}"
+    app_env OPENPROJECT_SEED_ADMIN_USER_PASSWORD_RESET "false"
+fi
+if [ -n "${oidc_client_id}" ]; then
+    # Applied by the seeder on every boot; the provider's slug is the first
+    # word after OPENID__CONNECT_, and the redirect URI OpenProject uses is
+    # <public URL>/auth/<slug>/callback
+    issuer="https://${platform_host}/api/oidc"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_DISPLAY__NAME "${oidc_display_name}"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_IDENTIFIER "${oidc_client_id}"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_SECRET "${oidc_client_secret}"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_ISSUER "${issuer}"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_AUTHORIZATION__ENDPOINT "${issuer}/authorize"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_TOKEN__ENDPOINT "${issuer}/token"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_USERINFO__ENDPOINT "${issuer}/userinfo"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_END__SESSION__ENDPOINT "${issuer}/end_session"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_JWKS__URI "https://${platform_host}/api/platform/keys"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_POST__LOGOUT__REDIRECT__URI "${public_url}"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_SCOPE "openid profile email"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_ATTRIBUTE__MAP_LOGIN "preferred_username"
+    app_env OPENPROJECT_OPENID__CONNECT_ACTIVATE_ATTRIBUTE__MAP_EMAIL "email"
+fi
 set -x
 
 # One option list for every container process: the image's read-only paths
 # the app writes to are bound from the run directory, the host environment is
-# dropped, the app's comes from the env file (a later --env overrides it)
+# dropped except the APPTAINERENV_* values above (a later --env overrides them)
 container_args=(
     --cleanenv --writable-tmpfs
     --bind "${service_rundir}"
@@ -256,7 +254,6 @@ container_args=(
     --bind "${service_rundir}/log:/app/log"
     --bind "${service_rundir}/files:/app/files"
     --bind "${service_rundir}/assets:/var/openproject/assets"
-    --env-file "${env_file}"
     --env PGPASSFILE="${service_rundir}/.pgpass"
     --pwd /app
 )

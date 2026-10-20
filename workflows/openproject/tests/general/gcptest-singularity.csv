@@ -9,3 +9,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-20T14:08:46Z,warm,pass,ok,6a398c1,c37a825,eef523b,87ebaef,87ebaef,openproject-oidc,alvaro,key-skylark,116,
 2026-10-20T14:15:28Z,warm,fail,,f1b738e,c37a825,eef523b,8d964a8,8d964a8,openproject-oidc,alvaro,,33,"launch failed: { |   ""detail"": ""Missing required fields: Client secret, OpenProject Enterprise token"", |   ""errors"": [ |     { |       ""code"": ""invalid"", |       ""detail"": ""This value isn't valid."", |       ""pointer"": ""#/oidc/client_secret"", |       ""type"": ""/problems/invalid"" |     }, |     { |    "
 2026-10-20T14:18:21Z,warm,pass,ok,aea158d,c37a825,eef523b,21c71b6,21c71b6,openproject-oidc,alvaro,profound-marten,100,
+2026-10-20T14:31:33Z,warm,pass,ok,df95652,c37a825,eef523b,c5b6a11,c5b6a11,openproject-oidc,alvaro,coherent-gibbon,100,

@@ -151,6 +151,11 @@ the same invariants:
   to be freed in preprocessing before the wait job looks it up, or the wait finds the
   previous instance answering (`hpc_status`'s `controller.sh`); `app-testbed` reuses
   the running instance on purpose unless **Restart server** is on.
+- An app that **signs users in with ACTIVATE** (OIDC) is registered once for its exact
+  URL, so it pins its subdomain, and needs a proxy of its own in front to undo what the
+  session proxy does to the sign-in; the recipe:
+  `.claude/skills/activate-workflows/references/activate-platform.md` §10 "Signing users
+  in with ACTIVATE" (`workflows/openproject`).
 - A service that only ever runs on the login node (`design-explorer`, TensorBoard in
   `physicsnemo`) starts `pw endpoints run` detached from a plain step
   (`tutorials/endpoint-workflows` Stage 3) with a `stop_server_if_unhealthy` job under

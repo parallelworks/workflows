@@ -135,19 +135,3 @@ tools/oras/oras push ghcr.io/parallelworks/openproject:17.0 openproject.sif
 ```
 
 A new tag for a new OpenProject major; keep the package public (anonymous pulls).
-
-## Testing
-
-```bash
-python3 tools/tests/run-workflow-test.py workflows/openproject/tests/general/gcptest-singularity.json \
-                                         workflows/openproject/tests/general/gcptest-singularity-compute.json \
-                                         workflows/openproject/tests/general/gcptest-controller.json
-OPENPROJECT_TEST_OIDC_CLIENT_SECRET=... python3 tools/tests/run-workflow-test.py workflows/openproject/tests/general/gcptest-oidc.json
-```
-
-The Singularity tests use their own subdomain and run directories (`openproject-alvaro-sif`,
-`${HOME}/openproject-sif-test`, `${HOME}/openproject-sif-compute`) so they never collide with a running Docker instance; the
-second runs the service in a SLURM job on a compute node. The Docker tests use the
-defaults; `gcptest-oidc` launches with the application registered for
-`openproject-alvaro.activate.pw` and is skipped when the variable is unset;
-`gcptest-missing-secret` is the failure path.

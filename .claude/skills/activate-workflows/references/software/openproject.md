@@ -34,7 +34,8 @@
   `DATABASE_URL=postgres://openproject:<pw>@127.0.0.1:<port>/openproject`. Keep the URL
   free of `?options`: `docker/prod/migrate` cuts it at `?` before handing it to `psql`.
   Measured: seeder 54 s on a fresh database, puma answering 42 s later.
-- **nginx unprivileged:** a full `nginx.conf` passed with `-p <dir> -c <conf>` and every
+- **nginx unprivileged** (it also sets `X-Forwarded-Proto` and serves the hop page for the
+  OIDC redirect, reference §10): a full `nginx.conf` passed with `-p <dir> -c <conf>` and every
   path inside the run directory (`pid`, `error_log`, `access_log`, `client_body_temp_path`,
   `proxy_temp_path`, `fastcgi_temp_path`, `uwsgi_temp_path`, `scgi_temp_path`), `listen
   127.0.0.1:$PORT`, `proxy_set_header X-Forwarded-Proto https`, `-g 'daemon off;'` as the
@@ -58,9 +59,8 @@
   be strong (`openssl rand -hex 64`) and the same on every start; generate it once into
   the run directory. `OPENPROJECT_HOST__NAME` is the public host the browser sees and
   `OPENPROJECT_HTTPS=true` (default) needs `X-Forwarded-Proto: https`, which the endpoint
-  proxy does **not** send (it forwards `http`): without it every page 301s to itself and
-  the `Secure` session cookie is never written (login fails with "The OpenProject
-  cookie is missing"). The workflow mounts `/etc/apache2/mods-enabled/headers.load`
+  proxy does not send (reference §10 "Signing users in with ACTIVATE"). The Docker
+  runtime mounts `/etc/apache2/mods-enabled/headers.load`
   (`LoadModule headers_module /usr/lib/apache2/modules/mod_headers.so`, shipped but
   not enabled) and its own `/etc/apache2/sites-enabled/openproject.conf` (the image's
   `proxy.conf.erb` plus `RequestHeader set X-Forwarded-Proto "https"`; `docker/prod/proxy`

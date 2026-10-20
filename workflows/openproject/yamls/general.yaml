@@ -280,7 +280,7 @@ jobs:
       oidc:
         type: group
         label: Sign in with ACTIVATE
-        description: Lets users sign in to OpenProject with their ACTIVATE account. Leave the whole group empty for OpenProject's own accounts only.
+        description: Lets users sign in to OpenProject with their ACTIVATE account; a client ID reveals the secret and the Enterprise token fields. Leave it empty for OpenProject's own accounts only.
         collapsed: true
         items:
           client_id:
@@ -292,14 +292,17 @@ jobs:
               Organization -> Settings -> Applications (behind the OIDC Applications preview): kind web, consent none, scopes openid profile email, redirect URI https://<subdomain>.<sessions domain>/auth/activate/callback, post-logout redirect URI https://<subdomain>.<sessions domain>/. The redirect URI is matched exactly, so it must carry the subdomain this run pins. The provider is written into OpenProject's database on every start and stays there: a later run without a client ID keeps the stored one (remove it under Administration -> Authentication -> OpenID providers).
           client_secret:
             label: Client secret
-            description: Required with a client ID; shown once when the secret is created, an organization admin can reveal it again on the application's page.
+            description: Shown once when the secret is created; an organization admin can reveal it again on the application's page.
             type: password
-            optional: true
+            hidden: ${{ inputs.oidc.client_id == '' }}
+            ignore: ${{ .hidden }}
           enterprise_token:
             label: OpenProject Enterprise token
             description: Needed once per run directory, the Sign in with ACTIVATE button is hidden until OpenProject holds a valid Enterprise edition token; it is imported into the database on the first run that carries it.
             type: editor
             optional: true
+            hidden: ${{ inputs.oidc.client_id == '' }}
+            ignore: ${{ .hidden }}
             tooltip: |
               OpenProject (Community edition) accepts the OIDC configuration but hides every single sign-on provider until an Enterprise edition token is active. Paste the whole block (-----BEGIN OPENPROJECT-EE TOKEN----- ... -----END ...): the launcher imports it once and keeps a marker in the run directory, so later runs on the same run directory can leave this empty. A token is bound to the OpenProject host name (the subdomain) and has an expiry date. A free trial requested inside OpenProject (Administration -> Enterprise edition) is stored the same way. Without a token OpenProject runs with its own accounts only.
           display_name:

@@ -449,22 +449,10 @@
   and check `pw endpoints list` for an endpoint already serving `https://<label>.`
   before launching (see `workflows/openvscode/app/start-template.sh`).
 - **The endpoint proxy forwards `X-Forwarded-Proto: http`** (verified 2026-10-20 with a
-  header-echo server behind `pw endpoints run` on activate.parallel.works): an app that
-  forces SSL (Rails `force_ssl`, OpenProject's `OPENPROJECT_HTTPS=true`) redirects every
-  page to its own https URL forever (`/login` → 301 `/login`), while a health route the
-  app exempts still answers 200, so `wait_for_endpoint` passes; and Rails refuses to
-  write a `Secure` cookie on a request it takes for plain HTTP, so even with the redirect
-  off the login form fails with "Unable to verify Cross-Site Request Forgery token ...
-  The OpenProject cookie is missing". Fix it where the app's trust starts: a proxy you
-  control in front of it sets `X-Forwarded-Proto: https` (`workflows/openproject`
-  mounts an Apache vhost with `RequestHeader set X-Forwarded-Proto "https"` and the
-  `mod_headers` load file into the image), and the health probe is a page that only
-  answers 200 under the fix (`/login`, `healthy: 2*`), not an exempt health route.
-  Turning the app's HTTPS mode off instead makes its absolute URLs (and an OIDC
-  redirect URI) `http`. The same capture showed what else reaches the app: `Host` and
-  `X-Forwarded-Host` = the public host, `X-Forwarded-For`, `X-Forwarded-By-Ingress`,
-  **`X-Pw-User` (the visitor's username) and `X-Pw-User-Token`**; `Authorization` and
-  the platform cookie are stripped.
+  header-echo server): an app in HTTPS mode redirects every page to itself, never writes
+  its Secure cookie and fails its CSRF origin check ("The OpenProject cookie is missing"),
+  while an exempt health route still answers 200. Set the header in a proxy of your own
+  and probe a real page: reference §10 "Signing users in with ACTIVATE".
 - **PID files in a shared run directory let a refused run kill the live one** (verified
   2026-10-20, `workflows/openproject`): a second run on the same run directory lost the
   lock and exited, and the start script's cleanup trap then ran `cancel.sh`, which
@@ -491,32 +479,13 @@
   backslashes are still expanded in them: escape those three (`sed 's/[\\$`]/\\&/g'`)
   and the value arrives verbatim, double quotes included.
 - **The session proxy rewrites every redirect to another host onto the session's own
-  host** (`meproxy.go` `rewriteLocationHeader`, "legacy behavior (e.g., RStudio auth
-  redirects): host rewrite only"; verified 2026-10-20 on activate.parallel.works):
-  OpenProject's `302 https://activate.parallel.works/api/oidc/authorize?…` arrived in the
-  browser as `https://<app host>/api/oidc/authorize?…`, so no OIDC/OAuth sign-in (or
-  RP-initiated logout) from behind an endpoint can reach the identity provider. No flag
-  turns it off. Workaround in `workflows/openproject`'s nginx: `proxy_intercept_errors on;
-  error_page 301 302 303 307 308 = @hop;` and a `@hop` location that re-issues redirects
-  within the host but answers an external one with a 200 page carrying
-  `<meta http-equiv="refresh" content="0;url=$upstream_http_location">` (plus
-  `add_header Set-Cookie $upstream_http_set_cookie`), which the proxy leaves alone.
-  Report it to the platform team as a bug: the rewrite should spare hosts that are not
-  the backend.
-- **An app that signs users in with ACTIVATE (OIDC) needs a pinned subdomain** (verified
-  2026-10-20, `workflows/openproject`): the platform's OIDC applications match the
-  redirect URI exactly (`https://<label>.<sessions domain>/<callback path>`), so the
-  endpoint must be served with `--subdomain <label>` (default `<service>-${PW_USER}`,
-  reserved with `pw subdomains reserve`) and the application registered once for that
-  URL. Register it with `pw api -X POST organizations/<org>/oidc/apps` (org admin; the
-  route is 404 until the caller turned on the `oidcApps` preview with
-  `pw api -X POST previews/oidcApps`), then `.../apps/<clientId>/secrets` shows the
-  secret once. `/api/oidc/authorize` wants a browser session: a bearer API key is
-  "signed out" and gets the login redirect, so the code flow cannot be driven with curl;
-  an unregistered redirect URI answers 400 / the platform error page, which is how to
-  check a registration. The public host is only known inside the wrapped command
-  (`PW_ENDPOINT_HOST`), so the app's host-name setting and the issuer URL are written
-  by the launcher, not the start template.
+  host** (verified 2026-10-20): an OIDC/OAuth sign-in or RP-initiated logout never reaches
+  the identity provider. Intercept external 3xx in your own proxy and answer a hop page:
+  reference §10 "Signing users in with ACTIVATE".
+- **An app that signs users in with ACTIVATE (OIDC)** (verified 2026-10-20,
+  `workflows/openproject`) needs an app registered for its exact URL, a pinned subdomain
+  and a proxy of its own in front; the recipe, the claims and how far curl can test the
+  flow are in reference §10 "Signing users in with ACTIVATE".
 - **`pw agent open-port` is a TOCTOU trap for slow-starting services:** the port
   sits unbound while the service boots (a SIF conversion takes ~1 min), and busy
   siblings on the node (MATLAB's dynamic services) steal it from the ephemeral

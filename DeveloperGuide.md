@@ -52,6 +52,9 @@ unclear or behaves differently:
 [actions](https://parallelworks.com/docs/run/workflows/building-workflows/actions)) ·
 [endpoint sessions](https://parallelworks.com/docs/run/sessions/endpoints) ·
 [`pw endpoints` CLI](https://parallelworks.com/docs/cli/pw/endpoints).
+An app that signs its users in with their ACTIVATE account (OIDC): the recipe and the
+proxy constraints are in the platform reference, §10 "Signing users in with ACTIVATE";
+`workflows/openproject` is the worked example.
 
 **Develop on the target machine first.** Pick the resource (`pw cluster ls`, it must be
 `active`), run the program there by hand (`pw ssh <resource>`) until it starts from a

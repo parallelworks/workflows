@@ -35,7 +35,7 @@ jobs:
           service_subdomain="${{ inputs.service.subdomain }}"
           service_admin_password="${{ inputs.service.admin_password }}"
           service_image="${{ inputs.service.image }}"
-          service_enterprise_token_file="${PWD}/enterprise-token.txt"
+          service_enterprise_token_file="${PW_PARENT_JOB_DIR}/enterprise-token.txt"
           oidc_client_id="${{ inputs.oidc.client_id }}"
           oidc_client_secret="${{ inputs.oidc.client_secret }}"
           oidc_display_name="${{ inputs.oidc.display_name }}"
@@ -230,7 +230,7 @@ jobs:
             default: openproject
           subdomain:
             label: Subdomain
-            description: Label of the URL, https://<label>.<sessions domain>; empty uses openproject-<your username>. Keep it stable, the OIDC redirect URI is registered for it.
+            description: Label of the URL, https://<label>.<sessions domain>, the same on every run; empty uses openproject-<your username>.
             type: string
             optional: true
             tooltip: |
@@ -258,7 +258,7 @@ jobs:
               The all-in-one image (web, worker, PostgreSQL, memcached). A new major version may need the PostgreSQL data upgraded first; see the OpenProject upgrade guide.
           enterprise_token:
             label: Enterprise token
-            description: Optional; OpenProject shows Sign in with ACTIVATE (like every SSO provider) only with an active Enterprise edition token. A trial requested inside OpenProject is kept in the run directory instead.
+            description: OpenProject shows Sign in with ACTIVATE (like every SSO provider) only with an active Enterprise edition token; a trial requested inside OpenProject is kept in the run directory instead.
             type: editor
             optional: true
             tooltip: |
@@ -277,7 +277,7 @@ jobs:
               Organization -> Settings -> Applications: kind web, redirect URI https://<subdomain>.<sessions domain>/auth/activate/callback, post-logout redirect URI https://<subdomain>.<sessions domain>/, scopes openid profile email, consent none. The client ID starts with pwapp_.
           client_secret:
             label: Client secret
-            description: Shown once when the secret is created; an organization admin can reveal it again on the application's page.
+            description: Required with a client ID; shown once when the secret is created, an organization admin can reveal it again on the application's page.
             type: password
             optional: true
           display_name:

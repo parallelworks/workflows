@@ -33,18 +33,38 @@ fi
 mkdir -p "${service_rundir}/pgdata" "${service_rundir}/assets"
 
 # Ensure the Docker daemon is running (no-op if already running or not systemctl-managed)
-sudo systemctl start docker || true
+sudo -n systemctl start docker 2>/dev/null || true
 
 if docker info &>/dev/null; then
     docker_cmd="docker"
     echo "::notice::Docker is accessible without sudo"
-elif sudo docker info &>/dev/null; then
+elif sudo -n docker info &>/dev/null; then
     docker_cmd="sudo docker"
     echo "::notice::Docker requires sudo"
 else
     echo "::error title=Error::Docker is not available on $(hostname)"
     exit 1
 fi
+
+for tool in openssl curl flock; do
+    if ! command -v ${tool} >/dev/null 2>&1; then
+        echo "::error title=Error::${tool} is not installed on $(hostname)"
+        exit 1
+    fi
+done
+
+export docker_cmd
+export container_name="openproject_${PW_RUN_SLUG}"
+export env_file="${PWD}/openproject-${PW_JOB_ID}.env"
+
+# The container belongs to the docker daemon, not the endpoint's process tree,
+# so teardown needs cancel.sh (run by the cleanup trap) to remove it
+cat > cancel.sh <<CANCELEOF
+#!/bin/bash
+${docker_cmd} rm -f ${container_name} 2>/dev/null || true
+rm -f ${env_file}
+CANCELEOF
+chmod +x cancel.sh
 
 # The OIDC application is registered for one exact redirect URI, so the URL must
 # be the same on every run: pin the subdomain instead of taking a random one.
@@ -90,18 +110,7 @@ if [ -n "${oidc_client_id}" ] && [ -z "${platform_host}" ]; then
     exit 1
 fi
 
-export docker_cmd service_rundir service_image service_subdomain platform_host oidc_display_name
-export container_name="openproject_${PW_RUN_SLUG}"
-export env_file="${PWD}/openproject-${PW_JOB_ID}.env"
-
-# The container belongs to the docker daemon, not the endpoint's process tree,
-# so teardown needs cancel.sh (run by the cleanup trap) to remove it
-cat > cancel.sh <<CANCELEOF
-#!/bin/bash
-${docker_cmd} rm -f ${container_name} 2>/dev/null || true
-rm -f ${env_file}
-CANCELEOF
-chmod +x cancel.sh
+export service_rundir service_image service_subdomain platform_host oidc_display_name
 
 echo "::group::Starting OpenProject"
 
@@ -133,6 +142,8 @@ if ! flock -n 9; then
     exit 75
 fi
 
+# The env file carries the secrets: keep them out of the set -x trace
+set +x
 (
     umask 077
     {
@@ -168,6 +179,7 @@ fi
         fi
     } > "${env_file}"
 )
+set -x
 
 ${docker_cmd} rm -f "${container_name}" 2>/dev/null || true
 ${docker_cmd} run -d \
@@ -179,8 +191,10 @@ ${docker_cmd} run -d \
     "${service_image}"
 
 # The first boot of a run directory initializes PostgreSQL, migrates and seeds
-# the database (minutes); later boots only migrate and seed. Fail here, with
-# the container's log, rather than hand a dead container to the endpoint
+# the database (minutes); later boots only migrate and seed. The endpoint is
+# already listed (the host name had to be known before the container could
+# start), so a boot that fails must end this launcher, with the container's
+# log, well inside the wait job's budget
 echo "Waiting for OpenProject to answer on 127.0.0.1:${PORT}"
 code=""
 for i in $(seq 1 300); do

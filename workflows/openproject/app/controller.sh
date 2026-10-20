@@ -34,11 +34,5 @@ if [ -z "${oidc_client_id}" ] && [ -n "${oidc_client_secret}" ]; then
     exit 1
 fi
 
-for tool in openssl curl flock; do
-    if ! command -v ${tool} >/dev/null 2>&1; then
-        echo "::error title=Error::${tool} is not installed on $(hostname)"
-        exit 1
-    fi
-done
 
 echo "::notice title=Info::Controller setup complete."

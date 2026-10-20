@@ -448,6 +448,20 @@
   the resource namespace, cluster and `PW_USER`), keep `--name <service>-${PW_RUN_SLUG}` for lookup,
   and check `pw endpoints list` for an endpoint already serving `https://<label>.`
   before launching (see `workflows/openvscode/app/start-template.sh`).
+- **An app that signs users in with ACTIVATE (OIDC) needs a pinned subdomain** (verified
+  2026-10-20, `workflows/openproject`): the platform's OIDC applications match the
+  redirect URI exactly (`https://<label>.<sessions domain>/<callback path>`), so the
+  endpoint must be served with `--subdomain <label>` (default `<service>-${PW_USER}`,
+  reserved with `pw subdomains reserve`) and the application registered once for that
+  URL. Register it with `pw api -X POST organizations/<org>/oidc/apps` (org admin; the
+  route is 404 until the caller turned on the `oidcApps` preview with
+  `pw api -X POST previews/oidcApps`), then `.../apps/<clientId>/secrets` shows the
+  secret once. `/api/oidc/authorize` wants a browser session: a bearer API key is
+  "signed out" and gets the login redirect, so the code flow cannot be driven with curl;
+  an unregistered redirect URI answers 400 / the platform error page, which is how to
+  check a registration. The public host is only known inside the wrapped command
+  (`PW_ENDPOINT_HOST`), so the app's host-name setting and the issuer URL are written
+  by the launcher, not the start template.
 - **`pw agent open-port` is a TOCTOU trap for slow-starting services:** the port
   sits unbound while the service boots (a SIF conversion takes ~1 min), and busy
   siblings on the node (MATLAB's dynamic services) steal it from the ephemeral

@@ -858,6 +858,23 @@ all verified on live runs:
   stops `wait_for_endpoint`. Both vars reach scheduled
   compute nodes via the `inputs.sh` `env | grep '^PW_'` capture.
 
+### Signing users in to a served app: ACTIVATE as an OIDC identity provider
+
+The platform is an OpenID Connect provider (discovery
+`https://<platform host>/api/oidc/.well-known/openid-configuration`; authorization code +
+PKCE only; ID token claims `sub`, `name`, `preferred_username`, `email`, `groups` by
+scope). An organization admin registers the app (`pw api -X POST
+organizations/<org>/oidc/apps`, kind `web` for a server-side app, `consent: none` for
+an org's own tool, `subjectType: username`; the route needs the caller's `oidcApps`
+preview) and creates a secret (`.../apps/<clientId>/secrets`, shown once). The
+redirect URI is matched exactly, so the endpoint pins its subdomain (`--subdomain`,
+§10 above) and the app learns its public host from `PW_ENDPOINT_HOST` inside the wrapped
+command. Worked example: `workflows/openproject` (the app's own OIDC client, configured
+from env). The session proxy strips `Authorization` and the platform cookie before
+forwarding; on canary (`meproxy/userheaders.go`, read 2026-10-20, not yet verified on a
+live run) it sets `X-PW-User` (the visitor's username) and `X-PW-User-Token` for session
+apps, which a header-trusting app could use instead of OIDC.
+
 ### Apps that need a base path (path-based endpoints)
 
 Subdomain endpoints serve at the URL root, so most apps need no base-URL config and no

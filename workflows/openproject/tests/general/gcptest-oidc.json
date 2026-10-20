@@ -1,7 +1,7 @@
 {
   "_test": {
     "timeout_s": 2400,
-    "warm_marker": "${HOME}/openproject/pgdata/PG_VERSION",
+    "warm_marker": "${HOME}/openproject/.secret_key_base",
     "leftover_patterns": [
       "docker logs -f openproject_",
       "pw endpoints run"

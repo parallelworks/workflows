@@ -57,6 +57,7 @@ jobs:
           shebang: '#!/bin/bash'
           use_existing_script: true
           script_path: ${{ needs.install.outputs.SCRIPT_PATH }}
+          define_cleanup_script: false
           scheduler: ${{ inputs.scheduler }}
           use_scheduler_agent: false
           slurm:

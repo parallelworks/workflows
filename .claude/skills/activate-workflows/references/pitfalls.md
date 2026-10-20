@@ -465,6 +465,15 @@
   `X-Forwarded-Host` = the public host, `X-Forwarded-For`, `X-Forwarded-By-Ingress`,
   **`X-Pw-User` (the visitor's username) and `X-Pw-User-Token`**; `Authorization` and
   the platform cookie are stripped.
+- **Killing a `singularity exec` starter does not reliably stop the process inside**
+  (verified 2026-10-20, `workflows/openproject` Singularity launcher): a TERM to the
+  starter PID of `good_job start` ended the starter and left the worker running, while
+  puma, nginx and PostgreSQL stopped fine. For services a `cancel.sh` must stop, start
+  each one as the leader of its own process group (`setsid nohup singularity exec … &`,
+  `$!` is then the PGID) and signal the group (`kill -TERM -- -$pgid`, `kill -0 -- -$pgid`
+  to see whether anything is left, `-KILL` after a grace period). `nohup` cannot run a
+  shell function either: build the common `singularity exec` options as an array and
+  pass plain commands.
 - **An app that signs users in with ACTIVATE (OIDC) needs a pinned subdomain** (verified
   2026-10-20, `workflows/openproject`): the platform's OIDC applications match the
   redirect URI exactly (`https://<label>.<sessions domain>/<callback path>`), so the

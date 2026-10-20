@@ -1,8 +1,48 @@
-# OpenProject (official all-in-one image) with ACTIVATE as its OpenID Connect provider
+# OpenProject (Docker all-in-one image, or the slim image under Singularity) with ACTIVATE as its OpenID Connect provider
 
-> From `workflows/openproject` (2026-10-20), image `openproject/openproject:17`; its
-> `app/start-template.sh` is the working copy. Verified on gcptest (Rocky 9.7, Docker
-> through `sudo`).
+> From `workflows/openproject` (2026-10-20): `openproject-docker/start-template.sh` runs
+> `openproject/openproject:17` (all-in-one, root); `openproject-singularity/` runs one SIF
+> built from `openproject.def` (`openproject/openproject:17-slim` + PostgreSQL 17 + nginx,
+> pushed as `ghcr.io/parallelworks/openproject:17.0`) as the user. Verified on gcptest
+> (Rocky 9.7, Docker through `sudo`, apptainer 1.4.5).
+
+## Singularity: the slim image runs as any uid
+
+- **The all-in-one image needs root** (supervisord, `su postgres`, `chown`), so it cannot
+  run under Apptainer; `openproject/openproject:17-slim` can: Debian 13, `USER app`, an
+  entrypoint that only `exec`s, puma via `./docker/prod/web` (`PORT`, `BIND`), the
+  worker via `./docker/prod/worker` (`good_job`), `./docker/prod/seeder` (schema load or
+  migrate, then `db:seed`), `RAILS_SERVE_STATIC_FILES=1`, cache store `file_store`
+  (no memcached needed), and the PostgreSQL 17 client (`psql`, used by `docker/prod/migrate`).
+  SIF of the plain image: 381 MB; with `postgresql-17` and `nginx` from apt: 462 MB.
+- **Def file** (`openproject-singularity/openproject.def`, `singularity build --fakeroot`,
+  about four minutes on gcptest): install `postgresql-common` first and append
+  `create_main_cluster = false` to `/etc/postgresql-common/createcluster.conf`, or the
+  `postgresql-17` postinst initializes a cluster in the image. `nginx` from apt is 1.26.
+- **Writable paths** bound from the run directory: `/app/tmp` (pids, file cache),
+  `/app/log`, `/app/files`, `/var/openproject/assets` (attachments); plus
+  `--writable-tmpfs` for the rest (nginx's compiled-in `/var/log/nginx`). Run with
+  `--cleanenv` and an `--env-file`: host module environments (`LD_LIBRARY_PATH`,
+  `GEM_*`) must not reach Ruby, and `pw endpoints run` exports `PORT`, which the web
+  process must get as its own value (`--env PORT=<puma port>`).
+- **PostgreSQL as the user:** `initdb -D <rundir>/pgdata -U openproject --auth-host=scram-sha-256
+  --auth-local=trust --pwfile=<file>` then `postgres -D ... -p <port> -c listen_addresses=127.0.0.1
+  -c unix_socket_directories=/tmp`; `pg_isready`/`psql -h 127.0.0.1`. The loopback is
+  shared with every user of the login node, hence the password, carried in
+  `DATABASE_URL=postgres://openproject:<pw>@127.0.0.1:<port>/openproject`. Keep the URL
+  free of `?options`: `docker/prod/migrate` cuts it at `?` before handing it to `psql`.
+  Measured: seeder 54 s on a fresh database, puma answering 42 s later.
+- **nginx unprivileged:** a full `nginx.conf` passed with `-p <dir> -c <conf>` and every
+  path inside the run directory (`pid`, `error_log`, `access_log`, `client_body_temp_path`,
+  `proxy_temp_path`, `fastcgi_temp_path`, `uwsgi_temp_path`, `scgi_temp_path`), `listen
+  127.0.0.1:$PORT`, `proxy_set_header X-Forwarded-Proto https`, `-g 'daemon off;'` as the
+  launcher's foreground process (its exit ends the endpoint). Every service is started
+  with `setsid nohup singularity exec … &` so its PID file holds a process group, and
+  `cancel.sh` signals the groups (TERM for nginx/worker/puma, INT for PostgreSQL, KILL
+  after 30 s): a TERM to the bare starter PID left `good_job` running (pitfalls). Keep
+  nginx's own `pid` directive away from that group file: pointed at the same path, nginx
+  overwrote the PGID with its master PID, the health loop took nginx for dead and
+  `cancel.sh` could no longer reach it.
 
 - **One container, as root.** The all-in-one image runs PostgreSQL, memcached, Apache
   (port 80), puma, the worker and cron under supervisord; its entrypoint needs uid 0.

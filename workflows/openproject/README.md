@@ -65,7 +65,13 @@ a proxy in front of the app that sets `X-Forwarded-Proto: https`.
    see the button: start a free trial under Administration → Enterprise edition
    (the token is stored in the database, which the run directory keeps), or paste a
    token into the form's **Enterprise token**, which the launcher imports once.
-4. Users sign in with the **ACTIVATE** button on `/login`; a first sign-in creates
+4. The platform's session proxy rewrites any redirect to another host onto the
+   OpenProject host, which would send the browser to `<OpenProject>/api/oidc/authorize`
+   instead of the platform. The Singularity runtime's nginx therefore answers such a
+   redirect with a small page that navigates to the platform itself; the Docker runtime
+   (Apache inside the image) cannot, so Sign in with ACTIVATE needs the Singularity
+   runtime until the proxy is fixed.
+5. Users sign in with the **ACTIVATE** button on `/login`; a first sign-in creates
    their OpenProject account from the ID token (login = ACTIVATE username). ACTIVATE
    releases `name` but no family name, so OpenProject asks a new user to complete the
    last name once. Sign-out ends the ACTIVATE session too (RP-initiated logout) and

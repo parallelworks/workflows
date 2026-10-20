@@ -483,6 +483,19 @@
   container even with `--cleanenv` and stay out of `ps`, but `$…`, backticks and
   backslashes are still expanded in them: escape those three (`sed 's/[\\$`]/\\&/g'`)
   and the value arrives verbatim, double quotes included.
+- **The session proxy rewrites every redirect to another host onto the session's own
+  host** (`meproxy.go` `rewriteLocationHeader`, "legacy behavior (e.g., RStudio auth
+  redirects): host rewrite only"; verified 2026-10-20 on activate.parallel.works):
+  OpenProject's `302 https://activate.parallel.works/api/oidc/authorize?…` arrived in the
+  browser as `https://<app host>/api/oidc/authorize?…`, so no OIDC/OAuth sign-in (or
+  RP-initiated logout) from behind an endpoint can reach the identity provider. No flag
+  turns it off. Workaround in `workflows/openproject`'s nginx: `proxy_intercept_errors on;
+  error_page 301 302 303 307 308 = @hop;` and a `@hop` location that re-issues redirects
+  within the host but answers an external one with a 200 page carrying
+  `<meta http-equiv="refresh" content="0;url=$upstream_http_location">` (plus
+  `add_header Set-Cookie $upstream_http_set_cookie`), which the proxy leaves alone.
+  Report it to the platform team as a bug: the rewrite should spare hosts that are not
+  the backend.
 - **An app that signs users in with ACTIVATE (OIDC) needs a pinned subdomain** (verified
   2026-10-20, `workflows/openproject`): the platform's OIDC applications match the
   redirect URI exactly (`https://<label>.<sessions domain>/<callback path>`), so the

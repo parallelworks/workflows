@@ -32,13 +32,20 @@ OpenProject hides every single sign-on provider unless it holds an **Enterprise
 edition token** (a free trial from Administration → Enterprise edition works). With a
 token, this is how to connect it to ACTIVATE:
 
-1. **Register an application** (organization admin, once). Turn on the *OIDC
-   Applications* preview in your account settings, open Organization → Settings →
-   Applications and add a **web** application with the redirect URI
-   `https://<subdomain>.<sessions domain>/auth/activate/callback`. You get the client
-   ID at once and the client secret when you create one (shown a single time; an admin
-   can reveal it again). The platform docs do not describe this page yet. The same
-   through the API:
+1. **Pick the address, then register an application for it** (organization admin,
+   once). An application is registered for one exact redirect URI, and that URI is
+   built from the OpenProject address, which the form's **Subdomain** decides:
+   `https://<subdomain>.<sessions domain>/auth/activate/callback`. With the default
+   subdomain and user `alvaro` on activate.parallel.works, that is
+   `https://openproject-alvaro.activate.pw/auth/activate/callback`. Launching with
+   another subdomain later means registering (or updating) the application for the
+   new address, or the sign-in stops at a redirect URI error.
+
+   Turn on the *OIDC Applications* preview in your account settings, open
+   Organization → Settings → Applications and add a **web** application with that
+   redirect URI. You get the client ID at once and the client secret when you create
+   one (shown a single time; an admin can reveal it again). The platform docs do not
+   describe this page yet. The same through the API:
 
    ```bash
    pw api -X POST organizations/<org>/oidc/apps --input - <<'EOF'
@@ -68,19 +75,12 @@ Two things to know:
 | Field | Default | Notes |
 |---|---|---|
 | Run container using | Singularity | See above |
-| Subdomain | `openproject-<username>` | Keep it: the URL and the registered redirect URI depend on it. Reserve it with `pw subdomains reserve <label>` |
+| Subdomain | `openproject-<username>` | Decides the address, and with it the redirect URI the application must be registered for. Reserve it with `pw subdomains reserve <label>` |
 | Run directory | `${HOME}/openproject` | Database, attachments, logs. One run at a time |
 | OpenProject image | `openproject/openproject:17` | Docker only. Keep the major version of an existing run directory |
 | Client ID | empty | Empty = OpenProject accounts only. A provider stays in the database once configured; remove it under Administration → Authentication |
 | Client secret | | Required with a client ID |
 | OpenProject Enterprise token | | Required with a client ID until the run directory holds one; bound to the subdomain, has an expiry date |
-
-## Variants
-
-`general.yaml` offers both runtimes. `hsp.yaml` and `noaa.yaml` carry those platforms'
-scheduler forms, run Singularity only and install the image where the platform wants it
-(`${PROJECTS_HOME}/hsp` on HSP, the shared software directory on NOAA). Register the
-application on that platform.
 
 ## Building the Singularity image
 

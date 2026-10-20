@@ -1,0 +1,22 @@
+Bootstrap: docker
+From: openproject/openproject:17-slim
+
+# OpenProject's slim image (puma, worker, seeder; runs as any uid) plus the
+# PostgreSQL 17 server and nginx from Debian, so one SIF holds everything the
+# start template runs as the workflow user: no root, no Docker daemon.
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends postgresql-common
+    # The data directory is created at run time, in the run directory
+    echo "create_main_cluster = false" >> /etc/postgresql-common/createcluster.conf
+    apt-get install -y --no-install-recommends postgresql-17 nginx
+    rm -rf /var/lib/apt/lists/*
+
+%environment
+    export PGBIN=/usr/lib/postgresql/17/bin
+    export PATH=/usr/lib/postgresql/17/bin:$PATH
+
+%runscript
+    exec "$@"

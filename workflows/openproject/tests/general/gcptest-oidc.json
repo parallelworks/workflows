@@ -18,6 +18,7 @@
     "scheduler": false
   },
   "service": {
+    "container_runtime": "openproject-docker",
     "subdomain": "openproject-alvaro"
   },
   "oidc": {

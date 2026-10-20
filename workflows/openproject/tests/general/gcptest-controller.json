@@ -1,7 +1,7 @@
 {
   "_test": {
     "timeout_s": 2400,
-    "warm_marker": "${HOME}/openproject/.secret_key_base",
+    "warm_marker": "${HOME}/openproject-docker/.secret_key_base",
     "leftover_patterns": [
       "docker logs -f openproject_",
       "pw endpoints run"
@@ -14,6 +14,10 @@
   "cluster": {
     "scheduler": false
   },
-  "service": {},
+  "service": {
+    "container_runtime": "openproject-docker",
+    "subdomain": "openproject-alvaro-docker",
+    "rundir": "${HOME}/openproject-docker"
+  },
   "oidc": {}
 }

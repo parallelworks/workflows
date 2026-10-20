@@ -15,10 +15,16 @@
   each start: a changed OIDC secret takes effect on the next run. `SECRET_KEY_BASE` must
   be strong (`openssl rand -hex 64`) and the same on every start; generate it once into
   the run directory. `OPENPROJECT_HOST__NAME` is the public host the browser sees and
-  `OPENPROJECT_HTTPS=true` (default) wants `X-Forwarded-Proto: https`, which the endpoint
-  proxy sends; a local probe needs `-H 'X-Forwarded-Proto: https'` or it gets a 301.
-  `GET /health_checks/default` answers 200 once puma serves (no auth); `/` is 302 to
-  `/login`.
+  `OPENPROJECT_HTTPS=true` (default) needs `X-Forwarded-Proto: https`, which the endpoint
+  proxy does **not** send (it forwards `http`): without it every page 301s to itself and
+  the `Secure` session cookie is never written (login fails with "The OpenProject
+  cookie is missing"). The workflow mounts `/etc/apache2/mods-enabled/headers.load`
+  (`LoadModule headers_module /usr/lib/apache2/modules/mod_headers.so`, shipped but
+  not enabled) and its own `/etc/apache2/sites-enabled/openproject.conf` (the image's
+  `proxy.conf.erb` plus `RequestHeader set X-Forwarded-Proto "https"`; `docker/prod/proxy`
+  keeps an existing file) read-write, because the entrypoint `chown`s the vhost.
+  `GET /health_checks/default` answers 200 once puma serves (no auth, no SSL redirect);
+  `/login` is the probe that proves the header fix; `/` is 302 to `/login`.
 - **OIDC provider from env** (`modules/openid_connect/app/services/openid_connect/configuration_mapper.rb`):
   `OPENPROJECT_OPENID__CONNECT_<SLUG>_{DISPLAY__NAME,IDENTIFIER,SECRET,ISSUER,
   AUTHORIZATION__ENDPOINT,TOKEN__ENDPOINT,USERINFO__ENDPOINT,END__SESSION__ENDPOINT,

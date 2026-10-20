@@ -149,12 +149,7 @@ set +x
     {
         echo "SECRET_KEY_BASE=$(cat "${service_rundir}/.secret_key_base")"
         echo "OPENPROJECT_HOST__NAME=${host}"
-        # HTTPS mode keeps every absolute URL (and the OIDC redirect URI) https, but
-        # the platform proxy forwards X-Forwarded-Proto: http, so the SSL redirect
-        # would send /login to itself forever; HSTS=false turns off that redirect
-        # (config/environments/production.rb), nothing else
         echo "OPENPROJECT_HTTPS=true"
-        echo "OPENPROJECT_HSTS=false"
         echo "OPENPROJECT_DEFAULT__LANGUAGE=en"
         if [ -n "${base_path}" ]; then
             echo "OPENPROJECT_RAILS__RELATIVE__URL__ROOT=${base_path}"
@@ -186,6 +181,38 @@ set +x
 )
 set -x
 
+# The platform proxy forwards X-Forwarded-Proto: http. In HTTPS mode Rails then
+# redirects every page to itself and refuses to write the Secure session cookie
+# ("The OpenProject cookie is missing" on login), so the container's own Apache
+# sets the header before puma sees the request. The image's proxy script keeps a
+# vhost file that already exists (docker/prod/proxy), and mod_headers is shipped
+# but not enabled: both files are mounted. The entrypoint chowns the vhost to
+# the app user, which is why it is replaced rather than rewritten
+location=${base_path:-/}
+mkdir -p "${service_rundir}/apache"
+rm -f "${service_rundir}/apache/openproject.conf" "${service_rundir}/apache/headers.load"
+echo 'LoadModule headers_module /usr/lib/apache2/modules/mod_headers.so' > "${service_rundir}/apache/headers.load"
+cat > "${service_rundir}/apache/openproject.conf" <<APACHEEOF
+<VirtualHost *:80>
+  ServerName _default_
+  DocumentRoot /app/public
+
+  ProxyRequests off
+  ProxyPreserveHost On
+  RequestHeader set X-Forwarded-Proto "https"
+
+  <Location ${location}>
+    ProxyPass http://127.0.0.1:8080${base_path}/ retry=0
+    ProxyPassReverse http://127.0.0.1:8080${base_path}/
+  </Location>
+
+  <Location /hocuspocus>
+    ProxyPass http://127.0.0.1:1234/ upgrade=websocket
+    ProxyPassReverse http://127.0.0.1:1234/
+  </Location>
+</VirtualHost>
+APACHEEOF
+
 ${docker_cmd} rm -f "${container_name}" 2>/dev/null || true
 ${docker_cmd} run -d \
     --name "${container_name}" \
@@ -193,13 +220,17 @@ ${docker_cmd} run -d \
     --env-file "${env_file}" \
     -v "${service_rundir}/pgdata:/var/openproject/pgdata" \
     -v "${service_rundir}/assets:/var/openproject/assets" \
+    -v "${service_rundir}/apache/headers.load:/etc/apache2/mods-enabled/headers.load" \
+    -v "${service_rundir}/apache/openproject.conf:/etc/apache2/sites-enabled/openproject.conf" \
     "${service_image}"
 
 # The first boot of a run directory initializes PostgreSQL, migrates and seeds
 # the database (minutes); later boots only migrate and seed. The endpoint is
 # already listed (the host name had to be known before the container could
 # start), so a boot that fails must end this launcher, with the container's
-# log, well inside the wait job's budget
+# log, well inside the wait job's budget. The login page, probed without a
+# forwarded protocol like the platform does, answers 200 only when Apache's
+# header fix is in place (301 to itself otherwise)
 echo "Waiting for OpenProject to answer on 127.0.0.1:${PORT}"
 code=""
 for i in $(seq 1 300); do
@@ -209,8 +240,7 @@ for i in $(seq 1 300); do
         exit 1
     fi
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-        -H "Host: ${host}" -H 'X-Forwarded-Proto: https' \
-        "http://127.0.0.1:${PORT}${base_path}/health_checks/default")
+        -H "Host: ${host}" "http://127.0.0.1:${PORT}${base_path}/login")
     if [ "${code}" = "200" ]; then
         break
     fi
@@ -218,7 +248,7 @@ for i in $(seq 1 300); do
 done
 if [ "${code}" != "200" ]; then
     ${docker_cmd} logs --tail 80 "${container_name}"
-    echo "::error title=Error::OpenProject did not answer /health_checks/default within 25 minutes (last status: ${code:-none})"
+    echo "::error title=Error::OpenProject's login page did not answer 200 within 25 minutes (last status: ${code:-none})"
     exit 1
 fi
 echo "::notice::OpenProject is serving at ${public_url}"

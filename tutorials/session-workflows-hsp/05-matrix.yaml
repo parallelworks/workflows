@@ -10,7 +10,6 @@ jobs:
         with:
           $yaml: tutorials/session-workflows-hsp/04-subworkflow.yaml
           resource: ${{ matrix.worker.resource }}
-          rundir: ${{ inputs.rundir }}
           resolution: ${{ inputs.resolution }}
           scheduler: ${{ matrix.worker.scheduler }}
           slurm:

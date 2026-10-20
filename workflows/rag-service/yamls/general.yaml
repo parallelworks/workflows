@@ -267,3 +267,8 @@ jobs:
             description: Use different tables to serve several corpora from one cluster.
             type: string
             default: activate_rag
+          parent_install_dir:
+            label: Parent install directory
+            description: Holds the dependency container and the model cache; leave empty for ${HOME}/pw/software.
+            type: string
+            optional: true

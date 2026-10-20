@@ -598,6 +598,17 @@ jobs:
         type: string
         hidden: ${{ inputs.use_existing_script == false }}
         ignore: ${{ .hidden }}
+      define_cleanup_script:
+        type: boolean
+        default: false
+        label: Run a cleanup script
+        description: "Runs after the main script to undo its changes: files, processes, containers."
+      cleanup_script_path:
+        label: Cleanup script path
+        description: On the target resource; the main script may create it.
+        type: string
+        hidden: ${{ inputs.define_cleanup_script == false }}
+        ignore: ${{ .hidden }}
       scheduler:
         type: boolean
         default: false

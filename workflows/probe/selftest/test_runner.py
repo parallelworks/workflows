@@ -30,7 +30,7 @@ class RunnerCase(ProbeCase):
 
 class RunnerTests(RunnerCase):
     def test_endpoint_pass_with_cleanup(self):
-        self.write_test("webshell/gcpsmall-controller.json", definition(leftover_patterns=["ttyd"]))
+        self.write_test("webshell/gcpsmall-controller.json", definition())
         self.configure({"clusters": {"gcpsmall": {"user": "alvaro", "status": "active"}},
                         "endpoint": {WEBSHELL: "webshell"}})
         code, out = self.run_suite()
@@ -64,7 +64,7 @@ class RunnerTests(RunnerCase):
         self.assertIn(WEBSHELL, log)
         self.assertIn("workflow file ", log)
         self.assertIn("endpoints delete webshell-", log)
-        self.assertIn("no leftovers", log)
+        self.assertIn("endpoints gone", log)
         # the endpoint is gone and the launch carried --trust and the probe name
         launches = [c for c in self.calls() if " run --trust " in c]
         self.assertEqual(len(launches), 1)
@@ -80,7 +80,7 @@ class RunnerTests(RunnerCase):
         outcome = self.records("activate.parallel.works/alvaro/script_submitter/gcpsmall-controller")[0]["outcome"]
         self.assertEqual(outcome["status"], "pass")
         self.assertIsNone(outcome["endpoint"])
-        self.assertEqual(outcome["cleanup"], "ok")
+        self.assertIsNone(outcome["cleanup"])
         self.assertFalse(any(c.startswith("endpoints delete") for c in self.calls()))
 
     def test_skip_when_resource_off_and_missing(self):
@@ -123,7 +123,7 @@ class RunnerTests(RunnerCase):
         self.assertEqual(outcome["status"], "fail")
         self.assertEqual(outcome["failed_at"], "run")
         self.assertEqual(outcome["error"], "run error: Endpoint webshell-x is unhealthy")
-        self.assertEqual(outcome["cleanup"], "ok")
+        self.assertIsNone(outcome["cleanup"])
         art = self.results_dir / CONTROLLER / self.artifact_dirs(CONTROLLER)[0]
         self.assertTrue((art / "errors.txt").exists())
         self.assertIn("Endpoint webshell-x is unhealthy", (art / "errors.txt").read_text())
@@ -176,36 +176,45 @@ class RunnerTests(RunnerCase):
         self.assertEqual(outcome["cleanup"], "kept")
         self.assertFalse(any(c.startswith("endpoints delete") for c in self.calls()))
 
-    def test_leftovers_and_phase(self):
+    def test_partial_phase(self):
         self.write_test("webshell/gcpsmall-controller.json",
-                        definition(leftover_patterns=["ttyd"], warm_marker=["${HOME}/a", "${HOME}/b"]))
+                        definition(warm_marker=["${HOME}/a", "${HOME}/b"]))
         self.configure({"clusters": {"gcpsmall": {"user": "alvaro", "status": "active"}},
-                        "endpoint": {WEBSHELL: "webshell"},
-                        "ssh": {"test -e": "1\n0", "grep -c": "p0=2"}})
-        with mock.patch.object(runner, "LEFTOVER_WAIT_S", 0):
-            code, _ = self.run_suite()
+                        "endpoint": {WEBSHELL: "webshell"}, "ssh": {"test -e": "1\n0"}})
+        code, _ = self.run_suite()
         self.assertEqual(code, 0)
         outcome = self.records(CONTROLLER)[0]["outcome"]
         self.assertEqual(outcome["status"], "pass")
         self.assertEqual(outcome["phase"], "partial")
-        self.assertEqual(outcome["cleanup"], "leftover")
+        self.assertEqual(outcome["cleanup"], "ok")
 
-    def test_setup_and_leftover_commands(self):
-        self.write_test("webshell/gcpsmall-controller.json", definition(
-            setup="mkdir -p $HOME/pw/tests/seed", leftover_commands={"docker": "docker ps -q | wc -l"}))
+    def test_endpoint_still_listed_is_leftover(self):
+        self.write_test("webshell/gcpsmall-controller.json", definition())
         self.configure({"clusters": {"gcpsmall": {"user": "alvaro", "status": "active"}},
-                        "endpoint": {WEBSHELL: "webshell"}, "ssh": {"echo c0=": "c0=2"}})
-        with mock.patch.object(runner, "LEFTOVER_WAIT_S", 0):
+                        "endpoint": {WEBSHELL: "webshell"}, "endpoint_sticky": True})
+        with mock.patch.object(runner, "ENDPOINT_GONE_WAIT_S", 0):
             code, out = self.run_suite()
         self.assertEqual(code, 0, out)
         outcome = self.records(CONTROLLER)[0]["outcome"]
         self.assertEqual((outcome["status"], outcome["cleanup"]), ("pass", "leftover"))
-        ssh_calls = [c for c in self.calls() if " ssh pw://alvaro/gcpsmall " in c]
-        self.assertTrue(any("mkdir -p $HOME/pw/tests/seed" in c for c in ssh_calls), ssh_calls)
-        self.assertTrue(any("docker ps -q | wc -l" in c for c in ssh_calls), ssh_calls)
+        self.assertTrue(outcome["endpoint"].startswith("webshell-mock-"))
+        log = (self.results_dir / CONTROLLER / self.artifact_dirs(CONTROLLER)[0] / "run.log").read_text()
+        self.assertIn("endpoints still listed after 0s", log)
+
+    def test_setup_runs_on_the_target_before_launch(self):
+        self.write_test("webshell/gcpsmall-controller.json", definition(setup="mkdir -p $HOME/pw/tests/seed"))
+        self.configure({"clusters": {"gcpsmall": {"user": "alvaro", "status": "active"}},
+                        "endpoint": {WEBSHELL: "webshell"}})
+        code, out = self.run_suite()
+        self.assertEqual(code, 0, out)
+        outcome = self.records(CONTROLLER)[0]["outcome"]
+        self.assertEqual((outcome["status"], outcome["cleanup"]), ("pass", "ok"))
+        calls = self.calls()
+        setup = next(i for i, c in enumerate(calls) if " ssh pw://alvaro/gcpsmall " in c and "mkdir -p $HOME/pw/tests/seed" in c)
+        launch = next(i for i, c in enumerate(calls) if " run --trust " in c)
+        self.assertLess(setup, launch)
         log = (self.results_dir / CONTROLLER / self.artifact_dirs(CONTROLLER)[0] / "run.log").read_text()
         self.assertIn("setup done", log)
-        self.assertIn("leftovers after 0s: docker", log)
 
     def test_setup_failure_fails_at_launch(self):
         self.write_test("webshell/gcpsmall-controller.json", definition(setup="exit 3"))
@@ -217,15 +226,15 @@ class RunnerTests(RunnerCase):
         self.assertIn("setup failed", outcome["error"])
         self.assertFalse(any(" run --trust " in c for c in self.calls()))
 
-    def test_ssh_failure_gives_unknown_cleanup_and_null_phase(self):
-        self.write_test("webshell/gcpsmall-controller.json", definition(leftover_patterns=["ttyd"], warm_marker="x"))
+    def test_ssh_failure_gives_null_phase(self):
+        self.write_test("webshell/gcpsmall-controller.json", definition(warm_marker="x"))
         self.configure({"clusters": {"gcpsmall": {"user": "alvaro", "status": "active"}},
                         "endpoint": {WEBSHELL: "webshell"}, "ssh_fail": True})
         code, _ = self.run_suite()
         outcome = self.records(CONTROLLER)[0]["outcome"]
         self.assertEqual(outcome["status"], "pass")
         self.assertIsNone(outcome["phase"])
-        self.assertEqual(outcome["cleanup"], "unknown")
+        self.assertEqual(outcome["cleanup"], "ok")
 
     def test_platform_and_user_selection(self):
         self.write_test("mine.json", definition())

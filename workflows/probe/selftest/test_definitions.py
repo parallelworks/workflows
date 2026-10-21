@@ -35,9 +35,7 @@ class DefinitionTests(ProbeCase):
             ({"workflow": {"repo": "x", "path": "y"}}, "'workflow'"),
             ({"workflow": {"repo": "github.com/a/b@main", "path": "y", "ref": "main"}}, "@ref"),
             ({"extra": 1}, "unknown key"),
-            ({"leftover_patterns": "ttyd"}, "'leftover_patterns'"),
-            ({"leftover_commands": ["docker ps"]}, "'leftover_commands'"),
-            ({"leftover_commands": {"bad name": "docker ps | wc -l"}}, "'leftover_commands'"),
+            ({"leftover_patterns": ["ttyd"]}, "unknown key"),
             ({"setup": 12}, "'setup'"),
             ({"user": "a/b"}, "'user'"),
         ]
@@ -52,12 +50,9 @@ class DefinitionTests(ProbeCase):
     def test_marker_normalisation(self):
         test = load_definition(self.write_test("t.json", definition(warm_marker="${HOME}/x")))
         self.assertEqual(test.warm_marker, ["${HOME}/x"])
-        self.assertEqual(test.leftover_commands, {})
         self.assertIsNone(test.setup)
-        test = load_definition(self.write_test("u.json", definition(
-            setup=" mkdir -p $HOME/x ", leftover_commands={"docker": "docker ps -q | wc -l"})))
+        test = load_definition(self.write_test("u.json", definition(setup=" mkdir -p $HOME/x ")))
         self.assertEqual(test.setup, "mkdir -p $HOME/x")
-        self.assertEqual(test.leftover_commands, {"docker": "docker ps -q | wc -l"})
 
     def test_name_comes_from_the_file_not_the_path(self):
         path = self.write_test("somewhere/else.json", definition(name="mytest"))

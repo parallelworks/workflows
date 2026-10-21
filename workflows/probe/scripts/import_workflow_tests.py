@@ -7,16 +7,19 @@ into PROBE test definitions in a tests repository.
 
 Every workflows/<name>/tests/<variant>/<test>.json becomes
 <out>/<platform>/<user>/<name>/<test>.json: the file's inputs are kept, its `_test`
-object maps to timeout_s, warm_marker, leftover_patterns, leftover_commands and setup,
-and the workflow is workflows/<name>/yamls/<variant>.yaml at --ref. Existing files are
-overwritten. Tests with `_test` keys PROBE does not know are reported and skipped.
+object maps to timeout_s, warm_marker and setup, and the workflow is
+workflows/<name>/yamls/<variant>.yaml at --ref. Existing files are overwritten.
+leftover_patterns and leftover_commands belong to tools/tests/run-workflow-test.py's own
+check and are dropped (PROBE has no leftover check); tests with `_test` keys PROBE does
+not know are reported and skipped.
 """
 import argparse
 import json
 import sys
 from pathlib import Path
 
-KNOWN = {"timeout_s", "warm_marker", "leftover_patterns", "leftover_commands", "setup"}
+KNOWN = {"timeout_s", "warm_marker", "setup"}
+DROPPED = {"leftover_patterns", "leftover_commands"}
 
 
 def main():
@@ -36,7 +39,7 @@ def main():
         name = source.parts[-4]
         data = json.loads(source.read_text())
         meta = data.pop("_test", {}) or {}
-        unknown = sorted(set(meta) - KNOWN)
+        unknown = sorted(set(meta) - KNOWN - DROPPED)
         if unknown:
             skipped.append("%s: unsupported _test keys %s" % (source, ", ".join(unknown)))
             continue
@@ -49,7 +52,7 @@ def main():
                          "ref": args.ref},
             "timeout_s": int(meta.get("timeout_s", 1800)),
         }
-        for key in ("warm_marker", "leftover_patterns", "leftover_commands", "setup"):
+        for key in ("warm_marker", "setup"):
             if meta.get(key):
                 definition[key] = meta[key]
         definition["inputs"] = data

@@ -13,7 +13,7 @@ DEFAULT_TIMEOUT_S = 1800
 SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 KNOWN_KEYS = {
     "name", "platform", "user", "workflow_name", "workflow", "timeout_s", "inputs",
-    "warm_marker", "leftover_patterns", "leftover_commands", "setup",
+    "warm_marker", "setup",
 }
 WORKFLOW_KEYS = {"repo", "path", "ref"}
 
@@ -88,8 +88,6 @@ class TestDef:
     timeout_s: int
     inputs: dict
     warm_marker: List[str]
-    leftover_patterns: List[str]
-    leftover_commands: dict
     setup: Optional[str]
 
     @property
@@ -165,16 +163,6 @@ def load_definition(path: Path) -> TestDef:
     if not isinstance(warm_marker, list) or not all(isinstance(m, str) and m.strip() for m in warm_marker):
         raise DefinitionError("'warm_marker' must be a path or a list of paths")
 
-    leftover_patterns = data.get("leftover_patterns", [])
-    if not isinstance(leftover_patterns, list) or not all(
-            isinstance(p, str) and p.strip() for p in leftover_patterns):
-        raise DefinitionError("'leftover_patterns' must be a list of process patterns")
-
-    leftover_commands = data.get("leftover_commands", {})
-    if not isinstance(leftover_commands, dict) or not all(
-            SAFE_NAME_RE.match(k) and isinstance(v, str) and v.strip() for k, v in leftover_commands.items()):
-        raise DefinitionError("'leftover_commands' must map names to shell snippets that print a count")
-
     setup = data.get("setup")
     if setup is not None and (not isinstance(setup, str) or not setup.strip()):
         raise DefinitionError("'setup' must be a shell snippet")
@@ -183,8 +171,6 @@ def load_definition(path: Path) -> TestDef:
         path=path, platform=platform, user=user, workflow_name=workflow_name, name=name,
         workflow={k: workflow[k].strip() for k in WORKFLOW_KEYS}, timeout_s=timeout_s,
         inputs=inputs, warm_marker=[m.strip() for m in warm_marker],
-        leftover_patterns=[p.strip() for p in leftover_patterns],
-        leftover_commands={k: v.strip() for k, v in leftover_commands.items()},
         setup=setup.strip() if setup else None,
     )
 

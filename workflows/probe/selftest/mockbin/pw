@@ -15,6 +15,7 @@ launched YAML path or of the run's --name:
   polls         number of running polls before the final status (default 1)
   endpoint      {"<key>": "<endpoint name prefix>"}   registered when the run completes
   endpoint_url  URL reported for endpoints (default https://mock.example/)
+  endpoint_sticky  true keeps an endpoint listed after pw endpoints delete reports success
   ssh           {"<command substring>": "<stdout>"}   canned outputs for pw ssh
   ssh_fail      true makes every pw ssh call fail
   bucket_fail      true makes every pw buckets cp upload fail
@@ -226,8 +227,9 @@ def cmd_endpoints(argv):
     if sub == "delete":
         name = positionals(argv)[-1]
         if name in endpoints:
-            del endpoints[name]
-            save_endpoints(endpoints)
+            if not CONFIG.get("endpoint_sticky"):
+                del endpoints[name]
+                save_endpoints(endpoints)
             print("Endpoint %s deleted" % name)
             return 0
         sys.stderr.write("endpoint %s not found\n" % name)
@@ -285,16 +287,6 @@ def cmd_ssh(argv):
             return 0
     if "test -e" in command:
         print("\n".join("1" for _ in command.split(";")))
-        return 0
-    if "ps -u $USER -o pid=" in command and "grep" not in command:
-        print("100\n101\n102")
-        return 0
-    if "grep -c" in command:
-        for i in range(command.count("grep -c")):
-            print("p%d=0" % i)
-        if "squeue" in command:
-            print("squeue=0")
-            print("qstat=0")
         return 0
     print("")
     return 0

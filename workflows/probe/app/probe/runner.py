@@ -4,7 +4,6 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
-import re
 import shutil
 import signal
 import sys
@@ -26,8 +25,6 @@ LAUNCH_ATTEMPTS = 3
 LAUNCH_BACKOFF_S = (10, 30)
 MAX_POLL_ERRORS = 20
 ENDPOINT_GONE_WAIT_S = 60
-LEFTOVER_WAIT_S = 120
-CLEANUP_RANK = {"ok": 0, "kept": 0, "unknown": 1, "leftover": 2}
 
 STOP = threading.Event()
 
@@ -38,10 +35,6 @@ def utcnow() -> dt.datetime:
 
 def iso(ts: dt.datetime) -> str:
     return ts.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def worst(a: str, b: str) -> str:
-    return a if CLEANUP_RANK.get(a, 1) >= CLEANUP_RANK.get(b, 1) else b
 
 
 @dataclass
@@ -256,7 +249,6 @@ class TestRun:
         self.art: Optional[Path] = None
         self.slug: Optional[str] = None
         self.view: dict = {}
-        self.preexisting: List[str] = []
         self.poll_error = ""
         self.endpoint_list_failed = False
 
@@ -300,7 +292,6 @@ class TestRun:
                 if not self.run_setup():
                     self.rename_artifact_dir(None)
                     return self.finish()
-                self.snapshot_processes()
                 if not self.launch():
                     return self.finish()
                 status = self.poll()
@@ -368,16 +359,6 @@ class TestRun:
             return False
         self.log("setup done")
         return True
-
-    def snapshot_processes(self) -> None:
-        if not (self.test.leftover_patterns or self.test.leftover_commands) or not self._login_node():
-            return
-        r = self.pw.ssh(self.target.resource, "ps -u $USER -o pid=", timeout=120)
-        if r.rc == 0:
-            self.preexisting = [t for t in r.out.split() if t.isdigit()]
-            self.log("%d processes present before launch" % len(self.preexisting))
-        else:
-            self.log("process snapshot failed: %s" % r.one_line())
 
     # -- launch and poll ---------------------------------------------------
 
@@ -478,78 +459,42 @@ class TestRun:
         return found
 
     def teardown(self, endpoints: List[Endpoint]) -> None:
+        """Delete the endpoints the run registered and wait until they are gone.
+        cleanup stays null when the run registered none."""
         self.outcome["endpoint"] = ",".join(e.name for e in endpoints) or None
-        if self.opts.keep:
-            self.outcome["cleanup"] = "kept" if endpoints else "ok"
-            self.log("cleanup %s (--keep)" % self.outcome["cleanup"])
+        if self.endpoint_list_failed:
+            self.outcome["cleanup"] = "unknown"
+            self.log("cleanup unknown: the endpoint listing failed")
             return
-        cleanup = "unknown" if self.endpoint_list_failed else "ok"
+        if not endpoints:
+            self.log("no endpoints to delete")
+            return
+        if self.opts.keep:
+            self.outcome["cleanup"] = "kept"
+            self.log("cleanup kept (--keep)")
+            return
         for endpoint in endpoints:
             r = self.pw.delete_endpoint(endpoint.name)
             self.log("endpoints delete %s: rc=%d %s" % (endpoint.name, r.rc, r.one_line(120)))
-        if endpoints:
-            deadline = time.monotonic() + ENDPOINT_GONE_WAIT_S
-            while True:
-                try:
-                    remaining = [e.name for e in self.pw.endpoints() if e.name.endswith("-%s" % self.slug)]
-                except PwError as exc:
-                    self.log("endpoint listing failed: %s" % exc)
-                    cleanup = worst(cleanup, "unknown")
-                    break
-                if not remaining:
-                    self.log("endpoints gone")
-                    break
-                if time.monotonic() > deadline:
-                    self.log("endpoints still listed after %ds: %s" % (ENDPOINT_GONE_WAIT_S, remaining))
-                    cleanup = worst(cleanup, "leftover")
-                    break
-                STOP.wait(5)
-        cleanup = worst(cleanup, self.check_leftovers())
+        cleanup = "ok"
+        deadline = time.monotonic() + ENDPOINT_GONE_WAIT_S
+        while True:
+            try:
+                remaining = [e.name for e in self.pw.endpoints() if e.name.endswith("-%s" % self.slug)]
+            except PwError as exc:
+                self.log("endpoint listing failed: %s" % exc)
+                cleanup = "unknown"
+                break
+            if not remaining:
+                self.log("endpoints gone")
+                break
+            if time.monotonic() > deadline:
+                self.log("endpoints still listed after %ds: %s" % (ENDPOINT_GONE_WAIT_S, remaining))
+                cleanup = "leftover"
+                break
+            STOP.wait(5)
         self.outcome["cleanup"] = cleanup
         self.log("cleanup %s" % cleanup)
-
-    def check_leftovers(self) -> str:
-        patterns = self.test.leftover_patterns
-        commands = self.test.leftover_commands
-        if not (patterns or commands) or not self._login_node():
-            return "ok"
-        skip = ",".join(self.preexisting)
-        # Processes that predate the launch cannot be leftovers. The remote shell's
-        # own command line contains these patterns, so each grep brackets its first
-        # character and cannot match itself.
-        ps = ("ps -u $USER -o pid=,args= | awk -v skip='%s' "
-              "'BEGIN {split(skip, a, \",\"); for (i in a) s[a[i]]} !($1 in s) {$1=\"\"; sub(/^ +/, \"\"); print}'"
-              % skip)
-        checks = ["echo p%d=$(%s | grep -c -- '[%s]%s')" % (i, ps, p[0], p[1:].replace("'", "'\\''"))
-                  for i, p in enumerate(patterns)]
-        names = {"p%d" % i: "process:" + p for i, p in enumerate(patterns)}
-        for i, (label, snippet) in enumerate(commands.items()):
-            checks.append("echo c%d=$(%s)" % (i, snippet))
-            names["c%d" % i] = label
-        if self.target.node == "compute":
-            checks.append("echo squeue=$( (command -v squeue >/dev/null && squeue -h -u $USER) 2>/dev/null | wc -l)")
-            checks.append("echo qstat=$( (command -v qstat >/dev/null && qstat -u $USER) 2>/dev/null | grep -c '^[0-9]')")
-            names.update({"squeue": "slurm job", "qstat": "pbs job"})
-        command = "; ".join(checks)
-        deadline = time.monotonic() + LEFTOVER_WAIT_S
-        while True:
-            r = self.pw.ssh(self.target.resource, command, timeout=120)
-            if r.rc != 0:
-                self.log("leftover check failed: %s" % r.one_line())
-                return "unknown"
-            counts = dict(re.findall(r"^(\S+)=(\d+)\s*$", r.out, re.M))
-            if not counts:
-                self.log("leftover check returned nothing usable: %s" % r.one_line())
-                return "unknown"
-            left = [names.get(k, k) for k, v in counts.items() if int(v) > 0]
-            if not left:
-                self.log("no leftovers")
-                return "ok"
-            if time.monotonic() > deadline or STOP.is_set():
-                self.log("leftovers after %ds: %s" % (LEFTOVER_WAIT_S, ", ".join(left)))
-                return "leftover"
-            self.log("waiting for cleanup: %s" % ", ".join(left))
-            STOP.wait(15)
 
     # -- record ------------------------------------------------------------
 

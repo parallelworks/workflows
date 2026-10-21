@@ -39,7 +39,8 @@ PYTHONPATH=app python3 -m unittest discover -s selftest -t .
 No platform needed. `selftest/mockbin/pw` stands in for the CLI and follows a JSON
 configuration (see its docstring); every test also gets a small local git repository
 shaped like this one. Covered: definition validation, target derivation, every verdict
-path (pass, skip, launch failure, run error, timeout, setup, a stuck endpoint, `--keep`),
+path (pass, skip, launch failure, run error, timeout, setup, a stuck endpoint, `--keep`,
+the wait behind another test of the workflow),
 selection by file, record and directory layout, bucket upload, the results reader
 (regressions, running detection, malformed records) and the server API including path
 safety and the read-only refusal of admin actions. Under two minutes.
@@ -97,12 +98,13 @@ reference's "Verify" section says.
 3. Workflow YAML: one shallow `git fetch --depth 1` per `(repo, ref)` per suite run, the
    YAML materialised with sparse checkout. Its HEAD is `workflow.commit`.
 4. Under a lock per `(resource, workflow_name)`, so two tests of one workflow never
-   install into the same directory at once: `warm_marker` check and `setup` snippet
-   over `pw ssh`, then `pw workflows run --trust <local yaml> -i
+   install into the same directory at once: the test's clock starts (`started_at`,
+   `duration_s`; a wait for the lock is logged, not counted), then `warm_marker` check
+   and `setup` snippet over `pw ssh`, then `pw workflows run --trust <local yaml> -i
    <inputs> --name "probe: <id>" -o json`, retried on transient errors. A failing setup
    fails the test at `launch`.
 5. Poll `pw workflows runs view -o json` every 15 s until a final status, the timeout
-   (then `pw workflows runs cancel`) or an interrupt.
+   (`timeout_s` from the launch, then `pw workflows runs cancel`) or an interrupt.
 6. Verdict: `completed` passes; anything else fails at `run` with the first error
    annotation of `pw workflows runs errors`. The workflow, not PROBE, checks that its
    service is healthy before it completes. This is why only workflows that run to
@@ -154,9 +156,10 @@ and rather than a partial one PROBE records only what its own teardown did.
 ### Concurrency
 
 Tests run in a thread pool (`--workers`, default 8). Launches of the same workflow on
-the same resource are serialised; everything else runs in parallel. `SIGINT` and
-`SIGTERM` stop the suite: polling loops cancel their runs and record them as failed;
-queued tests are not started.
+the same resource are serialised, and the wait counts neither in the waiting test's
+`duration_s` nor against its `timeout_s`; everything else runs in parallel. `SIGINT`
+and `SIGTERM` stop the suite: polling loops cancel their runs and record them as
+failed; queued tests are not started.
 
 ## Results and the dashboard
 

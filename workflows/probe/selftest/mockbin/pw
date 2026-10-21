@@ -18,6 +18,7 @@ launched YAML path or of the run's --name:
   endpoint_sticky  true keeps an endpoint listed after pw endpoints delete reports success
   ssh           {"<command substring>": "<stdout>"}   canned outputs for pw ssh
   ssh_fail      true makes every pw ssh call fail
+  ssh_sleep     seconds every pw ssh call takes before answering
   bucket_fail      true makes every pw buckets cp upload fail
   bucket_pull_fail true makes every pw buckets cp download fail with a network error
 Uploads and downloads with pw buckets cp go through a fake bucket store under
@@ -277,6 +278,8 @@ def cmd_buckets_cp(argv):
 
 
 def cmd_ssh(argv):
+    if CONFIG.get("ssh_sleep"):
+        time.sleep(float(CONFIG["ssh_sleep"]))
     if CONFIG.get("ssh_fail"):
         sys.stderr.write("ssh: connection refused\n")
         return 255

@@ -235,7 +235,7 @@ class TestRun:
         self.opts = suite.opts
         self.log = TestLog()
         self.started = utcnow()
-        self.t0 = time.monotonic()
+        self.deadline: Optional[float] = None
         self.target = test.target
         self.timeout_s = self.opts.timeout_s or test.timeout_s
         self.outcome = {
@@ -283,7 +283,9 @@ class TestRun:
                 return self.finish()
             log("workflow file %s (commit %s)" % (yaml_path, self.commit or "unknown"))
             self.yaml_path = yaml_path
+            waiting_since = time.monotonic()
             with self.suite.lock((self.target.resource, test.workflow_name)):
+                self.begin(waiting_since)
                 if STOP.is_set():
                     self.fail("launch", "runner interrupted before launch")
                     self.rename_artifact_dir(None)
@@ -327,6 +329,15 @@ class TestRun:
             (self.art / name).write_text(text, encoding="utf-8")
 
     # -- before launch -----------------------------------------------------
+
+    def begin(self, waiting_since: float) -> None:
+        """Under the lock. The test's clock starts here, so a wait for another
+        test of the workflow on this system is in run.log but not in duration_s."""
+        waited = int(time.monotonic() - waiting_since)
+        if waited:
+            self.log("waited %ds for another test of %s on %s" % (waited, self.test.workflow_name, self.target.resource))
+        self.started = utcnow()
+        self.outcome["started_at"] = iso(self.started)
 
     def _login_node(self) -> bool:
         return bool(self.target.resource) and self.target.type == "cluster"
@@ -377,6 +388,7 @@ class TestRun:
                     return False
                 STOP.wait(LAUNCH_BACKOFF_S[min(attempt - 1, len(LAUNCH_BACKOFF_S) - 1)])
                 continue
+            self.deadline = time.monotonic() + self.timeout_s
             self.slug = str(run["slug"])
             self.outcome["run_slug"] = self.slug
             self.rename_artifact_dir(self.slug)
@@ -386,13 +398,12 @@ class TestRun:
         return False
 
     def poll(self) -> str:
-        deadline = self.t0 + self.timeout_s
         last = None
         errors = 0
         while True:
             if STOP.is_set():
                 return "interrupted"
-            remaining = deadline - time.monotonic()
+            remaining = self.deadline - time.monotonic()
             if remaining <= 0:
                 return "timeout"
             if STOP.wait(max(1.0, min(float(self.opts.poll_s), remaining))):

@@ -50,8 +50,9 @@ results with the bucket's content. `pw endpoints list` shows the URLs;
 
 From the admin dashboard, a test shows as running until its record is written; a request
 that overlaps a run in progress is refused. Up to 8 tests run at the same time
-(`--workers`); two tests of the same workflow on the same system never overlap. Only tests
-whose `platform` and `user` match the runner's own are run: the `pw` context selects them,
+(`--workers`); two tests of the same workflow on the same system never overlap, and the
+wait is not part of the waiting test's duration or timeout. Only tests whose `platform`
+and `user` match the runner's own are run: the `pw` context selects them,
 `PW_PLATFORM_HOST` and `PW_USER` override it.
 
 From a shell, with the test definitions checked out at `../tests`:
@@ -104,7 +105,7 @@ errors.
 | `platform`, `user` | Platform host and user that run the test. |
 | `workflow_name` | Groups the tests of one workflow, for example its directory name. |
 | `workflow.repo`, `.path`, `.ref` | Any git repository the runner can fetch (GitHub, GitLab, ...): host and path, or a git URL; path of the workflow YAML in it; branch, tag or commit. A branch follows development; a tag or commit pins a release. |
-| `timeout_s` | Seconds to wait for the run, default 1800. On timeout the run is canceled and the test fails. |
+| `timeout_s` | Seconds to wait for the run after its launch, default 1800. On timeout the run is canceled and the test fails. |
 | `inputs` | Passed verbatim to `pw workflows run -i`. The target system comes from `resource` or `cluster.resource`; `scheduler: true` marks a compute-node test. |
 | `warm_marker` | Optional. Path, or list of paths, on the target system. All present before launch: phase `warm`; none: `cold`; some: `partial`. |
 | `setup` | Optional. Shell snippet run on the target before the launch, for example to seed input files. Must be safe to repeat. |
@@ -182,7 +183,7 @@ still in progress. To reclaim space, delete the large files of old executions bu
 | `outcome.cleanup` | What became of the endpoints the run registered: `ok` (deleted), `leftover` (still listed a minute after `pw endpoints delete`), `unknown` (the endpoint listing failed), `kept` (`--keep`); null when the run registered none. Independent of `status`. |
 | `outcome.run_slug` | Platform handle: `pw workflows runs view <slug>`. |
 | `outcome.endpoint` | Endpoint names deleted after the verdict, comma separated; null when the run registered none. |
-| `outcome.duration_s` | Test start to verdict, excluding cleanup. |
+| `outcome.duration_s` | Test start to verdict, excluding cleanup. The test starts (`started_at`) once it has its turn on the system; a wait for another test of the same workflow there is in `run.log` only. |
 
 Every key is always present; not applicable or unknown is null. A `pass` followed by a `fail`
 for the same test, ignoring skips in between, is a regression; the dashboard marks it.

@@ -319,6 +319,29 @@ class RunnerTests(RunnerCase):
         self.assertEqual(len(second_launch_calls), 2)
         self.assertGreater(len(lines), first_pass)
 
+    def test_wait_for_a_sibling_does_not_count_against_the_timeout(self):
+        # each test holds the workflow's lock for about 10 s (a 5 s setup, then a
+        # run of three polls), longer than the timeout_s of the test queued behind it
+        slow = definition(setup="mkdir -p $HOME/pw/tests/seed")
+        slow["timeout_s"] = 8
+        self.write_test("a.json", slow)
+        self.write_test("b.json", slow)
+        self.configure({"clusters": {"gcpsmall": {"user": "alvaro", "status": "active"}},
+                        "endpoint": {WEBSHELL: "webshell"}, "polls": 3, "ssh_sleep": 5})
+        code, out = self.run_suite()
+        self.assertEqual(code, 0, out)
+        a = self.records("activate.parallel.works/alvaro/webshell/a")[0]["outcome"]
+        b = self.records("activate.parallel.works/alvaro/webshell/b")[0]["outcome"]
+        self.assertEqual((a["status"], b["status"]), ("pass", "pass"))
+        first, second = sorted((a, b), key=lambda o: o["started_at"])
+        # the second test's clock started once the first released the lock
+        self.assertGreaterEqual(second["started_at"], first["ended_at"])
+        self.assertLessEqual(second["duration_s"], first["duration_s"] + 2)
+        test_id = "activate.parallel.works/alvaro/webshell/" + ("a" if second is a else "b")
+        self.assertEqual(self.artifact_dirs(test_id), [artifact_dir_name(second["started_at"], second["run_slug"])])
+        log = (self.results_dir / test_id / self.artifact_dirs(test_id)[0] / "run.log").read_text()
+        self.assertIn("waited ", log)
+
     def test_unreachable_repo_fails_at_launch(self):
         data = definition()
         data["workflow"]["repo"] = "file://" + str(self.root / "missing-repo")

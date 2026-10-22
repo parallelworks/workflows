@@ -14,7 +14,7 @@
   "resource": "pw://alvaro/awsgpu",
   "cluster": {
     "scheduler": true,
-    "gpus": 1,
+    "gpus": 0,
     "slurm": {
       "is_enabled": true,
       "partition": "gpu",

@@ -199,6 +199,9 @@ app_utils.stop()
 
 frames = sorted(name for name in os.listdir(frames_dir) if name.endswith(".png"))
 seconds = round(time.time() - started, 1)
+if len(frames) != args.frames:
+    simulation_app.close()
+    sys.exit(f"::error::Expected {args.frames} frames, found {len(frames)} in {frames_dir}")
 version = ""
 for candidate in ("/isaac-sim/VERSION",):
     if os.path.exists(candidate):
@@ -223,5 +226,3 @@ with open(os.path.join(args.out, "render.json"), "w") as handle:
     json.dump(manifest, handle, indent=2)
 print(f"Wrote {len(frames)} frames to {frames_dir} in {seconds} s", flush=True)
 simulation_app.close()
-if len(frames) != args.frames:
-    sys.exit(f"::error::Expected {args.frames} frames, found {len(frames)} in {frames_dir}")

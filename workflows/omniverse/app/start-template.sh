@@ -16,6 +16,7 @@
 #   - service_parent_install_dir: holds omniverse/cache, Isaac Sim's home (shader caches, logs) shared by runs
 ################################################################################
 
+set -o pipefail
 set -x
 
 if [ -z "${service_parent_install_dir}" ]; then
@@ -33,7 +34,11 @@ if ! smi=$(nvidia-smi -L 2>&1) || ! grep -q '^GPU ' <<< "${smi}"; then
     exit 1
 fi
 echo "${smi}"
-gpu_devices="${SLURM_JOB_GPUS:-${CUDA_VISIBLE_DEVICES:-all}}"
+# Docker takes a list of device IDs only inside literal double quotes
+gpus_arg=all
+if [ -n "${SLURM_JOB_GPUS:-${CUDA_VISIBLE_DEVICES:-}}" ]; then
+    gpus_arg="\"device=${SLURM_JOB_GPUS:-${CUDA_VISIBLE_DEVICES}}\""
+fi
 
 # The container belongs to the docker daemon, not the endpoint's process tree,
 # so a cancel during the render needs cancel.sh (run by the cleanup trap)
@@ -91,7 +96,7 @@ echo "::group::Render"
 # The image's entrypoint is the streaming server: the script runs through
 # python.sh instead
 docker_args=(
-    --rm --name "${container_name}" --gpus "device=${gpu_devices}"
+    --rm --name "${container_name}" --hostname "$(hostname)" --gpus "${gpus_arg}"
     --entrypoint /isaac-sim/python.sh
     --user "$(id -u):$(id -g)" --group-add 1234
     -e ACCEPT_EULA=Y -e HOME=/cache
@@ -111,7 +116,10 @@ if [ -n "${service_scene}" ]; then
     render_args+=(--scene "/scene/$(basename "${service_scene}")")
 fi
 rm -f "${render_dir}/render.json"
-"${docker_cmd[@]}" run "${docker_args[@]}" "${software_image}" /app/render.py "${render_args[@]}"
+if ! "${docker_cmd[@]}" run "${docker_args[@]}" "${software_image}" /app/render.py "${render_args[@]}"; then
+    echo "::error title=Error::The render failed (output above)"
+    exit 1
+fi
 if ! [ -s "${render_dir}/render.json" ] || ! ls "${render_dir}"/frames/*.png > /dev/null 2>&1; then
     echo "::error title=Error::The render wrote no frames to ${render_dir} (output above)"
     exit 1

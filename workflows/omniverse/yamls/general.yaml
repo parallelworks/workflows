@@ -103,6 +103,8 @@ jobs:
           $yaml: workflows/script_submitter/v3.6/general.yaml
           resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
+          # the submitter cds into the run's job directory, where render/ then lands
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}
           use_existing_script: true
           script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
           define_cleanup_script: true

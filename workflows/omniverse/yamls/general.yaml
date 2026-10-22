@@ -4,7 +4,7 @@
 # RTX renderer, in a Docker or Singularity container on the login node or a SLURM/PBS
 # compute node,
 # and the frames are served as a flipbook page through the pw endpoint
-# omniverse-<run slug>, which outlives the run until `pw endpoints delete`. Running it
+# omniverse-<run slug>, which outlives the run until the endpoint is deleted. Running it
 # accepts NVIDIA's Isaac Sim license (the container's ACCEPT_EULA):
 # https://www.nvidia.com/en-us/agreements/enterprise-software/isaac-sim-additional-software-and-materials-license/
 permissions:

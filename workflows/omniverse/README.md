@@ -14,6 +14,12 @@ scene tools that every Omniverse application shares. It runs headless in a conta
 nothing else. Running it accepts NVIDIA's
 [Isaac Sim license](https://www.nvidia.com/en-us/agreements/enterprise-software/isaac-sim-additional-software-and-materials-license/).
 
+You do not connect to the NVIDIA application itself. Omniverse applications show their
+window remotely by streaming video over WebRTC, which runs on UDP, and a `pw` endpoint
+only carries web traffic. So the application runs headless, renders to files, and the
+workflow adds a layer of its own: a small web server and page that serve the rendered
+frames through the endpoint. The details are under "Why frames and not a live window".
+
 ```
 form ──► preprocessing ──► start script ──► render.py in the container ──► gallery page ──► https://<endpoint>/
          (checks, with     (GPU, image,     Isaac Sim: PhysX + RTX,        serve.py over       the run completes; the page
@@ -28,8 +34,8 @@ form ──► preprocessing ──► start script ──► render.py in the c
 The built-in scene is a pyramid of thirty colored cubes on a floor and a steel ball
 thrown at them. The camera circles the pyramid while the physics plays, and every frame
 is rendered to a PNG. The endpoint is `omniverse-<run slug>`; the page plays the frames
-and lists what rendered them. It keeps serving after the run until
-`pw endpoints delete omniverse-<run slug>`.
+and lists what rendered them. It keeps serving after the run until you delete the
+endpoint.
 
 A 3D scene in Omniverse is a **USD file** (Universal Scene Description, Pixar's format):
 a text or binary file that lists everything in the scene, as a tree. Each object has a

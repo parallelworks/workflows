@@ -1,0 +1,92 @@
+/* The page's own sheet, written against the theme tokens alone; every block names the
+ * @parallelworks/ui component it mirrors (references/app-ui.md has the recipes). */
+:root {
+  /* light-dark() in theme.css follows this: both means the device decides. */
+  color-scheme: light dark;
+  --font-sans: "Geist Sans", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, Menlo, Consolas, monospace;
+  --radius-md: 0.375rem;
+  --radius-xl: 0.75rem;
+  --layer-header: 20;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* base.css: page defaults */
+*, ::before, ::after { box-sizing: border-box; border-color: var(--theme-border); }
+[hidden] { display: none !important; }
+html { font-family: var(--font-sans); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+body { margin: 0; min-height: 100vh; background: var(--theme-app-bg); color: var(--theme-app); }
+a { color: var(--theme-link); }
+h1, h2, p, dl, dd { margin: 0; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--theme-focus); outline-offset: 2px; }
+.mono { font-family: var(--font-mono); font-size: 0.8125rem; }
+
+/* PageHeader: the trail, the page's one h1, the commands at the end */
+.page-header { position: sticky; top: 0; z-index: var(--layer-header); background: var(--theme-app-bg); }
+.page-header-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 3rem; padding: 0.375rem 1rem; border-bottom: 1px solid var(--theme-border); }
+.page-header-trail { display: flex; flex: 1; min-width: 0; align-items: center; gap: 0.5rem; }
+.page-mark { display: inline-flex; width: 1.75rem; height: 1.75rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: var(--radius-md); background: var(--theme-accent); color: var(--theme-accent-text); }
+.page-mark svg { width: 1rem; height: 1rem; }
+.page-title { font-size: 0.8125rem; font-weight: 500; line-height: 1; white-space: nowrap; }
+.page-description { min-width: 0; padding-left: 0.5rem; border-left: 1px solid var(--theme-border); font-size: 0.8125rem; line-height: 1rem; color: var(--theme-muted-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-actions { display: flex; flex-shrink: 0; align-items: center; gap: 0.25rem; }
+
+/* buttonClasses: secondary by default, outline and ghost for the quiet ones */
+.btn { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 0.375rem; height: 2rem; padding: 0 0.75rem; border: 1px solid var(--theme-border); border-radius: var(--radius-md); background: var(--theme-panel-bg); color: var(--theme-app); font-size: 0.875rem; line-height: 1.25rem; font-weight: 500; white-space: nowrap; text-decoration: none; transition: background-color 0.15s, color 0.15s, border-color 0.15s; }
+.btn svg { width: 1rem; height: 1rem; }
+.btn:hover:not(:disabled) { background: var(--theme-hover); }
+.btn:focus-visible { outline: 2px solid var(--theme-focus); outline-offset: 1px; }
+.btn:disabled { cursor: not-allowed; opacity: 0.5; }
+.btn-outline { background: transparent; color: var(--theme-muted-text-color); }
+.btn-outline:hover:not(:disabled), .btn-ghost:hover:not(:disabled) { background: var(--theme-muted-panel-bg); color: var(--theme-app); }
+.btn-ghost { border-color: transparent; background: transparent; color: var(--theme-muted-text-color); }
+.btn-icon { width: 2rem; padding: 0; }
+.theme-icon { display: none; }
+:root:not([data-theme]) .theme-icon[data-mode="system"],
+:root[data-theme="light"] .theme-icon[data-mode="light"],
+:root[data-theme="dark"] .theme-icon[data-mode="dark"] { display: block; }
+
+/* The page's content: panels in a single column */
+.content { display: flex; flex-direction: column; gap: 1rem; max-width: 72rem; margin: 0 auto; padding: 1rem; }
+
+/* Section variant="card" / panel */
+.panel { border: 1px solid var(--theme-border); border-radius: var(--radius-xl); background: var(--theme-panel-bg); overflow: hidden; }
+.panel-header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--theme-border); }
+.panel-title { font-size: 1rem; font-weight: 600; }
+.panel-note { font-size: 0.875rem; color: var(--theme-muted-text-color); }
+.panel-body { padding: 1rem; }
+
+/* The flipbook: the current frame over the page background, the transport under it */
+.viewer { display: flex; align-items: center; justify-content: center; min-height: 12rem; background: var(--theme-muted-panel-bg); }
+.viewer img { display: block; max-width: 100%; height: auto; }
+.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border-top: 1px solid var(--theme-border); }
+.transport .counter { min-width: 6rem; font-family: var(--font-mono); font-size: 0.8125rem; color: var(--theme-muted-text-color); }
+/* fieldBox, as a slider: the field's resting edge, the focus ring, the accent for the knob */
+.scrub { flex: 1 1 12rem; height: 2rem; margin: 0; accent-color: var(--theme-accent); }
+.scrub:focus-visible { outline: 2px solid var(--theme-focus); outline-offset: 2px; border-radius: var(--radius-md); }
+
+/* DescriptionList variant="divided": labels muted, values in the body color */
+.dl { display: grid; grid-template-columns: fit-content(40%) minmax(0, 1fr); column-gap: 1.5rem; font-size: 0.875rem; }
+.dl > div { display: contents; }
+.dl dt, .dl dd { padding: 0.5rem 0; border-bottom: 1px solid var(--theme-border); }
+.dl > div:last-child dt, .dl > div:last-child dd { border-bottom: 0; }
+.dl dt { color: var(--theme-muted-text-color); }
+.dl dd { overflow-wrap: anywhere; }
+@media (max-width: 40rem) {
+  .dl { grid-template-columns: 1fr; }
+  .dl dt { padding-bottom: 0; border-bottom: 0; }
+}
+
+/* Callout: the tone surface, the vivid icon */
+.callout { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem 1rem; border: 1px solid color-mix(in srgb, var(--theme-info) 25%, transparent); border-radius: var(--radius-xl); background: var(--theme-info-muted); color: var(--theme-info-text); font-size: 0.875rem; line-height: 1.25rem; }
+.callout svg { width: 1.25rem; height: 1.25rem; flex-shrink: 0; color: var(--theme-info); }
+.callout[data-kind="error"] { border-color: color-mix(in srgb, var(--theme-error) 25%, transparent); background: var(--theme-error-muted); color: var(--theme-error-text); }
+.callout[data-kind="error"] svg { color: var(--theme-error); }
+
+/* Loader: RunningIcon turning in the accent; still under prefers-reduced-motion */
+.spin { animation: spin 1s linear infinite; color: var(--theme-accent); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

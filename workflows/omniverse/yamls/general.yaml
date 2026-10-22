@@ -1,0 +1,325 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+# NVIDIA Omniverse on a GPU node: Isaac Sim (an Omniverse Kit application, the one
+# NVIDIA serves publicly on NGC) renders a short physics animation headless with the
+# RTX renderer, in a Docker container on the login node or a SLURM/PBS compute node,
+# and the frames are served as a flipbook page through the pw endpoint
+# omniverse-<run slug>, which outlives the run until `pw endpoints delete`.
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: omniverse
+          sparse_checkout:
+            - workflows/omniverse/app
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW environment variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_accept_eula="${{ inputs.service.accept_eula }}"
+          service_frames="${{ inputs.service.frames }}"
+          service_resolution="${{ inputs.service.resolution }}"
+          service_renderer="${{ inputs.service.renderer }}"
+          service_scene="${{ inputs.service.scene }}"
+          service_parent_install_dir="${{ inputs.software.install_dir }}"
+          software_runtime="${{ inputs.software.runtime }}"
+          software_image="${{ inputs.software.image }}"
+          pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          EOF
+          # Remove empty and undefined variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh
+          # Add export to all lines
+          sed -i 's/^/export /' inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script checks the form's values and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/omniverse/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          # This script renders the frames and then starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/omniverse/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+          # The GPU request goes ahead of the form's directives, so a directive typed
+          # there wins: sbatch and qsub keep the last value of a repeated option
+          gpus="${{ inputs.cluster.gpus }}"
+          slurm_gpus=""
+          pbs_gpus=""
+          if [ "${{ inputs.cluster.scheduler }}" = true ] && [[ "${gpus}" =~ ^[0-9]+$ ]] && [ "${gpus}" -gt 0 ]; then
+            slurm_gpus="#SBATCH --gres=gpu:${gpus}"
+            pbs_gpus="#PBS -l select=1:ngpus=${gpus}"
+          fi
+          echo "SLURM_GPU_DIRECTIVE=${slurm_gpus}" | tee -a $OUTPUTS
+          echo "PBS_GPU_DIRECTIVE=${pbs_gpus}" | tee -a $OUTPUTS
+
+  session_runner:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: |
+              ${{ needs.preprocessing.outputs.SLURM_GPU_DIRECTIVE }}
+              ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: |
+              ${{ needs.preprocessing.outputs.PBS_GPU_DIRECTIVE }}
+              ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::Session runner failed before the endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
+          host: ${{ inputs.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          path: /render.json
+          healthy: '2*'
+          budget: 300
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: GPU host
+        include-workspace: false
+        tooltip: The render runs on its login node, or on a compute node when submitted to the scheduler; the frames are served from where they were rendered
+      cluster:
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
+        type: group
+        label: Compute cluster settings
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
+          gpus:
+            type: number
+            label: GPUs per job
+            description: Requested ahead of the directives below; 0 requests none.
+            default: 1
+            min: 0
+            max: 8
+            step: 1
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Requested as --gres=gpu:N (PBS: -l select=1:ngpus=N) ahead of the directives
+              below, which can override it. The render uses one GPU. 0 requests none, for a
+              partition whose nodes all have GPUs but no GRES configured.
+          slurm:
+            type: group
+            label: SLURM directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                description: Pick a partition with GPU nodes.
+                optional: true
+                resource: ${{ inputs.resource }}
+              time:
+                label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day; the service ends with the job.
+                type: string
+                default: '02:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              scheduler_directives:
+                type: editor
+                label: Scheduler directives
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+          pbs:
+            type: group
+            label: PBS directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler directives
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l walltime=02:00:00
+                  #PBS -l select=1:ncpus=8:ngpus=1
+      service:
+        type: group
+        label: Omniverse render
+        items:
+          name:
+            type: string
+            hidden: true
+            default: omniverse
+          accept_eula:
+            type: boolean
+            label: Accept the NVIDIA Isaac Sim license
+            description: Required; the container only starts with the license accepted (ACCEPT_EULA=Y).
+            default: false
+            tooltip: |
+              The NVIDIA Isaac Sim Additional Software and Materials License:
+              https://www.nvidia.com/en-us/agreements/enterprise-software/isaac-sim-additional-software-and-materials-license/
+          frames:
+            type: number
+            label: Frames
+            description: Frames of simulated time at 30 per second; 90 is three seconds of animation.
+            default: 90
+            min: 1
+            step: 1
+            tooltip: Every frame is rendered and written as a PNG; the render takes about a second per frame on a data-center GPU once the shaders are cached, plus a few minutes the first time.
+          resolution:
+            type: dropdown
+            label: Resolution
+            default: 1280x720
+            options:
+              - value: 640x360
+                label: 640 × 360
+              - value: 1280x720
+                label: 1280 × 720
+              - value: 1920x1080
+                label: 1920 × 1080
+          renderer:
+            type: dropdown
+            label: Renderer
+            description: RTX Real-Time is the fastest; path tracing is slower and more realistic.
+            default: RayTracedLighting
+            options:
+              - value: RayTracedLighting
+                label: RTX Real-Time (ray-traced lighting)
+              - value: RealTimePathTracing
+                label: RTX Real-Time Path Tracing
+              - value: PathTracing
+                label: RTX Path Tracing (interactive, slowest)
+          scene:
+            type: string
+            label: USD scene
+            description: Absolute path of a .usd, .usda or .usdc file on the cluster; empty renders the built-in scene of falling blocks.
+            optional: true
+            tooltip: |
+              The stage is opened as is, framed from its bounds by an orbiting camera, lit
+              with a dome light when it has no light, and its timeline played: physics and
+              animation in the file run during the frames. Keep it on a filesystem the
+              render node sees.
+      software:
+        type: group
+        label: Software
+        collapsed: true
+        items:
+          runtime:
+            type: dropdown
+            label: Container runtime
+            default: docker
+            options:
+              - value: docker
+                label: Docker
+            tooltip: |
+              Docker: the image is pulled on the node that renders (sudo docker when the user
+              is not in the docker group) into Docker's own storage, which needs about 35 GB
+              free; the job fails at once when it has less.
+          image:
+            type: string
+            label: Container image
+            description: Pulled once per node; 11 GB to download, 20 GB unpacked.
+            default: nvcr.io/nvidia/isaac-sim:6.2.0.1
+            tooltip: The NVIDIA Isaac Sim image on NGC, built on the Omniverse Kit SDK; anonymous pulls work. The Omniverse Kit and USD Composer images need an NGC account.
+          install_dir:
+            type: string
+            label: Install directory
+            default: ${HOME}/pw/software
+            tooltip: Isaac Sim's home (its shader caches and logs) goes under <install directory>/omniverse/cache once, so later runs on the node start faster.

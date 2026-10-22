@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Omniverse render</title>
+  <meta name="description" content="Frames rendered on the GPU by an NVIDIA Omniverse application">
+  <script>
+    (function () {
+      // The page is served at "/" behind a subdomain endpoint or under a prefix
+      // behind a path-based one. A <base> built from the page location makes every
+      // relative URL (styles, script, render.json, frames/...) resolve either way.
+      var path = window.location.pathname || "/";
+      if (/\/index\.html$/.test(path)) path = path.slice(0, path.lastIndexOf("/") + 1);
+      if (!path.endsWith("/")) path += "/";
+      var base = document.createElement("base");
+      base.href = window.location.origin + path;
+      document.head.appendChild(base);
+      // The color mode, before the first paint: light-dark() in theme.css follows the
+      // color-scheme styles.css sets from this attribute; unset, it follows the device.
+      var theme = null;
+      try { theme = window.localStorage.getItem("omniverse-theme"); } catch (e) { theme = null; }
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+    })();
+  </script>
+  <link rel="stylesheet" href="fonts.css">
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="page-header">
+    <div class="page-header-bar">
+      <div class="page-header-trail">
+        <span class="page-mark" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.75 13.5 5v6L8 14.25 2.5 11V5ZM2.5 5 8 8.25 13.5 5M8 8.25v6"/></svg>
+        </span>
+        <h1 class="page-title">Omniverse render</h1>
+        <p class="page-description">Frames rendered on the GPU by Isaac Sim, an NVIDIA Omniverse application</p>
+      </div>
+      <div class="page-actions">
+        <button id="theme" class="btn btn-ghost btn-icon" type="button" aria-label="Color mode: the device's, light or dark">
+          <svg class="theme-icon" data-mode="system" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 2.5h9a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1ZM5.5 13.5h5M8 10.5v3M4 4v5M5.1 4v5M6.2 4v5M7.25 4v5M8 2.5v8"/></svg>
+          <svg class="theme-icon" data-mode="light" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8 1.75v1.5M8 12.75v1.5M1.75 8h1.5M12.75 8h1.5M3.6 3.6l1.05 1.05M11.35 11.35l1.05 1.05M3.6 12.4l1.05-1.05M11.35 4.65l1.05-1.05"/></svg>
+          <svg class="theme-icon" data-mode="dark" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2a4 4 0 0 0 6 6 6 6 0 1 1-6-6Z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+  <main class="content">
+    <div id="message" class="callout" hidden></div>
+    <section class="panel" aria-label="Playback">
+      <div class="viewer">
+        <img id="frame" alt="" title="Click to play or pause; the arrow keys step">
+      </div>
+      <div class="transport">
+        <button id="play" class="btn" type="button" disabled>
+          <svg id="play-icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.25 2.5v11L13.75 8Z"/></svg>
+          <svg id="pause-icon" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><path d="M5 2.5v11M11 2.5v11"/></svg>
+          <span id="play-label">Play</span>
+        </button>
+        <input id="scrub" class="scrub" type="range" min="0" max="0" value="0" aria-label="Frame" disabled>
+        <span id="counter" class="counter">0 / 0</span>
+      </div>
+    </section>
+    <section class="panel" aria-label="About this render">
+      <div class="panel-header">
+        <h2 class="panel-title">About this render</h2>
+        <span class="panel-note">What the run rendered, and where</span>
+      </div>
+      <div class="panel-body">
+        <dl id="meta" class="dl"></dl>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

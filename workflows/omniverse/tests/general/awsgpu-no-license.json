@@ -1,0 +1,21 @@
+{
+  "_test": {
+    "timeout_s": 600,
+    "expect": "error",
+    "leftover_patterns": [
+      "serve.py --port",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://alvaro/awsgpu",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "accept_eula": false,
+    "frames": 12
+  },
+  "software": {
+    "runtime": "docker"
+  }
+}

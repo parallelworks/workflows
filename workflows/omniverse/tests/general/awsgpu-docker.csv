@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-22T10:31:11Z,cold,pass,ok,771c897,e20a8e2,eef523b,bf70d0c,bf70d0c,omniverse,alvaro,capable-snipe,231,
 2026-10-22T10:36:01Z,warm,pass,kept,771c897,e20a8e2,eef523b,bf70d0c,bf70d0c,omniverse,alvaro,fair-crayfish,139,
+2026-10-22T10:42:35Z,warm,pass,ok,2ba3516,e20a8e2,eef523b,d340c0b,d340c0b,omniverse,alvaro,accepted-parakeet,139,

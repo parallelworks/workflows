@@ -1,7 +1,8 @@
 # yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
 # NVIDIA Omniverse on a GPU node: Isaac Sim (an Omniverse Kit application, the one
 # NVIDIA serves publicly on NGC) renders a short physics animation headless with the
-# RTX renderer, in a Docker container on the login node or a SLURM/PBS compute node,
+# RTX renderer, in a Docker or Singularity container on the login node or a SLURM/PBS
+# compute node,
 # and the frames are served as a flipbook page through the pw endpoint
 # omniverse-<run slug>, which outlives the run until `pw endpoints delete`.
 permissions:
@@ -19,6 +20,7 @@ jobs:
           branch: omniverse
           sparse_checkout:
             - workflows/omniverse/app
+            - tools/oras
       - name: Create Inputs
         run: |
           set -x
@@ -37,6 +39,7 @@ jobs:
           service_parent_install_dir="${{ inputs.software.install_dir }}"
           software_runtime="${{ inputs.software.runtime }}"
           software_image="${{ inputs.software.image }}"
+          software_sif="${{ inputs.software.sif }}"
           pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
           EOF
           # Remove empty and undefined variables
@@ -306,22 +309,38 @@ jobs:
           runtime:
             type: dropdown
             label: Container runtime
+            description: Docker pulls the image on the render node; Singularity pulls a prebuilt SIF into the install directory once.
             default: docker
             options:
               - value: docker
                 label: Docker
+              - value: singularity
+                label: Singularity / Apptainer
             tooltip: |
               Docker: the image is pulled on the node that renders (sudo docker when the user
               is not in the docker group) into Docker's own storage, which needs about 35 GB
-              free; the job fails at once when it has less.
+              free; the job fails at once when it has less. Singularity: the login node pulls
+              ghcr.io/parallelworks/isaac-sim:6.2.0.1 (the same image as a SIF, 11 GB) into the
+              install directory once, and every node runs it as your user; for clusters
+              without Docker.
           image:
             type: string
             label: Container image
             description: Pulled once per node; 11 GB to download, 20 GB unpacked.
             default: nvcr.io/nvidia/isaac-sim:6.2.0.1
+            hidden: ${{ inputs.software.runtime != 'docker' }}
+            ignore: ${{ .hidden }}
             tooltip: The NVIDIA Isaac Sim image on NGC, built on the Omniverse Kit SDK; anonymous pulls work. The Omniverse Kit and USD Composer images need an NGC account.
+          sif:
+            type: string
+            label: Singularity image file
+            description: Empty pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 into the install directory once.
+            optional: true
+            hidden: ${{ inputs.software.runtime != 'singularity' }}
+            ignore: ${{ .hidden }}
+            tooltip: A SIF built with build-container.sh from the workflow's isaac-sim.def, on a filesystem the render node sees.
           install_dir:
             type: string
             label: Install directory
             default: ${HOME}/pw/software
-            tooltip: Isaac Sim's home (its shader caches and logs) goes under <install directory>/omniverse/cache once, so later runs on the node start faster.
+            tooltip: Isaac Sim's home (its shader caches and logs) goes under <install directory>/omniverse/cache once, so later runs on the node start faster; the Singularity image goes under <install directory>/omniverse/containers.

@@ -1,0 +1,11 @@
+Bootstrap: docker
+From: nvcr.io/nvidia/isaac-sim:6.2.0.1
+
+%post
+    # The image's files belong to its own user (1234) and are closed to everyone
+    # else, and a Singularity container runs as the workflow user: open them for
+    # reading. Everything Isaac Sim writes is bound from the host at run time.
+    chmod -R a+rX /isaac-sim
+
+%runscript
+    exec /isaac-sim/python.sh "$@"

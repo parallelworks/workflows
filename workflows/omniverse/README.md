@@ -3,8 +3,8 @@
 Renders a short physics animation on a GPU with [NVIDIA Omniverse](https://www.nvidia.com/en-us/omniverse/)
 and serves the frames as a flipbook page through a `pw` endpoint. The application is
 [Isaac Sim](https://docs.isaacsim.omniverse.nvidia.com/), the Omniverse Kit app NVIDIA
-publishes on NGC without an account; it runs headless in a container, so the workflow
-needs a GPU and a container runtime, nothing else.
+publishes on NGC without an account; it runs headless in a container (Docker or
+Singularity), so the workflow needs a GPU and a container runtime, nothing else.
 
 ```
 form ──► preprocessing ──► start script ──► render.py in the container ──► gallery page ──► https://<endpoint>/
@@ -21,6 +21,19 @@ what rendered them (GPU, renderer, times). It keeps serving after the run until
 
 ![Frames of the built-in scene](thumbnails/omniverse.png)
 
+## Two ways to run it
+
+| Container runtime | What runs | Needs |
+|---|---|---|
+| **Docker** (default) | `nvcr.io/nvidia/isaac-sim:6.2.0.1`, pulled on the node that renders, as your user | Docker (directly or through `sudo`), about 35 GB free in Docker's own storage for the image (11 GB to download, 20 GB unpacked) |
+| **Singularity** | The same image as a SIF, `ghcr.io/parallelworks/isaac-sim:6.2.0.1`, pulled once by the login node into the install directory and run by any node as your user | `singularity`/`apptainer`, 11 GB in the install directory |
+
+Both keep Isaac Sim's home (its shader caches and logs) under
+`<install directory>/omniverse/cache`, shared by every run on the node, so the shaders
+compile once. Singularity is the one for clusters without Docker, or where Docker's
+storage sits on a small partition; a kernel that cannot mount a SIF (hardened images
+disable squashfs) still runs it in a user namespace, which the log says.
+
 ## Form
 
 | Field | Default | Notes |
@@ -32,22 +45,24 @@ what rendered them (GPU, renderer, times). It keeps serving after the run until
 | Resolution | 1280 × 720 | 640 × 360 and 1920 × 1080 too |
 | Renderer | RTX Real-Time | `RayTracedLighting` (32 passes a frame, about 0.8 s on an L4 at 1280 × 720) and `RealTimePathTracing` are the fast ones; `PathTracing` (64 samples, denoised) takes about 2 s a frame |
 | USD scene | empty | Absolute path of a `.usd`/`.usda`/`.usdc` on the cluster; empty renders the built-in scene |
-| Container runtime | Docker | Where the image lives and how it runs, below |
+| Container runtime | Docker | Docker or Singularity, above |
 | Container image | `nvcr.io/nvidia/isaac-sim:6.2.0.1` | Docker. Pulled once per node (11 GB down, 20 GB unpacked) into Docker's own storage, which needs about 35 GB free |
-| Install directory | `${HOME}/pw/software` | `omniverse/cache` under it is Isaac Sim's home: its shader caches and logs, shared by every run on the node |
+| Singularity image file | empty | Singularity. A SIF of your own (built with `build-container.sh`); empty pulls `ghcr.io/parallelworks/isaac-sim:6.2.0.1` into the install directory once |
+| Install directory | `${HOME}/pw/software` | `omniverse/cache` under it is Isaac Sim's home (shader caches, logs) and `omniverse/containers` holds the SIF, shared by every run on the node |
 
 ## How it works
 
 1. **preprocessing**, on the login node, checks the form (the license box, the
-   numbers, that the scene file exists), creates the cache directory, and assembles
-   the start script from `inputs.sh` and `app/start-template.sh`.
+   numbers, that the scene file exists), creates the cache directory, with Singularity
+   pulls the SIF into the install directory once, and assembles the start script from
+   `inputs.sh` and `app/start-template.sh`.
 2. **session_runner** hands the start script to the shared
    [`script_submitter`](../script_submitter/), which runs it on the login node or
-   submits it as a SLURM/PBS job. The script checks the GPU (`nvidia-smi -L`), pulls
-   the image if the node does not have it, runs `app/render.py` in the container, and
-   once `render/render.json` and the frames exist starts `app/serve.py` under
-   `pw endpoints run`. A failure before that point (no GPU, no space for the image, a
-   render error) fails the run, with the output in the run log.
+   submits it as a SLURM/PBS job. The script checks the GPU (`nvidia-smi -L`), with
+   Docker pulls the image if the node does not have it, runs `app/render.py` in the
+   container, and once `render/render.json` and the frames exist starts
+   `app/serve.py` under `pw endpoints run`. A failure before that point (no GPU, no
+   space for the image, a render error) fails the run, with the output in the run log.
 3. **wait_for_endpoint** polls `pw endpoints list` for `omniverse-<run slug>` and
    probes `render.json` through the platform until it answers; then the run completes
    and the service is left running.
@@ -137,6 +152,18 @@ pw workflows run "$PWD/workflows/omniverse/yamls/general.yaml" -i '{
   "software": {"runtime": "docker"}}'
 ```
 
+## Building the Singularity image
+
+```bash
+cd workflows/omniverse
+./build-container.sh        # the NGC image, its files opened for reading by any user
+tools/oras/oras push ghcr.io/parallelworks/isaac-sim:6.2.0.1 isaac-sim-6.2.0.1.sif
+```
+
+New Isaac Sim version, new tag, and the tag in `app/controller.sh`, `app/start-template.sh`
+and the form's defaults moves with it. Keep the package public.
+
 ## Variants
 
-`yamls/general.yaml` only: the cloud clusters and any SLURM/PBS cluster with Docker.
+`yamls/general.yaml` only: the cloud clusters and any SLURM/PBS cluster with Docker or
+Singularity.

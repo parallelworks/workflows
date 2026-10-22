@@ -32,6 +32,7 @@ parser.add_argument("--subframes", type=int, default=0,
                     help="render passes accumulated per frame; 0 picks a default for the renderer")
 parser.add_argument("--scene", default="", help="a USD stage to render instead of the built-in scene")
 parser.add_argument("--image", default="", help="the container image, recorded in render.json")
+parser.add_argument("--tag", default="", help="ignored; lets a cleanup script find this process")
 args, _ = parser.parse_known_args()
 
 frames_dir = os.path.join(args.out, "frames")

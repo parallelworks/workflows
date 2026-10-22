@@ -67,6 +67,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [n8n](workflows/n8n/) | n8n automation (Docker/Singularity) | general, emed, hsp, noaa |
 | [ollama](workflows/ollama/) | Ollama GGUF model server (native/container) | general, hsp, noaa |
 | [ollama-openwebui](workflows/ollama-openwebui/) | Ollama + OpenWebUI on Kubernetes | k8s |
+| [omniverse](workflows/omniverse/) | NVIDIA Omniverse on a GPU node: Isaac Sim (an Omniverse Kit app, Docker or Singularity) renders a physics animation headless with the RTX renderer, on the login node or as a SLURM/PBS job, and serves the frames as a flipbook page | general |
 | [open-notebook](workflows/open-notebook/) | Open Notebook (Docker) | general |
 | [openfoam-naca](workflows/openfoam-naca/) | One OpenFOAM case of a NACA 4-digit airfoil: C-grid mesh, `simpleFoam`, lift and drag coefficients, optional ParaView images; the evaluator of doe-openfoam and dakota-openfoam. The `*-restart` variants resubmit a long case from its checkpoints until it completes: the example of checkpoints, a resumable run script and a retried subworkflow step for a simulation tool of your own (no endpoint) | general, hsp, noaa, general-restart, hsp-restart, noaa-restart |
 | [openproject](workflows/openproject/) | OpenProject project management (Singularity from a prebuilt SIF as your user, or the all-in-one Docker image) on a pinned subdomain, with Sign in with ACTIVATE through the platform's OpenID Connect provider | general, hsp, noaa |

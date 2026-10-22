@@ -4,7 +4,9 @@
 # RTX renderer, in a Docker or Singularity container on the login node or a SLURM/PBS
 # compute node,
 # and the frames are served as a flipbook page through the pw endpoint
-# omniverse-<run slug>, which outlives the run until `pw endpoints delete`.
+# omniverse-<run slug>, which outlives the run until `pw endpoints delete`. Running it
+# accepts NVIDIA's Isaac Sim license (the container's ACCEPT_EULA):
+# https://www.nvidia.com/en-us/agreements/enterprise-software/isaac-sim-additional-software-and-materials-license/
 permissions:
   - '*'
 
@@ -20,6 +22,7 @@ jobs:
           branch: omniverse
           sparse_checkout:
             - workflows/omniverse/app
+            - workflows/omniverse/${{ inputs.software.runtime }}
             - tools/oras
       - name: Create Inputs
         run: |
@@ -31,7 +34,6 @@ jobs:
           # Write input form variables and ensure the pw agent is in the PATH
           cat <<'EOF' >> inputs.sh
           PATH=$HOME/pw:$PATH
-          service_accept_eula="${{ inputs.service.accept_eula }}"
           service_frames="${{ inputs.service.frames }}"
           service_resolution="${{ inputs.service.resolution }}"
           service_renderer="${{ inputs.service.renderer }}"
@@ -52,7 +54,7 @@ jobs:
           set -x
           # This script checks the form's values and always runs in the controller node
           cp inputs.sh controller-${PW_JOB_ID}.sh
-          cat workflows/omniverse/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          cat workflows/omniverse/${{ inputs.software.runtime }}/controller.sh >> controller-${PW_JOB_ID}.sh
           bash controller-${PW_JOB_ID}.sh
       - name: Create Service Script
         run: |
@@ -78,7 +80,7 @@ jobs:
 
           echo "::notice::Starting service"
           EOF
-          cat workflows/omniverse/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          cat workflows/omniverse/${{ inputs.software.runtime }}/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
           echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
           echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
           # The GPU request goes ahead of the form's directives, so a directive typed
@@ -252,14 +254,6 @@ jobs:
             type: string
             hidden: true
             default: omniverse
-          accept_eula:
-            type: boolean
-            label: Accept the NVIDIA Isaac Sim license
-            description: Required; the container only starts with the license accepted (ACCEPT_EULA=Y).
-            default: false
-            tooltip: |
-              The NVIDIA Isaac Sim Additional Software and Materials License:
-              https://www.nvidia.com/en-us/agreements/enterprise-software/isaac-sim-additional-software-and-materials-license/
           frames:
             type: number
             label: Frames
@@ -310,11 +304,11 @@ jobs:
             type: dropdown
             label: Container runtime
             description: Docker pulls the image on the render node; Singularity pulls a prebuilt SIF into the install directory once.
-            default: docker
+            default: omniverse-docker
             options:
-              - value: docker
+              - value: omniverse-docker
                 label: Docker
-              - value: singularity
+              - value: omniverse-singularity
                 label: Singularity / Apptainer
             tooltip: |
               Docker: the image is pulled on the node that renders (sudo docker when the user
@@ -328,7 +322,7 @@ jobs:
             label: Container image
             description: Pulled once per node; 11 GB to download, 20 GB unpacked.
             default: nvcr.io/nvidia/isaac-sim:6.2.0.1
-            hidden: ${{ inputs.software.runtime != 'docker' }}
+            hidden: ${{ inputs.software.runtime != 'omniverse-docker' }}
             ignore: ${{ .hidden }}
             tooltip: The NVIDIA Isaac Sim image on NGC, built on the Omniverse Kit SDK; anonymous pulls work. The Omniverse Kit and USD Composer images need an NGC account.
           sif:
@@ -336,7 +330,7 @@ jobs:
             label: Singularity image file
             description: Empty pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 into the install directory once.
             optional: true
-            hidden: ${{ inputs.software.runtime != 'singularity' }}
+            hidden: ${{ inputs.software.runtime != 'omniverse-singularity' }}
             ignore: ${{ .hidden }}
             tooltip: A SIF built with build-container.sh from the workflow's isaac-sim.def, on a filesystem the render node sees.
           install_dir:

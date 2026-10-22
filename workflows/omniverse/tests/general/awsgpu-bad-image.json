@@ -15,11 +15,10 @@
     "scheduler": false
   },
   "service": {
-    "accept_eula": true,
     "frames": 12
   },
   "software": {
-    "runtime": "docker",
+    "runtime": "omniverse-docker",
     "image": "nvcr.io/nvidia/isaac-sim:0.0.0-no-such-tag"
   }
 }

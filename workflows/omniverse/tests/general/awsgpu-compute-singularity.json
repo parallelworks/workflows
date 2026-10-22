@@ -22,12 +22,11 @@
     }
   },
   "service": {
-    "accept_eula": true,
     "frames": 60,
     "resolution": "1280x720",
     "renderer": "RayTracedLighting"
   },
   "software": {
-    "runtime": "singularity"
+    "runtime": "omniverse-singularity"
   }
 }

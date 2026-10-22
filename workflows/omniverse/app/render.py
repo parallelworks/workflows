@@ -60,7 +60,7 @@ from isaacsim.core.experimental.materials import PreviewSurfaceMaterial  # noqa:
 from isaacsim.core.experimental.objects import Cube, DistantLight, GroundPlane, Sphere  # noqa: E402
 from isaacsim.core.experimental.prims import GeomPrim, RigidPrim  # noqa: E402
 from isaacsim.core.simulation_manager import SimulationManager  # noqa: E402
-from pxr import Gf, Usd, UsdGeom, UsdLux  # noqa: E402
+from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
 
 PHYSICS_HZ = 60
 BALL_START = (-3.2, -2.0, 1.0)
@@ -73,7 +73,7 @@ SUBFRAMES = {"RayTracedLighting": 32, "RealTimePathTracing": 32, "PathTracing": 
 
 def build_scene():
     """The built-in scene: a pyramid of cubes and a sphere thrown at it. Returns the
-    point the camera looks at, the orbit radius and the sphere."""
+    point the camera looks at and the orbit radius."""
     stage_utils.create_new_stage()
     GroundPlane("/World/GroundPlane", positions=[0, 0, 0])
     rep.functional.create.dome_light(intensity=300, parent="/World", name="DomeLight")
@@ -107,9 +107,30 @@ def build_scene():
     ball_material.set_input_values("metallic", [1.0])
     ball_material.set_input_values("roughness", [0.15])
     sphere.apply_visual_materials(ball_material)
-    ball = RigidPrim(paths=sphere.paths)
+    RigidPrim(paths=sphere.paths)
     GeomPrim(paths=sphere.paths, apply_collision_apis=True)
-    return Gf.Vec3d(0, 0, 1.0), 5.0, ball
+    # The throw is part of the scene: the rigid body's initial velocity, which PhysX
+    # applies when the timeline starts, and which the exported USD file keeps
+    ball = stage_utils.get_current_stage().GetPrimAtPath("/World/Ball")
+    UsdPhysics.RigidBodyAPI(ball).GetVelocityAttr().Set(Gf.Vec3f(*BALL_VELOCITY))
+    return Gf.Vec3d(0, 0, 1.0), 5.0
+
+
+def scene_bounds(stage):
+    """The world bounds of the stage's shapes. A flat slab (a floor, a table top) is
+    left out when anything else is there, so the camera frames the objects, not the
+    ground they stand on."""
+    cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_, UsdGeom.Tokens.render])
+    shapes, slabs = Gf.Range3d(), Gf.Range3d()
+    for prim in stage.Traverse():
+        if not prim.IsA(UsdGeom.Gprim):
+            continue
+        box = cache.ComputeWorldBound(prim).ComputeAlignedRange()
+        if box.IsEmpty():
+            continue
+        thin, wide = sorted(box.GetSize())[0], sorted(box.GetSize())[1]
+        (slabs if thin < wide / 20 else shapes).UnionWith(box)
+    return shapes if not shapes.IsEmpty() else slabs
 
 
 def open_scene(path):
@@ -120,17 +141,16 @@ def open_scene(path):
         sys.exit(f"::error::Could not open the USD stage {path}")
     stage = omni.usd.get_context().get_stage()
     if not any(prim.HasAPI(UsdLux.LightAPI) for prim in stage.Traverse()):
-        rep.functional.create.dome_light(intensity=600, name="DomeLight")
-    bounds = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_, UsdGeom.Tokens.render])
-    box = bounds.ComputeWorldBound(stage.GetPseudoRoot()).ComputeAlignedRange()
+        rep.functional.create.dome_light(intensity=300, name="DomeLight")
+    box = scene_bounds(stage)
     if box.IsEmpty():
         print("The stage has no bounds; orbiting the origin", flush=True)
-        return Gf.Vec3d(0, 0, 0), 5.0, None
+        return Gf.Vec3d(0, 0, 0), 5.0
     radius = max((box.GetMax() - box.GetMin()).GetLength() / 2, 0.1)
     print(f"Stage bounds {tuple(round(v, 2) for v in box.GetMin())} to "
           f"{tuple(round(v, 2) for v in box.GetMax())}; the camera orbits {radius * 2.5:.1f} m from the center",
           flush=True)
-    return box.GetMidpoint(), radius * 2.5, None
+    return box.GetMidpoint(), radius * 2.5
 
 
 def orbit(center, radius, fraction, up_axis):
@@ -154,7 +174,10 @@ def gpu_name():
 
 scene = args.scene or "built-in: a pyramid of cubes and a falling sphere"
 print("Isaac Sim is up; building the scene", flush=True)
-center, radius, ball = open_scene(args.scene) if args.scene else build_scene()
+center, radius = open_scene(args.scene) if args.scene else build_scene()
+if not args.scene:
+    # The built-in scene as a USD file, to read, edit and render as the scene input
+    stage_utils.get_current_stage().GetRootLayer().Export(os.path.join(args.out, "scene.usda"))
 print("Scene ready; creating the camera and the writer", flush=True)
 stage = omni.usd.get_context().get_stage()
 up_axis = UsdGeom.GetStageUpAxis(stage)
@@ -178,8 +201,6 @@ SimulationManager.set_physics_dt(1.0 / PHYSICS_HZ)
 print("Writer attached; playing the timeline", flush=True)
 app_utils.play()
 simulation_app.update()
-if ball is not None:
-    ball.set_velocities(linear_velocities=[list(BALL_VELOCITY)])
 
 print(f"Rendering {args.frames} frames at {args.width}x{args.height} with {args.renderer}, "
       f"{subframes} passes per frame, on {gpu_name()}", flush=True)

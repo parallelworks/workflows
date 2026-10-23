@@ -113,12 +113,20 @@ steel = material("/World/Materials/steel", (0.92, 0.92, 0.95), roughness=0.15, m
 
 faces_by_plane = defaultdict(list)
 ground_faces = defaultdict(lambda: [0.0, [0.0, 0.0, 0.0]])
+centers = []
 for index, chunk in enumerate(chunks):
     path = f"/World/Wall/chunk_{index}"
     mesh = UsdGeom.Mesh.Define(stage, path)
     used = sorted({i for ids, _ in chunk["faces"] for i in ids})
     remap = {v: n for n, v in enumerate(used)}
-    points = [Gf.Vec3f(*verts[v]) for v in used]
+    # Each chunk's origin at the middle of its bounds, so its pose (in poses.csv, in
+    # the snapshots) is where the piece is, not where the wall's origin went
+    lo = [min(verts[v][k] for v in used) for k in range(3)]
+    hi = [max(verts[v][k] for v in used) for k in range(3)]
+    center = Gf.Vec3d(*((lo[k] + hi[k]) / 2 for k in range(3)))
+    centers.append(center)
+    UsdGeom.Xformable(mesh).AddTranslateOp().Set(center)
+    points = [Gf.Vec3f(*(verts[v][k] - center[k] for k in range(3))) for v in used]
     counts, indices, normals, interior = [], [], [], []
     for face_number, (ids, kind) in enumerate(chunk["faces"]):
         a, b, c = (verts[i] for i in ids[:3])
@@ -184,8 +192,8 @@ for (normal, offset), faces in faces_by_plane.items():
             joint = UsdPhysics.FixedJoint.Define(stage, f"/World/Wall/Bonds/bond_{a}_{b}")
             joint.CreateBody0Rel().SetTargets([Sdf.Path(f"/World/Wall/chunk_{a}")])
             joint.CreateBody1Rel().SetTargets([Sdf.Path(f"/World/Wall/chunk_{b}")])
-            joint.CreateLocalPos0Attr().Set(centroid)
-            joint.CreateLocalPos1Attr().Set(centroid)
+            joint.CreateLocalPos0Attr().Set(Gf.Vec3f(*(Gf.Vec3d(centroid) - centers[a])))
+            joint.CreateLocalPos1Attr().Set(Gf.Vec3f(*(Gf.Vec3d(centroid) - centers[b])))
             joint.CreateLocalRot0Attr().Set(Gf.Quatf(1, 0, 0, 0))
             joint.CreateLocalRot1Attr().Set(Gf.Quatf(1, 0, 0, 0))
             joint.CreateBreakForceAttr().Set(float(area * args.strength))
@@ -198,7 +206,7 @@ for index, (area, weighted) in sorted(ground_faces.items()):
     centroid = Gf.Vec3f(*(weighted[k] / area for k in range(3)))
     joint = UsdPhysics.FixedJoint.Define(stage, f"/World/Wall/Bonds/ground_{index}")
     joint.CreateBody0Rel().SetTargets([Sdf.Path(f"/World/Wall/chunk_{index}")])
-    joint.CreateLocalPos0Attr().Set(centroid)
+    joint.CreateLocalPos0Attr().Set(Gf.Vec3f(*(Gf.Vec3d(centroid) - centers[index])))
     joint.CreateLocalPos1Attr().Set(centroid)
     joint.CreateLocalRot0Attr().Set(Gf.Quatf(1, 0, 0, 0))
     joint.CreateLocalRot1Attr().Set(Gf.Quatf(1, 0, 0, 0))

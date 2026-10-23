@@ -51,6 +51,7 @@ jobs:
           software_runtime="${{ inputs.software.runtime }}"
           software_image="${{ inputs.software.image }}"
           software_sif="${{ inputs.software.sif }}"
+          software_sif_registry="${{ inputs.software.sif_registry }}"
           pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
           EOF
           # Remove empty and undefined variables
@@ -386,6 +387,11 @@ jobs:
             hidden: ${{ inputs.software.runtime != 'omniverse-singularity' }}
             ignore: ${{ .hidden }}
             tooltip: A SIF built with build-container.sh from the workflow's isaac-sim.def, on a filesystem the render node sees.
+          sif_registry:
+            type: string
+            hidden: true
+            default: ghcr.io/parallelworks/isaac-sim:6.2.0.1
+            label: The prebuilt SIF's ORAS reference; its tag names the file in the install directory
           install_dir:
             type: string
             label: Install directory

@@ -10,8 +10,8 @@ set -o pipefail
 # Called by: Workflow preprocessing step
 #
 # Required Environment Variables:
-#   - service_frames, service_resolution, service_renderer: the render settings
-#   - service_scene: optional; a USD file on the cluster's filesystem
+#   - service_*, files_*: the form, checked by app/check-inputs.sh (the builder has
+#     no service_* fields)
 #   - software_image: the Isaac Sim image
 #   - service_parent_install_dir: where omniverse/cache, Isaac Sim's home shared by runs, goes
 ################################################################################

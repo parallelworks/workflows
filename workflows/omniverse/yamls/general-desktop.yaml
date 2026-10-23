@@ -43,6 +43,7 @@ jobs:
           service_parent_install_dir="${{ inputs.software.install_dir }}"
           software_runtime="omniverse-singularity"
           software_sif="${{ inputs.software.sif }}"
+          software_sif_registry="${{ inputs.software.sif_registry }}"
           EOF
           # Remove empty and undefined variables
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
@@ -59,20 +60,7 @@ jobs:
       - name: Create Launcher
         run: |
           source inputs.sh
-          case "${desktop_app}" in
-            isaac-sim|isaac-sim.newton) ;;
-            *) echo "::error title=Error::Unknown application '${desktop_app}': isaac-sim or isaac-sim.newton"; exit 1 ;;
-          esac
-          {
-            echo '#!/bin/bash'
-            echo "container_sif=\"${software_sif:-${service_parent_install_dir}/omniverse/containers/isaac-sim-6.2.0.1.sif}\""
-            echo "cache_dir=\"${service_parent_install_dir}/omniverse/cache\""
-            echo "gui_app=\"${desktop_app}\""
-            cat workflows/omniverse/app/gui-launcher.sh
-          } > launch-gui.sh
-          chmod +x launch-gui.sh
-          echo "LAUNCHER=${PWD}/launch-gui.sh" | tee -a $OUTPUTS
-          bash workflows/omniverse/app/scheduler-directives.sh
+          bash workflows/omniverse/app/create-launcher.sh
 
   desktop:
     needs:
@@ -227,6 +215,11 @@ jobs:
             description: Empty pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 into the install directory once.
             optional: true
             tooltip: A SIF built with build-container.sh from the workflow's isaac-sim.def, on a filesystem the desktop's node sees.
+          sif_registry:
+            type: string
+            hidden: true
+            default: ghcr.io/parallelworks/isaac-sim:6.2.0.1
+            label: The prebuilt SIF's ORAS reference; its tag names the file in the install directory
           install_dir:
             type: string
             label: Install directory

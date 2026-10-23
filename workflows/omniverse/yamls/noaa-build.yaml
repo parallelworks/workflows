@@ -47,6 +47,7 @@ jobs:
           software_runtime="${{ inputs.software.runtime }}"
           software_image="${{ inputs.software.image }}"
           software_sif="${{ inputs.software.sif }}"
+          software_sif_registry="${{ inputs.software.sif_registry }}"
           EOF
           # Remove empty and undefined variables
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
@@ -67,23 +68,10 @@ jobs:
       - name: Write Manifest
         run: |
           source inputs.sh
-          # The form's text wins; else the source's manifest.yaml; else the bundled example's
           cat <<'PW_MANIFEST_EOF' > manifest-form.yaml
           ${{ inputs.build.manifest }}
           PW_MANIFEST_EOF
-          sed -i '/^\s*undefined\s*$/d' manifest-form.yaml
-          if grep -q '[^[:space:]]' manifest-form.yaml; then
-            manifest_file="${PWD}/manifest-form.yaml"
-          elif [ -n "${scene_dir}" ] && [ -f "${scene_dir}/manifest.yaml" ]; then
-            manifest_file="${scene_dir}/manifest.yaml"
-          elif [ -n "${scene_dir}" ]; then
-            echo "::error title=Error::The source ${scene_dir} has no manifest.yaml and the form's manifest is empty"
-            exit 1
-          else
-            manifest_file="${PWD}/workflows/omniverse/app/examples/build/manifest.yaml"
-          fi
-          echo "::notice::Manifest: ${manifest_file}"
-          echo "export manifest_file=\"${manifest_file}\"" >> inputs.sh
+          bash workflows/omniverse/app/select-manifest.sh
       - name: Create Build Script
         run: |
           source inputs.sh
@@ -128,22 +116,7 @@ jobs:
               ${{ needs.preprocessing.outputs.PBS_RESOURCE_DIRECTIVE }}
               ${{ inputs.cluster.pbs.scheduler_directives }}
       - name: Check Exit Status
-        run: |
-          exit_file="${{ needs.preprocessing.outputs.EXIT_FILE }}"
-          if [ ! -f "${exit_file}" ]; then
-            echo "::error title=Error::No exit status in ${exit_file}: the build script did not run to its end (killed, walltime exceeded, node failure); the tail of its output follows"
-            tail -n 40 run.*.out 2>/dev/null
-            exit 1
-          fi
-          status=$(cat "${exit_file}")
-          if [ "${status}" != "0" ]; then
-            echo "::error title=Error::The build exited with status ${status}; the tail of its output follows"
-            tail -n 40 run.*.out 2>/dev/null
-            exit 1
-          fi
-          scene=$(python3 -c "import json; print(json.load(open('build/build.json'))['scene'])")
-          echo "::notice::The scene is ${PWD}/build/${scene}, with its assets under build/assets/; give that directory, or where it was copied, as the render workflow's source"
-          echo "SCENE=${PWD}/build/${scene}" | tee -a $OUTPUTS
+        run: bash workflows/omniverse/app/check-build.sh "${{ needs.preprocessing.outputs.EXIT_FILE }}"
 
 'on':
   execute:
@@ -353,6 +326,11 @@ jobs:
             hidden: ${{ inputs.software.runtime != 'omniverse-singularity' }}
             ignore: ${{ .hidden }}
             tooltip: A SIF built with build-container.sh from the workflow's isaac-sim.def, on a filesystem the build node sees.
+          sif_registry:
+            type: string
+            hidden: true
+            default: ghcr.io/parallelworks/isaac-sim:6.2.0.1
+            label: The prebuilt SIF's ORAS reference; its tag names the file in the install directory
           install_dir:
             type: string
             label: Install directory

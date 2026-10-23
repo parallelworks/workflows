@@ -10,7 +10,8 @@ from the render directory. Standard library only, so the login node's own python
 """
 import argparse
 import os
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+from socketserver import ThreadingMixIn
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -55,6 +56,10 @@ class Handler(SimpleHTTPRequestHandler):
         pass
 
 
+class Server(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, required=True)
@@ -63,7 +68,7 @@ def main():
     args = parser.parse_args()
     Handler.web_dir = os.path.abspath(args.web)
     Handler.render_dir = os.path.abspath(args.render)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = Server(("127.0.0.1", args.port), Handler)
     print(f"Serving {Handler.render_dir} on http://127.0.0.1:{args.port}", flush=True)
     server.serve_forever()
 

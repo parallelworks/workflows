@@ -6,10 +6,11 @@
 #          three functions are what the templates call.
 # Required Environment Variables:
 #   - software_sif: optional; a SIF of your own, else the one the controller pulled
+#     from software_sif_registry (its tag names the file)
 #   - service_parent_install_dir, cache_dir, app_dir, container_env, container_binds
 ################################################################################
 
-container_sif="${software_sif:-${service_parent_install_dir}/omniverse/containers/isaac-sim-6.2.0.1.sif}"
+container_sif="${software_sif:-${service_parent_install_dir}/omniverse/containers/isaac-sim-${software_sif_registry##*:}.sif}"
 
 runtime_setup() {
     if ! which singularity > /dev/null 2>&1; then
@@ -41,11 +42,12 @@ runtime_setup() {
 }
 
 # The script is a child of this job, so the submitter's process-group kill
-# reaches it; cancel.sh covers a Kit process that outlives its starter
+# reaches it; cancel.sh covers the Kit interpreter when it outlives its starter
+# (its command line carries the script and the tag, the starter's only python.sh)
 write_cancel_script() {
     cat > cancel.sh <<CANCELEOF
 #!/bin/bash
-pkill -TERM -f "python.sh .* --tag ${PW_RUN_SLUG}( |$)" > /dev/null 2>&1 || true
+pkill -TERM -f "(run|build)[.]py .*--tag ${PW_RUN_SLUG}( |$)" > /dev/null 2>&1 || true
 CANCELEOF
     chmod +x cancel.sh
 }

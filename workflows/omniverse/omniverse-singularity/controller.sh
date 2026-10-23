@@ -10,9 +10,10 @@ set -o pipefail
 # Called by: Workflow preprocessing step
 #
 # Required Environment Variables:
-#   - service_frames, service_resolution, service_renderer: the render settings
-#   - service_scene: optional; a USD file on the cluster's filesystem
+#   - service_*, files_*: the form, checked by app/check-inputs.sh (the builder and
+#     the desktop have no service_* fields)
 #   - software_sif: optional; a SIF you already have (empty pulls one)
+#   - software_sif_registry: the ORAS reference of the prebuilt SIF
 #   - service_parent_install_dir: where omniverse/cache (Isaac Sim's home shared by
 #     runs) and omniverse/containers (the SIF) go
 ################################################################################
@@ -26,11 +27,11 @@ if [ -n "${software_sif}" ]; then
         exit 1
     fi
 else
-    container_sif="${service_parent_install_dir}/omniverse/containers/isaac-sim-6.2.0.1.sif"
+    container_sif="${service_parent_install_dir}/omniverse/containers/isaac-sim-${software_sif_registry##*:}.sif"
     mkdir -p "$(dirname "${container_sif}")"
     if ! [ -s "${container_sif}" ]; then
         echo "::group::Isaac Sim SIF Download"
-        oras_pull_file ghcr.io/parallelworks/isaac-sim:6.2.0.1 isaac-sim-6.2.0.1.sif "${container_sif}"
+        oras_pull_file "${software_sif_registry}" "$(basename "${container_sif}")" "${container_sif}"
         if ! [ -s "${container_sif}" ]; then
             echo "::error title=Error::Failed to download ${container_sif}"
             exit 1

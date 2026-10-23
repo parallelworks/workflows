@@ -155,10 +155,10 @@ def vector(value, name, default):
 
 
 def place(prim, obj):
-    xform = UsdGeom.Xformable(prim)
-    xform.AddTranslateOp().Set(Gf.Vec3d(*vector(obj.get("position"), "position", (0.0, 0.0, 0.0))))
-    xform.AddRotateXYZOp().Set(Gf.Vec3f(*vector(obj.get("rotation"), "rotation", (0.0, 0.0, 0.0))))
-    xform.AddScaleOp().Set(Gf.Vec3d(*vector(obj.get("scale"), "scale", (1.0, 1.0, 1.0))))
+    xform = UsdGeom.XformCommonAPI(prim)
+    xform.SetTranslate(Gf.Vec3d(*vector(obj.get("position"), "position", (0.0, 0.0, 0.0))))
+    xform.SetRotate(Gf.Vec3f(*vector(obj.get("rotation"), "rotation", (0.0, 0.0, 0.0))))
+    xform.SetScale(Gf.Vec3f(*vector(obj.get("scale"), "scale", (1.0, 1.0, 1.0))))
 
 
 def apply_physics(prim, obj):
@@ -227,8 +227,10 @@ for index, obj in enumerate(manifest["objects"]):
         kind = "robot"
     else:
         fail(f"{name}: {obj['file']} is not a mesh ({', '.join(MESH_EXTENSIONS)}), a USD file or a robot (.urdf, .xml)")
+    # The asset goes under a child prim: a converted file brings transform ops of its
+    # own, and the placement must not collide with them
     prim = stage.DefinePrim(f"/World/{name}", "Xform")
-    prim.GetReferences().AddReference(asset)
+    stage.DefinePrim(f"/World/{name}/geometry", "Xform").GetReferences().AddReference(asset)
     place(prim, obj)
     paint(prim, obj, index)
     if kind == "robot":

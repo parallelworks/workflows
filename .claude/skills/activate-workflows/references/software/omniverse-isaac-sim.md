@@ -68,7 +68,13 @@
   apply_collision_apis=True)`), `isaacsim.core.experimental.materials.PreviewSurfaceMaterial`;
   `isaacsim.core.experimental.utils.app.play()`; `SimulationManager.set_physics_dt`.
   `RigidPrim.get_world_poses()` returns Warp arrays (`.numpy()` before indexing);
-  `set_velocities(linear_velocities=[[x, y, z]])` after `play()`.
+  `set_velocities(linear_velocities=[[x, y, z]])` after `play()`. **Create a `RigidPrim`
+  view before `play()` when the scene authors `physics:velocity`** (verified 2026-10-23,
+  awsgpu): wrapping the bodies once the simulation runs zeroes their velocities (the
+  thrown ball of the fracture scene stopped after three physics steps and fell
+  straight down); created before play, the authored throw survives. Writing poses back
+  into USD during play (`with use_backend("usd"): set_world_poses(...)`, for a snapshot)
+  does not disturb the simulation.
 - Capture: `rep.functional.create.camera(position, look_at, look_at_up_axis, focal_length)`,
   `rep.create.render_product(cam, (W, H))`, `DiskBackend` + `BasicWriter(rgb=True)`
   (writes `rgb_NNNN.png` and a `metadata.txt`), `rep.orchestrator.step(rt_subframes,

@@ -262,8 +262,10 @@ def simulate(args, scene, extras=None, on_frame=None):
     poses_path = os.path.join(args.out, "poses.csv")
     rep.orchestrator.set_capture_on_play(False)
     print(f"Simulating {len(paths)} rigid bodies for {args.frames} frames at {args.fps} per second", flush=True)
-    _play(args)
+    # The view before play: wrapping the bodies once the simulation runs zeroes the
+    # velocities the scene authored (a thrown ball stops dead)
     bodies = RigidPrim(paths=paths)
+    _play(args)
     snapshots = []
     loop_started = time.time()
 

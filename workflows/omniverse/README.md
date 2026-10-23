@@ -80,7 +80,7 @@ browser desktop.
 | Example | What runs | Outputs |
 |---|---|---|
 | **Pyramid of blocks** (default) | thirty colored cubes on a floor and a steel ball thrown at them; the throw is the ball's `physics:velocity` in the USD | frames |
-| **Fracture** | a 2.4 m wall prefractured into 24 chunks with the Blast SDK, held by 57 breakable joints, hit by a 350 kg steel ball | frames, the count of broken joints |
+| **Fracture** | a 2.4 m wall prefractured into 24 chunks with the Blast SDK, held by 57 breakable joints, hit by a 190 kg steel ball | frames, the count of broken joints |
 | **Your scene, as is** | the USD file from the source input, framed from its objects' bounds (a floor is ignored), lit when it has no light, its timeline played | frames |
 | **Physics only** | the source's scene (or the fracture wall) simulated with no camera: every body's pose per frame, and the whole stage as USD at intervals | `poses.csv`, `snapshots/frame_NNNN.usda` |
 
@@ -134,8 +134,10 @@ login node from source with no account (gcc 11 needs a few warning flags relaxed
    sphere with steel's density and an initial velocity.
 
 At run time PhysX does the rest: the joints near the impact break, the pieces fly, the
-far ones hold. The fracture script counts the joints PhysX disabled into `render.json`
-and the page shows it. Blast's own runtime (bond health, damage programs) is not
+far ones hold. The fracture script counts the joints from PhysX's joint-break events
+into `render.json` (the USD joint itself stays as authored) and the page shows it. A
+physics-only run of the same scene (the default of that example) writes the pieces'
+poses and the USD snapshots instead. Blast's own runtime (bond health, damage programs) is not
 involved, which is what Kit 110 leaves available. To fracture a mesh of your own, build
 the SDK and the tool once as `fracture/build.sh` describes, then:
 

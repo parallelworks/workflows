@@ -1,8 +1,9 @@
 # NVIDIA Omniverse: Isaac Sim in a container
 
-> Learned building `workflows/omniverse` (2026-10-22, `awsgpu`: L4, driver 610.43.02,
-> Docker 29 with the containerd image store, singularity-ce 4.4.2 in `--userns` mode).
-> The workflow's README covers the design; this file lists the facts and traps.
+> Learned building `workflows/omniverse` (2026-10-22 and 2026-10-23, `awsgpu`: L4, driver
+> 610.43.02, Docker 29 with the containerd image store, singularity-ce 4.4.2 in `--userns`
+> mode). The workflow's README covers the design and the ecosystem; this file lists the
+> facts and traps.
 
 ## Which image
 
@@ -70,3 +71,78 @@
 - `isaacsim.core.experimental.utils.stage.create_new_stage()` /
   `omni.usd.get_context().open_stage(path)`; a user stage's bounds from
   `UsdGeom.BBoxCache(...).ComputeWorldBound(stage.GetPseudoRoot())`.
+
+## Scheduled jobs
+
+- **A SLURM job gets one core by default, and Kit stalls on it** (verified 2026-10-23,
+  awsgpu, run pet-earwig): `task/affinity` pinned the render to core 0 (`Cpus_allowed_list:
+  0`), `carb.tasking is likely stuck` repeated, Replicator logged `renderer failed to
+  advance to the scheduled frame`, and the run sat at frame 1 for 17 minutes. Request
+  cores ahead of the form's directives (`--cpus-per-task=8`, PBS `select=1:ncpus=8`;
+  the workflow's `cluster.cpus` input), as the GPU request is composed.
+
+## Physics engines (Isaac Sim 6.2)
+
+- The image ships `isaacsim.physics.newton` (Newton 1.6.1, MuJoCo Warp) beside PhysX
+  (`omni.physx` 110.4.4), but the python experience (`isaacsim.exp.base.python.kit`)
+  does not enable it, so a standalone script gets PhysX. For Newton pass
+  `extra_args=["--/exts/isaacsim.core.simulation_manager/default_engine=newton",
+  "--enable", "isaacsim.physics.newton", "--enable", "isaacsim.physics.newton.tensors"]`
+  to `SimulationApp` (the nut-and-bolt standalone example does), then
+  `SimulationManager.get_active_physics_engine()` reports it;
+  `SimulationManager.switch_physics_engine("newton")` switches before play. The GUI's
+  `isaac-sim.newton.sh` is the same with PhysX disabled.
+- Newton rejects bodies without mass or collision geometry, reversed joints and
+  non-unit `metersPerUnit`; it is experimental and tested by NVIDIA on a handful of
+  robots. The image's `/isaac-sim/skills/` directory holds NVIDIA's own agent skills
+  (physics-simulation, physx-to-newton-conversion, urdf-mjcf-to-usd-conversion, ...),
+  worth reading before guessing an API.
+
+## Blast (destruction)
+
+- **`omni.blast` is not in Kit 110's extension registry** (verified 2026-10-23: a
+  headless `SimulationApp`, `sync_registry()`, `fetch_extension_versions("omni.blast")`
+  returned no package in `kit/prod/default` nor `kit/prod/sdk`, and enabling it failed
+  with "No versions of omni.blast"), nor in the image. Its documentation stopped at
+  Kit 104 (2022). Destruction at run time therefore has no Kit extension here.
+- **The Blast SDK builds from source on a cloud login node** (Rocky 9, gcc 11.5,
+  cmake 3.31; `NVIDIA-Omniverse/PhysX`, `blast/`, BSD-3): `./setup.sh` pulls its
+  dependencies through packman from NVIDIA's CDN with no account; `./build.sh
+  --no-docker -r -t <target>` for `NvBlastGlobals`, `NvBlast`, `NvBlastTk`,
+  `NvBlastExtAuthoring` (the default build relaunches in a docker container, and the
+  test programs do not compile). gcc 11 needs `vla` dropped from `enablewarnings` and
+  `class-memaccess`, `maybe-uninitialized` added to `disablewarnings` in
+  `premake5.lua`, plus `<cstdio>` and `<limits>` includes in two sources. The SDK is
+  built with the pre-C++11 ABI (`-D_GLIBCXX_USE_CXX11_ABI=0` for anything linking it).
+  `workflows/omniverse/fracture/` prefractures a mesh with its authoring library
+  (Voronoi sites, `FractureTool`, `getBaseMesh` returns world-space triangles with
+  the cut faces marked by the interior material id) and `make-scene.py` turns the
+  chunks into rigid bodies joined by `PhysicsFixedJoint`s with `physics:breakForce`,
+  so PhysX breaks them at run time without Blast's runtime.
+
+## Importers and converters
+
+- `omni.kit.asset_converter` 6.1 (OBJ, STL, FBX, glTF) is in the image's extension
+  cache, enabled with `isaacsim.core.experimental.utils.app.enable_extension`; the
+  conversion is an async task (`create_converter_task(...).wait_until_finished()`,
+  the `standalone_examples/api/omni.kit.asset_converter` example). URDF and MJCF come
+  in through `isaacsim.asset.importer.urdf.URDFImporter(URDFImporterConfig(...)).import_urdf()`
+  and the MJCF pair (`pip_prebundle` packages of those extensions; the config fields are
+  documented in their `impl/config.py`). `scipy` is not in the image's Python; `numpy`,
+  `PIL` and `yaml` are, through `python.sh` only (the bare `kit/python/bin/python3` has
+  no site packages on its path). `pxr` is not importable without Kit: a standalone USD
+  script on the login node takes `pip install usd-core` in a venv.
+
+## The GUI in a VNC desktop
+
+- **Isaac Sim's GUI runs inside the KasmVNC desktop from the same SIF** (verified
+  2026-10-23 on awsgpu, driver 610.43.02): with the desktop's X socket directory and
+  `.Xauthority` (the kasmvnc job's `container_tmp/`) bound at `/tmp/.X11-unix` and
+  `/tmp/.Xauthority`, `DISPLAY=:N`, `--nv`, `/isaac-sim/isaac-sim.sh` created its window
+  on the Xvnc display and rendered the viewport at about 27 fps (RTX Real-Time 2.0,
+  886 MiB of the L4): Kit presents its Vulkan swapchain to the VNC X server without
+  VirtualGL (Vulkan is not GLX). NVIDIA's container page says the GUI does not work over
+  VNC; with this driver it does. Startup takes about 170 s from the SIF. `xwininfo
+  -root -tree` and `xdpyinfo` on the login node reach the display through a symlink
+  `/tmp/.X11-unix/X<N>` to the job's socket; a screenshot without `xwd` comes from
+  libX11 through ctypes in the container's Python (PIL is there).

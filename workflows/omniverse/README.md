@@ -5,8 +5,9 @@ cluster: a USD scene is simulated with PhysX or Newton and rendered with the RTX
 renderer, or simulated alone, by Isaac Sim running headless in a container, and the
 outputs are served as a page through a `pw` endpoint and copied to a bucket or a
 cluster path. Four examples show the shapes a run can take; a second variant builds USD
-scenes from meshes and robots; and Isaac Sim's own window opens in a platform desktop
-session from the same image. Nothing here needs an NVIDIA account.
+scenes from meshes and robots; and Isaac Sim's own window is meant to open in a
+platform desktop session from the same image (a platform-side blocker stands, see
+below). Nothing here needs an NVIDIA account.
 
 ```
 form ──► preprocessing ──► start script ──► run.py in the container ──► page ──► https://<endpoint>/

@@ -10,8 +10,8 @@ set -o pipefail
 # Called by: Workflow preprocessing step
 #
 # Required Environment Variables:
-#   - service_*, files_*: the form, checked by app/check-inputs.sh (the builder and
-#     the desktop have no service_* fields)
+#   - service_*, files_*: the form, checked by app/check-inputs.sh (the builder has
+#     no service_* fields)
 #   - software_sif: optional; a SIF you already have (empty pulls one)
 #   - software_sif_registry: the ORAS reference of the prebuilt SIF
 #   - service_parent_install_dir: where omniverse/cache (Isaac Sim's home shared by

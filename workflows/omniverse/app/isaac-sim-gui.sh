@@ -19,7 +19,7 @@ case "${1:-}" in
     *) echo "usage: $0 [newton]"; exit 1 ;;
 esac
 here="$(cd "$(dirname "$0")" && pwd)"
-sif="${OMNIVERSE_SIF:-$(ls -t "${here}"/containers/isaac-sim-*.sif 2> /dev/null | head -n 1)}"
+sif="${OMNIVERSE_SIF:-$(ls -t "${here}"/containers/isaac-sim-*.sif 2> /dev/null | head -n 1 || true)}"
 if [ -z "${sif}" ] || ! [ -f "${sif}" ]; then
     echo "No Isaac Sim image under ${here}/containers: run the omniverse workflow with the Singularity runtime once, or set OMNIVERSE_SIF" >&2
     exit 1
@@ -31,8 +31,8 @@ fi
 # The desktop's X authority file: the terminal exports it, or the VNC server's own
 xauth="${XAUTHORITY:-${HOME}/.Xauthority}"
 if ! [ -f "${xauth}" ]; then
-    xauth="${HOME}/.vnc/xauth-${DISPLAY#:}"
-    xauth="${xauth%%.*}"
+    display="${DISPLAY#:}"
+    xauth="${HOME}/.vnc/xauth-${display%%.*}"
 fi
 if ! [ -f "${xauth}" ]; then
     echo "No X authority file for ${DISPLAY} (XAUTHORITY unset, none under ~/.vnc)" >&2

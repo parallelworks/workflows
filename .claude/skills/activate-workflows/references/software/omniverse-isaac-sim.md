@@ -39,6 +39,14 @@
   shaders for about 150 s before its first frame; with the caches in place the first
   frame takes about 5 s and startup about 30 s (Docker) to 50 s (Singularity over FUSE).
 - `--network none` works for the built-in scene: nothing is fetched.
+- **The hardened cloud image keeps `/var` on a 15 GB partition** (awsgpu 2026-10-23, a
+  fresh instance; the day before it had room): Docker's `data-root` and containerd's
+  `root` both live there, so the workflow's free-space check refuses the 35 GB pull.
+  With both stores empty, `root = "/home/containerd"` in `/etc/containerd/config.toml`
+  (the commented default line), `"data-root": "/home/docker"` merged into
+  `/etc/docker/daemon.json` (keep the `nvidia` runtime entry) and `systemctl restart
+  containerd docker` moved them to the 160 GB `/home`; `docker info` then shows the new
+  root and the check reads containerd's root from the config file.
 - The NVIDIA NGX library (`libnvidia-ngx.so`) reaches neither container (the Docker
   toolkit's `all` capabilities and Singularity's `nvliblist.conf` both leave it out), so
   DLSS fails (`Failed to create NGX context`) and the real-time renderers come out

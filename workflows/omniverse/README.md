@@ -198,7 +198,11 @@ The desktop outlives the run until `pw endpoints delete kasmvnc-<run slug>`.
 Both keep Isaac Sim's home (its shader caches and logs) under
 `<install directory>/omniverse/cache`, shared by every run on the node, so the shaders
 compile once. Singularity is the one for clusters without Docker, or where Docker's
-storage sits on a small partition; a kernel that cannot mount a SIF (hardened images
+storage sits on a small partition: the hardened cloud images put `/var`, and with it
+Docker's and containerd's stores, on a 15 GB partition, which the job refuses at once
+(`root = "/home/containerd"` in `/etc/containerd/config.toml` and `"data-root":
+"/home/docker"` in `/etc/docker/daemon.json`, then a restart of both daemons, is what
+made the Docker tests run on awsgpu). A kernel that cannot mount a SIF (hardened images
 disable squashfs) still runs it in a user namespace, which the log says.
 
 ## Form

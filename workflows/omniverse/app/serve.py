@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Serve the gallery page over the frames a render wrote.
+"""Serve the page over the outputs a run wrote.
 
     serve.py --port PORT --web DIR --render DIR
 
 Static files (index.html, the stylesheet, the script, the theme and the fonts)
-come from the web directory; render.json and frames/ from the render directory.
-Standard library only, so the login node's own python3 (3.6 and up) serves it.
+come from the web directory; render.json, the frames, the poses and the USD files
+from the render directory. Standard library only, so the login node's own python3
+(3.6 and up) serves it.
 """
 import argparse
 import os
@@ -19,7 +20,9 @@ class Handler(SimpleHTTPRequestHandler):
     # its own mimetypes table says
     extensions_map = dict(SimpleHTTPRequestHandler.extensions_map,
                           **{".css": "text/css", ".js": "text/javascript", ".woff2": "font/woff2",
-                             ".json": "application/json", ".png": "image/png"})
+                             ".json": "application/json", ".png": "image/png", ".csv": "text/csv",
+                             ".usda": "text/plain", ".usd": "application/octet-stream",
+                             ".usdc": "application/octet-stream"})
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=self.web_dir, **kwargs)
@@ -28,7 +31,7 @@ class Handler(SimpleHTTPRequestHandler):
         # A path-based endpoint forwards its prefix: the page's <base> keeps the
         # relative URLs right, and the server only looks at the tail
         path = path.split("?", 1)[0].split("#", 1)[0]
-        for tail in ("render.json", "frames/"):
+        for tail in ("render.json", "frames/", "snapshots/", "poses.csv", "scene.usda"):
             at = path.find("/" + tail)
             if at >= 0:
                 rest = os.path.normpath(path[at + 1:]).lstrip("/")

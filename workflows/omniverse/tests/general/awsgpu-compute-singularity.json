@@ -7,13 +7,14 @@
     ],
     "leftover_patterns": [
       "serve.py --port",
-      "render.py --out",
+      "run.py --out",
       "pw endpoints run"
     ]
   },
   "resource": "pw://alvaro/awsgpu",
   "cluster": {
     "scheduler": true,
+    "cpus": 8,
     "gpus": 0,
     "slurm": {
       "is_enabled": true,
@@ -22,6 +23,7 @@
     }
   },
   "service": {
+    "example": "pyramid",
     "frames": 60,
     "resolution": "1280x720",
     "renderer": "RayTracedLighting"

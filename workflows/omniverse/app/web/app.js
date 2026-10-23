@@ -1,5 +1,6 @@
 // The flipbook: render.json lists the frames the render wrote; the page preloads them
 // and plays them back at the frame rate the render recorded, with a slider to scrub.
+// A physics-only run lists its outputs (poses.csv, USD snapshots) instead of frames.
 "use strict";
 
 const ICONS = {
@@ -42,15 +43,28 @@ function message(kind, text) {
   box.hidden = false;
 }
 
+function formatBytes(bytes) {
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} kB`;
+  return `${bytes} B`;
+}
+
 function describe(render) {
+  const rendered = render.frames && render.frames.length > 0;
   const rows = [
     ["Scene", render.scene],
-    ["Frames", `${render.frame_count} at ${render.width} × ${render.height}, played at ${render.fps} fps`],
-    ["Renderer", render.renderer],
+    ["Physics engine", render.engine],
+    [rendered ? "Frames" : "Simulated frames",
+      rendered ? `${render.frame_count} at ${render.width} × ${render.height}, played at ${render.fps} fps`
+        : `${render.frame_count} at ${render.fps} per second, ${render.bodies} rigid bodies`],
+    ["Renderer", rendered ? render.renderer : ""],
+    ["Joints broken", render.joints != null ? `${render.broken_joints} of ${render.joints}` : ""],
     ["GPU", render.gpu],
-    ["Render time", render.seconds != null ? `${render.seconds} s (${render.seconds_per_frame} s per frame after the first)` : ""],
+    [rendered ? "Render time" : "Simulation time",
+      render.seconds != null ? `${render.seconds} s (${render.seconds_per_frame} s per frame${rendered ? " after the first" : ""})` : ""],
     ["Software", `${render.software} in ${render.image}`],
     ["Host", render.host],
+    ["Copied to", render.delivered_to],
     ["Finished", render.finished],
   ];
   el("meta").innerHTML = rows
@@ -70,10 +84,19 @@ async function load() {
     return;
   }
   describe(render);
+  if (render.outputs && render.outputs.length) {
+    el("outputs-rows").innerHTML = render.outputs
+      .map((file) => `<tr><td><a href="${file.path}">${file.path}</a></td><td>${formatBytes(file.bytes)}</td></tr>`)
+      .join("");
+    el("outputs").hidden = false;
+  }
   if (!render.frames || !render.frames.length) {
-    message("error", "The render wrote no frames; the run's log says why.");
+    if (!render.outputs || !render.outputs.length) {
+      message("error", "The run wrote neither frames nor outputs; the run's log says why.");
+    }
     return;
   }
+  el("playback").hidden = false;
   state.fps = render.fps || 24;
   state.frames = render.frames;
   // Preload so playback never waits on the network; the first frame shows at once

@@ -1,0 +1,7 @@
+Run pet-earwig: canceled (17m29s)
+Reason: canceledByUser
+
+No failed jobs or steps.
+
+The SLURM job got one core (CPUs/Task=1, task/affinity pinned the render to core 0); Kit's task system stalled after frame 1 and the run was cancelled after 17 minutes.
+Fixed by the Cores per job input (--cpus-per-task ahead of the directives).

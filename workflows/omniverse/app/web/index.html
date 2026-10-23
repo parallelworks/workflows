@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Omniverse render</title>
-  <meta name="description" content="Frames rendered on the GPU by an NVIDIA Omniverse application">
+  <title>Omniverse run</title>
+  <meta name="description" content="A scene rendered or simulated on the GPU by an NVIDIA Omniverse application">
   <script>
     (function () {
       // The page is served at "/" behind a subdomain endpoint or under a prefix
@@ -34,8 +34,8 @@
         <span class="page-mark" aria-hidden="true">
           <svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.75 13.5 5v6L8 14.25 2.5 11V5ZM2.5 5 8 8.25 13.5 5M8 8.25v6"/></svg>
         </span>
-        <h1 class="page-title">Omniverse render</h1>
-        <p class="page-description">Frames rendered on the GPU by Isaac Sim, an NVIDIA Omniverse application</p>
+        <h1 class="page-title">Omniverse run</h1>
+        <p class="page-description">A scene rendered or simulated on the GPU by Isaac Sim, an NVIDIA Omniverse application</p>
       </div>
       <div class="page-actions">
         <button id="theme" class="btn btn-ghost btn-icon" type="button" aria-label="Color mode: the device's, light or dark">
@@ -48,7 +48,7 @@
   </header>
   <main class="content">
     <div id="message" class="callout" hidden></div>
-    <section class="panel" aria-label="Playback">
+    <section id="playback" class="panel" aria-label="Playback" hidden>
       <div class="viewer">
         <img id="frame" alt="" title="Click to play or pause; the arrow keys step">
       </div>
@@ -62,10 +62,20 @@
         <span id="counter" class="counter">0 / 0</span>
       </div>
     </section>
-    <section class="panel" aria-label="About this render">
+    <section id="outputs" class="panel" aria-label="Outputs" hidden>
       <div class="panel-header">
-        <h2 class="panel-title">About this render</h2>
-        <span class="panel-note">What the run rendered, and where</span>
+        <h2 class="panel-title">Outputs</h2>
+        <span class="panel-note">The poses of every body per frame, and the scene as USD at intervals</span>
+      </div>
+      <table class="table">
+        <thead><tr><th>File</th><th>Size</th></tr></thead>
+        <tbody id="outputs-rows"></tbody>
+      </table>
+    </section>
+    <section class="panel" aria-label="About this run">
+      <div class="panel-header">
+        <h2 class="panel-title">About this run</h2>
+        <span class="panel-note">What the run did, and where</span>
       </div>
       <div class="panel-body">
         <dl id="meta" class="dl"></dl>

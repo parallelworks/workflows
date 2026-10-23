@@ -80,6 +80,15 @@ button { cursor: pointer; }
   .dl dt { padding-bottom: 0; border-bottom: 0; }
 }
 
+/* Table (compact): the muted header row, ruled rows, links in the link color */
+.table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.table th { padding: 0.5rem 0.75rem; background: var(--theme-muted-panel-bg); text-align: left; font-size: 0.75rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--theme-muted-text-color); }
+.table td { padding: 0.375rem 0.75rem; border-top: 1px solid var(--theme-border); white-space: nowrap; }
+.table td:last-child { color: var(--theme-muted-text-color); font-family: var(--font-mono); font-size: 0.8125rem; }
+.table tr:hover td { background: var(--theme-panel-hover); }
+.table a { color: var(--theme-link); text-decoration: none; }
+.table a:hover { text-decoration: underline; }
+
 /* Callout: the tone surface, the vivid icon */
 .callout { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem 1rem; border: 1px solid color-mix(in srgb, var(--theme-info) 25%, transparent); border-radius: var(--radius-xl); background: var(--theme-info-muted); color: var(--theme-info-text); font-size: 0.875rem; line-height: 1.25rem; }
 .callout svg { width: 1.25rem; height: 1.25rem; flex-shrink: 0; color: var(--theme-info); }

@@ -1,11 +1,13 @@
 # yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
 # NVIDIA Omniverse on a GPU node: Isaac Sim (an Omniverse Kit application, the one
-# NVIDIA serves publicly on NGC) renders a short physics animation headless with the
-# RTX renderer, in a Docker or Singularity container on the login node or a SLURM/PBS
-# compute node,
-# and the frames are served as a flipbook page through the pw endpoint
-# omniverse-<run slug>, which outlives the run until the endpoint is deleted. Running it
-# accepts NVIDIA's Isaac Sim license (the container's ACCEPT_EULA):
+# NVIDIA serves publicly on NGC) runs one of the examples (a pyramid of blocks, a
+# prefractured wall, a scene of yours, a physics-only run) or a script of yours
+# headless, with PhysX or Newton and the RTX renderer, in a Docker or Singularity
+# container on the login node or a SLURM/PBS compute node. The scene comes from a
+# bucket or a cluster path, the outputs go back to one, and a page serves them
+# through the pw endpoint omniverse-<run slug>, which outlives the run until the
+# endpoint is deleted. Running it accepts NVIDIA's Isaac Sim license (the container's
+# ACCEPT_EULA):
 # https://www.nvidia.com/en-us/agreements/enterprise-software/isaac-sim-additional-software-and-materials-license/
 permissions:
   - '*'
@@ -34,10 +36,17 @@ jobs:
           # Write input form variables and ensure the pw agent is in the PATH
           cat <<'EOF' >> inputs.sh
           PATH=$HOME/pw:$PATH
+          cluster_scheduler="${{ inputs.cluster.scheduler }}"
+          cluster_gpus="${{ inputs.cluster.gpus }}"
+          cluster_cpus="${{ inputs.cluster.cpus }}"
+          service_example="${{ inputs.service.example }}"
+          service_engine="${{ inputs.service.engine }}"
           service_frames="${{ inputs.service.frames }}"
           service_resolution="${{ inputs.service.resolution }}"
           service_renderer="${{ inputs.service.renderer }}"
-          service_scene="${{ inputs.service.scene }}"
+          service_snapshots="${{ inputs.service.snapshots }}"
+          files_source="${{ inputs.files.source }}"
+          files_destination="${{ inputs.files.destination }}"
           service_parent_install_dir="${{ inputs.software.install_dir }}"
           software_runtime="${{ inputs.software.runtime }}"
           software_image="${{ inputs.software.image }}"
@@ -56,44 +65,14 @@ jobs:
           cp inputs.sh controller-${PW_JOB_ID}.sh
           cat workflows/omniverse/${{ inputs.software.runtime }}/controller.sh >> controller-${PW_JOB_ID}.sh
           bash controller-${PW_JOB_ID}.sh
+      - name: Fetch Source
+        run: |
+          source inputs.sh
+          bash workflows/omniverse/app/fetch-source.sh
       - name: Create Service Script
         run: |
-          rm -f HOSTNAME SESSION_PORT job.ended job.started
-          # This script renders the frames and then starts the service
-          cp inputs.sh start-service-${PW_JOB_ID}.sh
-
-          # Write code common to all services
-          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
-
-          cleanup() {
-              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
-              echo "::notice::Cleaning up..."
-              if [ -f cancel.sh ]; then
-                  mv cancel.sh cancel.sh.submitted
-                  echo "echo Cleanup script was already executed" > cancel.sh
-                  bash cancel.sh.submitted
-              fi
-              kill -- -$$
-          }
-
-          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
-
-          echo "::notice::Starting service"
-          EOF
-          cat workflows/omniverse/${{ inputs.software.runtime }}/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
-          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
-          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
-          # The GPU request goes ahead of the form's directives, so a directive typed
-          # there wins: sbatch and qsub keep the last value of a repeated option
-          gpus="${{ inputs.cluster.gpus }}"
-          slurm_gpus=""
-          pbs_gpus=""
-          if [ "${{ inputs.cluster.scheduler }}" = true ] && [[ "${gpus}" =~ ^[0-9]+$ ]] && [ "${gpus}" -gt 0 ]; then
-            slurm_gpus="#SBATCH --gres=gpu:${gpus}"
-            pbs_gpus="#PBS -l select=1:ngpus=${gpus}"
-          fi
-          echo "SLURM_GPU_DIRECTIVE=${slurm_gpus}" | tee -a $OUTPUTS
-          echo "PBS_GPU_DIRECTIVE=${pbs_gpus}" | tee -a $OUTPUTS
+          source inputs.sh
+          bash workflows/omniverse/app/create-start-script.sh service
 
   session_runner:
     needs:
@@ -123,12 +102,13 @@ jobs:
             partition: ${{ inputs.cluster.slurm.partition }}
             time: ${{ inputs.cluster.slurm.time }}
             scheduler_directives: |
+              ${{ needs.preprocessing.outputs.SLURM_CPU_DIRECTIVE }}
               ${{ needs.preprocessing.outputs.SLURM_GPU_DIRECTIVE }}
               ${{ inputs.cluster.slurm.scheduler_directives }}
           pbs:
             is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
             scheduler_directives: |
-              ${{ needs.preprocessing.outputs.PBS_GPU_DIRECTIVE }}
+              ${{ needs.preprocessing.outputs.PBS_RESOURCE_DIRECTIVE }}
               ${{ inputs.cluster.pbs.scheduler_directives }}
       - name: Cancel Wait for Endpoint
         uses: parallelworks/cancel-jobs
@@ -170,7 +150,7 @@ jobs:
         type: compute-clusters
         label: GPU host
         include-workspace: false
-        tooltip: The render runs on its login node, or on a compute node when submitted to the scheduler; the frames are served from where they were rendered
+        tooltip: The run happens on its login node, or on a compute node when submitted to the scheduler; the page is served from where the outputs were written
       cluster:
         hidden: ${{ inputs.resource.schedulerType == '' }}
         ignore: ${{ inputs.resource.schedulerType == '' }}
@@ -182,11 +162,25 @@ jobs:
             default: false
             label: Submit to the scheduler
             description: Otherwise the job runs on the login node.
+          cpus:
+            type: number
+            label: Cores per job
+            description: Requested ahead of the directives below; a job gets one core by default, and Kit stalls on one.
+            default: 8
+            min: 1
+            max: 256
+            step: 1
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Requested as --cpus-per-task=N (PBS: -l select=1:ncpus=N) ahead of the directives
+              below, which can override it. With the scheduler's default of one core, Kit's task
+              system never advances past the first frame.
           gpus:
             type: number
             label: GPUs per job
-            description: Requested ahead of the directives below; 0 requests none.
-            default: 1
+            description: Requested ahead of the directives below; 0 requests none, which is right for cloud clusters.
+            default: 0
             min: 0
             max: 8
             step: 1
@@ -194,8 +188,9 @@ jobs:
             ignore: ${{ .hidden }}
             tooltip: |
               Requested as --gres=gpu:N (PBS: -l select=1:ngpus=N) ahead of the directives
-              below, which can override it. The render uses one GPU. 0 requests none, for a
-              partition whose nodes all have GPUs but no GRES configured.
+              below, which can override it. The run uses one GPU. The cloud clusters define
+              no GRES (every node of a GPU partition has its GPU), so 0 requests none; an
+              on-premises cluster that schedules GPUs as GRES takes 1.
           slurm:
             type: group
             label: SLURM directives
@@ -215,7 +210,7 @@ jobs:
                 resource: ${{ inputs.resource }}
               time:
                 label: Walltime
-                description: HH:MM:SS, or D-HH:MM:SS for runs over a day; the service ends with the job.
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day; the page ends with the job.
                 type: string
                 default: '02:00:00'
                 tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
@@ -248,12 +243,45 @@ jobs:
                   #PBS -l select=1:ncpus=8:ngpus=1
       service:
         type: group
-        label: Omniverse render
+        label: Omniverse run
         items:
           name:
             type: string
             hidden: true
             default: omniverse
+          example:
+            type: dropdown
+            label: Example
+            description: What runs; a run.py in the source replaces the example's script.
+            default: pyramid
+            options:
+              - value: pyramid
+                label: Pyramid of blocks (rigid bodies, rendered)
+              - value: fracture
+                label: Fracture (a prefractured wall hit by a projectile, rendered)
+              - value: scene
+                label: Your scene, opened as is (rendered)
+              - value: physics
+                label: Physics only (poses and USD snapshots, no frames)
+            tooltip: |
+              Each example is a USD scene plus a Python script under app/examples/<name>/.
+              Pyramid and fracture render their bundled scene unless the source holds one;
+              "your scene" needs the source; physics-only simulates the source's scene, or
+              the fracture wall, and writes poses.csv and USD snapshots instead of frames.
+          engine:
+            type: dropdown
+            label: Physics engine
+            description: PhysX is Omniverse's default; Newton is the open-source engine NVIDIA ships as experimental.
+            default: physx
+            options:
+              - value: physx
+                label: PhysX
+              - value: newton
+                label: Newton (experimental)
+            tooltip: |
+              Both read the same USD Physics schema. Newton (NVIDIA, Disney Research and
+              Google DeepMind, Apache 2.0) is opt-in in Isaac Sim 6: bodies need mass and
+              collision geometry, and some PhysX-only traits are rejected.
           frames:
             type: number
             label: Frames
@@ -261,11 +289,13 @@ jobs:
             default: 90
             min: 1
             step: 1
-            tooltip: Every frame is rendered and written as a PNG; the render takes about a second per frame on a data-center GPU once the shaders are cached, plus a few minutes the first time.
+            tooltip: Every frame is rendered and written as a PNG (or, physics only, its poses recorded); a frame takes about a second on a data-center GPU once the shaders are cached, plus a few minutes the first time.
           resolution:
             type: dropdown
             label: Resolution
             default: 1280x720
+            hidden: ${{ inputs.service.example == 'physics' }}
+            ignore: ${{ .hidden }}
             options:
               - value: 640x360
                 label: 640 × 360
@@ -278,6 +308,8 @@ jobs:
             label: Renderer
             description: RTX Real-Time is the fastest; path tracing is slower and more realistic.
             default: RayTracedLighting
+            hidden: ${{ inputs.service.example == 'physics' }}
+            ignore: ${{ .hidden }}
             options:
               - value: RayTracedLighting
                 label: RTX Real-Time (ray-traced lighting)
@@ -285,16 +317,37 @@ jobs:
                 label: RTX Real-Time Path Tracing
               - value: PathTracing
                 label: RTX Path Tracing (interactive, slowest)
-          scene:
+          snapshots:
+            type: number
+            label: Snapshot every
+            description: Frames between USD snapshots of the scene; 0 writes only the last frame's.
+            default: 30
+            min: 0
+            step: 1
+            hidden: ${{ inputs.service.example != 'physics' }}
+            ignore: ${{ .hidden }}
+            tooltip: A snapshot is the whole stage with every body where it is at that frame, as a .usda file to open in any USD tool; the poses of every frame are in poses.csv regardless.
+      files:
+        type: group
+        label: Files in and out
+        items:
+          source:
             type: string
-            label: USD scene
-            description: Absolute path of a .usd, .usda or .usdc file on the cluster; empty renders the built-in scene of falling blocks.
+            label: Scene and script source
+            description: A bucket URI (pw://, s3://, gs://) or an absolute path on the cluster; empty runs the bundled example.
             optional: true
             tooltip: |
-              The stage is opened as is, framed from its bounds by an orbiting camera, lit
-              with a dome light when it has no light, and its timeline played: physics and
-              animation in the file run during the frames. Keep it on a filesystem the
-              render node sees.
+              A USD file (.usd, .usda, .usdc, .usdz), or a directory holding scene.usd* (or one
+              USD file) and whatever it references by relative path, and optionally a run.py
+              that replaces the example's script (it takes the same arguments; see
+              app/examples/). A bucket directory is copied to the job directory as a whole;
+              a cluster path is read in place.
+          destination:
+            type: string
+            label: Results destination
+            description: A bucket URI or an absolute path on the cluster; the outputs are copied to <destination>/<run slug>/ when the run ends. Empty leaves them in the job directory.
+            optional: true
+            tooltip: The page serves the local copy either way; the frames, render.json and the scene (or poses.csv and the snapshots) are copied as they are.
       software:
         type: group
         label: Software
@@ -311,12 +364,12 @@ jobs:
               - value: omniverse-singularity
                 label: Singularity / Apptainer
             tooltip: |
-              Docker: the image is pulled on the node that renders (sudo docker when the user
-              is not in the docker group) into Docker's own storage, which needs about 35 GB
-              free; the job fails at once when it has less. Singularity: the login node pulls
-              ghcr.io/parallelworks/isaac-sim:6.2.0.1 (the same image as a SIF, 11 GB) into the
-              install directory once, and every node runs it as your user; for clusters
-              without Docker.
+              Docker: the image is pulled on the node that runs the job (sudo docker when the
+              user is not in the docker group) into Docker's own storage, which needs about
+              35 GB free; the job fails at once when it has less. Singularity: the login node
+              pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 (the same image as a SIF, 11 GB)
+              into the install directory once, and every node runs it as your user; for
+              clusters without Docker.
           image:
             type: string
             label: Container image

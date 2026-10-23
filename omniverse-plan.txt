@@ -1,0 +1,63 @@
+Omniverse workflow: possible work for the Navy group
+====================================================
+
+Their needs, as stated: a central repo for their workflows (decided: OpenUSD files
+on buckets) and the physics engine side (assumed: fracture, NVIDIA Blast). Nothing
+below needs NVIDIA's browser streaming (WebRTC over UDP) or Kubernetes, and nothing
+needs an NVIDIA account.
+
+Still to ask the group
+- What they author in and what formats they bring (USD, OBJ/STL, STEP, URDF).
+- What they want back: frames and video, fractured geometry over time, USD snapshots.
+
+Finish what exists
+1. SLURM compute-node test row, submitted with no GRES request (cloud clusters
+   define none); the GPU request stays a form option for on-prem clusters, off by
+   default. Then switch the checkout branch to canary and open the PR.
+2. README: a short visual section on the Omniverse ecosystem (Kit, USD, RTX, PhysX,
+   Blast, the apps, Nucleus and its state) and where the Isaac Sim container sits.
+3. Variants: general, noaa and hsp YAMLs (submitter variant, cluster fields, install
+   paths), each with its test rows on the cloud clusters; the Singularity runtime
+   is the one for the HSP (anonymous ghcr pull, FIPS, user-namespace SIF).
+
+Files in and out
+4. Scene and script source, optional: a bucket or a path on the target cluster's
+   filesystem; the scene copied as a directory (USD references are relative);
+   empty runs the bundled example.
+5. Results destination, optional: a bucket or a cluster path; empty leaves render/
+   in the job directory. The page keeps serving the local copy either way.
+
+Fracture (Blast)
+6. Check what the Isaac Sim container has: omni.blast is a Kit extension for
+   prefracture authoring and is not known to ship with Isaac Sim; see whether it
+   loads from the extension registry under Kit 110 or whether the example uses the
+   Blast SDK (BSD-3, in the PhysX GitHub repository) directly.
+7. Fracture example: a prefractured USD asset hit by a projectile, rendered with
+   the existing capture; the physics-only form of it writes the pieces' poses and
+   USD snapshots instead of frames.
+8. Engine input: PhysX (default) or Newton, selected per run.
+
+Examples, to show usage and modularity
+9. A set of examples, each a USD scene plus a Python script, selectable from the
+   form and defaulting to the current one: the pyramid (rigid bodies), the fracture
+   case, a user scene opened as is, a physics-only run with no rendering. The script
+   replaces render.py one for one; the start script, the page and the YAML stay.
+
+Authoring
+10. Headless USD builder step: import meshes or robots, assemble a scene from a
+    manifest, apply physics properties, write USD to the bucket or the cluster.
+    Batch shape.
+11. GUI in the GPU remote desktop: launch Isaac Sim's GUI (or a Composer build from
+    the Kit App Template) inside the kasmvnc desktop from the same SIF. Verify
+    first on awsgpu that Kit's Vulkan window presents through VirtualGL into the
+    VNC X server.
+
+Not needed for the stated needs; keep as options
+12. Sweeps: compose with doe and dakota over scene parameters, design-explorer page
+    beside it.
+13. Kit App Streaming on an ACTIVATE Kubernetes cluster for multi-user browser
+    sessions (NVIDIA's Helm charts, needs an NGC account).
+14. Single-user Kit streaming without Kubernetes: TURN relay over TCP carried by
+    pw forward. Untried.
+15. NVIDIA's S3 storage adapter so Kit apps read the bucket in place instead of
+    copying in and out. Pre-release, needs an NGC account.

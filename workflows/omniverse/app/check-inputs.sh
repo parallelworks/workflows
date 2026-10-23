@@ -1,31 +1,60 @@
 # The form's values, checked once for both runtimes (sourced by their controllers)
 
-if ! [[ "${service_frames}" =~ ^[0-9]+$ ]] || [ "${service_frames}" -lt 1 ]; then
-    echo "::error title=Error::Frames must be a whole number of at least 1, got '${service_frames}'"
+f_fail() {
+    echo "::error title=Error::$1"
     exit 1
-fi
-if ! [[ "${service_resolution}" =~ ^[0-9]+x[0-9]+$ ]]; then
-    echo "::error title=Error::Resolution must be WIDTHxHEIGHT, got '${service_resolution}'"
-    exit 1
-fi
-case "${service_renderer}" in
-    RayTracedLighting|RealTimePathTracing|PathTracing) ;;
-    *)
-        echo "::error title=Error::Unknown renderer '${service_renderer}': RayTracedLighting, RealTimePathTracing or PathTracing"
-        exit 1
-        ;;
-esac
-if [ -n "${service_scene}" ]; then
-    case "${service_scene}" in
-        /*) ;;
-        *)
-            echo "::error title=Error::The scene must be an absolute path on the cluster, got '${service_scene}'"
-            exit 1
-            ;;
+}
+f_bucket_uri() {
+    case "$1" in
+        pw://*|s3://*|gs://*|https://*) return 0 ;;
     esac
-    if ! [ -r "${service_scene}" ]; then
-        echo "::error title=Error::The scene ${service_scene} is not a readable file on $(hostname)"
-        exit 1
+    return 1
+}
+
+# The render form; the builder has none of these
+if [ -n "${service_example}" ]; then
+    case "${service_example}" in
+        pyramid|fracture|scene|physics) ;;
+        *) f_fail "Unknown example '${service_example}': pyramid, fracture, scene or physics" ;;
+    esac
+    case "${service_engine}" in
+        physx|newton) ;;
+        *) f_fail "Unknown physics engine '${service_engine}': physx or newton" ;;
+    esac
+    if ! [[ "${service_frames}" =~ ^[0-9]+$ ]] || [ "${service_frames}" -lt 1 ]; then
+        f_fail "Frames must be a whole number of at least 1, got '${service_frames}'"
+    fi
+    if ! [[ "${service_resolution}" =~ ^[0-9]+x[0-9]+$ ]]; then
+        f_fail "Resolution must be WIDTHxHEIGHT, got '${service_resolution}'"
+    fi
+    case "${service_renderer}" in
+        RayTracedLighting|RealTimePathTracing|PathTracing) ;;
+        *) f_fail "Unknown renderer '${service_renderer}': RayTracedLighting, RealTimePathTracing or PathTracing" ;;
+    esac
+    if [ -n "${service_snapshots}" ] && ! [[ "${service_snapshots}" =~ ^[0-9]+$ ]]; then
+        f_fail "Snapshot interval must be a whole number of frames (0 for the last frame only), got '${service_snapshots}'"
+    fi
+fi
+
+if [ -n "${files_source}" ] && ! f_bucket_uri "${files_source}"; then
+    case "${files_source}" in
+        /*) ;;
+        *) f_fail "The source must be a bucket URI (pw://, s3://, gs://) or an absolute path on the cluster, got '${files_source}'" ;;
+    esac
+    if ! [ -r "${files_source}" ]; then
+        f_fail "The source ${files_source} is not a readable file or directory on $(hostname)"
+    fi
+fi
+if [ "${service_example}" = scene ] && [ -z "${files_source}" ]; then
+    f_fail "The 'scene' example renders a scene of yours: give its USD file, or the directory holding it, as the source"
+fi
+if [ -n "${files_destination}" ] && ! f_bucket_uri "${files_destination}"; then
+    case "${files_destination}" in
+        /*) ;;
+        *) f_fail "The destination must be a bucket URI (pw://, s3://, gs://) or an absolute path on the cluster, got '${files_destination}'" ;;
+    esac
+    if ! mkdir -p "${files_destination}" 2> /dev/null || ! [ -w "${files_destination}" ]; then
+        f_fail "The destination ${files_destination} cannot be created or written by $(id -un) on $(hostname)"
     fi
 fi
 
@@ -34,6 +63,5 @@ if [ -z "${service_parent_install_dir}" ]; then
 fi
 mkdir -p "${service_parent_install_dir}/omniverse/cache"
 if ! [ -w "${service_parent_install_dir}/omniverse/cache" ]; then
-    echo "::error title=Error::${service_parent_install_dir}/omniverse is not writable by $(id -un)"
-    exit 1
+    f_fail "${service_parent_install_dir}/omniverse is not writable by $(id -un)"
 fi

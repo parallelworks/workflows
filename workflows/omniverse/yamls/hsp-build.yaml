@@ -1,0 +1,422 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+# The activate.hpc.mil variant: the hsp submitter and cluster form; Singularity by
+# default (the HPCMP systems have no Docker daemon, run FIPS kernels and need the SIF
+# in a user namespace), the GPU request as a form option for GRES-scheduled nodes.
+# The USD builder: a batch job that assembles a scene from a manifest headless in
+# the Isaac Sim container (meshes converted with Kit's asset converter, URDF and MJCF
+# robots imported, physics properties applied) on the login node or a SLURM/PBS GPU
+# node, and writes the scene with its assets to the job directory, a bucket or a
+# cluster path, ready for the render workflow's source input. No endpoint: the run
+# completes when the scene is written and fails when the build fails. Running it
+# accepts NVIDIA's Isaac Sim license (the container's ACCEPT_EULA):
+# https://www.nvidia.com/en-us/agreements/enterprise-software/isaac-sim-additional-software-and-materials-license/
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: omniverse
+          sparse_checkout:
+            - workflows/omniverse/app
+            - workflows/omniverse/${{ inputs.software.runtime }}
+            - tools/oras
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW environment variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          cluster_scheduler="${{ inputs.cluster.scheduler }}"
+          cluster_gpus="${{ inputs.cluster.gpus }}"
+          cluster_cpus="${{ inputs.cluster.cpus }}"
+          files_source="${{ inputs.files.source }}"
+          files_destination="${{ inputs.files.destination }}"
+          service_parent_install_dir="${{ inputs.software.install_dir }}"
+          software_runtime="${{ inputs.software.runtime }}"
+          software_image="${{ inputs.software.image }}"
+          software_sif="${{ inputs.software.sif }}"
+          EOF
+          # Remove empty and undefined variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh
+          # Add export to all lines
+          sed -i 's/^/export /' inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script checks the form's values and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/omniverse/${{ inputs.software.runtime }}/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Fetch Source
+        run: |
+          source inputs.sh
+          bash workflows/omniverse/app/fetch-source.sh
+      - name: Write Manifest
+        run: |
+          source inputs.sh
+          # The form's text wins; else the source's manifest.yaml; else the bundled example's
+          cat <<'PW_MANIFEST_EOF' > manifest-form.yaml
+          ${{ inputs.build.manifest }}
+          PW_MANIFEST_EOF
+          sed -i '/^\s*undefined\s*$/d' manifest-form.yaml
+          if grep -q '[^[:space:]]' manifest-form.yaml; then
+            manifest_file="${PWD}/manifest-form.yaml"
+          elif [ -n "${scene_dir}" ] && [ -f "${scene_dir}/manifest.yaml" ]; then
+            manifest_file="${scene_dir}/manifest.yaml"
+          elif [ -n "${scene_dir}" ]; then
+            echo "::error title=Error::The source ${scene_dir} has no manifest.yaml and the form's manifest is empty"
+            exit 1
+          else
+            manifest_file="${PWD}/workflows/omniverse/app/examples/build/manifest.yaml"
+          fi
+          echo "::notice::Manifest: ${manifest_file}"
+          echo "export manifest_file=\"${manifest_file}\"" >> inputs.sh
+      - name: Create Build Script
+        run: |
+          source inputs.sh
+          bash workflows/omniverse/app/create-start-script.sh batch
+
+  build:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Build
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/script_submitter/v3.6/hsp.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          # the submitter cds into the run's job directory, where build/ then lands
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            account: ${{ inputs.cluster.slurm.account }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            qos: ${{ inputs.cluster.slurm.qos }}
+            cpus_per_task: ${{ inputs.cluster.slurm.cpus_per_task }}
+            nodes: ${{ inputs.cluster.slurm.nodes }}
+            node_type: ${{ inputs.cluster.slurm.node_type }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: |
+              ${{ needs.preprocessing.outputs.SLURM_CPU_DIRECTIVE }}
+              ${{ needs.preprocessing.outputs.SLURM_GPU_DIRECTIVE }}
+              ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            account: ${{ inputs.cluster.pbs.account }}
+            scheduler_directives: |
+              ${{ needs.preprocessing.outputs.PBS_RESOURCE_DIRECTIVE }}
+              ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Check Exit Status
+        run: |
+          exit_file="${{ needs.preprocessing.outputs.EXIT_FILE }}"
+          if [ ! -f "${exit_file}" ]; then
+            echo "::error title=Error::No exit status in ${exit_file}: the build script did not run to its end (killed, walltime exceeded, node failure); the tail of its output follows"
+            tail -n 40 run.*.out 2>/dev/null
+            exit 1
+          fi
+          status=$(cat "${exit_file}")
+          if [ "${status}" != "0" ]; then
+            echo "::error title=Error::The build exited with status ${status}; the tail of its output follows"
+            tail -n 40 run.*.out 2>/dev/null
+            exit 1
+          fi
+          scene=$(python3 -c "import json; print(json.load(open('build/build.json'))['scene'])")
+          echo "::notice::The scene is ${PWD}/build/${scene}, with its assets under build/assets/; give that directory, or where it was copied, as the render workflow's source"
+          echo "SCENE=${PWD}/build/${scene}" | tee -a $OUTPUTS
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: GPU host
+        include-workspace: false
+        tooltip: The build runs on its login node, or on a compute node when submitted to the scheduler
+      cluster:
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
+        type: group
+        label: Compute cluster settings
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
+          cpus:
+            type: number
+            label: Cores per job
+            description: Requested ahead of the directives below; a job gets one core by default, and Kit stalls on one.
+            default: 8
+            min: 1
+            max: 256
+            step: 1
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false || inputs.resource.provider == 'existing' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Requested as --cpus-per-task=N (PBS: -l select=1:ncpus=N) ahead of the directives
+              below, which can override it. With the scheduler's default of one core, Kit's task
+              system never gets going.
+          gpus:
+            type: number
+            label: GPUs per job
+            description: Requested ahead of the directives below; 0 requests none, which is right for cloud clusters.
+            default: 0
+            min: 0
+            max: 8
+            step: 1
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Requested as --gres=gpu:N (PBS: -l select=1:ngpus=N) ahead of the directives
+              below, which can override it. The cloud clusters define no GRES (every node of
+              a GPU partition has its GPU), so 0 requests none; an on-premises cluster that
+              schedules GPUs as GRES takes 1.
+          slurm:
+            type: group
+            label: SLURM directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                description: Pick a partition with GPU nodes.
+                optional: true
+                resource: ${{ inputs.resource }}
+              qos:
+                label: Quality of service (QoS)
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              cpus_per_task:
+                label: CPUs per task
+                type: number
+                default: 8
+                step: 1
+                description: The cores of the job; Kit stalls on one.
+                tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              nodes:
+                label: Number of nodes
+                type: number
+                default: 1
+                step: 1
+                tooltip: '--nodes=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              node_type:
+                label: Node type
+                type: dropdown
+                optional: true
+                default: ''
+                option-key: ${{ inputs.resource.ip }}
+                description: The GPU nodes of the Navy and AFRL DSRC systems are the mla ones.
+                tooltip: '--constraint=<value> slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider || (inputs.resource.ip != 'blueback.navydsrc.hpc.mil' && inputs.resource.ip != 'narwhal.navydsrc.hpc.mil' && inputs.resource.ip != 'nautilus.navydsrc.hpc.mil' && inputs.resource.ip != 'raider.afrl.hpc.mil' && inputs.resource.ip != 'crux.mhpcc.hpc.mil') }}
+                hidden: ${{ .ignore }}
+                options:
+                  blueback.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  narwhal.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - smla
+                    - dmla
+                    - viz
+                    - transfer
+                  nautilus.navydsrc.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  raider.afrl.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  crux.mhpcc.hpc.mil:
+                    - AMD
+                    - Intel
+              time:
+                label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              scheduler_directives:
+                type: editor
+                label: Scheduler directives
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+                default: |
+                  ##SBATCH --gres=gpu:1 # uncomment for GPUs scheduled as GRES on on-premises systems
+                  ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
+          pbs:
+            type: group
+            label: PBS directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              account:
+                label: Account
+                type: string
+                tooltip: PBS account for job submission (-A)
+              scheduler_directives:
+                label: Scheduler directives
+                type: editor
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+                default: |
+                  # Parameters that apply to all sites
+                  #PBS -l walltime=01:00:00
+                  #PBS -V
+                  #PBS -q standard
+                  # Remove first # to activate specific lines
+                  #=====Ruth (Lustre, only vis has NVIDIA)=====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128:ngpus=1
+                  #=====Warhawk (Lustre)====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128:ngpus=2
+                  #=====Wheat (WEKA, nmlas=4|6)====
+                  ##PBS -l select=1:ncpus=92:mpiprocs=92:nmlas=4
+      build:
+        type: group
+        label: USD build
+        items:
+          manifest:
+            type: editor
+            label: Manifest
+            description: YAML listing the objects (meshes, USD files, URDF or MJCF robots) and their placement and physics; empty uses the source's manifest.yaml, or the bundled example.
+            optional: true
+            tooltip: |
+              scene: yard.usda
+              objects:
+                - name: crate
+                  file: parts/crate.obj      # relative to the source; .obj .stl .fbx .gltf .glb .usd* .urdf .xml
+                  position: [0, 0, 1]
+                  rotation: [0, 0, 30]       # degrees
+                  scale: 1
+                  physics: rigid             # rigid, static or none
+                  collision: convexHull      # convexHull, convexDecomposition, boundingCube, boundingSphere
+                  mass: 5                    # kg, else density (default 1000)
+                  velocity: [2, 0, 0]
+                  color: [0.8, 0.2, 0.2]
+                - name: arm
+                  file: robots/arm.urdf
+                  fix_base: true
+              The whole format is at the top of app/build.py.
+      files:
+        type: group
+        label: Files in and out
+        items:
+          source:
+            type: string
+            label: Parts source
+            description: A bucket URI (pw://, s3://, gs://) or an absolute path on the cluster, holding the manifest's files; empty builds the bundled example.
+            optional: true
+            tooltip: A directory with the meshes, USD files and robot descriptions the manifest names, and its manifest.yaml when the form's manifest is empty. A bucket directory is copied to the job directory as a whole; a cluster path is read in place.
+          destination:
+            type: string
+            label: Scene destination
+            description: A bucket URI or an absolute path on the cluster; the scene and its assets are copied to <destination>/<run slug>/ when the build ends. Empty leaves them in the job directory.
+            optional: true
+            tooltip: The directory holds the scene file, assets/ (the converted meshes and imported robots it references by relative path) and build.json; give it as the render workflow's source.
+      software:
+        type: group
+        label: Software
+        collapsed: true
+        items:
+          runtime:
+            type: dropdown
+            label: Container runtime
+            description: Docker pulls the image on the build node; Singularity pulls a prebuilt SIF into the install directory once.
+            default: omniverse-singularity
+            options:
+              - value: omniverse-docker
+                label: Docker
+              - value: omniverse-singularity
+                label: Singularity / Apptainer
+            tooltip: |
+              Docker: the image is pulled on the node that runs the job (sudo docker when the
+              user is not in the docker group) into Docker's own storage, which needs about
+              35 GB free; the job fails at once when it has less. Singularity: the login node
+              pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 (the same image as a SIF, 11 GB)
+              into the install directory once, and every node runs it as your user; for
+              clusters without Docker.
+          image:
+            type: string
+            label: Container image
+            description: Pulled once per node; 11 GB to download, 20 GB unpacked.
+            default: nvcr.io/nvidia/isaac-sim:6.2.0.1
+            hidden: ${{ inputs.software.runtime != 'omniverse-docker' }}
+            ignore: ${{ .hidden }}
+            tooltip: The NVIDIA Isaac Sim image on NGC, built on the Omniverse Kit SDK; anonymous pulls work.
+          sif:
+            type: string
+            label: Singularity image file
+            description: Empty pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 into the install directory once.
+            optional: true
+            hidden: ${{ inputs.software.runtime != 'omniverse-singularity' }}
+            ignore: ${{ .hidden }}
+            tooltip: A SIF built with build-container.sh from the workflow's isaac-sim.def, on a filesystem the build node sees.
+          install_dir:
+            type: string
+            label: Install directory
+            default: ${HOME}/pw/software
+            tooltip: Isaac Sim's home (its shader caches and logs) goes under <install directory>/omniverse/cache once, so later runs on the node start faster; the Singularity image goes under <install directory>/omniverse/containers.

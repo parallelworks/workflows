@@ -7,7 +7,7 @@
     ],
     "leftover_patterns": [
       "serve.py --port",
-      "render.py --out",
+      "run.py --out",
       "pw endpoints run"
     ]
   },
@@ -16,6 +16,7 @@
     "scheduler": false
   },
   "service": {
+    "example": "pyramid",
     "frames": 60,
     "resolution": "1280x720",
     "renderer": "RayTracedLighting"

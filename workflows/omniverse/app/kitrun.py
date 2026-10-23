@@ -172,7 +172,8 @@ def _stop():
 
 def render(args, center, radius, scene, extras=None, on_frame=None):
     """Orbits a camera around `center` while the timeline plays and writes every frame
-    as frames/rgb_NNNN.png, then render.json."""
+    as frames/rgb_NNNN.png, then render.json. `extras` (a dict, or a function called
+    once the frames are done) goes into render.json."""
     import carb.settings  # noqa: E402
     import omni.replicator.core as rep  # noqa: E402
     import omni.usd  # noqa: E402
@@ -223,6 +224,8 @@ def render(args, center, radius, scene, extras=None, on_frame=None):
     frames = sorted(name for name in os.listdir(frames_dir) if name.endswith(".png"))
     if len(frames) != args.frames:
         fail(f"Expected {args.frames} frames, found {len(frames)} in {frames_dir}")
+    if callable(extras):
+        extras = extras()
     manifest = {
         "scene": scene,
         "frames": [f"frames/{name}" for name in frames],

@@ -16,8 +16,8 @@ def Xform "World"
 
     def Xform "GroundPlane"
     {
-        def Mesh "CollisionMesh" (
-            prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+        def Mesh "geom" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
         )
         {
             float3[] extent = [(-15, -15, 0), (15, 15, 0)]
@@ -26,6 +26,14 @@ def Xform "World"
             rel material:binding = </World/Materials/ground>
             normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)]
             point3f[] points = [(-15, -15, 0), (15, -15, 0), (15, 15, 0), (-15, 15, 0)]
+        }
+
+        def Plane "collisionPlane" (
+            prepend apiSchemas = ["PhysicsCollisionAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            uniform token purpose = "guide"
         }
     }
 

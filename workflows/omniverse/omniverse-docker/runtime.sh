@@ -68,12 +68,12 @@ CANCELEOF
 }
 
 # container_run <command...>: the command in the image, as the workflow user (the
-# image's group gives it read access to /isaac-sim), the image's entrypoint (the
-# streaming server) replaced by python.sh
+# image's group gives it read access to /isaac-sim), with the image's entrypoint (the
+# streaming server, which would swallow the command) cleared
 container_run() {
     local args=(
         --rm --name "${container_name}" --hostname "$(hostname)" --gpus "${gpus_arg}"
-        --entrypoint /isaac-sim/python.sh
+        --entrypoint ""
         --user "$(id -u):$(id -g)" --group-add 1234
         -e HOME=/cache
         -v "${cache_dir}:/cache" -v "${cache_dir}/kit:/isaac-sim/kit/cache" -v "${app_dir}:/app:ro"

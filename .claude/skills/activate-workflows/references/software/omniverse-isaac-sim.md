@@ -161,14 +161,25 @@
 
 ## The GUI in a VNC desktop
 
-- **Isaac Sim's GUI runs inside the KasmVNC desktop from the same SIF** (verified
-  2026-10-23 on awsgpu, driver 610.43.02): with the desktop's X socket directory and
-  `.Xauthority` (the kasmvnc job's `container_tmp/`) bound at `/tmp/.X11-unix` and
-  `/tmp/.Xauthority`, `DISPLAY=:N`, `--nv`, `/isaac-sim/isaac-sim.sh` created its window
-  on the Xvnc display and rendered the viewport at about 27 fps (RTX Real-Time 2.0,
-  886 MiB of the L4): Kit presents its Vulkan swapchain to the VNC X server without
-  VirtualGL (Vulkan is not GLX). NVIDIA's container page says the GUI does not work over
-  VNC; with this driver it does. Startup takes about 170 s from the SIF. `xwininfo
-  -root -tree` and `xdpyinfo` on the login node reach the display through a symlink
-  `/tmp/.X11-unix/X<N>` to the job's socket; a screenshot without `xwd` comes from
-  libX11 through ctypes in the container's Python (PIL is there).
+- **Isaac Sim's GUI needs an X server with the GLX extension, even though Kit renders
+  with Vulkan** (verified 2026-10-23 on awsgpu, driver 610.43.02). On the platform's
+  desktop sessions (TigerVNC 1.14.1 Xvnc, `/opt/pw/software/verified/tigervnc`, built
+  without GLX: `xdpyinfo` lists DRI3 and Present but no GLX, and `+extension GLX` is a
+  no-op) `isaac-sim.sh` dies about 25 s in: Xlib logs `extension "GLX" missing`, then a
+  call to a null address from `libnvidia-eglcore.so` under
+  `libcarb.graphics-vulkan.plugin.so` (seen with an `LD_PRELOAD`ed SIGSEGV handler that
+  prints the return addresses on the stack through `dladdr`; breakpad's own backtrace
+  shows nothing). `--no-window` on the same display runs. A client-side `libxcb` 1.17
+  bound over the container's 1.15, or `/dev/null` bound over `libxcb-dri3.so.0`, change
+  nothing: it is the X server. On KasmVNC's Xvnc (GLX present) the same command showed
+  the window and rendered the viewport at about 27 fps, so the fix is an Xvnc with GLX
+  (Mesa's libglx), a platform-side change. `app/isaac-sim-gui.sh` is the launcher the
+  Singularity controller installs beside the SIF for a desktop session's terminal; it
+  binds the session's X authority file (`~/.vnc/xauth-<display>` when `XAUTHORITY` is
+  unset) at `/tmp/.Xauthority`, passes `DISPLAY` through `--cleanenv`, and the X socket
+  comes with the default `/tmp` bind.
+- How the earlier KasmVNC check was done, for the next time a VNC X server has to be
+  reached from outside its container: the job's `container_tmp/` holds the X socket
+  directory and `.Xauthority`; `xwininfo -root -tree` and `xdpyinfo` on the login node
+  reach it through a symlink `/tmp/.X11-unix/X<N>` to the socket; a screenshot without
+  `xwd` comes from libX11 through ctypes in the container's Python (PIL is there).

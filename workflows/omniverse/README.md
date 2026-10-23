@@ -184,11 +184,11 @@ the render workflow's source.
 
 ## The GUI in a desktop session
 
-Isaac Sim's own window (the stage, the viewport, the physics and every extension) runs
-in a [desktop session](https://parallelworks.com/docs/run/sessions/desktops) on the GPU
-node, from the same SIF: open one on the cluster (Sessions, Create, Desktop session, or
-`pw sessions create --type desktop <cluster>`; a compute node through an environment
-for anything heavy), open its Terminal and run
+Isaac Sim's own window (the stage, the viewport, the physics and every extension) is
+meant to run in a [desktop session](https://parallelworks.com/docs/run/sessions/desktops)
+on the GPU node, from the same SIF: open one on the cluster (Sessions, Create, Desktop
+session, or `pw sessions create --type desktop <cluster>`; a compute node through an
+environment for anything heavy), open its Terminal and run
 
 ```bash
 ~/pw/software/omniverse/isaac-sim-gui.sh            # PhysX
@@ -198,10 +198,18 @@ for anything heavy), open its Terminal and run
 The Singularity runtime's controller installs that script beside the SIF it pulls, so
 one run of the workflow with that runtime (the install directory in its form) leaves
 both there. The window takes about three minutes to appear the first time; it shares
-the shader caches with the workflow's runs. Verified on awsgpu's login node (an L4,
-driver 610.43.02) in the platform's TigerVNC desktop: Kit presents its Vulkan swapchain
-to the VNC X server, which NVIDIA's container page says does not work over VNC. The
-desktop keeps running until the session is deleted.
+the shader caches with the workflow's runs.
+
+**Known blocker (2026-10-23):** on the platform's current desktop sessions the window
+never appears. The sessions run TigerVNC 1.14.1's Xvnc built without the GLX
+extension, and NVIDIA driver 610's Vulkan presentation crashes on a GLX-less X server
+(Xlib logs `extension "GLX" missing on display`, then a call to a null address in
+`libnvidia-eglcore`, about 25 s into startup; `--no-window` on the same display runs
+fine). The same launcher and image were verified on an Xvnc that has GLX (a KasmVNC
+desktop on awsgpu's L4, driver 610.43.02): Kit presents its Vulkan swapchain to the
+VNC X server at about 27 fps in the viewport, so a desktop whose Xvnc ships GLX (Mesa's
+`libglx`) is what unblocks it. Neither a newer client `libxcb` nor hiding the DRI3
+client library changes the crash; the fix is on the X server's side.
 
 ## Two ways to run it
 

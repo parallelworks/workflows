@@ -228,9 +228,10 @@ for index, obj in enumerate(manifest["objects"]):
     else:
         fail(f"{name}: {obj['file']} is not a mesh ({', '.join(MESH_EXTENSIONS)}), a USD file or a robot (.urdf, .xml)")
     # The asset goes under a child prim: a converted file brings transform ops of its
-    # own, and the placement must not collide with them
+    # own, and the placement must not collide with them. The child has no type of its
+    # own, so a file whose default prim is a shape (a Sphere) keeps being one
     prim = stage.DefinePrim(f"/World/{name}", "Xform")
-    stage.DefinePrim(f"/World/{name}/geometry", "Xform").GetReferences().AddReference(asset)
+    stage.DefinePrim(f"/World/{name}/geometry").GetReferences().AddReference(asset)
     place(prim, obj)
     paint(prim, obj, index)
     if kind == "robot":

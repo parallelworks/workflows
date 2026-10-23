@@ -136,8 +136,10 @@ login node from source with no account (gcc 11 needs a few warning flags relaxed
    initial velocity.
 
 At run time PhysX does the rest: the joints near the impact break, the pieces fly, the
-far ones hold. The fracture script counts the joints from PhysX's joint-break events
-into `render.json` (the USD joint itself stays as authored) and the page shows it. A
+far ones hold. At the end the fracture script checks every joint's two anchors against
+where their bodies ended up; the ones that came apart are the broken bonds, counted
+into `render.json` with their paths, which the page shows (the USD joint stays as
+authored, and PhysX's joint-break events did not reach the standalone script). A
 physics-only run of the same scene (the default of that example) writes the pieces'
 poses and the USD snapshots instead. Blast's own runtime (bond health, damage programs) is not
 involved, which is what Kit 110 leaves available. To fracture a mesh of your own, build

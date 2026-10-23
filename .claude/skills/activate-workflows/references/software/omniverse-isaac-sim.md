@@ -133,6 +133,18 @@
   the cut faces marked by the interior material id) and `make-scene.py` turns the
   chunks into rigid bodies joined by `PhysicsFixedJoint`s with `physics:breakForce`,
   so PhysX breaks them at run time without Blast's runtime.
+- **Neither the USD joint nor PhysX's events tell a standalone script that a joint
+  broke** (verified 2026-10-23): `physics:jointEnabled` stays as authored, and a
+  `get_simulation_event_stream_v2().create_subscription_to_pop` listener for
+  `SimulationEvent.JOINT_BREAK` (the way `omni.physx.demos`' JointBreakDemo does it)
+  received nothing under a `SimulationApp` driven by `rep.orchestrator.step`, while the
+  frames showed the wall shattering. Measure instead: wrap the joints' bodies in a
+  `RigidPrim` view before play and, at the end, transform each joint's `localPos0`
+  and `localPos1` by their bodies' poses; anchors more than a centimeter apart are the
+  broken bonds (`app/examples/fracture/run.py`). It works for Newton too.
+- A thin triangle-mesh ground lets fast rigid bodies through; the anchored bottom chunks
+  of the wall sank 0.6 m. Collide with a `UsdGeom.Plane` (axis Z, `CollisionAPI`), as
+  Isaac Sim's `GroundPlane` does, and keep the visible quad for looks only.
 
 ## Importers and converters
 

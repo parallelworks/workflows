@@ -19,6 +19,6 @@ sdk="${1:?the blast-sdk directory (<blast>/_build/linux-x86_64/release/blast-sdk
 cd "$(dirname "$0")"
 includes=()
 while IFS= read -r dir; do includes+=(-I "${dir}"); done < <(find "${sdk}/include" -type d)
-g++ -std=c++17 -O2 -D_GLIBCXX_USE_CXX11_ABI=0 "${includes[@]}" blast-fracture.cpp \
+g++ -std=c++17 -O2 -DNDEBUG -D_GLIBCXX_USE_CXX11_ABI=0 "${includes[@]}" blast-fracture.cpp \
     -L"${sdk}/bin" -lNvBlastExtAuthoring -lNvBlast -lNvBlastGlobals -Wl,-rpath,"${sdk}/bin" -o blast-fracture
 echo "built ./blast-fracture"

@@ -80,7 +80,7 @@ browser desktop.
 | Example | What runs | Outputs |
 |---|---|---|
 | **Pyramid of blocks** (default) | thirty colored cubes on a floor and a steel ball thrown at them; the throw is the ball's `physics:velocity` in the USD | frames |
-| **Fracture** | a 2.4 m wall prefractured into 24 chunks with the Blast SDK, held by 57 breakable joints, hit by a 190 kg steel ball | frames, the count of broken joints |
+| **Fracture** | a 2.4 m wall prefractured into 24 chunks with the Blast SDK, held by breakable joints (57 between chunks, the bottom ones mortared to the ground), hit by a 190 kg steel ball | frames, the count of broken joints |
 | **Your scene, as is** | the USD file from the source input, framed from its objects' bounds (a floor is ignored), lit when it has no light, its timeline played | frames |
 | **Physics only** | the source's scene (or the fracture wall) simulated with no camera: every body's pose per frame, and the whole stage as USD at intervals | `poses.csv`, `snapshots/frame_NNNN.usda` |
 
@@ -130,8 +130,10 @@ login node from source with no account (gcc 11 needs a few warning flags relaxed
 2. `fracture/make-scene.py` (any Python with `pip install usd-core`) turns the chunks
    into USD: each chunk a rigid body with a convex-hull collider and concrete's density,
    and for every pair of chunks sharing a cut face a `PhysicsFixedJoint` at the face's
-   centroid that breaks above the face's area times a tensile strength. The ball is a
-   sphere with steel's density and an initial velocity.
+   centroid that breaks above the face's area times a tensile strength; the chunks on
+   the ground get the same joint to the world, so the wall stands until it is hit
+   instead of toppling as a slab. The ball is a sphere with steel's density and an
+   initial velocity.
 
 At run time PhysX does the rest: the joints near the impact break, the pieces fly, the
 far ones hold. The fracture script counts the joints from PhysX's joint-break events

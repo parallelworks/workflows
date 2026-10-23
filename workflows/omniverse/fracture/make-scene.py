@@ -5,9 +5,10 @@
 
 Every chunk becomes a rigid body with a convex-hull collider; every pair of chunks that
 share a cut face gets a fixed joint at the face's centroid, breaking at the face's area
-times --strength (a tensile strength in pascals). A steel ball with an initial velocity
-is thrown at the wall, which stands on a ground plane. Needs the pxr module
-(pip install usd-core).
+times --strength (a tensile strength in pascals), and the chunks resting on the ground
+get the same kind of joint to the world, so the wall stands until it is hit rather than
+toppling as a slab. A steel ball with an initial velocity is thrown at it. Needs the
+pxr module (pip install usd-core).
 """
 import argparse
 import math
@@ -18,7 +19,7 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics, UsdShade, Vt
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("chunks")
 parser.add_argument("scene")
-parser.add_argument("--strength", type=float, default=400000.0, help="tensile strength of the bonds, Pa")
+parser.add_argument("--strength", type=float, default=150000.0, help="tensile strength of the bonds, Pa")
 parser.add_argument("--density", type=float, default=2400.0, help="the material's density, kg/m3")
 parser.add_argument("--ball-radius", type=float, default=0.18)
 parser.add_argument("--ball-density", type=float, default=7800.0)
@@ -106,6 +107,7 @@ rubble = material("/World/Materials/rubble", (0.58, 0.55, 0.50), roughness=0.9)
 steel = material("/World/Materials/steel", (0.92, 0.92, 0.95), roughness=0.15, metallic=1.0)
 
 faces_by_plane = defaultdict(list)
+ground_faces = defaultdict(lambda: [0.0, [0.0, 0.0, 0.0]])
 for index, chunk in enumerate(chunks):
     path = f"/World/Wall/chunk_{index}"
     mesh = UsdGeom.Mesh.Define(stage, path)
@@ -125,10 +127,15 @@ for index, chunk in enumerate(chunks):
         v = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
         n = Gf.Vec3f(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]).GetNormalized()
         normals.extend([n] * len(ids))
+        centroid = tuple(sum(p[k] for p in (a, b, c)) / 3 for k in range(3))
         if kind == "interior":
-            centroid = tuple(sum(p[k] for p in (a, b, c)) / 3 for k in range(3))
             faces_by_plane[(normal, offset)].append((index, area, centroid))
             interior.append(face_number)
+        elif n[2] < -0.99 and abs(centroid[2]) < 1e-3:
+            # The bottom face: the chunk sits on the ground and is mortared to it
+            ground_faces[index][0] += area
+            for k in range(3):
+                ground_faces[index][1][k] += centroid[k] * area
     mesh.CreatePointsAttr(points)
     mesh.CreateFaceVertexCountsAttr(counts)
     mesh.CreateFaceVertexIndicesAttr(indices)
@@ -179,6 +186,20 @@ for (normal, offset), faces in faces_by_plane.items():
             joint.CreateBreakForceAttr().Set(float(area * args.strength))
             joint.CreateBreakTorqueAttr().Set(float(area * args.strength * 0.2))
             bonds += 1
+
+for index, (area, weighted) in sorted(ground_faces.items()):
+    if area < 1e-4:
+        continue
+    centroid = Gf.Vec3f(*(weighted[k] / area for k in range(3)))
+    joint = UsdPhysics.FixedJoint.Define(stage, f"/World/Wall/Bonds/ground_{index}")
+    joint.CreateBody0Rel().SetTargets([Sdf.Path(f"/World/Wall/chunk_{index}")])
+    joint.CreateLocalPos0Attr().Set(centroid)
+    joint.CreateLocalPos1Attr().Set(centroid)
+    joint.CreateLocalRot0Attr().Set(Gf.Quatf(1, 0, 0, 0))
+    joint.CreateLocalRot1Attr().Set(Gf.Quatf(1, 0, 0, 0))
+    joint.CreateBreakForceAttr().Set(float(area * args.strength))
+    joint.CreateBreakTorqueAttr().Set(float(area * args.strength * 0.2))
+    bonds += 1
 
 ball = UsdGeom.Sphere.Define(stage, "/World/Ball")
 ball.CreateRadiusAttr(args.ball_radius)

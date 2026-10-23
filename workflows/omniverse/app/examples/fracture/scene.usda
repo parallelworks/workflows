@@ -757,8 +757,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_0>
                 rel physics:body1 = </World/Wall/chunk_15>
-                float physics:breakForce = 38339.82
-                float physics:breakTorque = 7667.9644
+                float physics:breakForce = 14377.433
+                float physics:breakTorque = 2875.4866
                 point3f physics:localPos0 = (-0.9073709, 0.00066261215, 0.9691823)
                 point3f physics:localPos1 = (-0.9073709, 0.00066261215, 0.9691823)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -769,8 +769,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_0>
                 rel physics:body1 = </World/Wall/chunk_20>
-                float physics:breakForce = 32911.914
-                float physics:breakTorque = 6582.3833
+                float physics:breakForce = 12341.969
+                float physics:breakTorque = 2468.3938
                 point3f physics:localPos0 = (-1.0468006, -0.0029308712, 0.6024865)
                 point3f physics:localPos1 = (-1.0468006, -0.0029308712, 0.6024865)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -781,8 +781,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_1>
                 rel physics:body1 = </World/Wall/chunk_11>
-                float physics:breakForce = 24033.758
-                float physics:breakTorque = 4806.7515
+                float physics:breakForce = 9012.659
+                float physics:breakTorque = 1802.5319
                 point3f physics:localPos0 = (-0.45315102, -0.0010196454, 1.0884655)
                 point3f physics:localPos1 = (-0.45315102, -0.0010196454, 1.0884655)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -793,8 +793,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_1>
                 rel physics:body1 = </World/Wall/chunk_15>
-                float physics:breakForce = 21276.113
-                float physics:breakTorque = 4255.2227
+                float physics:breakForce = 7978.5425
+                float physics:breakTorque = 1595.7085
                 point3f physics:localPos0 = (-0.6258617, -0.0010196589, 1.088464)
                 point3f physics:localPos1 = (-0.6258617, -0.0010196589, 1.088464)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -805,8 +805,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_2>
                 rel physics:body1 = </World/Wall/chunk_9>
-                float physics:breakForce = 7483.464
-                float physics:breakTorque = 1496.6927
+                float physics:breakForce = 2806.299
+                float physics:breakTorque = 561.25977
                 point3f physics:localPos0 = (0.46643686, -0.00087238423, 0.99143404)
                 point3f physics:localPos1 = (0.46643686, -0.00087238423, 0.99143404)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -817,8 +817,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_2>
                 rel physics:body1 = </World/Wall/chunk_18>
-                float physics:breakForce = 56049.17
-                float physics:breakTorque = 11209.835
+                float physics:breakForce = 21018.44
+                float physics:breakTorque = 4203.688
                 point3f physics:localPos0 = (0.85535514, 0.000374223, 1.037197)
                 point3f physics:localPos1 = (0.85535514, 0.000374223, 1.037197)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -829,8 +829,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_2>
                 rel physics:body1 = </World/Wall/chunk_21>
-                float physics:breakForce = 15694.946
-                float physics:breakTorque = 3138.9893
+                float physics:breakForce = 5885.6045
+                float physics:breakTorque = 1177.121
                 point3f physics:localPos0 = (0.4101077, 0.0012670717, 1.1027703)
                 point3f physics:localPos1 = (0.4101077, 0.0012670717, 1.1027703)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -841,8 +841,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_3>
                 rel physics:body1 = </World/Wall/chunk_8>
-                float physics:breakForce = 26157.799
-                float physics:breakTorque = 5231.5596
+                float physics:breakForce = 9809.174
+                float physics:breakTorque = 1961.8348
                 point3f physics:localPos0 = (-0.37977412, 0.0002948665, 0.19220385)
                 point3f physics:localPos1 = (-0.37977412, 0.0002948665, 0.19220385)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -853,8 +853,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_3>
                 rel physics:body1 = </World/Wall/chunk_17>
-                float physics:breakForce = 17738.033
-                float physics:breakTorque = 3547.6064
+                float physics:breakForce = 6651.762
+                float physics:breakTorque = 1330.3524
                 point3f physics:localPos0 = (-0.29269025, -0.0024081694, 0.39102247)
                 point3f physics:localPos1 = (-0.29269025, -0.0024081694, 0.39102247)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -865,8 +865,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_3>
                 rel physics:body1 = </World/Wall/chunk_19>
-                float physics:breakForce = 25190.99
-                float physics:breakTorque = 5038.1978
+                float physics:breakForce = 9446.621
+                float physics:breakTorque = 1889.3242
                 point3f physics:localPos0 = (-0.602053, 0.0009495045, 0.22376908)
                 point3f physics:localPos1 = (-0.602053, 0.0009495045, 0.22376908)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -877,8 +877,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_3>
                 rel physics:body1 = </World/Wall/chunk_20>
-                float physics:breakForce = 3333.7927
-                float physics:breakTorque = 666.75854
+                float physics:breakForce = 1250.1722
+                float physics:breakTorque = 250.03445
                 point3f physics:localPos0 = (-0.66540384, -0.048067, 0.37721267)
                 point3f physics:localPos1 = (-0.66540384, -0.048067, 0.37721267)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -889,8 +889,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_3>
                 rel physics:body1 = </World/Wall/chunk_23>
-                float physics:breakForce = 28520.709
-                float physics:breakTorque = 5704.1416
+                float physics:breakForce = 10695.266
+                float physics:breakTorque = 2139.0532
                 point3f physics:localPos0 = (-0.50048107, 0.0059526223, 0.43422586)
                 point3f physics:localPos1 = (-0.50048107, 0.0059526223, 0.43422586)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -901,8 +901,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_4>
                 rel physics:body1 = </World/Wall/chunk_5>
-                float physics:breakForce = 17023.838
-                float physics:breakTorque = 3404.7676
+                float physics:breakForce = 6383.939
+                float physics:breakTorque = 1276.7878
                 point3f physics:localPos0 = (-0.099666625, -0.0014332942, 0.0991837)
                 point3f physics:localPos1 = (-0.099666625, -0.0014332942, 0.0991837)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -913,8 +913,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_4>
                 rel physics:body1 = </World/Wall/chunk_8>
-                float physics:breakForce = 3097.9312
-                float physics:breakTorque = 619.5862
+                float physics:breakForce = 1161.7241
+                float physics:breakTorque = 232.34483
                 point3f physics:localPos0 = (-0.1345353, -0.0029479712, 0.21763654)
                 point3f physics:localPos1 = (-0.1345353, -0.0029479712, 0.21763654)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -925,8 +925,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_4>
                 rel physics:body1 = </World/Wall/chunk_13>
-                float physics:breakForce = 25914.799
-                float physics:breakTorque = 5182.9595
+                float physics:breakForce = 9718.049
+                float physics:breakTorque = 1943.6099
                 point3f physics:localPos0 = (0.31400636, -0.0018476774, 0.1503089)
                 point3f physics:localPos1 = (0.31400636, -0.0018476774, 0.1503089)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -937,8 +937,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_4>
                 rel physics:body1 = </World/Wall/chunk_17>
-                float physics:breakForce = 56.283287
-                float physics:breakTorque = 11.256658
+                float physics:breakForce = 21.106234
+                float physics:breakTorque = 4.2212467
                 point3f physics:localPos0 = (-0.11228584, 0.089637496, 0.22660267)
                 point3f physics:localPos1 = (-0.11228584, 0.089637496, 0.22660267)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -949,8 +949,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_4>
                 rel physics:body1 = </World/Wall/chunk_22>
-                float physics:breakForce = 32146.938
-                float physics:breakTorque = 6429.3877
+                float physics:breakForce = 12055.102
+                float physics:breakTorque = 2411.0203
                 point3f physics:localPos0 = (0.062326886, -0.0029160962, 0.2690312)
                 point3f physics:localPos1 = (0.062326886, -0.0029160962, 0.2690312)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -961,8 +961,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_5>
                 rel physics:body1 = </World/Wall/chunk_8>
-                float physics:breakForce = 19401.193
-                float physics:breakTorque = 3880.2388
+                float physics:breakForce = 7275.4478
+                float physics:breakTorque = 1455.0895
                 point3f physics:localPos0 = (-0.19827811, -0.0014333184, 0.099184096)
                 point3f physics:localPos1 = (-0.19827811, -0.0014333184, 0.099184096)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -973,8 +973,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_6>
                 rel physics:body1 = </World/Wall/chunk_9>
-                float physics:breakForce = 25978.453
-                float physics:breakTorque = 5195.691
+                float physics:breakForce = 9741.92
+                float physics:breakTorque = 1948.384
                 point3f physics:localPos0 = (0.21015656, 0.0011444293, 0.7535222)
                 point3f physics:localPos1 = (0.21015656, 0.0011444293, 0.7535222)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -985,8 +985,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_6>
                 rel physics:body1 = </World/Wall/chunk_11>
-                float physics:breakForce = 35808.39
-                float physics:breakTorque = 7161.6777
+                float physics:breakForce = 13428.1455
+                float physics:breakTorque = 2685.6292
                 point3f physics:localPos0 = (-0.18929945, -0.0003878563, 0.96001446)
                 point3f physics:localPos1 = (-0.18929945, -0.0003878563, 0.96001446)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -997,8 +997,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_6>
                 rel physics:body1 = </World/Wall/chunk_17>
-                float physics:breakForce = 22941.54
-                float physics:breakTorque = 4588.3076
+                float physics:breakForce = 8603.077
+                float physics:breakTorque = 1720.6155
                 point3f physics:localPos0 = (-0.15883544, 0.0038605467, 0.6720532)
                 point3f physics:localPos1 = (-0.15883544, 0.0038605467, 0.6720532)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1009,8 +1009,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_6>
                 rel physics:body1 = </World/Wall/chunk_21>
-                float physics:breakForce = 27339.367
-                float physics:breakTorque = 5467.8735
+                float physics:breakForce = 10252.263
+                float physics:breakTorque = 2050.4526
                 point3f physics:localPos0 = (0.082611136, 0.0011829778, 1.0242832)
                 point3f physics:localPos1 = (0.082611136, 0.0011829778, 1.0242832)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1021,8 +1021,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_6>
                 rel physics:body1 = </World/Wall/chunk_22>
-                float physics:breakForce = 18779.988
-                float physics:breakTorque = 3755.9978
+                float physics:breakForce = 7042.496
+                float physics:breakTorque = 1408.4991
                 point3f physics:localPos0 = (0.089746416, -0.0049611963, 0.6095791)
                 point3f physics:localPos1 = (0.089746416, -0.0049611963, 0.6095791)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1033,8 +1033,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_6>
                 rel physics:body1 = </World/Wall/chunk_23>
-                float physics:breakForce = 6081.798
-                float physics:breakTorque = 1216.3595
+                float physics:breakForce = 2280.674
+                float physics:breakTorque = 456.13483
                 point3f physics:localPos0 = (-0.31210747, 0.008418448, 0.75323737)
                 point3f physics:localPos1 = (-0.31210747, 0.008418448, 0.75323737)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1045,8 +1045,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_7>
                 rel physics:body1 = </World/Wall/chunk_10>
-                float physics:breakForce = 22908.377
-                float physics:breakTorque = 4581.6753
+                float physics:breakForce = 8590.642
+                float physics:breakTorque = 1718.1283
                 point3f physics:localPos0 = (0.9060783, -0.0031217458, 0.31532452)
                 point3f physics:localPos1 = (0.9060783, -0.0031217458, 0.31532452)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1057,8 +1057,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_7>
                 rel physics:body1 = </World/Wall/chunk_13>
-                float physics:breakForce = 27081.79
-                float physics:breakTorque = 5416.358
+                float physics:breakForce = 10155.671
+                float physics:breakTorque = 2031.1342
                 point3f physics:localPos0 = (0.73502165, 0.002968368, 0.39442798)
                 point3f physics:localPos1 = (0.73502165, 0.002968368, 0.39442798)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1069,8 +1069,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_7>
                 rel physics:body1 = </World/Wall/chunk_14>
-                float physics:breakForce = 27061.016
-                float physics:breakTorque = 5412.203
+                float physics:breakForce = 10147.881
+                float physics:breakTorque = 2029.5763
                 point3f physics:localPos0 = (1.1105473, 0.004764661, 0.5387119)
                 point3f physics:localPos1 = (1.1105473, 0.004764661, 0.5387119)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1081,8 +1081,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_7>
                 rel physics:body1 = </World/Wall/chunk_16>
-                float physics:breakForce = 138.93608
-                float physics:breakTorque = 27.787218
+                float physics:breakForce = 52.101032
+                float physics:breakTorque = 10.420206
                 point3f physics:localPos0 = (0.7880202, 0.09194617, 0.22104934)
                 point3f physics:localPos1 = (0.7880202, 0.09194617, 0.22104934)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1093,8 +1093,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_7>
                 rel physics:body1 = </World/Wall/chunk_18>
-                float physics:breakForce = 51221.62
-                float physics:breakTorque = 10244.324
+                float physics:breakForce = 19208.107
+                float physics:breakTorque = 3841.6216
                 point3f physics:localPos0 = (0.9418137, 0.0011289658, 0.735783)
                 point3f physics:localPos1 = (0.9418137, 0.0011289658, 0.735783)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1105,8 +1105,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_8>
                 rel physics:body1 = </World/Wall/chunk_17>
-                float physics:breakForce = 8650.925
-                float physics:breakTorque = 1730.1848
+                float physics:breakForce = 3244.0967
+                float physics:breakTorque = 648.81934
                 point3f physics:localPos0 = (-0.19631939, 0.012311655, 0.265548)
                 point3f physics:localPos1 = (-0.19631939, 0.012311655, 0.265548)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1117,8 +1117,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_8>
                 rel physics:body1 = </World/Wall/chunk_19>
-                float physics:breakForce = 7693.91
-                float physics:breakTorque = 1538.7821
+                float physics:breakForce = 2885.2163
+                float physics:breakTorque = 577.0433
                 point3f physics:localPos0 = (-0.5152708, -0.0036638482, 0.048051104)
                 point3f physics:localPos1 = (-0.5152708, -0.0036638482, 0.048051104)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1129,8 +1129,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_8>
                 rel physics:body1 = </World/Wall/chunk_22>
-                float physics:breakForce = 1437.5314
-                float physics:breakTorque = 287.50626
+                float physics:breakForce = 539.0743
+                float physics:breakTorque = 107.81485
                 point3f physics:localPos0 = (-0.1557365, -0.043703493, 0.2494915)
                 point3f physics:localPos1 = (-0.1557365, -0.043703493, 0.2494915)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1141,8 +1141,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_9>
                 rel physics:body1 = </World/Wall/chunk_13>
-                float physics:breakForce = 17716.389
-                float physics:breakTorque = 3543.2778
+                float physics:breakForce = 6643.646
+                float physics:breakTorque = 1328.7292
                 point3f physics:localPos0 = (0.39831266, -0.00029459674, 0.5167371)
                 point3f physics:localPos1 = (0.39831266, -0.00029459674, 0.5167371)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1153,8 +1153,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_9>
                 rel physics:body1 = </World/Wall/chunk_18>
-                float physics:breakForce = 33907.387
-                float physics:breakTorque = 6781.4775
+                float physics:breakForce = 12715.2705
+                float physics:breakTorque = 2543.0542
                 point3f physics:localPos0 = (0.5062488, -0.0012947678, 0.76582813)
                 point3f physics:localPos1 = (0.5062488, -0.0012947678, 0.76582813)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1165,8 +1165,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_9>
                 rel physics:body1 = </World/Wall/chunk_21>
-                float physics:breakForce = 18233.07
-                float physics:breakTorque = 3646.614
+                float physics:breakForce = 6837.4014
+                float physics:breakTorque = 1367.4802
                 point3f physics:localPos0 = (0.3175396, -0.0026919367, 0.9603516)
                 point3f physics:localPos1 = (0.3175396, -0.0026919367, 0.9603516)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1177,8 +1177,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_9>
                 rel physics:body1 = </World/Wall/chunk_22>
-                float physics:breakForce = 11492.095
-                float physics:breakTorque = 2298.419
+                float physics:breakForce = 4309.5356
+                float physics:breakTorque = 861.9071
                 point3f physics:localPos0 = (0.25074723, -0.006343074, 0.53564805)
                 point3f physics:localPos1 = (0.25074723, -0.006343074, 0.53564805)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1189,8 +1189,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_10>
                 rel physics:body1 = </World/Wall/chunk_12>
-                float physics:breakForce = 5458.7495
-                float physics:breakTorque = 1091.7499
+                float physics:breakForce = 2047.031
+                float physics:breakTorque = 409.4062
                 point3f physics:localPos0 = (0.985226, -0.073404, 0.16387616)
                 point3f physics:localPos1 = (0.985226, -0.073404, 0.16387616)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1201,8 +1201,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_10>
                 rel physics:body1 = </World/Wall/chunk_13>
-                float physics:breakForce = 4461.8013
-                float physics:breakTorque = 892.3602
+                float physics:breakForce = 1673.1754
+                float physics:breakTorque = 334.6351
                 point3f physics:localPos0 = (0.7852245, -0.041385666, 0.19925)
                 point3f physics:localPos1 = (0.7852245, -0.041385666, 0.19925)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1213,8 +1213,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_10>
                 rel physics:body1 = </World/Wall/chunk_14>
-                float physics:breakForce = 17619.209
-                float physics:breakTorque = 3523.8418
+                float physics:breakForce = 6607.203
+                float physics:breakTorque = 1321.4407
                 point3f physics:localPos0 = (1.0463849, -0.008297814, 0.29302877)
                 point3f physics:localPos1 = (1.0463849, -0.008297814, 0.29302877)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1225,8 +1225,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_10>
                 rel physics:body1 = </World/Wall/chunk_16>
-                float physics:breakForce = 19821.664
-                float physics:breakTorque = 3964.3328
+                float physics:breakForce = 7433.124
+                float physics:breakTorque = 1486.6248
                 point3f physics:localPos0 = (0.9070375, 0.014443648, 0.1841484)
                 point3f physics:localPos1 = (0.9070375, 0.014443648, 0.1841484)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1237,8 +1237,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_11>
                 rel physics:body1 = </World/Wall/chunk_15>
-                float physics:breakForce = 12285.979
-                float physics:breakTorque = 2457.1958
+                float physics:breakForce = 4607.242
+                float physics:breakTorque = 921.4484
                 point3f physics:localPos0 = (-0.525001, -0.0015890535, 0.9056923)
                 point3f physics:localPos1 = (-0.525001, -0.0015890535, 0.9056923)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1249,8 +1249,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_11>
                 rel physics:body1 = </World/Wall/chunk_21>
-                float physics:breakForce = 5317.2812
-                float physics:breakTorque = 1063.4563
+                float physics:breakForce = 1993.9805
+                float physics:breakTorque = 398.7961
                 point3f physics:localPos0 = (-0.04959781, -0.0038682958, 1.1666548)
                 point3f physics:localPos1 = (-0.04959781, -0.0038682958, 1.1666548)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1261,8 +1261,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_11>
                 rel physics:body1 = </World/Wall/chunk_23>
-                float physics:breakForce = 13873.325
-                float physics:breakTorque = 2774.665
+                float physics:breakForce = 5202.497
+                float physics:breakTorque = 1040.4994
                 point3f physics:localPos0 = (-0.4130419, 0.0014441106, 0.8104549)
                 point3f physics:localPos1 = (-0.4130419, 0.0014441106, 0.8104549)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1273,8 +1273,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_12>
                 rel physics:body1 = </World/Wall/chunk_13>
-                float physics:breakForce = 2861.4714
-                float physics:breakTorque = 572.2943
+                float physics:breakForce = 1073.0518
+                float physics:breakTorque = 214.61035
                 point3f physics:localPos0 = (0.72953385, -0.068243, 0.041857835)
                 point3f physics:localPos1 = (0.72953385, -0.068243, 0.041857835)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1285,8 +1285,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_12>
                 rel physics:body1 = </World/Wall/chunk_14>
-                float physics:breakForce = 7640.416
-                float physics:breakTorque = 1528.0831
+                float physics:breakForce = 2865.156
+                float physics:breakTorque = 573.0312
                 point3f physics:localPos0 = (1.1503874, -0.02095417, 0.15147467)
                 point3f physics:localPos1 = (1.1503874, -0.02095417, 0.15147467)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1297,8 +1297,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_12>
                 rel physics:body1 = </World/Wall/chunk_16>
-                float physics:breakForce = 30511.973
-                float physics:breakTorque = 6102.3945
+                float physics:breakForce = 11441.989
+                float physics:breakTorque = 2288.398
                 point3f physics:localPos0 = (0.9405099, 0.011270925, 0.07624595)
                 point3f physics:localPos1 = (0.9405099, 0.011270925, 0.07624595)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1309,8 +1309,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_13>
                 rel physics:body1 = </World/Wall/chunk_16>
-                float physics:breakForce = 12832.392
-                float physics:breakTorque = 2566.4783
+                float physics:breakForce = 4812.147
+                float physics:breakTorque = 962.4294
                 point3f physics:localPos0 = (0.7463546, 0.024817023, 0.1010169)
                 point3f physics:localPos1 = (0.7463546, 0.024817023, 0.1010169)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1321,8 +1321,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_13>
                 rel physics:body1 = </World/Wall/chunk_18>
-                float physics:breakForce = 14650.469
-                float physics:breakTorque = 2930.0938
+                float physics:breakForce = 5493.926
+                float physics:breakTorque = 1098.7852
                 point3f physics:localPos0 = (0.59292376, -0.0018472052, 0.5545595)
                 point3f physics:localPos1 = (0.59292376, -0.0018472052, 0.5545595)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1333,8 +1333,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_13>
                 rel physics:body1 = </World/Wall/chunk_22>
-                float physics:breakForce = 14623.613
-                float physics:breakTorque = 2924.7227
+                float physics:breakForce = 5483.855
+                float physics:breakTorque = 1096.771
                 point3f physics:localPos0 = (0.27647164, 0.00505399, 0.38947213)
                 point3f physics:localPos1 = (0.27647164, 0.00505399, 0.38947213)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1345,8 +1345,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_14>
                 rel physics:body1 = </World/Wall/chunk_16>
-                float physics:breakForce = 5246.112
-                float physics:breakTorque = 1049.2224
+                float physics:breakForce = 1967.2919
+                float physics:breakTorque = 393.45837
                 point3f physics:localPos0 = (1.0977972, 0.059929665, 0.15897483)
                 point3f physics:localPos1 = (1.0977972, 0.059929665, 0.15897483)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1357,8 +1357,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_15>
                 rel physics:body1 = </World/Wall/chunk_20>
-                float physics:breakForce = 29593.062
-                float physics:breakTorque = 5918.6123
+                float physics:breakForce = 11097.398
+                float physics:breakTorque = 2219.4797
                 point3f physics:localPos0 = (-0.71276754, -0.0015691367, 0.77577114)
                 point3f physics:localPos1 = (-0.71276754, -0.0015691367, 0.77577114)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1369,8 +1369,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_15>
                 rel physics:body1 = </World/Wall/chunk_23>
-                float physics:breakForce = 3389.6626
-                float physics:breakTorque = 677.9325
+                float physics:breakForce = 1271.1234
+                float physics:breakTorque = 254.22469
                 point3f physics:localPos0 = (-0.52311236, 0.039926834, 0.8236218)
                 point3f physics:localPos1 = (-0.52311236, 0.039926834, 0.8236218)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1381,8 +1381,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_17>
                 rel physics:body1 = </World/Wall/chunk_22>
-                float physics:breakForce = 35311.47
-                float physics:breakTorque = 7062.2935
+                float physics:breakForce = 13241.801
+                float physics:breakTorque = 2648.36
                 point3f physics:localPos0 = (-0.08648998, 0.0005275125, 0.43587586)
                 point3f physics:localPos1 = (-0.08648998, 0.0005275125, 0.43587586)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1393,8 +1393,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_17>
                 rel physics:body1 = </World/Wall/chunk_23>
-                float physics:breakForce = 18648.113
-                float physics:breakTorque = 3729.6228
+                float physics:breakForce = 6993.0425
+                float physics:breakTorque = 1398.6085
                 point3f physics:localPos0 = (-0.31549135, 0.0026941018, 0.60558563)
                 point3f physics:localPos1 = (-0.31549135, 0.0026941018, 0.60558563)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1405,8 +1405,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_19>
                 rel physics:body1 = </World/Wall/chunk_20>
-                float physics:breakForce = 40399.98
-                float physics:breakTorque = 8079.9966
+                float physics:breakForce = 15149.993
+                float physics:breakTorque = 3029.9985
                 point3f physics:localPos0 = (-0.94790417, -0.00062004925, 0.36801234)
                 point3f physics:localPos1 = (-0.94790417, -0.00062004925, 0.36801234)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1417,8 +1417,8 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_19>
                 rel physics:body1 = </World/Wall/chunk_23>
-                float physics:breakForce = 229.54314
-                float physics:breakTorque = 45.908627
+                float physics:breakForce = 86.078674
+                float physics:breakTorque = 17.215736
                 point3f physics:localPos0 = (-0.70117486, 0.08526467, 0.349687)
                 point3f physics:localPos1 = (-0.70117486, 0.08526467, 0.349687)
                 quatf physics:localRot0 = (1, 0, 0, 0)
@@ -1429,10 +1429,87 @@ def Xform "World"
             {
                 rel physics:body0 = </World/Wall/chunk_20>
                 rel physics:body1 = </World/Wall/chunk_23>
-                float physics:breakForce = 38826.227
-                float physics:breakTorque = 7765.245
+                float physics:breakForce = 14559.835
+                float physics:breakTorque = 2911.967
                 point3f physics:localPos0 = (-0.59956414, 0.002204215, 0.59626126)
                 point3f physics:localPos1 = (-0.59956414, 0.002204215, 0.59626126)
+                quatf physics:localRot0 = (1, 0, 0, 0)
+                quatf physics:localRot1 = (1, 0, 0, 0)
+            }
+
+            def PhysicsFixedJoint "ground_4"
+            {
+                rel physics:body0 = </World/Wall/chunk_4>
+                float physics:breakForce = 13022.312
+                float physics:breakTorque = 2604.4624
+                point3f physics:localPos0 = (0.15167698, -0.002739418, 0)
+                point3f physics:localPos1 = (0.15167698, -0.002739418, 0)
+                quatf physics:localRot0 = (1, 0, 0, 0)
+                quatf physics:localRot1 = (1, 0, 0, 0)
+            }
+
+            def PhysicsFixedJoint "ground_5"
+            {
+                rel physics:body0 = </World/Wall/chunk_5>
+                float physics:breakForce = 5913.002
+                float physics:breakTorque = 1182.6005
+                point3f physics:localPos0 = (-0.16422102, -0.0014332783, 0)
+                point3f physics:localPos1 = (-0.16422102, -0.0014332783, 0)
+                quatf physics:localRot0 = (1, 0, 0, 0)
+                quatf physics:localRot1 = (1, 0, 0, 0)
+            }
+
+            def PhysicsFixedJoint "ground_8"
+            {
+                rel physics:body0 = </World/Wall/chunk_8>
+                float physics:breakForce = 7713.807
+                float physics:breakTorque = 1542.7615
+                point3f physics:localPos0 = (-0.39054403, 0.0030689589, 0)
+                point3f physics:localPos1 = (-0.39054403, 0.0030689589, 0)
+                quatf physics:localRot0 = (1, 0, 0, 0)
+                quatf physics:localRot1 = (1, 0, 0, 0)
+            }
+
+            def PhysicsFixedJoint "ground_12"
+            {
+                rel physics:body0 = </World/Wall/chunk_12>
+                float physics:breakForce = 12626.92
+                float physics:breakTorque = 2525.384
+                point3f physics:localPos0 = (0.97996914, -0.011379681, 0)
+                point3f physics:localPos1 = (0.97996914, -0.011379681, 0)
+                quatf physics:localRot0 = (1, 0, 0, 0)
+                quatf physics:localRot1 = (1, 0, 0, 0)
+            }
+
+            def PhysicsFixedJoint "ground_13"
+            {
+                rel physics:body0 = </World/Wall/chunk_13>
+                float physics:breakForce = 10068.982
+                float physics:breakTorque = 2013.7964
+                point3f physics:localPos0 = (0.536441, 0.0014803852, 0)
+                point3f physics:localPos1 = (0.536441, 0.0014803852, 0)
+                quatf physics:localRot0 = (1, 0, 0, 0)
+                quatf physics:localRot1 = (1, 0, 0, 0)
+            }
+
+            def PhysicsFixedJoint "ground_16"
+            {
+                rel physics:body0 = </World/Wall/chunk_16>
+                float physics:breakForce = 2242.131
+                float physics:breakTorque = 448.4262
+                point3f physics:localPos0 = (0.79553515, 0.06508865, 0)
+                point3f physics:localPos1 = (0.79553515, 0.06508865, 0)
+                quatf physics:localRot0 = (1, 0, 0, 0)
+                quatf physics:localRot1 = (1, 0, 0, 0)
+            }
+
+            def PhysicsFixedJoint "ground_19"
+            {
+                rel physics:body0 = </World/Wall/chunk_19>
+                float physics:breakForce = 20412.818
+                float physics:breakTorque = 4082.5635
+                point3f physics:localPos0 = (-0.85978365, 0.00016281972, 0)
+                point3f physics:localPos1 = (-0.85978365, 0.00016281972, 0)
                 quatf physics:localRot0 = (1, 0, 0, 0)
                 quatf physics:localRot1 = (1, 0, 0, 0)
             }

@@ -22,7 +22,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: omniverse
           sparse_checkout:
             - workflows/omniverse/app
             - workflows/omniverse/${{ inputs.software.runtime }}
@@ -40,6 +40,8 @@ jobs:
           cluster_scheduler="${{ inputs.cluster.scheduler }}"
           cluster_gpus="${{ inputs.cluster.gpus }}"
           cluster_cpus="${{ inputs.cluster.cpus }}"
+          files_use_bucket="${{ inputs.files.use_bucket }}"
+          files_bucket="${{ inputs.files.bucket.uri }}"
           files_source="${{ inputs.files.source }}"
           files_destination="${{ inputs.files.destination }}"
           service_parent_install_dir="${{ inputs.software.install_dir }}"
@@ -338,16 +340,28 @@ jobs:
         type: group
         label: Files in and out
         items:
+          use_bucket:
+            type: boolean
+            default: false
+            label: Use a bucket for the files
+            description: Otherwise the paths below are on the cluster's filesystem.
+          bucket:
+            type: bucket
+            label: Bucket
+            description: The parts are read from it and the scene is written to it.
+            optional: true
+            hidden: ${{ inputs.files.use_bucket == false }}
+            ignore: ${{ .hidden }}
           source:
             type: string
             label: Parts source
-            description: A bucket URI (pw://, s3://, gs://) or an absolute path on the cluster, holding the manifest's files; empty builds the bundled example.
+            description: A path in the bucket, or an absolute path on the cluster, holding the manifest's files; empty builds the bundled example.
             optional: true
             tooltip: A directory with the meshes, USD files and robot descriptions the manifest names, and its manifest.yaml when the form's manifest is empty. A bucket directory is copied to the job directory as a whole; a cluster path is read in place.
           destination:
             type: string
             label: Scene destination
-            description: A bucket URI or an absolute path on the cluster; the scene and its assets are copied to <destination>/<run slug>/ when the build ends. Empty leaves them in the job directory.
+            description: A path in the bucket, or an absolute path on the cluster; the scene and its assets are copied to <destination>/<run slug>/ when the build ends. Empty leaves them in the job directory.
             optional: true
             tooltip: The directory holds the scene file, assets/ (the converted meshes and imported robots it references by relative path) and build.json; give it as the render workflow's source.
       software:

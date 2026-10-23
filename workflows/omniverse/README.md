@@ -5,8 +5,8 @@ cluster: a USD scene is simulated with PhysX or Newton and rendered with the RTX
 renderer, or simulated alone, by Isaac Sim running headless in a container, and the
 outputs are served as a page through a `pw` endpoint and copied to a bucket or a
 cluster path. Four examples show the shapes a run can take; a second variant builds USD
-scenes from meshes and robots; a third opens Isaac Sim's own window in a browser
-desktop. Nothing here needs an NVIDIA account.
+scenes from meshes and robots; and Isaac Sim's own window opens in a platform desktop
+session from the same image. Nothing here needs an NVIDIA account.
 
 ```
 form ──► preprocessing ──► start script ──► run.py in the container ──► page ──► https://<endpoint>/
@@ -71,9 +71,8 @@ You do not connect to the NVIDIA application itself in the render variants. Omni
 applications show their window remotely by streaming video over WebRTC, which runs on
 UDP, and a `pw` endpoint only carries web traffic. So the application runs headless,
 writes files, and the workflow adds a layer of its own: a small server and page that
-serve the outputs through the endpoint. For a live window there is the
-[desktop variant](#the-desktop-variant), which puts Isaac Sim's own GUI inside a
-browser desktop.
+serve the outputs through the endpoint. For a live window, open a desktop session on
+the GPU node and start Isaac Sim there ([The GUI in a desktop session](#the-gui-in-a-desktop-session)).
 
 ## The examples
 
@@ -101,19 +100,19 @@ PhysX-only traits. The pyramid ran under both on an L4: 1.44 s a frame with Phys
 
 ## Files in and out
 
-- **Source** (optional): a bucket URI (`pw://<namespace>/<bucket>/<path>`, `s3://`,
-  `gs://`) or an absolute path on the cluster. It names a USD file (`.usd`, `.usda`,
-  `.usdc`, `.usdz`) or a directory holding `scene.usd*` (or the one USD file in it),
-  whatever it references by relative path, and optionally a `run.py`. A bucket directory
-  is copied as a whole into the job directory, so references keep working; a cluster path
-  is read in place. Empty runs the bundled example.
-- **Destination** (optional): a bucket URI or an absolute path; the outputs are copied to
-  `<destination>/<run slug>/` when the run ends, by `pw buckets cp` on the node that
-  wrote them. Empty leaves them in the job directory. The page serves the local copy
-  either way.
+- **Use a bucket for the files**: off, the source and destination below are absolute
+  paths on the cluster's filesystem; on, a **Bucket** is chosen from the platform's
+  (`pw buckets ls` lists them) and the two paths are inside it.
+- **Source** (optional): a USD file (`.usd`, `.usda`, `.usdc`, `.usdz`) or a directory
+  holding `scene.usd*` (or the one USD file in it), whatever it references by relative
+  path, and optionally a `run.py`. A bucket directory is copied as a whole into the job
+  directory, so references keep working; a cluster path is read in place. Empty runs
+  the bundled example.
+- **Destination** (optional): the outputs are copied to `<destination>/<run slug>/` when
+  the run ends, by `pw buckets cp` on the node that wrote them. Empty leaves them in
+  the job directory. The page serves the local copy either way.
 
-Buckets are the platform's (`pw buckets ls` lists them); the run's own key signs the
-transfers, so nothing is configured on the cluster.
+The run's own key signs the bucket transfers, so nothing is configured on the cluster.
 
 ## Fracture
 
@@ -183,23 +182,33 @@ is `build/<scene>` with `assets/` beside it (everything it references, by relati
 path) and `build.json`; give that directory, or the destination it was copied to, as
 the render workflow's source.
 
-## The desktop variant
+## The GUI in a desktop session
 
-`yamls/general-desktop.yaml` opens Isaac Sim's own window (the stage, the viewport, the
-physics and every extension) inside a KasmVNC browser desktop, from the same SIF. It
-calls the [kasmvnc](../kasmvnc/) workflow as a subworkflow with a launcher as the
-desktop's startup application; the run completes when the desktop answers, and Isaac
-Sim shows its window about three minutes later. Verified on awsgpu (L4, driver
-610.43.02): Kit presents its Vulkan swapchain to the VNC X server, 27 fps in the
-viewport, without VirtualGL, which NVIDIA's container page says does not work over VNC.
-The desktop outlives the run until `pw endpoints delete kasmvnc-<run slug>`.
+Isaac Sim's own window (the stage, the viewport, the physics and every extension) runs
+in a [desktop session](https://parallelworks.com/docs/run/sessions/desktops) on the GPU
+node, from the same SIF: open one on the cluster (Sessions, Create, Desktop session, or
+`pw sessions create --type desktop <cluster>`; a compute node through an environment
+for anything heavy), open its Terminal and run
+
+```bash
+~/pw/software/omniverse/isaac-sim-gui.sh            # PhysX
+~/pw/software/omniverse/isaac-sim-gui.sh newton     # Newton physics
+```
+
+The Singularity runtime's controller installs that script beside the SIF it pulls, so
+one run of the workflow with that runtime (the install directory in its form) leaves
+both there. The window takes about three minutes to appear the first time; it shares
+the shader caches with the workflow's runs. Verified on awsgpu's login node (an L4,
+driver 610.43.02) in the platform's TigerVNC desktop: Kit presents its Vulkan swapchain
+to the VNC X server, which NVIDIA's container page says does not work over VNC. The
+desktop keeps running until the session is deleted.
 
 ## Two ways to run it
 
 | Container runtime | What runs | Needs |
 |---|---|---|
 | **Docker** (the general default) | `nvcr.io/nvidia/isaac-sim:6.2.0.1`, pulled on the node that runs the job, as your user | Docker (directly or through `sudo`), about 35 GB free in Docker's own storage for the image (11 GB to download, 20 GB unpacked) |
-| **Singularity** (the hsp and noaa default, the desktop's only one) | The same image as a SIF, `ghcr.io/parallelworks/isaac-sim:6.2.0.1`, pulled once by the login node into the install directory and run by any node as your user | `singularity`/`apptainer`, 11 GB in the install directory |
+| **Singularity** (the hsp and noaa default; the GUI launcher comes with it) | The same image as a SIF, `ghcr.io/parallelworks/isaac-sim:6.2.0.1`, pulled once by the login node into the install directory and run by any node as your user | `singularity`/`apptainer`, 11 GB in the install directory |
 
 Both keep Isaac Sim's home (its shader caches and logs) under
 `<install directory>/omniverse/cache`, shared by every run on the node, so the shaders
@@ -222,13 +231,11 @@ disable squashfs) still runs it in a user namespace, which the log says.
 | Frames | 90 | Frames of simulated time at 30 per second; about a second each on an L4 once the shaders are cached |
 | Resolution, renderer | 1280 × 720, RTX Real-Time | `RayTracedLighting` (32 passes a frame) and `RealTimePathTracing` are the fast ones; `PathTracing` (64 samples, denoised) takes about 2 s a frame. Hidden for a physics-only run |
 | Snapshot every | 30 | Physics only: frames between USD snapshots; 0 writes only the last |
-| Scene and script source, results destination | empty | [Files in and out](#files-in-and-out) |
+| Use a bucket for the files, bucket, source, destination | off, none, empty, empty | [Files in and out](#files-in-and-out) |
 | Container runtime, image, SIF, install directory | Docker, `nvcr.io/nvidia/isaac-sim:6.2.0.1`, empty, `${HOME}/pw/software` | Above; a SIF of your own built with `build-container.sh`; `omniverse/cache` and `omniverse/containers` go under the install directory |
 
-The builder's form has the same host, cluster and software fields, a **Manifest** editor
-and a parts source and scene destination; the desktop's has the host and cluster fields,
-the **Application** (Isaac Sim with PhysX, or with Newton) and the SIF and install
-directory.
+The builder's form has the same host, cluster, files and software fields and a
+**Manifest** editor.
 
 ## How it works
 
@@ -263,7 +270,6 @@ the endpoint stops the page.
 ```
 yamls/general.yaml, hsp.yaml, noaa.yaml                 the render workflow, one per platform variant
 yamls/general-build.yaml, hsp-build.yaml, noaa-build.yaml   the USD builder (batch)
-yamls/general-desktop.yaml, hsp-desktop.yaml, noaa-desktop.yaml   Isaac Sim's GUI in a KasmVNC desktop
 app/kitrun.py                                           what the examples share: the app, the scene, the camera, the capture, the manifest
 app/examples/<name>/run.py, scene.usda                  pyramid, fracture, scene, physics; build/ holds the builder's example
 app/build.py                                            the USD builder
@@ -271,7 +277,7 @@ app/serve.py, app/web/                                  the page and the small s
 app/check-inputs.sh, fetch-source.sh, deliver-results.sh   the form checks, the source copy, the destination copy
 app/create-start-script.sh, scheduler-directives.sh     the start script's assembly and the core and GPU requests
 app/start-common.sh, start-template.sh, build-template.sh   what every job does on the node; the service; the batch job
-app/gui-launcher.sh                                     the desktop's startup command
+app/isaac-sim-gui.sh                                    Isaac Sim's GUI in a desktop session (installed beside the SIF)
 omniverse-docker/, omniverse-singularity/               controller.sh (the login-node checks and pulls) and runtime.sh (how a script runs in the container) per runtime
 fracture/                                               the Blast prefracture tool and the chunks-to-USD scene builder
 isaac-sim.def, build-container.sh                       how the Singularity image is built
@@ -316,8 +322,8 @@ keys, or the outputs of a physics-only run as a table of links, and what ran the
   NGC account to pull. If you have one, `docker login nvcr.io` on the node, put the
   image in *Container image*, and bring a `run.py` written for that application; the
   scene and Replicator calls are the same, only the launcher differs. The Kit App
-  Template builds a Composer of your own without an account, which the desktop variant
-  could start in place of Isaac Sim.
+  Template builds a Composer of your own without an account, which `isaac-sim-gui.sh`
+  could start in place of Isaac Sim in a desktop session.
 
 ## Output and debugging
 
@@ -340,7 +346,7 @@ run.<JOBID>.out              the script's output: the GPU, the pull, Isaac Sim's
 pw workflows runs logs <slug>            # the whole run
 pw workflows runs errors <slug>          # just the failures
 pw endpoints list                        # the page's URL
-pw endpoints delete omniverse-<slug>     # stop the page (kasmvnc-<slug> for the desktop)
+pw endpoints delete omniverse-<slug>     # stop the page
 ```
 
 The first run on a node compiles the RTX shaders: about two and a half minutes before
@@ -354,12 +360,12 @@ seconds after starting (60 frames at 1280 × 720 took 133 s in all on an L4).
 pw workflows run "$PWD/workflows/omniverse/yamls/general.yaml" -i '{
   "resource": "pw://<user>/<gpu-cluster>", "cluster": {"scheduler": false},
   "service": {"example": "fracture", "engine": "physx", "frames": 60},
-  "files": {"destination": "pw://<user>/<bucket>/omniverse"},
+  "files": {"use_bucket": true, "bucket": "pw://<user>/<bucket>", "destination": "omniverse/results"},
   "software": {"runtime": "omniverse-singularity"}}'
 
 pw workflows run "$PWD/workflows/omniverse/yamls/general-build.yaml" -i '{
   "resource": "pw://<user>/<gpu-cluster>", "cluster": {"scheduler": false},
-  "files": {"source": "pw://<user>/<bucket>/parts", "destination": "pw://<user>/<bucket>/scenes"},
+  "files": {"use_bucket": true, "bucket": "pw://<user>/<bucket>", "source": "parts", "destination": "scenes"},
   "software": {"runtime": "omniverse-singularity"}}'
 ```
 
@@ -371,9 +377,8 @@ cd workflows/omniverse
 tools/oras/oras push ghcr.io/parallelworks/isaac-sim:6.2.0.1 isaac-sim-6.2.0.1.sif
 ```
 
-New Isaac Sim version, new tag, and the tag in `omniverse-singularity/controller.sh`,
-`omniverse-singularity/runtime.sh`, `app/gui-launcher.sh`'s default and the forms'
-defaults moves with it. Keep the package public.
+New Isaac Sim version, new tag, and the tag in the forms' hidden `sif_registry` default moves with
+it. Keep the package public.
 
 ## Variants
 
@@ -381,8 +386,7 @@ defaults moves with it. Keep the package public.
 by default, the GPU request for GRES-scheduled nodes, the cores through the submitter's
 own CPUs-per-task on `existing` resources) and `noaa` (noaa.parallel.works: the noaa
 submitter and cluster form; point the install directory at a project or scratch
-directory, the homes are small), each with a `-build` and a `-desktop` twin (the
-desktop ones call the kasmvnc workflow's variant of the same name). The tests under
+directory, the homes are small), each with a `-build` twin. The tests under
 `tests/<variant>/` ran on the cloud cluster awsgpu (an L4, SLURM with no GRES): the
 login node with Docker and Singularity, a compute node, each example, the engines, a
-bucket in and out, the builder, the desktop and the failure path.
+bucket in and out, the builder and the failure path.

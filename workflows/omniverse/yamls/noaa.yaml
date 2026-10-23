@@ -8,7 +8,7 @@
 # prefractured wall, a scene of yours, a physics-only run) or a script of yours
 # headless, with PhysX or Newton and the RTX renderer, in a Docker or Singularity
 # container on the login node or a SLURM/PBS compute node. The scene comes from a
-# bucket or a cluster path, the outputs go back to one, and a page serves them
+# bucket or the cluster's filesystem, the outputs go back there, and a page serves them
 # through the pw endpoint omniverse-<run slug>, which outlives the run until the
 # endpoint is deleted. Running it accepts NVIDIA's Isaac Sim license (the container's
 # ACCEPT_EULA):
@@ -25,7 +25,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: omniverse
           sparse_checkout:
             - workflows/omniverse/app
             - workflows/omniverse/${{ inputs.software.runtime }}
@@ -49,6 +49,8 @@ jobs:
           service_resolution="${{ inputs.service.resolution }}"
           service_renderer="${{ inputs.service.renderer }}"
           service_snapshots="${{ inputs.service.snapshots }}"
+          files_use_bucket="${{ inputs.files.use_bucket }}"
+          files_bucket="${{ inputs.files.bucket.uri }}"
           files_source="${{ inputs.files.source }}"
           files_destination="${{ inputs.files.destination }}"
           service_parent_install_dir="${{ inputs.software.install_dir }}"
@@ -370,10 +372,22 @@ jobs:
         type: group
         label: Files in and out
         items:
+          use_bucket:
+            type: boolean
+            default: false
+            label: Use a bucket for the files
+            description: Otherwise the paths below are on the cluster's filesystem.
+          bucket:
+            type: bucket
+            label: Bucket
+            description: The source is read from it and the results are written to it.
+            optional: true
+            hidden: ${{ inputs.files.use_bucket == false }}
+            ignore: ${{ .hidden }}
           source:
             type: string
             label: Scene and script source
-            description: A bucket URI (pw://, s3://, gs://) or an absolute path on the cluster; empty runs the bundled example.
+            description: A path in the bucket, or an absolute path on the cluster; empty runs the bundled example.
             optional: true
             tooltip: |
               A USD file (.usd, .usda, .usdc, .usdz), or a directory holding scene.usd* (or one
@@ -384,7 +398,7 @@ jobs:
           destination:
             type: string
             label: Results destination
-            description: A bucket URI or an absolute path on the cluster; the outputs are copied to <destination>/<run slug>/ when the run ends. Empty leaves them in the job directory.
+            description: A path in the bucket, or an absolute path on the cluster; the outputs are copied to <destination>/<run slug>/ when the run ends. Empty leaves them in the job directory.
             optional: true
             tooltip: The page serves the local copy either way; the frames, render.json and the scene (or poses.csv and the snapshots) are copied as they are.
       software:

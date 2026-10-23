@@ -4,13 +4,6 @@ f_fail() {
     echo "::error title=Error::$1"
     exit 1
 }
-f_bucket_uri() {
-    case "$1" in
-        pw://*|s3://*|gs://*) return 0 ;;
-    esac
-    return 1
-}
-
 # The render form; the builder has none of these
 if [ -n "${service_example}" ]; then
     case "${service_example}" in
@@ -39,26 +32,44 @@ if [ -n "${service_example}" ]; then
     fi
 fi
 
-if [ -n "${files_source}" ] && ! f_bucket_uri "${files_source}"; then
-    case "${files_source}" in
-        /*) ;;
-        *) f_fail "The source must be a bucket URI (pw://, s3://, gs://) or an absolute path on the cluster, got '${files_source}'" ;;
+if [ "${files_use_bucket}" = true ]; then
+    # The paths are in the bucket: the full URIs replace them for the scripts that follow
+    case "${files_bucket}" in
+        pw://*|s3://*|gs://*) ;;
+        *) f_fail "The files go through a bucket, and none was chosen (got '${files_bucket}')" ;;
     esac
-    if ! [ -r "${files_source}" ]; then
-        f_fail "The source ${files_source} is not a readable file or directory on $(hostname)"
+    if [ -n "${files_source}" ]; then
+        files_source="${files_bucket%/}/${files_source#/}"
+    fi
+    if [ -n "${files_destination}" ]; then
+        files_destination="${files_bucket%/}/${files_destination#/}"
+    fi
+    {
+        echo "export files_source=\"${files_source}\""
+        echo "export files_destination=\"${files_destination}\""
+    } >> inputs.sh
+else
+    if [ -n "${files_source}" ]; then
+        case "${files_source}" in
+            /*) ;;
+            *) f_fail "The source must be an absolute path on the cluster (or turn on the bucket), got '${files_source}'" ;;
+        esac
+        if ! [ -r "${files_source}" ]; then
+            f_fail "The source ${files_source} is not a readable file or directory on $(hostname)"
+        fi
+    fi
+    if [ -n "${files_destination}" ]; then
+        case "${files_destination}" in
+            /*) ;;
+            *) f_fail "The destination must be an absolute path on the cluster (or turn on the bucket), got '${files_destination}'" ;;
+        esac
+        if ! mkdir -p "${files_destination}" 2> /dev/null || ! [ -w "${files_destination}" ]; then
+            f_fail "The destination ${files_destination} cannot be created or written by $(id -un) on $(hostname)"
+        fi
     fi
 fi
 if [ "${service_example}" = scene ] && [ -z "${files_source}" ]; then
     f_fail "The 'scene' example renders a scene of yours: give its USD file, or the directory holding it, as the source"
-fi
-if [ -n "${files_destination}" ] && ! f_bucket_uri "${files_destination}"; then
-    case "${files_destination}" in
-        /*) ;;
-        *) f_fail "The destination must be a bucket URI (pw://, s3://, gs://) or an absolute path on the cluster, got '${files_destination}'" ;;
-    esac
-    if ! mkdir -p "${files_destination}" 2> /dev/null || ! [ -w "${files_destination}" ]; then
-        f_fail "The destination ${files_destination} cannot be created or written by $(id -un) on $(hostname)"
-    fi
 fi
 
 if [ -z "${service_parent_install_dir}" ]; then

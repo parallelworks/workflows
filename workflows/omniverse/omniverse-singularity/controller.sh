@@ -41,4 +41,8 @@ else
     fi
 fi
 
+# The GUI launcher for a desktop session, beside the image it starts
+cp workflows/omniverse/app/isaac-sim-gui.sh "${service_parent_install_dir}/omniverse/isaac-sim-gui.sh"
+chmod a+rx "${service_parent_install_dir}/omniverse/isaac-sim-gui.sh"
+
 echo "::notice title=Info::Controller setup complete."

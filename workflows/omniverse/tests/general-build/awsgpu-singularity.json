@@ -15,7 +15,9 @@
     "scheduler": false
   },
   "files": {
-    "destination": "pw://alvaro/alvarotest20261010/omniverse/builds"
+    "use_bucket": true,
+    "bucket": "pw://alvaro/alvarotest20261010",
+    "destination": "omniverse/builds"
   },
   "software": {
     "runtime": "omniverse-singularity"

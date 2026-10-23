@@ -22,8 +22,10 @@
     "renderer": "RayTracedLighting"
   },
   "files": {
-    "source": "pw://alvaro/alvarotest20261010/omniverse/pyramid",
-    "destination": "pw://alvaro/alvarotest20261010/omniverse/results"
+    "use_bucket": true,
+    "bucket": "pw://alvaro/alvarotest20261010",
+    "source": "omniverse/pyramid",
+    "destination": "omniverse/results"
   },
   "software": {
     "runtime": "omniverse-singularity"

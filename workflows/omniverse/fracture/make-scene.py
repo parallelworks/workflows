@@ -18,12 +18,12 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics, UsdShade, Vt
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("chunks")
 parser.add_argument("scene")
-parser.add_argument("--strength", type=float, default=150000.0, help="tensile strength of the bonds, Pa")
+parser.add_argument("--strength", type=float, default=400000.0, help="tensile strength of the bonds, Pa")
 parser.add_argument("--density", type=float, default=2400.0, help="the material's density, kg/m3")
-parser.add_argument("--ball-radius", type=float, default=0.22)
+parser.add_argument("--ball-radius", type=float, default=0.18)
 parser.add_argument("--ball-density", type=float, default=7800.0)
-parser.add_argument("--ball-start", type=float, nargs=3, default=(0.3, -4.0, 0.75))
-parser.add_argument("--ball-velocity", type=float, nargs=3, default=(-0.8, 14.0, 1.2))
+parser.add_argument("--ball-start", type=float, nargs=3, default=(0.25, -2.6, 0.7))
+parser.add_argument("--ball-velocity", type=float, nargs=3, default=(-0.6, 9.0, 0.6))
 args = parser.parse_args()
 
 
@@ -101,6 +101,7 @@ def material(path, rgb, roughness=0.6, metallic=0.0):
 
 
 concrete = material("/World/Materials/concrete", (0.72, 0.70, 0.66))
+UsdShade.MaterialBindingAPI.Apply(ground.GetPrim()).Bind(material("/World/Materials/ground", (0.33, 0.42, 0.52), roughness=0.8))
 rubble = material("/World/Materials/rubble", (0.58, 0.55, 0.50), roughness=0.9)
 steel = material("/World/Materials/steel", (0.92, 0.92, 0.95), roughness=0.15, metallic=1.0)
 

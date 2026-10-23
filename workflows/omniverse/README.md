@@ -253,7 +253,7 @@ the endpoint stops the page.
 ```
 yamls/general.yaml, hsp.yaml, noaa.yaml                 the render workflow, one per platform variant
 yamls/general-build.yaml, hsp-build.yaml, noaa-build.yaml   the USD builder (batch)
-yamls/general-desktop.yaml                              Isaac Sim's GUI in a KasmVNC desktop
+yamls/general-desktop.yaml, hsp-desktop.yaml, noaa-desktop.yaml   Isaac Sim's GUI in a KasmVNC desktop
 app/kitrun.py                                           what the examples share: the app, the scene, the camera, the capture, the manifest
 app/examples/<name>/run.py, scene.usda                  pyramid, fracture, scene, physics; build/ holds the builder's example
 app/build.py                                            the USD builder
@@ -371,7 +371,8 @@ defaults moves with it. Keep the package public.
 by default, the GPU request for GRES-scheduled nodes, the cores through the submitter's
 own CPUs-per-task on `existing` resources) and `noaa` (noaa.parallel.works: the noaa
 submitter and cluster form; point the install directory at a project or scratch
-directory, the homes are small), each with a `-build` twin; `general-desktop`. The
-tests under `tests/<variant>/` ran on the cloud cluster awsgpu (an L4, SLURM with no
-GRES): the login node with Docker and Singularity, a compute node, each example, the
-engines, a bucket in and out, the builder, the desktop and the failure path.
+directory, the homes are small), each with a `-build` and a `-desktop` twin (the
+desktop ones call the kasmvnc workflow's variant of the same name). The tests under
+`tests/<variant>/` ran on the cloud cluster awsgpu (an L4, SLURM with no GRES): the
+login node with Docker and Singularity, a compute node, each example, the engines, a
+bucket in and out, the builder, the desktop and the failure path.

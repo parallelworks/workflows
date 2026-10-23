@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 572" width="960" height="572">
+<rect width="960" height="572" fill="#ffffff"/>
+<rect x="30" y="30" width="560" height="512" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5"/>
+<rect x="48" y="76" width="524" height="120" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5"/>
+<rect x="62" y="110" width="150" height="72" rx="8" fill="#c7d2fe" stroke="#4338ca" stroke-width="1.5"/>
+<rect x="224" y="110" width="170" height="72" rx="8" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5"/>
+<rect x="406" y="110" width="152" height="72" rx="8" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="6 4"/>
+<rect x="48" y="208" width="524" height="164" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+<rect x="62" y="244" width="118" height="66" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+<rect x="190" y="244" width="118" height="66" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+<rect x="318" y="244" width="118" height="66" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+<rect x="446" y="244" width="118" height="66" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+<rect x="62" y="320" width="500" height="42" rx="6" fill="#f0fdf4" stroke="#34d399" stroke-width="1.5" stroke-dasharray="6 4"/>
+<rect x="48" y="384" width="524" height="60" rx="10" fill="#fff7ed" stroke="#f97316" stroke-width="1.5"/>
+<rect x="48" y="456" width="524" height="74" rx="10" fill="#fefce8" stroke="#eab308" stroke-width="1.5"/>
+<rect x="62" y="488" width="150" height="34" rx="6" fill="#fef08a" stroke="#ca8a04" stroke-width="1.5"/>
+<rect x="224" y="488" width="170" height="34" rx="6" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5" stroke-dasharray="6 4"/>
+<rect x="406" y="488" width="152" height="34" rx="6" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5" stroke-dasharray="6 4"/>
+<rect x="620" y="30" width="310" height="512" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5"/>
+<rect x="638" y="76" width="274" height="76" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<rect x="638" y="168" width="274" height="76" rx="8" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
+<rect x="638" y="260" width="274" height="76" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<rect x="638" y="352" width="274" height="76" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<rect x="638" y="456" width="274" height="74" rx="8" fill="#fdf2f8" stroke="#db2777" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="48" y="56" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#1f2937" text-anchor="start">What NVIDIA Omniverse is: a stack, not an application</text>
+<text x="62" y="98" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#3730a3" text-anchor="start">Applications built on Kit (each is a .kit file naming its extensions)</text>
+<text x="137" y="134" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" fill="#1e1b4b" text-anchor="middle">Isaac Sim</text>
+<text x="137" y="152" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#312e81" text-anchor="middle">robotics; the one public</text>
+<text x="137" y="167" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#312e81" text-anchor="middle">container (this workflow)</text>
+<text x="309" y="134" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#1e1b4b" text-anchor="middle">Kit App Template builds</text>
+<text x="309" y="152" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#312e81" text-anchor="middle">USD Composer, USD Explorer,</text>
+<text x="309" y="167" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#312e81" text-anchor="middle">USD Viewer, Base Editor, Service</text>
+<text x="482" y="134" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#1e1b4b" text-anchor="middle">Legacy apps</text>
+<text x="482" y="152" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#312e81" text-anchor="middle">Launcher builds of Composer,</text>
+<text x="482" y="167" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#312e81" text-anchor="middle">Explorer: no longer supported</text>
+<text x="62" y="230" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#065f46" text-anchor="start">Kit SDK: the framework (Carbonite runtime, extensions, omni.ui, Python)</text>
+<text x="121" y="266" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#064e3b" text-anchor="middle">RTX</text>
+<text x="121" y="283" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#065f46" text-anchor="middle">renderer: ray and</text>
+<text x="121" y="297" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#065f46" text-anchor="middle">path tracing (Hydra)</text>
+<text x="249" y="266" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#064e3b" text-anchor="middle">PhysX</text>
+<text x="249" y="283" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#065f46" text-anchor="middle">the default physics</text>
+<text x="249" y="297" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#065f46" text-anchor="middle">engine (omni.physx)</text>
+<text x="377" y="266" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#064e3b" text-anchor="middle">Newton</text>
+<text x="377" y="283" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#065f46" text-anchor="middle">open physics engine,</text>
+<text x="377" y="297" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#065f46" text-anchor="middle">experimental opt-in</text>
+<text x="505" y="266" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#064e3b" text-anchor="middle">Replicator</text>
+<text x="505" y="283" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#065f46" text-anchor="middle">cameras and writers:</text>
+<text x="505" y="297" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#065f46" text-anchor="middle">the captured frames</text>
+<text x="312" y="337" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#065f46" text-anchor="middle">Blast: the destruction SDK, in the PhysX repository (BSD-3)</text>
+<text x="312" y="352" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#065f46" text-anchor="middle">its Kit extension, omni.blast, is not in Kit 110's registry</text>
+<text x="62" y="406" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#9a3412" text-anchor="start">OpenUSD (Pixar): the scene description every layer reads and writes</text>
+<text x="62" y="426" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#7c2d12" text-anchor="start">Meshes, materials, lights, cameras, animation and physics (USD Physics schema) in one file tree</text>
+<text x="62" y="478" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#713f12" text-anchor="start">Where the USD files live</text>
+<text x="137" y="510" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#422006" text-anchor="middle">Buckets, cluster paths</text>
+<text x="309" y="502" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#422006" text-anchor="middle">Nucleus: Workstation retired</text>
+<text x="309" y="516" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#422006" text-anchor="middle">2025-10; Enterprise Server stays</text>
+<text x="482" y="502" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#422006" text-anchor="middle">Storage API (gRPC, S3):</text>
+<text x="482" y="516" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="normal" fill="#422006" text-anchor="middle">NVIDIA's new direction</text>
+<text x="638" y="56" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#1f2937" text-anchor="start">This workflow</text>
+<text x="775" y="100" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#1e293b" text-anchor="middle">Source</text>
+<text x="775" y="120" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#334155" text-anchor="middle">a USD scene (and a run.py) from a</text>
+<text x="775" y="136" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#334155" text-anchor="middle">bucket or a cluster path; or an example</text>
+<path d="M775 152 v10" stroke="#64748b" stroke-width="1.5"/><path d="M770 158 l5 6 l5 -6" fill="none" stroke="#64748b" stroke-width="1.5"/>
+<text x="775" y="192" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#0c4a6e" text-anchor="middle">Isaac Sim, headless</text>
+<text x="775" y="212" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#334155" text-anchor="middle">Kit + RTX + PhysX or Newton in the</text>
+<text x="775" y="228" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#334155" text-anchor="middle">public container, Docker or Singularity</text>
+<path d="M775 244 v10" stroke="#64748b" stroke-width="1.5"/><path d="M770 250 l5 6 l5 -6" fill="none" stroke="#64748b" stroke-width="1.5"/>
+<text x="775" y="284" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#1e293b" text-anchor="middle">Outputs</text>
+<text x="775" y="304" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#334155" text-anchor="middle">frames, or poses.csv and USD snapshots;</text>
+<text x="775" y="320" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#334155" text-anchor="middle">render.json; a copy to a bucket or path</text>
+<path d="M775 336 v10" stroke="#64748b" stroke-width="1.5"/><path d="M770 342 l5 6 l5 -6" fill="none" stroke="#64748b" stroke-width="1.5"/>
+<text x="775" y="376" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#1e293b" text-anchor="middle">Page</text>
+<text x="775" y="396" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#334155" text-anchor="middle">served through a pw endpoint;</text>
+<text x="775" y="412" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#334155" text-anchor="middle">stays up until the endpoint is deleted</text>
+<text x="775" y="480" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#831843" text-anchor="middle">Not used here</text>
+<text x="775" y="500" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#9d174d" text-anchor="middle">Kit's WebRTC streaming (UDP), Nucleus,</text>
+<text x="775" y="516" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#9d174d" text-anchor="middle">NGC-only images; no NVIDIA account</text>
+</svg>

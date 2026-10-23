@@ -2,3 +2,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-22T10:45:47Z,partial,pass,ok,5f9f218,e20a8e2,eef523b,cdb3af4,cdb3af4,omniverse,alvaro,guiding-garfish,306,
 2026-10-22T11:58:56Z,partial,pass,ok,24c0c42,e20a8e2,eef523b,ffe24c0,ffe24c0,omniverse,alvaro,prepared-bird,306,
 2026-10-23T08:22:13Z,cold,pass,ok,72ef48a,e20a8e2,eef523b,1f419a2,1f419a2,omniverse,alvaro,fine-macaw,429,
+2026-10-23T09:06:51Z,warm,pass,ok,d0210f9,e20a8e2,eef523b,a7473e1,a7473e1,omniverse,alvaro,stable-muskox,194,

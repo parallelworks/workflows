@@ -28,6 +28,9 @@ write_cancel_script
 runtime_setup
 
 echo "::group::Run"
+# A physics-only run's form hides the render fields; the script still takes them
+service_resolution="${service_resolution:-1280x720}"
+service_renderer="${service_renderer:-RayTracedLighting}"
 script="/app/examples/${service_example}/run.py"
 if [ -n "${scene_script}" ]; then
     script="/scene/${scene_script}"

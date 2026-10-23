@@ -24,13 +24,16 @@ if [ -n "${service_example}" ]; then
     if ! [[ "${service_frames}" =~ ^[0-9]+$ ]] || [ "${service_frames}" -lt 1 ]; then
         f_fail "Frames must be a whole number of at least 1, got '${service_frames}'"
     fi
-    if ! [[ "${service_resolution}" =~ ^[0-9]+x[0-9]+$ ]]; then
-        f_fail "Resolution must be WIDTHxHEIGHT, got '${service_resolution}'"
+    # A physics-only run hides the render fields, which then arrive empty
+    if [ "${service_example}" != physics ]; then
+        if ! [[ "${service_resolution}" =~ ^[0-9]+x[0-9]+$ ]]; then
+            f_fail "Resolution must be WIDTHxHEIGHT, got '${service_resolution}'"
+        fi
+        case "${service_renderer}" in
+            RayTracedLighting|RealTimePathTracing|PathTracing) ;;
+            *) f_fail "Unknown renderer '${service_renderer}': RayTracedLighting, RealTimePathTracing or PathTracing" ;;
+        esac
     fi
-    case "${service_renderer}" in
-        RayTracedLighting|RealTimePathTracing|PathTracing) ;;
-        *) f_fail "Unknown renderer '${service_renderer}': RayTracedLighting, RealTimePathTracing or PathTracing" ;;
-    esac
     if [ -n "${service_snapshots}" ] && ! [[ "${service_snapshots}" =~ ^[0-9]+$ ]]; then
         f_fail "Snapshot interval must be a whole number of frames (0 for the last frame only), got '${service_snapshots}'"
     fi

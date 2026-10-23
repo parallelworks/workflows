@@ -32,7 +32,7 @@ if [ -z "${source}" ]; then
     exit 0
 fi
 case "${source}" in
-    pw://*|s3://*|gs://*|https://*)
+    pw://*|s3://*|gs://*)
         rm -rf scene
         mkdir -p scene
         echo "::group::Source Download"

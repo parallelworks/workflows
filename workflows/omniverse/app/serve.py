@@ -32,6 +32,8 @@ class Handler(SimpleHTTPRequestHandler):
         # A path-based endpoint forwards its prefix: the page's <base> keeps the
         # relative URLs right, and the server only looks at the tail
         path = path.split("?", 1)[0].split("#", 1)[0]
+        if ".." in path.split("/"):
+            return os.path.join(self.web_dir, "404")  # nothing above the served directories
         for tail in ("render.json", "frames/", "snapshots/", "poses.csv", "scene.usda"):
             at = path.find("/" + tail)
             if at >= 0:

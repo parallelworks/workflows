@@ -6,7 +6,7 @@ f_fail() {
 }
 f_bucket_uri() {
     case "$1" in
-        pw://*|s3://*|gs://*|https://*) return 0 ;;
+        pw://*|s3://*|gs://*) return 0 ;;
     esac
     return 1
 }

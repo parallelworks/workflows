@@ -8,7 +8,7 @@ output_dir="$1"
 destination="${2%/}"
 target="${destination}/$3"
 case "${destination}" in
-    pw://*|s3://*|gs://*|https://*)
+    pw://*|s3://*|gs://*)
         for attempt in 1 2 3; do
             # The trailing slash copies the directory's contents into the target
             if pw buckets cp -r "${output_dir%/}/" "${target}/"; then

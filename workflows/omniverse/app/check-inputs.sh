@@ -30,6 +30,20 @@ if [ -n "${service_example}" ]; then
     if [ -n "${service_snapshots}" ] && ! [[ "${service_snapshots}" =~ ^[0-9]+$ ]]; then
         f_fail "Snapshot interval must be a whole number of frames (0 for the last frame only), got '${service_snapshots}'"
     fi
+    if [ "${fracture_own_mesh}" = true ]; then
+        if ! [[ "${fracture_cells}" =~ ^[0-9]+$ ]] || [ "${fracture_cells}" -lt 2 ]; then
+            f_fail "Chunks must be a whole number of at least 2, got '${fracture_cells}'"
+        fi
+        if ! [[ "${fracture_seed}" =~ ^[0-9]+$ ]]; then
+            f_fail "The seed must be a whole number, got '${fracture_seed}'"
+        fi
+        if ! [[ "${fracture_strength}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            f_fail "The bond strength must be a number of pascals, got '${fracture_strength}'"
+        fi
+        if [ -z "${files_source}" ]; then
+            f_fail "Fracturing a mesh of yours needs it as the source: an OBJ file, or a directory holding one"
+        fi
+    fi
 fi
 
 if [ "${files_use_bucket}" = true ]; then

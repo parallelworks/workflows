@@ -24,7 +24,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: omniverse
           sparse_checkout:
             - workflows/omniverse/app
             - workflows/omniverse/${{ inputs.software.runtime }}
@@ -48,6 +48,10 @@ jobs:
           service_resolution="${{ inputs.service.resolution }}"
           service_renderer="${{ inputs.service.renderer }}"
           service_snapshots="${{ inputs.service.snapshots }}"
+          fracture_own_mesh="${{ inputs.fracture.own_mesh }}"
+          fracture_cells="${{ inputs.fracture.cells }}"
+          fracture_seed="${{ inputs.fracture.seed }}"
+          fracture_strength="${{ inputs.fracture.strength }}"
           files_use_bucket="${{ inputs.files.use_bucket }}"
           files_bucket="${{ inputs.files.bucket.uri }}"
           files_source="${{ inputs.files.source }}"
@@ -75,6 +79,11 @@ jobs:
         run: |
           source inputs.sh
           bash workflows/omniverse/app/fetch-source.sh
+      - name: Fracture the Mesh
+        if: ${{ inputs.fracture.own_mesh == true }}
+        run: |
+          source inputs.sh
+          bash workflows/omniverse/app/fracture-source.sh
       - name: Create Service Script
         run: |
           source inputs.sh
@@ -359,18 +368,18 @@ jobs:
             default: pyramid
             options:
               - value: pyramid
-                label: Pyramid of blocks (rigid bodies, rendered)
+                label: Pyramid of blocks, rendered (the bundled scene)
               - value: fracture
-                label: Fracture (a prefractured wall hit by a projectile, rendered)
+                label: Fracture, rendered (a wall prefractured with Blast, hit by a ball)
               - value: scene
-                label: Your scene, opened as is (rendered)
+                label: Render your scene (a USD file of yours, as it is)
               - value: physics
-                label: Physics only (poses and USD snapshots, no frames)
+                label: Simulate only (poses and USD snapshots of a scene, no frames)
             tooltip: |
               Each example is a USD scene plus a Python script under app/examples/<name>/.
-              Pyramid and fracture render their bundled scene unless the source holds one;
-              "your scene" needs the source; physics-only simulates the source's scene, or
-              the fracture wall, and writes poses.csv and USD snapshots instead of frames.
+              The pyramid and the wall are bundled; "render your scene" takes a USD file
+              from the files section; "simulate only" takes one too (or else the wall) and
+              writes poses.csv and USD snapshots instead of frames.
           engine:
             type: dropdown
             label: Physics engine
@@ -430,9 +439,50 @@ jobs:
             hidden: ${{ inputs.service.example != 'physics' }}
             ignore: ${{ .hidden }}
             tooltip: A snapshot is the whole stage with every body where it is at that frame, as a .usda file to open in any USD tool; the poses of every frame are in poses.csv regardless.
+      fracture:
+        type: group
+        label: Fracture
+        hidden: ${{ inputs.service.example != 'fracture' }}
+        ignore: ${{ .hidden }}
+        items:
+          own_mesh:
+            type: boolean
+            default: false
+            label: Fracture a mesh of yours with the Blast SDK
+            description: The first run builds the SDK on the login node (about five minutes); the mesh (an OBJ, meters, base at z = 0) comes from the files section. Otherwise the bundled wall renders.
+          cells:
+            type: number
+            label: Chunks
+            description: Voronoi cells the mesh is cut into.
+            default: 24
+            min: 2
+            max: 500
+            step: 1
+            hidden: ${{ inputs.fracture.own_mesh == false }}
+            ignore: ${{ .hidden }}
+          seed:
+            type: number
+            label: Seed
+            description: The random seed of the cut; the same seed gives the same chunks.
+            default: 7
+            min: 0
+            step: 1
+            hidden: ${{ inputs.fracture.own_mesh == false }}
+            ignore: ${{ .hidden }}
+          strength:
+            type: number
+            label: Bond strength
+            description: Pascals; a bond breaks above this times the area of the cut face. 150000 lets a steel ball through a concrete wall.
+            default: 150000
+            min: 1
+            step: 1000
+            hidden: ${{ inputs.fracture.own_mesh == false }}
+            ignore: ${{ .hidden }}
       files:
         type: group
         label: Files in and out
+        hidden: ${{ inputs.service.example == 'pyramid' || (inputs.service.example == 'fracture' && inputs.fracture.own_mesh == false) }}
+        ignore: ${{ .hidden }}
         items:
           use_bucket:
             type: boolean
@@ -449,14 +499,15 @@ jobs:
           source:
             type: string
             label: Scene and script source
-            description: A path in the bucket, or an absolute path on the cluster; empty runs the bundled example.
+            description: A path in the bucket, or an absolute path on the cluster; for "simulate only", empty takes the bundled wall.
             optional: true
             tooltip: |
               A USD file (.usd, .usda, .usdc, .usdz), or a directory holding scene.usd* (or one
               USD file) and whatever it references by relative path, and optionally a run.py
               that replaces the example's script (it takes the same arguments; see
-              app/examples/). A bucket directory is copied to the job directory as a whole;
-              a cluster path is read in place.
+              app/examples/). To fracture a mesh of yours: an OBJ file, or a directory holding
+              one. A bucket directory is copied to the job directory as a whole; a cluster
+              path is read in place.
           destination:
             type: string
             label: Results destination
@@ -469,30 +520,10 @@ jobs:
         collapsed: true
         items:
           runtime:
-            type: dropdown
-            label: Container runtime
-            description: Docker pulls the image on the render node; Singularity pulls a prebuilt SIF into the install directory once.
-            default: omniverse-singularity
-            options:
-              - value: omniverse-docker
-                label: Docker
-              - value: omniverse-singularity
-                label: Singularity / Apptainer
-            tooltip: |
-              Docker: the image is pulled on the node that runs the job (sudo docker when the
-              user is not in the docker group) into Docker's own storage, which needs about
-              35 GB free; the job fails at once when it has less. Singularity: the login node
-              pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 (the same image as a SIF, 11 GB)
-              into the install directory once, and every node runs it as your user; for
-              clusters without Docker.
-          image:
             type: string
-            label: Container image
-            description: Pulled once per node; 11 GB to download, 20 GB unpacked.
-            default: nvcr.io/nvidia/isaac-sim:6.2.0.1
-            hidden: ${{ inputs.software.runtime != 'omniverse-docker' }}
-            ignore: ${{ .hidden }}
-            tooltip: The NVIDIA Isaac Sim image on NGC, built on the Omniverse Kit SDK; anonymous pulls work. The Omniverse Kit and USD Composer images need an NGC account.
+            hidden: true
+            default: omniverse-singularity
+            label: The container runtime (Singularity on the HPCMP systems)
           sif:
             type: string
             label: Singularity image file

@@ -19,7 +19,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: omniverse
           sparse_checkout:
             - workflows/omniverse/app
             - workflows/omniverse/${{ inputs.software.runtime }}
@@ -272,20 +272,19 @@ jobs:
           runtime:
             type: dropdown
             label: Container runtime
-            description: Docker pulls the image on the build node; Singularity pulls a prebuilt SIF into the install directory once.
-            default: omniverse-docker
+            description: Singularity pulls a prebuilt SIF into the install directory once; Docker pulls the image on the node that runs the job.
+            default: omniverse-singularity
             options:
-              - value: omniverse-docker
-                label: Docker
               - value: omniverse-singularity
                 label: Singularity / Apptainer
+              - value: omniverse-docker
+                label: Docker
             tooltip: |
-              Docker: the image is pulled on the node that runs the job (sudo docker when the
-              user is not in the docker group) into Docker's own storage, which needs about
-              35 GB free; the job fails at once when it has less. Singularity: the login node
-              pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 (the same image as a SIF, 11 GB)
-              into the install directory once, and every node runs it as your user; for
-              clusters without Docker.
+              Singularity: the login node pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 (the
+              Isaac Sim image as a SIF, 11 GB) into the install directory once, and every node
+              runs it as your user. Docker: the image is pulled on the node that runs the job
+              (sudo docker when the user is not in the docker group) into Docker's own storage,
+              which needs about 35 GB free; the job fails at once when it has less.
           image:
             type: string
             label: Container image

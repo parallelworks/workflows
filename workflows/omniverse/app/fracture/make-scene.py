@@ -25,6 +25,8 @@ parser.add_argument("--ball-radius", type=float, default=0.18)
 parser.add_argument("--ball-density", type=float, default=7800.0)
 parser.add_argument("--ball-start", type=float, nargs=3, default=(0.25, -2.6, 0.7))
 parser.add_argument("--ball-velocity", type=float, nargs=3, default=(-0.6, 9.0, 0.6))
+parser.add_argument("--ball", choices=["given", "auto"], default="given",
+                    help="auto places the ball in front of the chunks' bounds (-y side), at mid height, thrown at +y")
 args = parser.parse_args()
 
 
@@ -64,6 +66,12 @@ def plane_key(a, b, c):
 
 
 verts, chunks = read_chunks(args.chunks)
+if args.ball == "auto":
+    lo = [min(v[k] for v in verts) for k in range(3)]
+    hi = [max(v[k] for v in verts) for k in range(3)]
+    depth = max(hi[1] - lo[1], 0.2)
+    args.ball_start = ((lo[0] + hi[0]) / 2 + 0.1 * (hi[0] - lo[0]), lo[1] - 2.0 - depth, lo[2] + 0.6 * (hi[2] - lo[2]))
+    args.ball_velocity = (-0.2, 9.0, 0.6)
 stage = Usd.Stage.CreateNew(args.scene)
 UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
 UsdGeom.SetStageMetersPerUnit(stage, 1.0)

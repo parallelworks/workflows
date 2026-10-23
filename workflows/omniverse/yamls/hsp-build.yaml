@@ -22,7 +22,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: omniverse
           sparse_checkout:
             - workflows/omniverse/app
             - workflows/omniverse/${{ inputs.software.runtime }}
@@ -370,30 +370,10 @@ jobs:
         collapsed: true
         items:
           runtime:
-            type: dropdown
-            label: Container runtime
-            description: Docker pulls the image on the build node; Singularity pulls a prebuilt SIF into the install directory once.
-            default: omniverse-singularity
-            options:
-              - value: omniverse-docker
-                label: Docker
-              - value: omniverse-singularity
-                label: Singularity / Apptainer
-            tooltip: |
-              Docker: the image is pulled on the node that runs the job (sudo docker when the
-              user is not in the docker group) into Docker's own storage, which needs about
-              35 GB free; the job fails at once when it has less. Singularity: the login node
-              pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 (the same image as a SIF, 11 GB)
-              into the install directory once, and every node runs it as your user; for
-              clusters without Docker.
-          image:
             type: string
-            label: Container image
-            description: Pulled once per node; 11 GB to download, 20 GB unpacked.
-            default: nvcr.io/nvidia/isaac-sim:6.2.0.1
-            hidden: ${{ inputs.software.runtime != 'omniverse-docker' }}
-            ignore: ${{ .hidden }}
-            tooltip: The NVIDIA Isaac Sim image on NGC, built on the Omniverse Kit SDK; anonymous pulls work.
+            hidden: true
+            default: omniverse-singularity
+            label: The container runtime (Singularity on the HPCMP systems)
           sif:
             type: string
             label: Singularity image file

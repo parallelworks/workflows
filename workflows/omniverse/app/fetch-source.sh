@@ -39,6 +39,11 @@ case "${source}" in
         case "$(tr '[:upper:]' '[:lower:]' <<< "${source}")" in
             *.usd|*.usda|*.usdc|*.usdz)
                 f_bucket_copy "${source}" "scene/$(basename "${source}")" || f_fail "Could not download ${source}"
+                scene_file=$(basename "${source}")
+                ;;
+            *.obj)
+                f_bucket_copy "${source}" "scene/$(basename "${source}")" || f_fail "Could not download ${source}"
+                scene_file=$(basename "${source}")
                 ;;
             *)
                 # The trailing slash copies the directory's contents, not the directory
@@ -63,6 +68,26 @@ case "${source}" in
         ;;
 esac
 
+if [ "${fracture_own_mesh}" = true ]; then
+    # The mesh to fracture: the file named, or the one OBJ in the directory
+    case "$(tr '[:upper:]' '[:lower:]' <<< "${scene_file}")" in
+        *.obj) ;;
+        "")
+            mapfile -t meshes < <(find "${scene_dir}" -maxdepth 1 -type f -iname '*.obj' -printf '%f\n' | sort)
+            if [ "${#meshes[@]}" -ne 1 ]; then
+                f_fail "The source must hold one OBJ file to fracture; ${source} holds ${#meshes[@]}"
+            fi
+            scene_file="${meshes[0]}"
+            ;;
+        *) f_fail "The mesh to fracture must be an OBJ file, got ${scene_file}" ;;
+    esac
+    echo "::notice::Mesh to fracture: ${scene_dir}/${scene_file}"
+    {
+        echo "export mesh_dir=\"${scene_dir}\""
+        echo "export mesh_file=\"${scene_file}\""
+    } >> inputs.sh
+    exit 0
+fi
 if [ -z "${scene_file}" ]; then
     for name in scene.usd scene.usda scene.usdc scene.usdz; do
         if [ -f "${scene_dir}/${name}" ]; then

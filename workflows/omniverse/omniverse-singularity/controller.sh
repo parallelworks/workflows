@@ -45,4 +45,8 @@ fi
 cp workflows/omniverse/app/isaac-sim-gui.sh "${service_parent_install_dir}/omniverse/isaac-sim-gui.sh"
 chmod a+rx "${service_parent_install_dir}/omniverse/isaac-sim-gui.sh"
 
+if [ "${fracture_own_mesh}" = true ]; then
+    bash workflows/omniverse/app/install-blast.sh "${service_parent_install_dir}"
+fi
+
 echo "::notice title=Info::Controller setup complete."

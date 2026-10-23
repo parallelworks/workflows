@@ -23,4 +23,8 @@ if [ -z "${software_image}" ]; then
     exit 1
 fi
 
+if [ "${fracture_own_mesh}" = true ]; then
+    bash workflows/omniverse/app/install-blast.sh "${service_parent_install_dir}"
+fi
+
 echo "::notice title=Info::Controller setup complete."

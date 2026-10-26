@@ -1,49 +1,21 @@
 Why Isaac Sim's window does not open in a platform desktop session (2026-10-23)
 =============================================================================
 
-What a user sees
-  They open a desktop session on a GPU cluster, open its terminal, start Isaac Sim
-  from the workflow's image, and nothing appears. About 25 seconds later the program
-  has quit. The same command shows the window in a KasmVNC desktop on the same node.
+Isaac Sim started from a platform desktop session crashes about 25 seconds in and never
+shows a window. The same command opens the window in a KasmVNC desktop on the same node.
 
-What is going on, in plain words
-  A desktop session is a virtual screen drawn by a program called an X server (the
-  platform uses TigerVNC's "Xvnc"), and the browser shows that screen. Programs with
-  windows ask the X server for a window to draw into.
+Cause: the session's X server, TigerVNC's Xvnc from /opt/pw/software/verified/tigervnc,
+is built without the GLX extension. NVIDIA's driver needs GLX to show a window, and
+without it the driver crashes instead of failing cleanly. Isaac Sim's log shows
+'extension "GLX" missing on display ":1"' and then a segfault (exit code 139).
 
-  Isaac Sim draws its pictures on the GPU with NVIDIA's driver and then hands each
-  picture to the X server to put on the screen. Before doing that, the NVIDIA driver
-  asks the X server a question: "do you support GLX?" GLX is an old add-on through
-  which X servers and NVIDIA's driver talk about 3D graphics. Most X servers have it.
-  The platform's Xvnc was built without it, so the answer is "no".
+Not the cause: Isaac Sim runs on the same desktop with --no-window. KasmVNC's Xvnc, which
+has GLX, shows the window at about 27 frames a second with the same node, image and
+driver. Client-side changes (a newer Xlib, hiding the DRI3 library) made no difference.
 
-  NVIDIA's driver does not handle that "no" gracefully: it tries to continue, runs
-  into a part of itself that was never set up, and the program crashes. Nothing the
-  user does from the terminal can change that answer, because it is a property of
-  the X server the platform started.
+Fix: build the session's Xvnc with GLX (TigerVNC supports it; it needs Mesa's libglx).
+Nothing changes in Isaac Sim, the image or the launcher script.
 
-How we know
-  - On the platform desktop, Isaac Sim's log says: extension "GLX" missing on
-    display ":1", and right after that it crashes inside NVIDIA's driver library
-    (libnvidia-eglcore), called from the part of Isaac Sim that sets up its window.
-  - The same program started without a window (--no-window) on the same desktop
-    runs fine, so the GPU, the driver and the image are not the problem.
-  - A desktop whose X server has GLX (KasmVNC's Xvnc, on the same node, same image,
-    same driver) shows the window and renders the 3D view at about 27 frames a second.
-  - Changing things on the client side (a newer X client library, hiding the DRI3
-    client library) changed nothing, as expected: the missing piece is in the server.
-
-What fixes it
-  Ship the desktop session's Xvnc with the GLX extension (TigerVNC can be built with
-  it; it needs Mesa's libglx). KasmVNC's Xvnc already has it, which is why the
-  workflow's kasmvnc-based desktop works. No change is needed in Isaac Sim, in the
-  image or in the launcher script.
-
-Details for engineers
-  Node awsgpu, NVIDIA L4, driver 610.43.02, Isaac Sim 6.2.0.1 (Omniverse Kit 110.4),
-  TigerVNC 1.14.1 Xvnc from /opt/pw/software/verified/tigervnc (xdpyinfo lists DRI3
-  and Present but no GLX; "+extension GLX" is a no-op because no libglx is present).
-  The crash is a call to address 0 in libnvidia-eglcore.so.610.43.02 from
-  libcarb.graphics-vulkan.plugin.so, after Xlib's "GLX missing" message. Captured
-  with an LD_PRELOADed SIGSEGV handler that resolves the return addresses on the
-  stack; Kit's own crash reporter shows no usable frames.
+Tested on awsgpu: NVIDIA L4, driver 610.43.02, Isaac Sim 6.2.0.1 (Kit 110.4), TigerVNC
+1.14.1. "+extension GLX" does nothing because no libglx is installed. The crash is a call
+to address 0 in libnvidia-eglcore.so from libcarb.graphics-vulkan.plugin.so.

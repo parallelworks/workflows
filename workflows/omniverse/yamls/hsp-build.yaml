@@ -148,7 +148,7 @@ jobs:
             min: 1
             max: 256
             step: 1
-            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false || inputs.resource.provider == 'existing' }}
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false || (inputs.resource.provider == 'existing' && inputs.resource.schedulerType == 'slurm') }}
             ignore: ${{ .hidden }}
             tooltip: |
               Requested as --cpus-per-task=N (PBS: -l select=1:ncpus=N) ahead of the directives

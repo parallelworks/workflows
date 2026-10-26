@@ -7,6 +7,7 @@
 #   scene_script   run.py, when the directory has one: it replaces the example's script
 # Runs on the login node (it has pw and the run's key), after inputs.sh is sourced.
 set -o pipefail
+set -x
 
 f_fail() {
     echo "::error title=Error::$1"

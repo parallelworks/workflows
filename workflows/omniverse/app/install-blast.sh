@@ -6,6 +6,7 @@
 # blast-fracture tool against them, and a Python venv with usd-core for make-scene.py.
 # Runs on the login node (internet, compilers); idempotent: a finished install is kept.
 set -eo pipefail
+set -x
 root="${1:?the install directory}/omniverse/blast"
 app="$(cd "$(dirname "$0")" && pwd)"
 if [ -x "${root}/blast-fracture" ] && [ -x "${root}/usd/bin/python" ]; then

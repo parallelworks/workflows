@@ -5,6 +5,7 @@
 # it like the bundled wall. Reads fracture_cells, fracture_seed, fracture_strength and
 # service_parent_install_dir. Runs on the login node after inputs.sh is sourced.
 set -eo pipefail
+set -x
 tools="${service_parent_install_dir:-${HOME}/pw/software}/omniverse/blast"
 app="${PW_PARENT_JOB_DIR}/workflows/omniverse/app"
 if ! [ -x "${tools}/blast-fracture" ] || ! [ -x "${tools}/usd/bin/python" ]; then

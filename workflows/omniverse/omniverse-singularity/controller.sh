@@ -1,7 +1,8 @@
 set -o pipefail
+set -x
 
 ################################################################################
-# Interactive Session Controller - Omniverse render (Singularity)
+# Interactive Session Controller - Omniverse (Singularity)
 #
 # Purpose: Check the form's values before the job is submitted and pull the
 #          Isaac Sim SIF (idempotent) into the install directory, which the

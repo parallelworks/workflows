@@ -1,7 +1,8 @@
 set -o pipefail
+set -x
 
 ################################################################################
-# Interactive Session Controller - Omniverse render (Docker)
+# Interactive Session Controller - Omniverse (Docker)
 #
 # Purpose: Check the form's values before the job is submitted. The image is
 #          pulled in start-template.sh on the node where the job runs, because

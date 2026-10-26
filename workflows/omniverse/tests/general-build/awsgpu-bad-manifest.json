@@ -1,0 +1,20 @@
+{
+  "_test": {
+    "timeout_s": 1200,
+    "expect": "error",
+    "endpoint": false,
+    "leftover_patterns": [
+      "build.py --manifest"
+    ]
+  },
+  "resource": "pw://alvaro/awsgpu",
+  "cluster": {
+    "scheduler": false
+  },
+  "build": {
+    "manifest": "scene: broken.usda\nobjects:\n  - name: missing\n    file: parts/missing.obj\n"
+  },
+  "software": {
+    "runtime": "omniverse-singularity"
+  }
+}

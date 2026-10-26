@@ -4,6 +4,7 @@
 # through pw buckets cp, or a directory on the cluster. Runs on the node that produced
 # them; the local copy stays where it is.
 set -o pipefail
+set -x
 output_dir="$1"
 destination="${2%/}"
 target="${destination}/$3"

@@ -1,0 +1,32 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": [
+      "${HOME}/pw/software/omniverse/containers/isaac-sim-6.2.0.1.sif",
+      "${HOME}/pw/software/omniverse/cache/.cache/ov"
+    ],
+    "leftover_patterns": [
+      "serve.py --port",
+      "run.py --out",
+      "pw endpoints run"
+    ],
+    "setup": "d=$(ls -dt ${HOME}/omniverse-test/scenes/*/ 2>/dev/null | head -1) && [ -n \"$d\" ] && rm -rf ${HOME}/omniverse-test/scene && cp -r \"$d\" ${HOME}/omniverse-test/scene"
+  },
+  "resource": "pw://alvaro/awsgpu",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "example": "scene",
+    "frames": 60,
+    "resolution": "1280x720",
+    "renderer": "RayTracedLighting"
+  },
+  "files": {
+    "use_bucket": false,
+    "source": "/home/alvaro/omniverse-test/scene"
+  },
+  "software": {
+    "runtime": "omniverse-singularity"
+  }
+}

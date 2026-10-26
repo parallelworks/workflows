@@ -285,7 +285,7 @@ jobs:
           engine:
             type: dropdown
             label: Physics engine
-            description: PhysX is Omniverse's default; Newton is the open-source engine NVIDIA ships as experimental.
+            description: PhysX is Omniverse's default. Newton (experimental) takes free bodies and robots, so the fractured scenes run under PhysX only.
             default: physx
             options:
               - value: physx
@@ -402,7 +402,7 @@ jobs:
           source:
             type: string
             label: Scene and script source
-            description: A path in the bucket, or an absolute path on the cluster; for "simulate only", empty takes the bundled wall.
+            description: A path in the bucket, or an absolute path on the cluster; for "simulate only", empty takes the bundled wall (PhysX only).
             optional: true
             tooltip: |
               A USD file (.usd, .usda, .usdc, .usdz), or a directory holding scene.usd* (or one

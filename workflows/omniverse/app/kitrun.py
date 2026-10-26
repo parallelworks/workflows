@@ -169,7 +169,9 @@ def _play(args):
 def check_engine(stage, engine):
     """Newton takes joints only inside an articulation; a scene whose joints connect free
     bodies (the bonds of a fractured mesh) makes it refuse the whole stage and simulate
-    nothing, with an error in the log and no other sign."""
+    nothing, with an error in the log and no other sign. A joint counts as articulated
+    when one of its bodies has ArticulationRootAPI on itself or an ancestor, which is
+    how the URDF and MJCF importers lay a robot out."""
     if engine != "newton":
         return
     from pxr import UsdPhysics  # noqa: E402
@@ -192,7 +194,7 @@ def check_engine(stage, engine):
             loose.append(str(prim.GetPath()))
     if loose:
         fail(f"Newton simulates joints only inside an articulation (a robot); this scene has {len(loose)} joints "
-             f"between free bodies (the bonds of a fractured mesh): run it with PhysX")
+             f"between free bodies, {loose[0]} for one: run it with PhysX")
 
 
 def check_started(engine):

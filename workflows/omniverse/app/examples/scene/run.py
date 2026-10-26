@@ -3,7 +3,8 @@
 
 The USD file from the source input is framed from the bounds of its objects (a floor
 is ignored), lit with a dome light when it has no light, and its timeline played, so
-any physics or animation in the file runs during the frames.
+any physics or animation in the file runs during the frames; the joints that came
+apart, if it has any, are counted into render.json.
 """
 import os
 import sys

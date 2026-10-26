@@ -6,9 +6,9 @@ Sim, in a container, headless or in a browser desktop. Three workflows:
 
 | Workflow | What it does | README |
 |---|---|---|
-| `general-render` (`hsp-`, `noaa-`) | Renders or simulates a USD scene: the bundled examples (a pyramid of blocks, a wall prefractured with the Blast SDK) or yours, with PhysX or Newton; serves the frames or the poses as a page | [README-render.md](README-render.md) |
-| `general-build` (`hsp-`, `noaa-`) | Builds a USD scene from a manifest: meshes converted, URDF and MJCF robots imported, physics applied; a batch job | [README-build.md](README-build.md) |
-| `general-desktop` (`hsp-`, `noaa-`) | Isaac Sim's own window in a KasmVNC browser desktop, from the same image | [README-desktop.md](README-desktop.md) |
+| **Render** | Renders or simulates a USD scene: the bundled examples (a pyramid of blocks, a wall prefractured with the Blast SDK), yours, or a mesh of yours fractured by the run, with PhysX or Newton; serves the frames or the poses as a page | [README-render.md](README-render.md) |
+| **Build** | Builds a USD scene from a manifest: meshes converted, URDF and MJCF robots imported, physics applied; a batch job | [README-build.md](README-build.md) |
+| **Desktop** | Isaac Sim's own window in a KasmVNC browser desktop, from the same image | [README-desktop.md](README-desktop.md) |
 
 Running any of them accepts NVIDIA's
 [Isaac Sim license](https://www.nvidia.com/en-us/agreements/enterprise-software/isaac-sim-additional-software-and-materials-license/).
@@ -45,18 +45,10 @@ Running any of them accepts NVIDIA's
 
 | Runtime | What runs | Needs |
 |---|---|---|
-| **Singularity** (default; the only one on `hsp`) | `ghcr.io/parallelworks/isaac-sim:6.2.0.1`, the Isaac Sim image as a SIF, pulled once by the login node into the install directory and run by any node as your user | `singularity`/`apptainer`, 11 GB in the install directory |
+| **Singularity** (default) | `ghcr.io/parallelworks/isaac-sim:6.2.0.1`, the Isaac Sim image as a SIF, pulled once by the login node into the install directory and run by any node as your user | `singularity`/`apptainer`, 11 GB in the install directory |
 | **Docker** | `nvcr.io/nvidia/isaac-sim:6.2.0.1`, pulled on the node that runs the job | Docker, about 35 GB free in its image store (on a hardened cloud image `/var` is 15 GB: move the stores to `/home`) |
 
 Both keep Isaac Sim's shader caches under `<install directory>/omniverse/cache`, so
 the first run on a node compiles them (a few minutes) and later runs start fast. The
 SIF is built with `build-container.sh` from `isaac-sim.def`; a new Isaac Sim version
 means a new tag there and in the forms' hidden `sif_registry` default.
-
-## Tests
-
-`tests/<variant>/` holds every variant's recorded end-to-end tests, run on the cloud
-cluster awsgpu (an L4, SLURM with no GRES): the login node, a compute node, each
-example, both engines, a bucket in and out, a mesh fractured with the Blast SDK, the
-builder, the desktop and the failure path. `python3 tools/tests/run-workflow-test.py
-<test.json>` runs one.

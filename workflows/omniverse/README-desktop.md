@@ -2,8 +2,7 @@
 
 Isaac Sim's own GUI (the stage, the viewport, the physics, every extension) inside a
 KasmVNC browser desktop on a GPU node, from the same Singularity image the other
-workflows run. `yamls/general-desktop.yaml`; `hsp-desktop` and `noaa-desktop` for
-those platforms.
+workflows run.
 
 ```
 form ──► preprocessing ──► kasmvnc workflow (a subworkflow) ──► https://<endpoint>/
@@ -41,5 +40,4 @@ session](https://parallelworks.com/docs/run/sessions/desktops) too, and it does 
 yet: those sessions run an X server without the GLX extension, on which NVIDIA's driver
 crashes while Isaac Sim opens its window. The plain-language account and the evidence
 are in [desktop-issue.txt](desktop-issue.txt); the fix is on the platform's side (an
-Xvnc with GLX, as KasmVNC's has). Verified on awsgpu's L4 (driver 610.43.02): in the
-KasmVNC desktop the viewport renders at about 27 fps.
+Xvnc with GLX, as KasmVNC's has).

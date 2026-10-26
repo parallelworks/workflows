@@ -58,7 +58,7 @@ function describe(render) {
       rendered ? `${render.frame_count} at ${render.width} × ${render.height}, played at ${render.fps} fps`
         : `${render.frame_count} at ${render.fps} per second, ${render.bodies} rigid bodies`],
     ["Renderer", rendered ? render.renderer : ""],
-    ["Joints broken", render.joints != null ? `${render.broken_joints} of ${render.joints}` : ""],
+    ["Joints broken", render.broken_joints != null ? `${render.broken_joints} of ${render.joints}` : ""],
     ["GPU", render.gpu],
     [rendered ? "Render time" : "Simulation time",
       render.seconds != null ? `${render.seconds} s (${render.seconds_per_frame} s per frame${rendered ? " after the first" : ""})` : ""],

@@ -3,8 +3,9 @@
 
 Every frame the pose of every rigid body goes to poses.csv, and every N frames (and
 at the end) the stage with the bodies where they are goes to snapshots/frame_NNNN.usda,
-to open in any USD tool. The scene is the one from the source input, or else the
-fracture example's wall and projectile.
+to open in any USD tool, and the joints that came apart are counted into render.json.
+The scene is the one from the source input, or else the fracture example's wall and
+projectile.
 """
 import os
 import shutil

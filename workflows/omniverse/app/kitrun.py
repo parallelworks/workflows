@@ -26,6 +26,7 @@ PHYSICS_HZ = 60
 # lighting over passes (the DLSS denoiser needs the NGX library, which the container
 # does not carry), path tracing already takes 64 samples per pass
 SUBFRAMES = {"RayTracedLighting": 32, "RealTimePathTracing": 32, "PathTracing": 1}
+JOINT_SEPARATION = 0.01  # meters between a joint's two anchors before it counts as broken
 
 _started = time.time()
 _app = None
@@ -170,10 +171,74 @@ def _stop():
     app_utils.stop()
 
 
+def rigid_bodies(stage):
+    from pxr import UsdPhysics  # noqa: E402
+    return [str(prim.GetPath()) for prim in stage.Traverse() if prim.HasAPI(UsdPhysics.RigidBodyAPI)]
+
+
+def watch_joints(stage, view=None, paths=None):
+    """The stage's joints, watched from before play. Returns None when it has none, else
+    a function that, called later, tells which came apart: the two anchors a joint held
+    together, further apart than JOINT_SEPARATION where their bodies ended up (a fixed
+    joint that broke; a hinge stays together). `view` and `paths`, a RigidPrim over the
+    bodies and its paths, are reused when the caller has them."""
+    from isaacsim.core.experimental.prims import RigidPrim  # noqa: E402
+    from pxr import Gf, Usd, UsdGeom, UsdPhysics  # noqa: E402
+
+    joints = []
+    for prim in stage.Traverse():
+        if not prim.IsA(UsdPhysics.Joint):
+            continue
+        joint = UsdPhysics.Joint(prim)
+        body0 = [str(t) for t in joint.GetBody0Rel().GetTargets()]
+        body1 = [str(t) for t in joint.GetBody1Rel().GetTargets()]
+        joints.append((str(prim.GetPath()), body0[0] if body0 else None, body1[0] if body1 else None,
+                       Gf.Vec3d(joint.GetLocalPos0Attr().Get() or (0, 0, 0)),
+                       Gf.Vec3d(joint.GetLocalPos1Attr().Get() or (0, 0, 0))))
+    if not joints:
+        return None
+    rigid = set(rigid_bodies(stage))
+    bodies = sorted({b for _, b0, b1, _, _ in joints for b in (b0, b1) if b and b in rigid})
+    if view is None:
+        paths = bodies
+        # The view before play: wrapping the bodies afterwards zeroes the velocities the scene authored
+        view = RigidPrim(paths=paths) if paths else None
+    index = {path: i for i, path in enumerate(paths or [])}
+    print(f"Watching {len(joints)} joints between {len(bodies)} bodies", flush=True)
+
+    def broken():
+        positions = orientations = None
+        if view is not None and index:
+            positions, orientations = view.get_world_poses()
+            positions, orientations = positions.numpy(), orientations.numpy()
+        xforms = UsdGeom.XformCache(Usd.TimeCode.Default())
+
+        def anchor(body, local):
+            if body is None:
+                return local  # a joint to the world: the anchor is in world coordinates
+            if body in index:
+                p, q = positions[index[body]], orientations[index[body]]
+                return Gf.Vec3d(*map(float, p)) + Gf.Quatd(float(q[0]), Gf.Vec3d(*map(float, q[1:]))).Transform(local)
+            # A body the engine does not move (a static collider): where the stage puts it
+            return xforms.GetLocalToWorldTransform(stage.GetPrimAtPath(body)).Transform(local)
+
+        try:
+            apart = sorted(path for path, b0, b1, l0, l1 in joints
+                           if (anchor(b0, l0) - anchor(b1, l1)).GetLength() > JOINT_SEPARATION)
+        except Exception as error:  # a scene's joints are not worth losing its frames over
+            print(f"::warning::The joints could not be checked: {error}", flush=True)
+            return {}
+        print(f"{len(apart)} of {len(joints)} joints broke", flush=True)
+        return {"joints": len(joints), "broken_joints": len(apart), "broken": apart}
+
+    return broken
+
+
 def render(args, center, radius, scene, extras=None, on_frame=None):
     """Orbits a camera around `center` while the timeline plays and writes every frame
-    as frames/rgb_NNNN.png, then render.json. `extras` (a dict, or a function called
-    once the frames are done) goes into render.json."""
+    as frames/rgb_NNNN.png, then render.json, with the joints that broke when the scene
+    has any. `extras` (a dict, or a function called once the frames are done) goes into
+    render.json."""
     import carb.settings  # noqa: E402
     import omni.replicator.core as rep  # noqa: E402
     import omni.usd  # noqa: E402
@@ -200,6 +265,7 @@ def render(args, center, radius, scene, extras=None, on_frame=None):
     carb.settings.get_settings().set("/rtx/post/aa/op", 1)
     subframes = args.subframes or SUBFRAMES[args.renderer]
 
+    joints = watch_joints(stage)
     print("Writer attached; playing the timeline", flush=True)
     _play(args)
     print(f"Rendering {args.frames} frames at {args.width}x{args.height} with {args.renderer}, "
@@ -235,20 +301,18 @@ def render(args, center, radius, scene, extras=None, on_frame=None):
         "renderer": args.renderer,
         "seconds_per_frame": round((time.time() - loop_started - (first_frame_seconds or 0)) / max(args.frames - 1, 1), 2),
     }
+    if joints:
+        manifest.update(joints())
     manifest.update(extras or {})
     write_manifest(args, manifest)
     print(f"Wrote {len(frames)} frames to {frames_dir}", flush=True)
 
 
-def rigid_bodies(stage):
-    from pxr import UsdPhysics  # noqa: E402
-    return [str(prim.GetPath()) for prim in stage.Traverse() if prim.HasAPI(UsdPhysics.RigidBodyAPI)]
-
-
 def simulate(args, scene, extras=None, on_frame=None):
     """Plays the timeline with no camera and no writer: every frame the poses of the
     rigid bodies go to poses.csv, every `--snapshots` frames (and at the end) the stage
-    with the bodies where they are goes to snapshots/frame_NNNN.usda."""
+    with the bodies where they are goes to snapshots/frame_NNNN.usda; render.json tells
+    the joints that broke when the scene has any."""
     import isaacsim.core.experimental.utils.backend as backend_utils  # noqa: E402
     import omni.replicator.core as rep  # noqa: E402
     import omni.usd  # noqa: E402
@@ -268,6 +332,7 @@ def simulate(args, scene, extras=None, on_frame=None):
     # The view before play: wrapping the bodies once the simulation runs zeroes the
     # velocities the scene authored (a thrown ball stops dead)
     bodies = RigidPrim(paths=paths)
+    joints = watch_joints(stage, view=bodies, paths=paths)
     _play(args)
     snapshots = []
     loop_started = time.time()
@@ -308,6 +373,8 @@ def simulate(args, scene, extras=None, on_frame=None):
         "outputs": [{"path": name, "bytes": os.path.getsize(os.path.join(args.out, name))} for name in outputs],
         "seconds_per_frame": round((time.time() - loop_started) / max(args.frames, 1), 3),
     }
+    if joints:
+        manifest.update(joints())
     manifest.update(extras or {})
     write_manifest(args, manifest)
     print(f"Wrote {poses_path} and {len(snapshots)} snapshots", flush=True)

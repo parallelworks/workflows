@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
 # Isaac Sim's own window (the full Omniverse Kit GUI: the stage, the viewport, the
 # physics and the extensions) inside a KasmVNC browser desktop on a GPU node, from
-# the same Singularity image the render variants use. Preprocessing checks the form,
+# the same Singularity image the render workflow uses. Preprocessing checks the form,
 # pulls the SIF once and installs app/isaac-sim-gui.sh beside it; the kasmvnc workflow,
 # called as a subworkflow, starts the desktop on the login node or a SLURM/PBS node
 # and runs that launcher as the desktop's startup application, so the run completes

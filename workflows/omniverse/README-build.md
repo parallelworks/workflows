@@ -3,9 +3,8 @@
 A batch job that assembles a USD scene from a manifest, headless, in the Isaac Sim
 container on a GPU node: meshes (OBJ, STL, FBX, glTF) converted with Kit's asset
 converter, USD files referenced, URDF and MJCF robots imported with Isaac Sim's
-importers, each placed, colored and given physics. `yamls/general-build.yaml`;
-`hsp-build` and `noaa-build` for those platforms. No endpoint: the run completes when
-the scene is written and fails when the build fails.
+importers, each placed, colored and given physics. No endpoint: the run completes
+when the scene is written and fails when the build fails.
 
 ```
 form ──► preprocessing ──► build script ──► build.py in the container ──► build/<scene>.usda + assets/ + build.json
@@ -57,9 +56,3 @@ references by relative path) and `build.json` (objects, bodies, joints). Give th
 directory, or the destination it was copied to (`<destination>/<run slug>/`), as the
 render workflow's source. The run's log names the scene; `build.exit` holds the
 script's exit status, which the run's last step reads.
-
-```bash
-pw workflows run "$PWD/workflows/omniverse/yamls/general-build.yaml" -i '{
-  "resource": "pw://<user>/<gpu-cluster>", "cluster": {"scheduler": false},
-  "files": {"use_bucket": true, "bucket": "pw://<user>/<bucket>", "source": "parts", "destination": "scenes"}}'
-```

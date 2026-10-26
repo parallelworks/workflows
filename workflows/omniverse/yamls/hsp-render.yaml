@@ -379,7 +379,9 @@ jobs:
               Each example is a USD scene plus a Python script under app/examples/<name>/.
               The pyramid and the wall are bundled; "render your scene" takes a USD file
               from the files section; "simulate only" takes one too (or else the wall) and
-              writes poses.csv and USD snapshots instead of frames.
+              writes poses.csv and USD snapshots instead of frames. The fracture section
+              below swaps the scene for a mesh of yours, cut into chunks, for any example
+              but the pyramid.
           engine:
             type: dropdown
             label: Physics engine
@@ -442,14 +444,14 @@ jobs:
       fracture:
         type: group
         label: Fracture
-        hidden: ${{ inputs.service.example != 'fracture' }}
+        hidden: ${{ inputs.service.example == 'pyramid' }}
         ignore: ${{ .hidden }}
         items:
           own_mesh:
             type: boolean
             default: false
             label: Fracture a mesh of yours with the Blast SDK
-            description: The first run builds the SDK on the login node (about eight minutes); the mesh (an OBJ, meters, base at z = 0) comes from the files section. Otherwise the bundled wall renders.
+            description: The source is an OBJ (meters, base at z = 0); the run cuts it into chunks held by breakable bonds, stands them on the ground with a ball thrown at them, and the example renders or simulates that scene. The first run builds the SDK on the login node (about eight minutes).
           cells:
             type: number
             label: Chunks

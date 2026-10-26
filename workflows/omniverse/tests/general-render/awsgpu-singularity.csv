@@ -5,3 +5,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-23T09:06:51Z,warm,pass,ok,d0210f9,e20a8e2,eef523b,a7473e1,a7473e1,omniverse,alvaro,stable-muskox,194,
 2026-10-23T13:18:59Z,warm,pass,ok,bc939dc,e20a8e2,eef523b,8139c04,8139c04,omniverse,alvaro,civil-sturgeon,194,
 2026-10-23T15:24:19Z,warm,pass,ok,d92a82b,e20a8e2,eef523b,df340bc,df340bc,omniverse,alvaro,stirring-roughy,194,
+2026-10-26T15:43:52Z,warm,pass,ok,c138c37,e20a8e2,eef523b,b6dd479,b6dd479,omniverse,alvaro,working-colt,194,

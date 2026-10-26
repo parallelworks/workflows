@@ -361,7 +361,7 @@ jobs:
           destination:
             type: string
             label: Scene destination
-            description: A path in the bucket, or an absolute path on a filesystem the node that runs the job sees; the scene and its assets are copied to <destination>/<run slug>/ when the build ends. Empty leaves them in the job directory.
+            description: A path in the bucket, or an absolute path on a filesystem the login node and the job's node both see; the scene and its assets are copied to <destination>/<run slug>/ when the build ends. Empty leaves them in the job directory.
             optional: true
             tooltip: The directory holds the scene file, assets/ (the converted meshes and imported robots it references by relative path) and build.json; give it as the render workflow's source.
       software:

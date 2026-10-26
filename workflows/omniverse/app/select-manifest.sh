@@ -3,6 +3,8 @@
 # (written to manifest-form.yaml by the YAML) wins; else the source's manifest.yaml;
 # else the bundled example's. Runs in the job directory on the login node after
 # inputs.sh is sourced (scene_dir from app/fetch-source.sh).
+set -o pipefail
+set -x
 sed -i '/^\s*undefined\s*$/d' manifest-form.yaml
 if grep -q '[^[:space:]]' manifest-form.yaml; then
     manifest_file="${PWD}/manifest-form.yaml"

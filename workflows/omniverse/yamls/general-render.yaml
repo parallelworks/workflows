@@ -411,7 +411,7 @@ jobs:
           destination:
             type: string
             label: Results destination
-            description: A path in the bucket, or an absolute path on a filesystem the node that runs the job sees; the outputs are copied to <destination>/<run slug>/ when the run ends. Empty leaves them in the job directory.
+            description: A path in the bucket, or an absolute path on a filesystem the login node and the job's node both see; the outputs are copied to <destination>/<run slug>/ when the run ends. Empty leaves them in the job directory.
             optional: true
             tooltip: The page serves the local copy either way; the frames, render.json and the scene (or poses.csv and the snapshots) are copied as they are.
       software:

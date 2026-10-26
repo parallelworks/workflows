@@ -56,6 +56,8 @@ schema; the pyramid runs under both.
   way.
 
 The run's own key signs the bucket transfers; nothing is configured on the cluster.
+The section is hidden for the bundled pyramid and wall, whose outputs stay in the job
+directory and on the page.
 
 ## Fracture
 

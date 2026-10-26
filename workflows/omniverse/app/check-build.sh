@@ -3,6 +3,8 @@
 # The builder's verdict, after the submitter (which never forwards the script's exit
 # status): no exit file means the script never ran to its end, a non-zero one that the
 # build failed. Publishes SCENE. Runs in the job directory on the login node.
+set -o pipefail
+set -x
 exit_file="$1"
 if [ ! -f "${exit_file}" ]; then
     echo "::error title=Error::No exit status in ${exit_file}: the build script did not run to its end (killed, walltime exceeded, node failure); the tail of its output follows"

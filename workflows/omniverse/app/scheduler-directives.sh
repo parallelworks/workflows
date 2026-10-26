@@ -4,6 +4,8 @@
 # of the form's directives by the YAMLs, so a directive typed there wins (sbatch and
 # qsub keep the last value of a repeated option). A job gets one core by default, and
 # Kit's task system stalls on one. Reads cluster_scheduler, cluster_cpus, cluster_gpus.
+set -o pipefail
+set -x
 cpus="${cluster_cpus:-0}"
 gpus="${cluster_gpus:-0}"
 slurm_cpus=""

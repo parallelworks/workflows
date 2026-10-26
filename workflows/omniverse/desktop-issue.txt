@@ -1,21 +1,35 @@
-Why Isaac Sim's window does not open in a platform desktop session (2026-10-23)
-=============================================================================
+Feature request: GLX in the X server of platform desktop sessions
+=================================================================
 
-Isaac Sim started from a platform desktop session crashes about 25 seconds in and never
-shows a window. The same command opens the window in a KasmVNC desktop on the same node.
+What I need
+  Platform desktop sessions should run an Xvnc built with the GLX extension. They run
+  TigerVNC 1.14.1's Xvnc from /opt/pw/software/verified/tigervnc, which has no GLX.
+  TigerVNC can be built with it (it needs Mesa's libglx), and KasmVNC's Xvnc already
+  has it.
 
-Cause: the session's X server, TigerVNC's Xvnc from /opt/pw/software/verified/tigervnc,
-is built without the GLX extension. NVIDIA's driver needs GLX to show a window, and
-without it the driver crashes instead of failing cleanly. Isaac Sim's log shows
-'extension "GLX" missing on display ":1"' and then a segfault (exit code 139).
+Why
+  Without GLX, Isaac Sim cannot open its window in a desktop session. Started from the
+  session's terminal, it crashes about 25 seconds in: NVIDIA's driver needs GLX to show
+  a window and crashes instead of failing cleanly, so nothing the user does can work
+  around it. Other 3D applications that draw on the GPU through GLX hit the same wall.
 
-Not the cause: Isaac Sim runs on the same desktop with --no-window. KasmVNC's Xvnc, which
-has GLX, shows the window at about 27 frames a second with the same node, image and
-driver. Client-side changes (a newer Xlib, hiding the DRI3 library) made no difference.
+  The omniverse desktop workflow gets around this by starting its own KasmVNC desktop.
+  With GLX in the platform's sessions, users could run Isaac Sim from the desktop they
+  already have, without a separate workflow.
 
-Fix: build the session's Xvnc with GLX (TigerVNC supports it; it needs Mesa's libglx).
-Nothing changes in Isaac Sim, the image or the launcher script.
+Done when
+  workflows/omniverse/app/isaac-sim-gui.sh, run from a platform desktop session's
+  terminal on a GPU node, shows Isaac Sim's window.
 
-Tested on awsgpu: NVIDIA L4, driver 610.43.02, Isaac Sim 6.2.0.1 (Kit 110.4), TigerVNC
-1.14.1. "+extension GLX" does nothing because no libglx is installed. The crash is a call
-to address 0 in libnvidia-eglcore.so from libcarb.graphics-vulkan.plugin.so.
+Why GLX is the missing piece
+  - Isaac Sim's log shows 'extension "GLX" missing on display ":1"' and then a segfault
+    (exit code 139): a call to address 0 in libnvidia-eglcore.so from
+    libcarb.graphics-vulkan.plugin.so.
+  - On the same desktop, Isaac Sim runs with --no-window.
+  - In KasmVNC's Xvnc, on the same node with the same image and driver, the window opens
+    and renders at about 27 frames a second.
+  - Client-side changes (a newer Xlib, hiding the DRI3 library) made no difference, and
+    "+extension GLX" does nothing because no libglx is installed.
+
+  Found on 2026-10-23 and reproduced on 2026-10-26 on awsgpu: NVIDIA L4, driver
+  610.43.02, Isaac Sim 6.2.0.1 (Kit 110.4).

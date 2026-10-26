@@ -38,6 +38,6 @@ render workflow's runs.
 The launcher is meant to work from a [platform desktop
 session](https://parallelworks.com/docs/run/sessions/desktops) too, and it does not
 yet: those sessions run an X server without the GLX extension, on which NVIDIA's driver
-crashes while Isaac Sim opens its window. The plain-language account and the evidence
-are in [desktop-issue.txt](desktop-issue.txt); the fix is on the platform's side (an
-Xvnc with GLX, as KasmVNC's has).
+crashes while Isaac Sim opens its window. The fix is on the platform's side (an Xvnc
+with GLX, as KasmVNC's has); the request and its evidence are in
+[desktop-issue.txt](desktop-issue.txt).

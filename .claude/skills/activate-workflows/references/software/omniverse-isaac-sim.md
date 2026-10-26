@@ -86,6 +86,20 @@
   `omni.usd.get_context().open_stage(path)`; a user stage's bounds from
   `UsdGeom.BBoxCache(...).ComputeWorldBound(stage.GetPseudoRoot())`.
 
+- **Snapshots of a running simulation**: `stage.Export()` writes the bodies' *initial*
+  poses unless PhysX updates USD; `carb.settings.get_settings().set_bool("/physics/updateToUsd", True)`
+  before play makes every step write the transforms, and the export is then exact.
+  Writing the poses in yourself (`RigidPrim.set_world_poses` under
+  `use_backend("usd")`) tears an articulation's links off their joints (the pendulum's
+  shoulder and elbow "broke" and the links fell; verified 2026-10-26); plain rigid
+  bodies survive it.
+- **Joints that broke**: `physics:jointEnabled` does not change and no break event
+  arrives in a headless run; compare each joint's two anchors (body pose × localPos,
+  the world frame for an empty body rel) against where they started, and count a
+  drift above a centimeter. A fixed-base robot placed away from the origin keeps its
+  root joint's anchors apart by the placement, which is why the drift, not the
+  distance, is the test (`workflows/omniverse/app/kitrun.py`, `watch_joints`).
+
 ## Scheduled jobs
 
 - **A SLURM job gets one core by default, and Kit stalls on it** (verified 2026-10-23,

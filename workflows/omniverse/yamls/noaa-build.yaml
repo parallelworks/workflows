@@ -23,7 +23,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: omniverse
           sparse_checkout:
             - workflows/omniverse/app
             - workflows/omniverse/${{ inputs.software.runtime }}

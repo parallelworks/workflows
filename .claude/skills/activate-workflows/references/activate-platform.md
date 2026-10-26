@@ -77,7 +77,7 @@ workflow, via `${{ inputs.<name>.* }}`):
 | `id` | `685193ec1bba202cb3341fb7` | |
 | `ip` | `34.132.29.251` | login-node IP; **empty for workspace** → step runs locally |
 | `name` | `gcpsmall` | |
-| `type` / `provider` | `google-slurm` | |
+| `type` / `provider` | `google-slurm` | `existing` for a cluster the ACTIVATE agent connects, `managed-cluster` for a managed one, `<cloud>-slurm` for a cloud cluster |
 | `schedulerType` | `slurm` / `pbs` / `''` | `''` when no scheduler (e.g. `existing`, workspace) |
 | `namespace`, `user` | `alvaro` | |
 
@@ -960,7 +960,10 @@ it, and how depends on the cluster:
    ```bash
    unset PW_API_KEY
    ```
-   Nothing to manage or rotate. Needs the agent at v7.102.0 or later.
+   Nothing to manage or rotate. Needs the agent at v7.102.0 or later (verified
+   2026-10-26 from a run on `a30gpuserver`, type `existing`, agent v7.127.0: `pw auth
+   whoami` answered after the unset; the same step on `gcpsmall` got `no context
+   configured`).
 2. **A cloud cluster** (no agent-managed user credential on the nodes): a personal API
    key, created under Account > Authentication > API keys with the 30-day maximum
    lifetime, stored on the cluster in a file only the user can read (mode `600`) and
@@ -972,6 +975,10 @@ it, and how depends on the cluster:
 `env -u PW_API_KEY pw auth whoami` tells at run time whether the node has a credential
 of its own, `PW_API_KEY=<key> pw auth whoami` whether a stored key still works
 (`workflows/hpc_status/app/start-template.sh` tries both and warns when neither holds).
+Setup 1 only serves `pw` calls: an app that needs the key as a string in its own
+config (LibreChat's `.env`, the bearer of its ACTIVATE endpoint) takes a key input on
+every cluster type, checked with `pw auth whoami` before it is written
+(`workflows/librechat/librechat-singularity/controller.sh`).
 A key the user hands the workflow goes in as a `password` input, carried under another
 name in the top-level `env:` block and exported as `PW_API_KEY` by the start script
 (`workflows/probe/yamls/general.yaml`, `PROBE_API_KEY`); the platform keeps inputs in

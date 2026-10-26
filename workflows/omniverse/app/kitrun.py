@@ -320,7 +320,7 @@ def simulate(args, scene, extras=None, on_frame=None):
     rigid bodies go to poses.csv, every `--snapshots` frames (and at the end) the stage
     with the bodies where they are goes to snapshots/frame_NNNN.usda; render.json tells
     the joints that broke when the scene has any."""
-    import isaacsim.core.experimental.utils.backend as backend_utils  # noqa: E402
+    import carb.settings  # noqa: E402
     import omni.replicator.core as rep  # noqa: E402
     import omni.usd  # noqa: E402
     from isaacsim.core.experimental.prims import RigidPrim  # noqa: E402
@@ -335,6 +335,10 @@ def simulate(args, scene, extras=None, on_frame=None):
         os.remove(os.path.join(snapshots_dir, name))
     poses_path = os.path.join(args.out, "poses.csv")
     rep.orchestrator.set_capture_on_play(False)
+    # PhysX writes every step's poses into the stage, so an exported snapshot shows the
+    # bodies where they are; writing them in through the view instead tears an
+    # articulation's links off their joints
+    carb.settings.get_settings().set_bool("/physics/updateToUsd", True)
     print(f"Simulating {len(paths)} rigid bodies for {args.frames} frames at {args.fps} per second", flush=True)
     # The view before play: wrapping the bodies once the simulation runs zeroes the
     # velocities the scene authored (a thrown ball stops dead)
@@ -346,11 +350,6 @@ def simulate(args, scene, extras=None, on_frame=None):
 
     def snapshot(frame):
         name = f"snapshots/frame_{frame + 1:04d}.usda"
-        positions, orientations = bodies.get_world_poses()
-        # The engine keeps the poses in its own buffers: write them into the stage's
-        # USD transforms so the exported file shows the bodies where they are
-        with backend_utils.use_backend("usd"):
-            bodies.set_world_poses(positions, orientations)
         stage.Export(os.path.join(args.out, name))
         snapshots.append(name)
 

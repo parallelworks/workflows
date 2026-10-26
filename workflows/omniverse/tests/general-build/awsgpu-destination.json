@@ -1,0 +1,24 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": [
+      "${HOME}/pw/software/omniverse/containers/isaac-sim-6.2.0.1.sif",
+      "${HOME}/pw/software/omniverse/cache/.cache/ov"
+    ],
+    "leftover_patterns": [
+      "build.py --manifest"
+    ],
+    "endpoint": false
+  },
+  "resource": "pw://alvaro/awsgpu",
+  "cluster": {
+    "scheduler": false
+  },
+  "files": {
+    "use_bucket": false,
+    "destination": "/home/alvaro/omniverse-test/scenes"
+  },
+  "software": {
+    "runtime": "omniverse-singularity"
+  }
+}

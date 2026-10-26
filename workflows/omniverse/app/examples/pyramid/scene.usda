@@ -1,0 +1,690 @@
+#usda 1.0
+(
+    metersPerUnit = 1
+    timeCodesPerSecond = 60
+    upAxis = "Z"
+)
+
+def "World"
+{
+    def Xform "GroundPlane"
+    {
+        quatf xformOp:orient = (1, 0, 0, 0)
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def Mesh "geom" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform bool doubleSided = 1
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            rel material:binding = </World/GroundPlane/visualMaterial> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)]
+            point3f[] points = [(-50, -50, 0), (50, -50, 0), (50, 50, 0), (-50, 50, 0)]
+            color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Plane "collisionPlane" (
+            prepend apiSchemas = ["PhysicsCollisionAPI"]
+        )
+        {
+            uniform token axis = "Z"
+            uniform token purpose = "guide"
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Material "visualMaterial"
+        {
+            token outputs:mdl:displacement.connect = </World/GroundPlane/visualMaterial/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </World/GroundPlane/visualMaterial/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </World/GroundPlane/visualMaterial/Shader.outputs:out>
+
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                asset inputs:diffuse_texture = @/isaac-sim/exts/isaacsim.core.experimental.objects/data/templates/wireframe-blue.png@
+                bool inputs:project_uvw = 1
+                token outputs:out (
+                    renderType = "material"
+                )
+            }
+        }
+    }
+
+    def DomeLight "DomeLight" (
+        append apiSchemas = ["LightAPI", "ShadowAPI"]
+    )
+    {
+        uniform opaque collection:lightLink
+        uniform token collection:lightLink:expansionRule = "expandPrims"
+        uniform bool collection:lightLink:includeRoot = 1
+        uniform pathExpression collection:lightLink:membershipExpression
+        uniform opaque collection:shadowLink
+        uniform token collection:shadowLink:expansionRule = "expandPrims"
+        uniform bool collection:shadowLink:includeRoot = 1
+        uniform pathExpression collection:shadowLink:membershipExpression
+        float guideRadius = 100000
+        color3f inputs:color = (1, 1, 1)
+        float inputs:colorTemperature = 6500
+        float inputs:diffuse = 1
+        bool inputs:enableColorTemperature = 0
+        float inputs:exposure = 1
+        float inputs:intensity = 300
+        bool inputs:normalize = 0
+        color3f inputs:shadow:color = (0, 0, 0)
+        float inputs:shadow:distance = -1
+        bool inputs:shadow:enable = 1
+        float inputs:shadow:falloff = -1
+        float inputs:shadow:falloffGamma = 1
+        float inputs:specular = 1
+        asset inputs:texture:file
+        token inputs:texture:format = "latlong"
+        int intensity
+        uniform token light:materialSyncMode = "noMaterialResponse"
+        uniform token light:shaderId = "DomeLight"
+        token visibility = "inherited"
+        custom bool visibleInPrimaryRay = 1
+    }
+
+    def DistantLight "DistantLight"
+    {
+        float inputs:intensity = 700
+        quatd xformOp:orient = (1, 0, 0, 0)
+        double3 xformOp:scale = (1, 1, 1)
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+    }
+
+    def "Materials"
+    {
+        def Material "color_0"
+        {
+            token outputs:displacement.connect = </World/Materials/color_0/Shader.outputs:displacement>
+            token outputs:surface.connect = </World/Materials/color_0/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                float3 inputs:diffuseColor = (0.91, 0.3, 0.24)
+                float inputs:roughness = 0.4
+                token outputs:displacement
+                token outputs:surface
+            }
+        }
+
+        def Material "color_1"
+        {
+            token outputs:displacement.connect = </World/Materials/color_1/Shader.outputs:displacement>
+            token outputs:surface.connect = </World/Materials/color_1/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                float3 inputs:diffuseColor = (0.95, 0.61, 0.07)
+                float inputs:roughness = 0.4
+                token outputs:displacement
+                token outputs:surface
+            }
+        }
+
+        def Material "color_2"
+        {
+            token outputs:displacement.connect = </World/Materials/color_2/Shader.outputs:displacement>
+            token outputs:surface.connect = </World/Materials/color_2/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                float3 inputs:diffuseColor = (0.18, 0.8, 0.44)
+                float inputs:roughness = 0.4
+                token outputs:displacement
+                token outputs:surface
+            }
+        }
+
+        def Material "color_3"
+        {
+            token outputs:displacement.connect = </World/Materials/color_3/Shader.outputs:displacement>
+            token outputs:surface.connect = </World/Materials/color_3/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                float3 inputs:diffuseColor = (0.2, 0.6, 0.86)
+                float inputs:roughness = 0.4
+                token outputs:displacement
+                token outputs:surface
+            }
+        }
+
+        def Material "color_4"
+        {
+            token outputs:displacement.connect = </World/Materials/color_4/Shader.outputs:displacement>
+            token outputs:surface.connect = </World/Materials/color_4/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                float3 inputs:diffuseColor = (0.61, 0.35, 0.71)
+                float inputs:roughness = 0.4
+                token outputs:displacement
+                token outputs:surface
+            }
+        }
+
+        def Material "color_5"
+        {
+            token outputs:displacement.connect = </World/Materials/color_5/Shader.outputs:displacement>
+            token outputs:surface.connect = </World/Materials/color_5/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                float3 inputs:diffuseColor = (0.95, 0.85, 0.3)
+                float inputs:roughness = 0.4
+                token outputs:displacement
+                token outputs:surface
+            }
+        }
+
+        def Material "ball"
+        {
+            token outputs:displacement.connect = </World/Materials/ball/Shader.outputs:displacement>
+            token outputs:surface.connect = </World/Materials/ball/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                float3 inputs:diffuseColor = (0.92, 0.92, 0.95)
+                float inputs:metallic = 1
+                float inputs:roughness = 0.15
+                token outputs:displacement
+                token outputs:surface
+            }
+        }
+    }
+
+    def "Cubes"
+    {
+        def Cube "cube_0" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_0> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.6000000000000001, -0.6000000000000001, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_1" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_1> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.20000000000000007, -0.6000000000000001, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_2" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_2> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.19999999999999996, -0.6000000000000001, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_3" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_3> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.6000000000000001, -0.6000000000000001, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_4" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_4> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.6000000000000001, -0.20000000000000007, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_5" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_5> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.20000000000000007, -0.20000000000000007, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_6" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_0> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.19999999999999996, -0.20000000000000007, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_7" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_1> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.6000000000000001, -0.20000000000000007, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_8" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_2> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.6000000000000001, 0.19999999999999996, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_9" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_3> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.20000000000000007, 0.19999999999999996, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_10" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_4> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.19999999999999996, 0.19999999999999996, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_11" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_5> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.6000000000000001, 0.19999999999999996, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_12" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_0> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.6000000000000001, 0.6000000000000001, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_13" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_1> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.20000000000000007, 0.6000000000000001, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_14" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_2> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.19999999999999996, 0.6000000000000001, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_15" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_3> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.6000000000000001, 0.6000000000000001, 0.2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_16" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_4> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.4, -0.4, 0.6000000000000001)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_17" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_5> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0, -0.4, 0.6000000000000001)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_18" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_0> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.4, -0.4, 0.6000000000000001)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_19" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_1> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.4, 0, 0.6000000000000001)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_20" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_2> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0, 0, 0.6000000000000001)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_21" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_3> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.4, 0, 0.6000000000000001)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_22" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_4> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.4, 0.4, 0.6000000000000001)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_23" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_5> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0, 0.4, 0.6000000000000001)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_24" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_0> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.4, 0.4, 0.6000000000000001)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_25" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_1> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.2, -0.2, 1)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_26" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_2> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.2, -0.2, 1)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_27" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_3> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (-0.2, 0.2, 1)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_28" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_4> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0.2, 0.2, 1)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+
+        def Cube "cube_29" (
+            prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+        )
+        {
+            float3[] extent = [(-0.2, -0.2, -0.2), (0.2, 0.2, 0.2)]
+            rel material:binding = </World/Materials/color_5> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+            double size = 0.4
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0, 0, 1.4000000000000001)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+        }
+    }
+
+    def Sphere "Ball" (
+        prepend apiSchemas = ["MaterialBindingAPI", "PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+    )
+    {
+        float3[] extent = [(-0.45, -0.45, -0.45), (0.45, 0.45, 0.45)]
+        rel material:binding = </World/Materials/ball> (
+            bindMaterialAs = "strongerThanDescendants"
+        )
+        vector3f physics:velocity = (6, 3.8, 2.5)
+        double radius = 0.45
+        quatd xformOp:orient = (1, 0, 0, 0)
+        double3 xformOp:scale = (1, 1, 1)
+        double3 xformOp:translate = (-3.2, -2, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+    }
+}
+

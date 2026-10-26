@@ -1,0 +1,37 @@
+# The bundled example of the builder: a ramp, three crates, a ball rolling down and a
+# two-link pendulum on a post. Every file is relative to this directory.
+scene: yard.usda
+up_axis: Z
+ground: true
+objects:
+  - name: ramp
+    file: parts/ramp.obj
+    position: [0, 0, 0]
+    physics: static
+    color: [0.55, 0.55, 0.6]
+  - name: crate_1
+    file: parts/crate.obj
+    position: [2.0, -0.6, 0.25]
+    rotation: [0, 0, 15]
+    color: [0.91, 0.30, 0.24]
+  - name: crate_2
+    file: parts/crate.obj
+    position: [2.1, 0.5, 0.25]
+    color: [0.95, 0.61, 0.07]
+  - name: crate_3
+    file: parts/crate.obj
+    position: [2.05, -0.05, 0.75]
+    rotation: [0, 0, 40]
+    mass: 2
+    color: [0.20, 0.60, 0.86]
+  - name: ball
+    file: parts/ball.usda
+    position: [-0.8, 0, 0.9]
+    velocity: [1.5, 0, 0]
+    collision: boundingSphere
+    mass: 3
+    color: [0.92, 0.92, 0.95]
+  - name: pendulum
+    file: robots/pendulum.urdf
+    position: [3.5, 0, 0]
+    fix_base: true

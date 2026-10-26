@@ -1,0 +1,505 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+# The noaa.parallel.works variant: the noaa submitter and cluster form (account, QoS,
+# tasks and nodes for the RDHPCS systems); Singularity by default, the SIF and the
+# caches in the install directory, which on those systems should be a project or
+# scratch directory rather than the small home.
+# NVIDIA Omniverse on a GPU node: Isaac Sim (an Omniverse Kit application, the one
+# NVIDIA serves publicly on NGC) runs one of the examples (a pyramid of blocks, a
+# prefractured wall, a scene of yours, a physics-only run) or a script of yours
+# headless, with PhysX or Newton and the RTX renderer, in a Docker or Singularity
+# container on the login node or a SLURM/PBS compute node. The scene comes from a
+# bucket or the cluster's filesystem, the outputs go back there, and a page serves them
+# through the pw endpoint omniverse-<run slug>, which outlives the run until the
+# endpoint is deleted. Running it accepts NVIDIA's Isaac Sim license (the container's
+# ACCEPT_EULA):
+# https://www.nvidia.com/en-us/agreements/enterprise-software/isaac-sim-additional-software-and-materials-license/
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/omniverse/app
+            - workflows/omniverse/${{ inputs.software.runtime }}
+            - tools/oras
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW environment variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          cluster_scheduler="${{ inputs.cluster.scheduler }}"
+          cluster_gpus="${{ inputs.cluster.gpus }}"
+          cluster_cpus="${{ inputs.cluster.cpus }}"
+          service_example="${{ inputs.service.example }}"
+          service_engine="${{ inputs.service.engine }}"
+          service_frames="${{ inputs.service.frames }}"
+          service_resolution="${{ inputs.service.resolution }}"
+          service_renderer="${{ inputs.service.renderer }}"
+          service_snapshots="${{ inputs.service.snapshots }}"
+          fracture_own_mesh="${{ inputs.fracture.own_mesh }}"
+          fracture_cells="${{ inputs.fracture.cells }}"
+          fracture_seed="${{ inputs.fracture.seed }}"
+          fracture_strength="${{ inputs.fracture.strength }}"
+          files_use_bucket="${{ inputs.files.use_bucket }}"
+          files_bucket="${{ inputs.files.bucket.uri }}"
+          files_source="${{ inputs.files.source }}"
+          files_destination="${{ inputs.files.destination }}"
+          service_parent_install_dir="${{ inputs.software.install_dir }}"
+          software_runtime="${{ inputs.software.runtime }}"
+          software_image="${{ inputs.software.image }}"
+          software_sif="${{ inputs.software.sif }}"
+          software_sif_registry="${{ inputs.software.sif_registry }}"
+          pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          EOF
+          # Remove empty and undefined variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh
+          # Add export to all lines
+          sed -i 's/^/export /' inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script checks the form's values and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/omniverse/${{ inputs.software.runtime }}/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Fetch Source
+        run: |
+          source inputs.sh
+          bash workflows/omniverse/app/fetch-source.sh
+      - name: Fracture the Mesh
+        if: ${{ inputs.fracture.own_mesh == true }}
+        run: |
+          source inputs.sh
+          bash workflows/omniverse/app/fracture-source.sh
+      - name: Create Service Script
+        run: |
+          source inputs.sh
+          bash workflows/omniverse/app/create-start-script.sh service
+
+  session_runner:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/noaa.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          # the submitter cds into the run's job directory, where render/ then lands
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            account: ${{ inputs.cluster.slurm.account }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            qos: ${{ inputs.cluster.slurm.qos }}
+            ntasks: ${{ inputs.cluster.slurm.ntasks }}
+            nodes: ${{ inputs.cluster.slurm.nodes }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: |
+              ${{ needs.preprocessing.outputs.SLURM_CPU_DIRECTIVE }}
+              ${{ needs.preprocessing.outputs.SLURM_GPU_DIRECTIVE }}
+              ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: |
+              ${{ needs.preprocessing.outputs.PBS_RESOURCE_DIRECTIVE }}
+              ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::Session runner failed before the endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
+          host: ${{ inputs.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          path: /render.json
+          healthy: '2*'
+          budget: 300
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: GPU host
+        include-workspace: false
+        tooltip: The run happens on its login node, or on a compute node when submitted to the scheduler; the page is served from where the outputs were written
+      cluster:
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
+        type: group
+        label: Compute cluster settings
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
+          cpus:
+            type: number
+            label: Cores per job
+            description: Requested ahead of the directives below; a job gets one core by default, and Kit stalls on one.
+            default: 8
+            min: 1
+            max: 256
+            step: 1
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Requested as --cpus-per-task=N (PBS: -l select=1:ncpus=N) ahead of the directives
+              below, which can override it. With the scheduler's default of one core, Kit's task
+              system never advances past the first frame.
+          gpus:
+            type: number
+            label: GPUs per job
+            description: Requested ahead of the directives below; 0 requests none, which is right for cloud clusters.
+            default: 0
+            min: 0
+            max: 8
+            step: 1
+            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              Requested as --gres=gpu:N (PBS: -l select=1:ngpus=N) ahead of the directives
+              below, which can override it. The run uses one GPU. The cloud clusters define
+              no GRES (every node of a GPU partition has its GPU), so 0 requests none; an
+              on-premises cluster that schedules GPUs as GRES takes 1.
+          slurm:
+            type: group
+            label: SLURM directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                description: Pick a partition with GPU nodes.
+                optional: true
+                resource: ${{ inputs.resource }}
+              qos:
+                label: Quality of service (QoS)
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              ntasks:
+                label: Number of tasks
+                type: number
+                default: 1
+                step: 1
+                tooltip: '--ntasks=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              nodes:
+                label: Number of nodes
+                type: number
+                default: 1
+                step: 1
+                tooltip: '--nodes=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              time:
+                label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day; the page ends with the job.
+                type: string
+                default: '02:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              scheduler_directives:
+                type: editor
+                label: Scheduler directives
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+          pbs:
+            type: group
+            label: PBS directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler directives
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l walltime=02:00:00
+                  #PBS -l select=1:ncpus=8:ngpus=1
+      service:
+        type: group
+        label: Omniverse run
+        items:
+          name:
+            type: string
+            hidden: true
+            default: omniverse
+          example:
+            type: dropdown
+            label: Example
+            description: What runs; a run.py in the source replaces the example's script.
+            default: pyramid
+            options:
+              - value: pyramid
+                label: Pyramid of blocks, rendered (the bundled scene)
+              - value: fracture
+                label: Fracture, rendered (a wall prefractured with Blast, hit by a ball)
+              - value: scene
+                label: Render your scene (a USD file of yours, as it is)
+              - value: physics
+                label: Simulate only (poses and USD snapshots of a scene, no frames)
+            tooltip: |
+              Each example is a USD scene plus a Python script under app/examples/<name>/.
+              The pyramid and the wall are bundled; "render your scene" takes a USD file
+              from the files section; "simulate only" takes one too (or else the wall) and
+              writes poses.csv and USD snapshots instead of frames. The fracture section
+              below swaps the scene for a mesh of yours, cut into chunks, for any example
+              but the pyramid.
+          engine:
+            type: dropdown
+            label: Physics engine
+            description: PhysX is Omniverse's default. Newton (experimental) takes free bodies and robots, so the fractured scenes run under PhysX only.
+            default: physx
+            options:
+              - value: physx
+                label: PhysX
+              - value: newton
+                label: Newton (experimental; free bodies and robots)
+            tooltip: |
+              Both read the same USD Physics schema. Newton (NVIDIA, Disney Research and
+              Google DeepMind, Apache 2.0) is opt-in in Isaac Sim 6: bodies need mass and
+              collision geometry, joints live only inside an articulation (a robot), so the
+              bonds of a fractured mesh are PhysX only, and some PhysX-only traits are rejected.
+          frames:
+            type: number
+            label: Frames
+            description: Frames of simulated time at 30 per second; 90 is three seconds of animation.
+            default: 90
+            min: 1
+            step: 1
+            tooltip: Every frame is rendered and written as a PNG (or, physics only, its poses recorded); a frame takes about a second on a data-center GPU once the shaders are cached, plus a few minutes the first time.
+          resolution:
+            type: dropdown
+            label: Resolution
+            default: 1280x720
+            hidden: ${{ inputs.service.example == 'physics' }}
+            ignore: ${{ .hidden }}
+            options:
+              - value: 640x360
+                label: 640 × 360
+              - value: 1280x720
+                label: 1280 × 720
+              - value: 1920x1080
+                label: 1920 × 1080
+          renderer:
+            type: dropdown
+            label: Renderer
+            description: RTX Real-Time is the fastest; path tracing is slower and more realistic.
+            default: RayTracedLighting
+            hidden: ${{ inputs.service.example == 'physics' }}
+            ignore: ${{ .hidden }}
+            options:
+              - value: RayTracedLighting
+                label: RTX Real-Time (ray-traced lighting)
+              - value: RealTimePathTracing
+                label: RTX Real-Time Path Tracing
+              - value: PathTracing
+                label: RTX Path Tracing (interactive, slowest)
+          snapshots:
+            type: number
+            label: Snapshot every
+            description: Frames between USD snapshots of the scene; 0 writes only the last frame's.
+            default: 30
+            min: 0
+            step: 1
+            hidden: ${{ inputs.service.example != 'physics' }}
+            ignore: ${{ .hidden }}
+            tooltip: A snapshot is the whole stage with every body where it is at that frame, as a .usda file to open in any USD tool; the poses of every frame are in poses.csv regardless.
+      fracture:
+        type: group
+        label: Fracture
+        hidden: ${{ inputs.service.example == 'pyramid' }}
+        ignore: ${{ .hidden }}
+        items:
+          own_mesh:
+            type: boolean
+            default: false
+            label: Fracture a mesh of yours with the Blast SDK
+            description: The source is an OBJ (meters, base at z = 0); the run cuts it into chunks held by breakable bonds, stands them on the ground with a ball thrown at them, and the example renders or simulates that scene. The first run builds the SDK on the login node (about eight minutes).
+          cells:
+            type: number
+            label: Chunks
+            description: Voronoi cells the mesh is cut into.
+            default: 24
+            min: 2
+            max: 500
+            step: 1
+            hidden: ${{ inputs.fracture.own_mesh == false }}
+            ignore: ${{ .hidden }}
+          seed:
+            type: number
+            label: Seed
+            description: The random seed of the cut; the same seed gives the same chunks.
+            default: 7
+            min: 0
+            step: 1
+            hidden: ${{ inputs.fracture.own_mesh == false }}
+            ignore: ${{ .hidden }}
+          strength:
+            type: number
+            label: Bond strength
+            description: Pascals; a bond breaks above this times the area of the cut face. 150000 lets a steel ball through a concrete wall.
+            default: 150000
+            min: 1
+            step: 1000
+            hidden: ${{ inputs.fracture.own_mesh == false }}
+            ignore: ${{ .hidden }}
+      files:
+        type: group
+        label: Files in and out
+        hidden: ${{ inputs.service.example == 'pyramid' || (inputs.service.example == 'fracture' && inputs.fracture.own_mesh == false) }}
+        ignore: ${{ .hidden }}
+        items:
+          use_bucket:
+            type: boolean
+            default: false
+            label: Use a bucket for the files
+            description: Otherwise the paths below are on the cluster's filesystem.
+          bucket:
+            type: bucket
+            label: Bucket
+            description: The source is read from it and the results are written to it.
+            optional: true
+            hidden: ${{ inputs.files.use_bucket == false }}
+            ignore: ${{ .hidden }}
+          source:
+            type: string
+            label: Scene and script source
+            description: A path in the bucket, or an absolute path on the cluster; for "simulate only", empty takes the bundled wall (PhysX only).
+            optional: true
+            tooltip: |
+              A USD file (.usd, .usda, .usdc, .usdz), or a directory holding scene.usd* (or one
+              USD file) and whatever it references by relative path, and optionally a run.py
+              that replaces the example's script (it takes the same arguments; see
+              app/examples/). To fracture a mesh of yours: an OBJ file, or a directory holding
+              one. A bucket directory is copied to the job directory as a whole; a cluster
+              path is read in place.
+          destination:
+            type: string
+            label: Results destination
+            description: A path in the bucket, or an absolute path on a filesystem the login node and the job's node both see; the outputs are copied to <destination>/<run slug>/ when the run ends. Empty leaves them in the job directory.
+            optional: true
+            tooltip: The page serves the local copy either way; the frames, render.json and the scene (or poses.csv and the snapshots) are copied as they are.
+      software:
+        type: group
+        label: Software
+        collapsed: true
+        items:
+          runtime:
+            type: dropdown
+            label: Container runtime
+            description: Singularity pulls a prebuilt SIF into the install directory once; Docker pulls the image on the node that runs the job.
+            default: omniverse-singularity
+            options:
+              - value: omniverse-singularity
+                label: Singularity / Apptainer
+              - value: omniverse-docker
+                label: Docker
+            tooltip: |
+              Singularity: the login node pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 (the
+              Isaac Sim image as a SIF, 11 GB) into the install directory once, and every node
+              runs it as your user. Docker: the image is pulled on the node that runs the job
+              (sudo docker when the user is not in the docker group) into Docker's own storage,
+              which needs about 35 GB free; the job fails at once when it has less.
+          image:
+            type: string
+            label: Container image
+            description: Pulled once per node; 11 GB to download, 20 GB unpacked.
+            default: nvcr.io/nvidia/isaac-sim:6.2.0.1
+            hidden: ${{ inputs.software.runtime != 'omniverse-docker' }}
+            ignore: ${{ .hidden }}
+            tooltip: The NVIDIA Isaac Sim image on NGC, built on the Omniverse Kit SDK; anonymous pulls work. The Omniverse Kit and USD Composer images need an NGC account.
+          sif:
+            type: string
+            label: Singularity image file
+            description: Empty pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 into the install directory once.
+            optional: true
+            hidden: ${{ inputs.software.runtime != 'omniverse-singularity' }}
+            ignore: ${{ .hidden }}
+            tooltip: A SIF built with build-container.sh from the workflow's isaac-sim.def, on a filesystem the render node sees.
+          sif_registry:
+            type: string
+            hidden: true
+            default: ghcr.io/parallelworks/isaac-sim:6.2.0.1
+            label: The prebuilt SIF's ORAS reference; its tag names the file in the install directory
+          install_dir:
+            type: string
+            label: Install directory
+            description: The NOAA home directories are small; point this at a project or scratch directory the compute nodes see.
+            default: ${HOME}/pw/software
+            tooltip: Isaac Sim's home (its shader caches and logs) goes under <install directory>/omniverse/cache once, so later runs on the node start faster; the Singularity image goes under <install directory>/omniverse/containers.

@@ -1,0 +1,60 @@
+Run warm-labrador: error (1m32s)
+Reason: executorExitedEarly
+
+Error annotations:
+
+  Error: The build failed (output above)
+    in build > stream_output → Stream Output
+  Error: The build exited with status 1; the tail of its output follows
+    in build → Check Exit Status
+  Error: The build failed (output above)
+    in build → Check Exit Status
+
+Failed jobs/steps:
+
+  build > Check Exit Status (error, 0s)
+    Error: The build exited with status 1; the tail of its output follows
+    Error: The build failed (output above)
+    ✗ Error: The build exited with status 1; the tail of its output follows
+    [40.524s] [ext: semantics.schema.editor-2.0.2] startup
+    [40.540s] [ext: semantics.schema.property-2.0.2] startup
+    [40.547s] [ext: omni.kit.menu.common-2.0.2] startup
+    [40.552s] [ext: isaacsim.exp.base-6.2.0] startup
+    [40.552s] [ext: isaacsim.exp.base.python-6.2.0] startup
+    [40.557s] Simulation App Starting
+    2026-10-23T09:30:56Z [40,444ms] [Warning] [carb.omniclient.plugin]  Main: core: Core::getServerInfo: rejecting empty URL as invalid
+    2026-10-23T09:30:58Z [42,280ms] [Warning] [omni.rtx] Trying to initialize NGX without vkGetInstanceProcAddr and vkGetDeviceProcAddr pointer-to-functions.
+    2026-10-23T09:30:58Z [42,280ms] [Error] [omni.rtx] Could not get NGX parameters block because NGX isn't enabled.
+    2026-10-23T09:30:58Z [42,280ms] [Error] [omni.rtx] Failed to create NGX context.
+    2026-10-23T09:30:58Z [42,280ms] [Warning] [carb.scenerenderer-rtx.plugin] Failed to create NGX context.
+    [43.411s] Simulation App Startup Complete
+    [43.418s] app ready
+    Starting kit application with the following args:  ['/isaac-sim/exts/isaacsim.simulation_app/isaacsim/simulation_app/simulation_app.py', '/isaac-sim/apps/isaacsim.exp.base.python.kit', '--/app/tokens/exe-path=/isaac-sim/kit', '--/persistent/app/viewport/displayOptions=3094', '--/rtx/materialDb/syncLoads=True', '--/rtx/hydra/materialSyncLoads=True', '--/omni/kit/plugin/syncUsdLoads=True', '--/app/renderer/resolution/width=1280', '--/app/renderer/resolution/height=720', '--/app/window/width=1440', '--/app/window/height=900', '--/renderer/multiGpu/enabled=True', '--/app/fastShutdown=True', '--/app/installSignalHandlers=0', '--ext-folder', '/isaac-sim/exts', '--ext-folder', '/isaac-sim/apps', '--/physics/cudaDevice=0', '--/plugins/carb.tasking.plugin/threadCount=16', '--/plugins/omni.tbb.globalcontrol/maxThreadCount=16', '--portable', '--no-window', '--/app/window/hideUi=1']
+    Passing the following args to the base kit application:  ['--manifest', '/manifest.yaml', '--source', '/source', '--out', '/build', '--tag', 'warm-labrador']
+    Warp 1.17.0 initialized:
+       CUDA Toolkit 12.9, Driver 13.3
+       Devices:
+         "cpu"      : "x86_64"
+         "cuda:0"   : "NVIDIA L4" (22 GiB, sm_89, mempool enabled)
+       Kernel cache:
+         /cache/.cache/warp/1.17.0
+    ramp: parts/ramp.obj
+    2026-10-23T09:31:00Z [44,268ms] [Error] [omni.kit.app._impl] [py stderr]: Traceback (most recent call last):
+    2026-10-23T09:31:00Z [44,268ms] [Error] [omni.kit.app._impl] [py stderr]:   File "/app/build.py", line 232, in <module>
+    2026-10-23T09:31:00Z [44,269ms] [Error] [omni.kit.app._impl] [py stderr]:     place(prim, obj)
+    2026-10-23T09:31:00Z [44,269ms] [Error] [omni.kit.app._impl] [py stderr]:   File "/app/build.py", line 159, in place
+    2026-10-23T09:31:00Z [44,269ms] [Error] [omni.kit.app._impl] [py stderr]:     xform.AddTranslateOp().Set(Gf.Vec3d(*vector(obj.get("position"), "position", (0.0, 0.0, 0.0))))
+    2026-10-23T09:31:00Z [44,269ms] [Error] [omni.kit.app._impl] [py stderr]:     ^^^^^^^^^^^^^^^^^^^^^^
+    2026-10-23T09:31:00Z [44,269ms] [Error] [omni.kit.app._impl] [py stderr]: pxr.Tf.ErrorException: 
+    	Error in 'pxrInternal_v0_25_11__pxrReserved__::UsdGeomXformable::AddXformOp' at line 172 in file ./builds/omniverse/usd-ci/conan/src/0.25.11.kit.5/pxr/usd/usdGeom/xformable.cpp : 'The xformOp 'xformOp:translate' already exists in xformOpOrder [[xformOp:translate, xformOp:orient, xformOp:scale]].'
+    2026-10-23T09:31:00Z [44,321ms] [Warning] [simulation_app.simulation_app] SimulationApp.close() was not called explicitly. Shutting down automatically
+    [44.539s] Simulation App Shutting Down
+    + status=0
+    + '[' 0 -ne 0 ']'
+    + '[' -s /home/alvaro/pw/jobs/warm-labrador/build/build.json ']'
+    + echo '::error title=Error::The build failed (output above)'
+    ✗ Error: The build failed (output above)
+    + exit 1
+    + echo 1
+
+Summary: 1 job(s) failed, 1 step(s) failed

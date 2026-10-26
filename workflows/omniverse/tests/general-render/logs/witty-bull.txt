@@ -1,0 +1,18 @@
+Run witty-bull: error (11s)
+Reason: executorExitedEarly
+
+Error annotations:
+
+  Error: Resolution must be WIDTHxHEIGHT, got ''
+    in preprocessing → Controller Preprocessing
+
+Failed jobs/steps:
+
+  preprocessing > Controller Preprocessing (error, 0s)
+    Error: Resolution must be WIDTHxHEIGHT, got ''
+    + cp inputs.sh controller-inline.witty-bull-00001.sh
+    + cat workflows/omniverse/omniverse-singularity/controller.sh
+    + bash controller-inline.witty-bull-00001.sh
+    ✗ Error: Resolution must be WIDTHxHEIGHT, got ''
+
+Summary: 1 job(s) failed, 1 step(s) failed

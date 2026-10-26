@@ -1,0 +1,64 @@
+Run crucial-crane: error (1m41s)
+
+Error annotations:
+
+  Error: ball: parts/ball.usda holds no geometry to collide with
+    in build > stream_output → Stream Output
+  Error: The build failed (output above)
+    in build > stream_output → Stream Output
+  Error: The build exited with status 1; the tail of its output follows
+    in build → Check Exit Status
+  Error: ball: parts/ball.usda holds no geometry to collide with
+    in build → Check Exit Status
+  Error: The build failed (output above)
+    in build → Check Exit Status
+
+Failed jobs/steps:
+
+  build > Check Exit Status (error, 0s)
+    Error: The build exited with status 1; the tail of its output follows
+    error: ball: parts/ball.usda holds no geometry to collide with
+    Error: The build failed (output above)
+    ✗ Error: The build exited with status 1; the tail of its output follows
+    [36.042s] [ext: omni.usd.metrics.assembler.ui-110.1.3] startup
+    [36.064s] [ext: semantics.schema.editor-2.0.2] startup
+    [36.079s] [ext: semantics.schema.property-2.0.2] startup
+    [36.085s] [ext: omni.kit.menu.common-2.0.2] startup
+    [36.089s] [ext: isaacsim.exp.base-6.2.0] startup
+    [36.090s] [ext: isaacsim.exp.base.python-6.2.0] startup
+    [36.094s] Simulation App Starting
+    2026-10-23T10:07:57Z [35,975ms] [Warning] [carb.omniclient.plugin]  Main: core: Core::getServerInfo: rejecting empty URL as invalid
+    2026-10-23T10:07:59Z [37,715ms] [Warning] [omni.rtx] Trying to initialize NGX without vkGetInstanceProcAddr and vkGetDeviceProcAddr pointer-to-functions.
+    2026-10-23T10:07:59Z [37,716ms] [Error] [omni.rtx] Could not get NGX parameters block because NGX isn't enabled.
+    2026-10-23T10:07:59Z [37,716ms] [Error] [omni.rtx] Failed to create NGX context.
+    2026-10-23T10:07:59Z [37,716ms] [Warning] [carb.scenerenderer-rtx.plugin] Failed to create NGX context.
+    [38.975s] Simulation App Startup Complete
+    [38.984s] app ready
+    Starting kit application with the following args:  ['/isaac-sim/exts/isaacsim.simulation_app/isaacsim/simulation_app/simulation_app.py', '/isaac-sim/apps/isaacsim.exp.base.python.kit', '--/app/tokens/exe-path=/isaac-sim/kit', '--/persistent/app/viewport/displayOptions=3094', '--/rtx/materialDb/syncLoads=True', '--/rtx/hydra/materialSyncLoads=True', '--/omni/kit/plugin/syncUsdLoads=True', '--/app/renderer/resolution/width=1280', '--/app/renderer/resolution/height=720', '--/app/window/width=1440', '--/app/window/height=900', '--/renderer/multiGpu/enabled=True', '--/app/fastShutdown=True', '--/app/installSignalHandlers=0', '--ext-folder', '/isaac-sim/exts', '--ext-folder', '/isaac-sim/apps', '--/physics/cudaDevice=0', '--/plugins/carb.tasking.plugin/threadCount=16', '--/plugins/omni.tbb.globalcontrol/maxThreadCount=16', '--portable', '--no-window', '--/app/window/hideUi=1']
+    Passing the following args to the base kit application:  ['--manifest', '/manifest.yaml', '--source', '/source', '--out', '/build', '--tag', 'crucial-crane']
+    Warp 1.17.0 initialized:
+       CUDA Toolkit 12.9, Driver 13.2
+       Devices:
+         "cpu"      : "x86_64"
+         "cuda:0"   : "NVIDIA L4" (22 GiB, sm_89, mempool enabled)
+       Kernel cache:
+         /cache/.cache/warp/1.17.0
+    ramp: parts/ramp.obj
+    crate_1: parts/crate.obj
+    crate_2: parts/crate.obj
+    crate_3: parts/crate.obj
+    ball: parts/ball.usda
+    ✗ Error: ball: parts/ball.usda holds no geometry to collide with
+    2026-10-23T10:08:01Z [40,286ms] [Warning] [simulation_app.simulation_app] SimulationApp.close() was not called explicitly. Shutting down automatically
+    [40.507s] Simulation App Shutting Down
+    There was an error running python
+    INFO:    Terminating squashfuse_ll after timeout
+    INFO:    Timeouts can be caused by a running background process
+    + status=1
+    + '[' 1 -ne 0 ']'
+    + echo '::error title=Error::The build failed (output above)'
+    ✗ Error: The build failed (output above)
+    + exit 1
+    + echo 1
+
+Summary: 1 job(s) failed, 1 step(s) failed

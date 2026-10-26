@@ -339,6 +339,12 @@
   `scontrol show job`), so compose `<workflow lines>\n${{ inputs.slurm.scheduler_directives }}`
   in the `with:` block (a `|` block scalar with expressions renders fine) and the user's
   line wins when they repeat it (`workflows/openfoam-naca/yamls/general.yaml`).
+- **A scheduled job gets one core unless the script asks for more, and a threaded
+  application can stall on it** (verified 2026-10-23, awsgpu, `workflows/omniverse` run
+  pet-earwig): `task/affinity` pinned the process to core 0 and Kit's task system never
+  advanced past the first frame; `--cpus-per-task=8` composed ahead of the form's
+  directives (the `cluster.cpus` input) fixed it. Details in
+  [software/omniverse-isaac-sim.md](software/omniverse-isaac-sim.md).
 - **The hsp and noaa submitters write SLURM headers in a different order than
   `general`, which decides what a directive can override** (read from the submitters,
   2026-10-02; the `existing`-only lines cannot be exercised from a cloud cluster):

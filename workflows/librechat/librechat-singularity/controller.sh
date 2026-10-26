@@ -1,6 +1,10 @@
 set -o pipefail
 set -x
 
+# The Lock librechat_dir step took the lock and only cancel.sh, written by the start
+# script, releases it: a failure here must release it too, or the next launch refuses
+trap 'rc=$?; [ "$rc" -ne 0 ] && rm -f "${librechat_dir:-${HOME}/pw/LibreChat}/.librechat.lock"; exit $rc' EXIT
+
 source ${PW_PARENT_JOB_DIR}/tools/oras/libs.sh
 
 # Unset any workflow env vars that arrived as empty strings so they don't

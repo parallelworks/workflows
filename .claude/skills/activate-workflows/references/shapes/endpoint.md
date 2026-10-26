@@ -89,6 +89,9 @@ login node, nothing checked out, and the run stays alive until it is cancelled. 
 - Teardown is `pw endpoints delete <name>`: it kills the remote process tree. A
   daemonizing app that re-parented to PID 1 can survive it, which is what `cancel.sh`
   is for.
+- The service outlives the run; the run's `PW_API_KEY` does not. A service that only
+  serves needs nothing more; one that calls `pw` after the run completes takes a
+  credential that outlives it (reference §11, "The key belongs to the run").
 - Cancel mid-flight (`pw workflows runs cancel <slug>` while the service is starting
   or serving) must leave nothing: no service process, no scheduler job, no container
   instance, no listener, no `stopped` record in `pw endpoints list` (a cancel while

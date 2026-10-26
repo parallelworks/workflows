@@ -41,8 +41,9 @@ A run's own `PW_API_KEY` is revoked when the run completes, but the dashboard ca
 for as long as it serves (`pw clusters ls`, `pw ssh` to every cluster). So the start
 script hands it a credential that outlives the run, and says in the run log which one:
 
-- **saved credentials** on the host (`pw auth` there), when they authenticate against
-  this platform — they outlive everything;
+- **saved credentials** on the host (`pw auth` there, or the credential the ACTIVATE
+  agent keeps on a login node it connects), when they authenticate against this
+  platform — they outlive everything;
 - otherwise, on the user workspace, **the workspace key** from
   `/etc/profile.d/parallelworks-env.sh` (only that variable is taken from the file, and
   only when it works);

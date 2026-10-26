@@ -592,10 +592,12 @@
 - **`pw` auth expires** (short-term tokens): a day-old shell suddenly failing every
   command with "Authentication has expired" needs the user to run `pw auth` — it
   prompts for a credential; there is nothing the agent can mint itself.
-- **A run's `PW_API_KEY` expires when the run ends** (verified 2026-09-24): a service it
-  started can no longer call `pw` (`Authentication has expired`). Open `pw endpoints run` and
-  `pw ssh` connections keep working, so plan a teardown that needs no `pw` call
-  (`workflows/ray-cluster`).
+- **A run's `PW_API_KEY` is rejected as soon as the run ends** (verified 2026-09-24): a
+  service the run started keeps serving (open `pw endpoints run` and `pw ssh`
+  connections run on their own key) but its `pw` calls fail with `Authentication has
+  expired`. Plan a teardown that needs no `pw` call (`workflows/ray-cluster`), or hand
+  the service a credential that outlives the run (reference §11, "The key belongs to
+  the run").
 - **`pw ssh <resource>` suddenly answers "Cluster not found or you do not have sufficient
   permissions"** and `pw cluster ls` lists another platform's clusters: the CLI's current
   context changed under you (the user switched it in another shell; `pw context list`

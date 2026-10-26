@@ -49,7 +49,8 @@ Assume the `pw` client on this machine is authenticated (`pw context list` shows
 platform and user); "Authentication has expired" needs a human to run `pw auth`. Add
 `permissions: ['*']` whenever the workflow or a subworkflow runs `pw` (`pw agent
 open-port` is the one exception): it lets the run use any `pw` command the launching
-user can.
+user can. The `PW_API_KEY` a run exports dies with the run: a service that calls `pw`
+after the run completes needs the credential setup in reference §11.
 
 ## Golden rules
 

@@ -212,6 +212,8 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
 - Scripts MUST be **idempotent** — safe to re-run (check before installing).
 - All configuration arrives via the sourced `inputs.sh` — no hardcoded paths/values.
   `PW_API_KEY` stays out of `inputs.sh`; a script that needs it reads the runtime env.
+  It dies with the run: a service that calls `pw` after the run completes needs a
+  credential that outlives it (the skill's `references/activate-platform.md` §11).
 - `controller.sh` runs on the login node (internet access) before anything is
   submitted; the submitted script may run on a compute node without it.
 - A **service** listens on the port `pw endpoints run` assigned (the `{port}` token or

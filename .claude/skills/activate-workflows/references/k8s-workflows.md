@@ -72,7 +72,10 @@ where `pw` and `kubectl` are installed.
 4. **`apply_k8s_deployment`** — applies the PVC; creates the Secret from the run's key
    (`kubectl create secret generic <app>-pw-api-key --from-literal=PW_API_KEY="${PW_API_KEY}"
    --dry-run=client -o yaml | kubectl apply -f -`: idempotent, and the key never lands
-   in a file — the top-level `env: {PW_API_KEY: ${PW_API_KEY}}` exposes it to the step);
+   in a file — the top-level `env: {PW_API_KEY: ${PW_API_KEY}}` exposes it to the step;
+   the run's key lasts at most 30 days even while the run stays alive, so a sidecar
+   restarted after that registers with a dead key — not verified on a run that old;
+   [activate-platform.md §11](activate-platform.md), "The key belongs to the run");
    applies the Deployment; waits for it and its pod (`kubectl wait`, 600 s; wait for
    **every** Deployment the file creates); then **streams the pod logs for as long as
    the service runs** (`kubectl logs -f … --all-containers`, so the sidecar's URL and

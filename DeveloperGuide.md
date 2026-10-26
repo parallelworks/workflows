@@ -144,6 +144,12 @@ Requirements:
   `screen` session, a docker container, an app that daemonizes and re-parents to PID 1
   (RStudio's `rsession`). The submitter runs it on cancel. A service with nothing of
   the kind needs none (`webshell` writes one only when it attaches to `screen`).
+- **The run's `PW_API_KEY` dies with the run.** A service that only serves needs
+  nothing more; one that keeps calling `pw` after the run completes takes a credential
+  that outlives it: `unset PW_API_KEY` on a cluster the ACTIVATE agent connects, a
+  personal API key on a cloud cluster
+  ([references/activate-platform.md §11](.claude/skills/activate-workflows/references/activate-platform.md);
+  `workflows/hpc_status/app/start-template.sh` decides at run time).
 - **A page the workflow draws itself looks like the platform.** Vendor the theme
   contract of [`@parallelworks/ui`](https://github.com/parallelworks/foundation) with
   `bash tools/ui/sync-theme.sh workflows/my-workflow/app/web` (the `--theme-*` tokens
@@ -316,7 +322,9 @@ Everything a run did is in its job dir on the execution node:
 - **A registered workflow ignoring your defaults** — the registration pins one YAML
   path (`pw workflows get <name>` → `remote.yaml`); if it points at the wrong variant,
   the form (and its defaults) are the wrong variant's.
-- **"Authentication has expired"** — `pw` tokens lapse; re-run `pw auth`.
+- **"Authentication has expired"** — `pw` tokens lapse; re-run `pw auth`. From a
+  service after its run completed: the run's `PW_API_KEY` was revoked with the run
+  (section 2).
 
 ## Appendix: converting an older workflow
 

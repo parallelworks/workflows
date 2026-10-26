@@ -10,7 +10,7 @@
       "run.py --out",
       "pw endpoints run"
     ],
-    "setup": "d=$(ls -dt ${HOME}/omniverse-test/scenes/*/ 2>/dev/null | head -1) && [ -n \"$d\" ] && rm -rf ${HOME}/omniverse-test/scene && cp -r \"$d\" ${HOME}/omniverse-test/scene"
+    "setup": "d=$(ls -dt ${HOME}/omniverse-test/scenes/*/ 2>/dev/null | head -1); [ -n \"$d\" ] || { echo 'No build output under ~/omniverse-test/scenes: run general-build/awsgpu-destination first'; exit 1; }; rm -rf ${HOME}/omniverse-test/scene && cp -r \"$d\" ${HOME}/omniverse-test/scene"
   },
   "resource": "pw://alvaro/awsgpu",
   "cluster": {

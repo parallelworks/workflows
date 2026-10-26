@@ -157,7 +157,7 @@ jobs:
           gpus:
             type: number
             label: GPUs per job
-            description: Requested ahead of the directives below; 0 requests none, which is right for cloud clusters.
+            description: Requested ahead of the directives below; 0 requests none, which is right for cloud clusters. Under PBS a GPU comes only from a number here or a select line of yours.
             default: 0
             min: 0
             max: 8

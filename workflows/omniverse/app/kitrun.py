@@ -26,7 +26,7 @@ PHYSICS_HZ = 60
 # lighting over passes (the DLSS denoiser needs the NGX library, which the container
 # does not carry), path tracing already takes 64 samples per pass
 SUBFRAMES = {"RayTracedLighting": 32, "RealTimePathTracing": 32, "PathTracing": 1}
-JOINT_SEPARATION = 0.01  # meters between a joint's two anchors before it counts as broken
+JOINT_SEPARATION = 0.01  # meters a joint's two anchors drift apart, beyond their rest distance, before it counts as broken
 
 _started = time.time()
 _app = None
@@ -178,11 +178,12 @@ def rigid_bodies(stage):
 
 def watch_joints(stage, view=None, paths=None):
     """The stage's joints, watched from before play. Returns None when it has none, else
-    a function that, called later, tells which came apart: the two anchors a joint held
-    together, further apart than JOINT_SEPARATION beyond where they started, where their
-    bodies ended up (a fixed joint that broke; a hinge stays together). `view` and
-    `paths`, a RigidPrim over the bodies and its paths, are reused when the caller has
-    them."""
+    a function that, called later, tells which came apart. A joint holds two anchor
+    points, one on each body; the distance between them where the bodies ended up is
+    compared with the distance at rest, and a drift above JOINT_SEPARATION means the
+    joint broke (a hinge keeps its distance; so does a fixed-base robot's root joint,
+    whose anchors sit apart by the robot's placement). `view` and `paths`, a RigidPrim
+    over the bodies and its paths, are reused when the caller has them."""
     from isaacsim.core.experimental.prims import RigidPrim  # noqa: E402
     from pxr import Gf, Usd, UsdGeom, UsdPhysics  # noqa: E402
 
@@ -212,7 +213,11 @@ def watch_joints(stage, view=None, paths=None):
         return xforms.GetLocalToWorldTransform(stage.GetPrimAtPath(body)).Transform(local)
 
     xforms = UsdGeom.XformCache(Usd.TimeCode.Default())
-    rest = {path: (at_rest(b0, l0, xforms) - at_rest(b1, l1, xforms)).GetLength() for path, b0, b1, l0, l1 in joints}
+    try:
+        rest = {path: (at_rest(b0, l0, xforms) - at_rest(b1, l1, xforms)).GetLength() for path, b0, b1, l0, l1 in joints}
+    except Exception as error:  # a joint naming a body the stage lacks is the scene's problem, not the run's
+        print(f"::warning::The joints will not be checked: {error}", flush=True)
+        return None
     print(f"Watching {len(joints)} joints between {len(bodies)} bodies", flush=True)
 
     def broken():

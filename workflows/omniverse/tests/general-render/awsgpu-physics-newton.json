@@ -1,0 +1,27 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": [
+      "${HOME}/pw/software/omniverse/containers/isaac-sim-6.2.0.1.sif",
+      "${HOME}/pw/software/omniverse/cache/.cache/ov"
+    ],
+    "leftover_patterns": [
+      "serve.py --port",
+      "run.py --out",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://alvaro/awsgpu",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "example": "physics",
+    "frames": 60,
+    "snapshots": 20,
+    "engine": "newton"
+  },
+  "software": {
+    "runtime": "omniverse-singularity"
+  }
+}

@@ -156,7 +156,13 @@
   the `standalone_examples/api/omni.kit.asset_converter` example). URDF and MJCF come
   in through `isaacsim.asset.importer.urdf.URDFImporter(URDFImporterConfig(...)).import_urdf()`
   and the MJCF pair (`pip_prebundle` packages of those extensions; the config fields are
-  documented in their `impl/config.py`). `scipy` is not in the image's Python; `numpy`,
+  documented in their `impl/config.py`). The URDF USD Converter (v0.3.2 in 6.2) writes
+  the robot as `<name>/<name>.usda` referencing `payloads/base.usda` (the geometry) with
+  a `Physics` variant set (`physics`, `physx`, `mujoco`, `none`) and **no selection**: a
+  scene that references the file gets the shapes and no joints or rigid bodies until it
+  selects a variant (`physics` is engine-neutral, `physx` adds `PhysxJointAPI`), on the
+  referencing prim (`prim.GetVariantSets().GetVariantSet("Physics").SetVariantSelection`);
+  verified 2026-10-26 when the built pendulum rendered as a static shape. `scipy` is not in the image's Python; `numpy`,
   `PIL` and `yaml` are, through `python.sh` only (the bare `kit/python/bin/python3` has
   no site packages on its path). `pxr` is not importable without Kit: a standalone USD
   script on the login node takes `pip install usd-core` in a venv.

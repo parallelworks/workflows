@@ -231,7 +231,14 @@ for index, obj in enumerate(manifest["objects"]):
     # own, and the placement must not collide with them. The child has no type of its
     # own, so a file whose default prim is a shape (a Sphere) keeps being one
     prim = stage.DefinePrim(f"/World/{name}", "Xform")
-    stage.DefinePrim(f"/World/{name}/geometry").GetReferences().AddReference(asset)
+    geometry = stage.DefinePrim(f"/World/{name}/geometry")
+    geometry.GetReferences().AddReference(asset)
+    if kind == "robot" and geometry.GetVariantSets().HasVariantSet("Physics"):
+        # The converter keeps the robot's joints and bodies in a variant it leaves unselected
+        variant = geometry.GetVariantSets().GetVariantSet("Physics")
+        choice = next((v for v in ("physics", "physx") if v in variant.GetVariantNames()), None)
+        if choice:
+            variant.SetVariantSelection(choice)
     place(prim, obj)
     paint(prim, obj, index)
     if kind == "robot":

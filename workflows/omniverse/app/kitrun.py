@@ -179,9 +179,10 @@ def rigid_bodies(stage):
 def watch_joints(stage, view=None, paths=None):
     """The stage's joints, watched from before play. Returns None when it has none, else
     a function that, called later, tells which came apart: the two anchors a joint held
-    together, further apart than JOINT_SEPARATION where their bodies ended up (a fixed
-    joint that broke; a hinge stays together). `view` and `paths`, a RigidPrim over the
-    bodies and its paths, are reused when the caller has them."""
+    together, further apart than JOINT_SEPARATION beyond where they started, where their
+    bodies ended up (a fixed joint that broke; a hinge stays together). `view` and
+    `paths`, a RigidPrim over the bodies and its paths, are reused when the caller has
+    them."""
     from isaacsim.core.experimental.prims import RigidPrim  # noqa: E402
     from pxr import Gf, Usd, UsdGeom, UsdPhysics  # noqa: E402
 
@@ -204,6 +205,14 @@ def watch_joints(stage, view=None, paths=None):
         # The view before play: wrapping the bodies afterwards zeroes the velocities the scene authored
         view = RigidPrim(paths=paths) if paths else None
     index = {path: i for i, path in enumerate(paths or [])}
+
+    def at_rest(body, local, xforms):
+        if body is None:
+            return local  # a joint to the world: the anchor is in world coordinates
+        return xforms.GetLocalToWorldTransform(stage.GetPrimAtPath(body)).Transform(local)
+
+    xforms = UsdGeom.XformCache(Usd.TimeCode.Default())
+    rest = {path: (at_rest(b0, l0, xforms) - at_rest(b1, l1, xforms)).GetLength() for path, b0, b1, l0, l1 in joints}
     print(f"Watching {len(joints)} joints between {len(bodies)} bodies", flush=True)
 
     def broken():
@@ -214,17 +223,15 @@ def watch_joints(stage, view=None, paths=None):
         xforms = UsdGeom.XformCache(Usd.TimeCode.Default())
 
         def anchor(body, local):
-            if body is None:
-                return local  # a joint to the world: the anchor is in world coordinates
             if body in index:
                 p, q = positions[index[body]], orientations[index[body]]
                 return Gf.Vec3d(*map(float, p)) + Gf.Quatd(float(q[0]), Gf.Vec3d(*map(float, q[1:]))).Transform(local)
-            # A body the engine does not move (a static collider): where the stage puts it
-            return xforms.GetLocalToWorldTransform(stage.GetPrimAtPath(body)).Transform(local)
+            # The world, or a body the engine does not move (a static collider): where the stage puts it
+            return at_rest(body, local, xforms)
 
         try:
             apart = sorted(path for path, b0, b1, l0, l1 in joints
-                           if (anchor(b0, l0) - anchor(b1, l1)).GetLength() > JOINT_SEPARATION)
+                           if (anchor(b0, l0) - anchor(b1, l1)).GetLength() - rest[path] > JOINT_SEPARATION)
         except Exception as error:  # a scene's joints are not worth losing its frames over
             print(f"::warning::The joints could not be checked: {error}", flush=True)
             return {}

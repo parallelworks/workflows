@@ -29,8 +29,10 @@ bundled scenes, its `scene.usda`. The scripts share `app/kitrun.py` and take the
 arguments, so a `run.py` beside your scene replaces the example's one for one.
 
 **Physics engine**: PhysX (Omniverse's default) or Newton (experimental in Isaac Sim
-6.2; wants mass and collision geometry on every body). Both read the same USD Physics
-schema; the pyramid runs under both.
+6.2; wants mass and collision geometry on every body, and joints only inside an
+articulation, a robot). Both read the same USD Physics schema; the pyramid and a built
+scene run under both, the fractured wall and mesh under PhysX only, since their bonds
+are joints between free bodies, which Newton refuses.
 
 ## Form
 

@@ -30,6 +30,13 @@ if [ -n "${service_example}" ]; then
     if [ -n "${service_snapshots}" ] && ! [[ "${service_snapshots}" =~ ^[0-9]+$ ]]; then
         f_fail "Snapshot interval must be a whole number of frames (0 for the last frame only), got '${service_snapshots}'"
     fi
+    if [ "${service_engine}" = newton ]; then
+        # Newton simulates joints only inside an articulation; the bonds between the chunks
+        # of a fractured mesh are joints between free bodies, which it refuses
+        if [ "${service_example}" = fracture ] || [ "${fracture_own_mesh}" = true ] || { [ "${service_example}" = physics ] && [ -z "${files_source}" ]; }; then
+            f_fail "Newton cannot simulate a fractured mesh (its bonds are joints between free bodies, which Newton refuses): pick PhysX, or another example"
+        fi
+    fi
     if [ "${fracture_own_mesh}" = true ]; then
         if ! [[ "${fracture_cells}" =~ ^[0-9]+$ ]] || [ "${fracture_cells}" -lt 2 ]; then
             f_fail "Chunks must be a whole number of at least 2, got '${fracture_cells}'"

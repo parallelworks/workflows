@@ -291,11 +291,12 @@ jobs:
               - value: physx
                 label: PhysX
               - value: newton
-                label: Newton (experimental)
+                label: Newton (experimental; free bodies and robots)
             tooltip: |
               Both read the same USD Physics schema. Newton (NVIDIA, Disney Research and
               Google DeepMind, Apache 2.0) is opt-in in Isaac Sim 6: bodies need mass and
-              collision geometry, and some PhysX-only traits are rejected.
+              collision geometry, joints live only inside an articulation (a robot), so the
+              bonds of a fractured mesh are PhysX only, and some PhysX-only traits are rejected.
           frames:
             type: number
             label: Frames

@@ -1,0 +1,24 @@
+{
+  "_test": {
+    "timeout_s": 900,
+    "expect": "error",
+    "leftover_patterns": [
+      "serve.py --port",
+      "run.py --out",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://alvaro/awsgpu",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "example": "physics",
+    "engine": "newton",
+    "frames": 60,
+    "snapshots": 20
+  },
+  "software": {
+    "runtime": "omniverse-singularity"
+  }
+}

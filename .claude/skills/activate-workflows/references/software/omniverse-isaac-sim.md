@@ -87,12 +87,21 @@
   `UsdGeom.BBoxCache(...).ComputeWorldBound(stage.GetPseudoRoot())`.
 
 - **Snapshots of a running simulation**: `stage.Export()` writes the bodies' *initial*
-  poses unless PhysX updates USD; `carb.settings.get_settings().set_bool("/physics/updateToUsd", True)`
-  before play makes every step write the transforms, and the export is then exact.
-  Writing the poses in yourself (`RigidPrim.set_world_poses` under
-  `use_backend("usd")`) tears an articulation's links off their joints (the pendulum's
-  shoulder and elbow "broke" and the links fell; verified 2026-10-26); plain rigid
-  bodies survive it.
+  poses: PhysX keeps the live ones in its buffers (`/physics/updateToUsd` makes it write
+  them to USD every step, PhysX only) and Newton writes them to Fabric
+  (`omni:fabric:worldMatrix`), never to USD. Writing the poses into the live stage
+  yourself (`RigidPrim.set_world_poses` under `use_backend("usd")`) tears an
+  articulation's links off their joints (the pendulum's shoulder and elbow "broke" and
+  the links fell; verified 2026-10-26). What works for both engines: export, open the
+  flattened file as a stage of its own, write the view's world poses into it
+  (`MakeMatrixXform`, parents first) and save (`workflows/omniverse/app/kitrun.py`, `simulate`).
+- **Newton refuses loose joints**: a joint whose bodies are not inside an articulation
+  (`ArticulationRootAPI` on an ancestor) makes `isaacsim.physics.newton` fail its stage
+  initialization ("Found N joint(s) not belonging to any articulation"); the simulation
+  manager logs a *warning* and plays on with nothing moving, so a run passes with
+  static poses. Check `isaacsim.physics.newton.acquire_stage().initialized` after play,
+  and refuse fractured meshes (bonds between free bodies) under Newton up front
+  (verified 2026-10-26 with the wall: 57 loose joints).
 - **Joints that broke**: `physics:jointEnabled` does not change and no break event
   arrives in a headless run; compare each joint's two anchors (body pose × localPos,
   the world frame for an empty body rel) against where they started, and count a

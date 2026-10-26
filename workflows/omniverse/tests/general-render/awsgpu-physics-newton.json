@@ -17,11 +17,16 @@
   },
   "service": {
     "example": "physics",
+    "engine": "newton",
     "frames": 60,
-    "snapshots": 20,
-    "engine": "newton"
+    "snapshots": 20
   },
   "software": {
     "runtime": "omniverse-singularity"
+  },
+  "files": {
+    "use_bucket": true,
+    "bucket": "pw://alvaro/alvarotest20261010",
+    "source": "omniverse/pyramid"
   }
 }

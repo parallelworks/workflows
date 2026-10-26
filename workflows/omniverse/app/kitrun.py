@@ -166,6 +166,45 @@ def _play(args):
     _app.update()
 
 
+def check_engine(stage, engine):
+    """Newton takes joints only inside an articulation; a scene whose joints connect free
+    bodies (the bonds of a fractured mesh) makes it refuse the whole stage and simulate
+    nothing, with an error in the log and no other sign."""
+    if engine != "newton":
+        return
+    from pxr import UsdPhysics  # noqa: E402
+
+    def articulated(path):
+        prim = stage.GetPrimAtPath(path)
+        while prim and prim.IsValid():
+            if prim.HasAPI(UsdPhysics.ArticulationRootAPI):
+                return True
+            prim = prim.GetParent()
+        return False
+
+    loose = []
+    for prim in stage.Traverse():
+        if not prim.IsA(UsdPhysics.Joint):
+            continue
+        joint = UsdPhysics.Joint(prim)
+        bodies = [str(t) for rel in (joint.GetBody0Rel(), joint.GetBody1Rel()) for t in rel.GetTargets()]
+        if bodies and not any(articulated(b) for b in bodies):
+            loose.append(str(prim.GetPath()))
+    if loose:
+        fail(f"Newton simulates joints only inside an articulation (a robot); this scene has {len(loose)} joints "
+             f"between free bodies (the bonds of a fractured mesh): run it with PhysX")
+
+
+def check_started(engine):
+    """The manager logs a failed Newton start as a warning and plays on with nothing moving."""
+    if engine != "newton":
+        return
+    import isaacsim.physics.newton  # noqa: E402
+    newton_stage = isaacsim.physics.newton.acquire_stage()
+    if newton_stage is None or not getattr(newton_stage, "initialized", False):
+        fail("Newton did not initialize for this scene; its error is in the output above")
+
+
 def _stop():
     import isaacsim.core.experimental.utils.app as app_utils  # noqa: E402
     app_utils.stop()
@@ -277,9 +316,11 @@ def render(args, center, radius, scene, extras=None, on_frame=None):
     carb.settings.get_settings().set("/rtx/post/aa/op", 1)
     subframes = args.subframes or SUBFRAMES[args.renderer]
 
+    check_engine(stage, args.engine)
     joints = watch_joints(stage)
     print("Writer attached; playing the timeline", flush=True)
     _play(args)
+    check_started(args.engine)
     print(f"Rendering {args.frames} frames at {args.width}x{args.height} with {args.renderer}, "
           f"{subframes} passes per frame, on {gpu_name()}", flush=True)
     first_frame_seconds = None
@@ -325,10 +366,10 @@ def simulate(args, scene, extras=None, on_frame=None):
     rigid bodies go to poses.csv, every `--snapshots` frames (and at the end) the stage
     with the bodies where they are goes to snapshots/frame_NNNN.usda; render.json tells
     the joints that broke when the scene has any."""
-    import carb.settings  # noqa: E402
     import omni.replicator.core as rep  # noqa: E402
     import omni.usd  # noqa: E402
     from isaacsim.core.experimental.prims import RigidPrim  # noqa: E402
+    from pxr import Gf, Usd, UsdGeom  # noqa: E402
 
     stage = omni.usd.get_context().get_stage()
     paths = rigid_bodies(stage)
@@ -340,22 +381,40 @@ def simulate(args, scene, extras=None, on_frame=None):
         os.remove(os.path.join(snapshots_dir, name))
     poses_path = os.path.join(args.out, "poses.csv")
     rep.orchestrator.set_capture_on_play(False)
-    # PhysX writes every step's poses into the stage, so an exported snapshot shows the
-    # bodies where they are; writing them in through the view instead tears an
-    # articulation's links off their joints
-    carb.settings.get_settings().set_bool("/physics/updateToUsd", True)
+    check_engine(stage, args.engine)
     print(f"Simulating {len(paths)} rigid bodies for {args.frames} frames at {args.fps} per second", flush=True)
     # The view before play: wrapping the bodies once the simulation runs zeroes the
     # velocities the scene authored (a thrown ball stops dead)
     bodies = RigidPrim(paths=paths)
     joints = watch_joints(stage, view=bodies, paths=paths)
     _play(args)
+    check_started(args.engine)
     snapshots = []
     loop_started = time.time()
 
     def snapshot(frame):
         name = f"snapshots/frame_{frame + 1:04d}.usda"
-        stage.Export(os.path.join(args.out, name))
+        target = os.path.join(args.out, name)
+        # The live stage keeps the initial poses (PhysX and Newton keep theirs in their
+        # own buffers or in Fabric), so the flattened export gets the bodies' poses written
+        # into it as a stage of its own: writing them into the live stage through the
+        # view tears an articulation's links off their joints
+        stage.Export(target)
+        positions, orientations = bodies.get_world_poses()
+        positions, orientations = positions.numpy(), orientations.numpy()
+        snap = Usd.Stage.Open(target)
+        cache = UsdGeom.XformCache()
+        for path, p, q in zip(paths, positions, orientations):  # parents first, as traversed
+            xform = UsdGeom.Xformable(snap.GetPrimAtPath(path))
+            if not xform:
+                continue
+            world = (Gf.Matrix4d().SetRotate(Gf.Quatd(float(q[0]), Gf.Vec3d(*map(float, q[1:]))))
+                     * Gf.Matrix4d().SetTranslate(Gf.Vec3d(*map(float, p))))
+            scale = Gf.Transform(xform.GetLocalTransformation()).GetScale()
+            local = Gf.Matrix4d().SetScale(scale) * world * cache.GetParentToWorldTransform(xform.GetPrim()).GetInverse()
+            xform.MakeMatrixXform().Set(local)
+            cache.Clear()
+        snap.GetRootLayer().Save()
         snapshots.append(name)
 
     with open(poses_path, "w", newline="") as handle:

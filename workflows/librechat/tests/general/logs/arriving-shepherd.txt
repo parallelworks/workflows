@@ -1,0 +1,15 @@
+Run arriving-shepherd: error (4s)
+Reason: executorExitedEarly
+
+Error annotations:
+
+  Directory In Use: librechat_dir /home/alvaro/pw/LibreChat is already in use by another session: job=inline.caring-stag-00001 user=alvaro started=2026-10-26T17:43:02Z. Stop that session first, or set a different librechat_dir in LibreChat Settings.
+    in preprocessing → Lock librechat_dir
+
+Failed jobs/steps:
+
+  preprocessing > Lock librechat_dir (error, 0s)
+    Directory In Use: librechat_dir /home/alvaro/pw/LibreChat is already in use by another session: job=inline.caring-stag-00001 user=alvaro started=2026-10-26T17:43:02Z. Stop that session first, or set a different librechat_dir in LibreChat Settings.
+    ✗ Directory In Use: librechat_dir /home/alvaro/pw/LibreChat is already in use by another session: job=inline.caring-stag-00001 user=alvaro started=2026-10-26T17:43:02Z. Stop that session first, or set a different librechat_dir in LibreChat Settings.
+
+Summary: 1 job(s) failed, 1 step(s) failed

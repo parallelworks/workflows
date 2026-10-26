@@ -128,7 +128,9 @@
   `class-memaccess`, `maybe-uninitialized` added to `disablewarnings` in
   `premake5.lua`, plus `<cstdio>` and `<limits>` includes in two sources. The SDK is
   built with the pre-C++11 ABI (`-D_GLIBCXX_USE_CXX11_ABI=0` for anything linking it).
-  `workflows/omniverse/fracture/` prefractures a mesh with its authoring library
+  `workflows/omniverse/app/install-blast.sh` does all of that unattended on the login
+  node (about eight minutes, verified 2026-10-23 inside a run) when the form asks to
+  fracture a mesh of the user's; `app/fracture/` prefractures a mesh with the authoring library
   (Voronoi sites, `FractureTool`, `getBaseMesh` returns world-space triangles with
   the cut faces marked by the interior material id) and `make-scene.py` turns the
   chunks into rigid bodies joined by `PhysicsFixedJoint`s with `physics:breakForce`,

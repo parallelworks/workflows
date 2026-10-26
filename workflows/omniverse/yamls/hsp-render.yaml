@@ -449,7 +449,7 @@ jobs:
             type: boolean
             default: false
             label: Fracture a mesh of yours with the Blast SDK
-            description: The first run builds the SDK on the login node (about five minutes); the mesh (an OBJ, meters, base at z = 0) comes from the files section. Otherwise the bundled wall renders.
+            description: The first run builds the SDK on the login node (about eight minutes); the mesh (an OBJ, meters, base at z = 0) comes from the files section. Otherwise the bundled wall renders.
           cells:
             type: number
             label: Chunks

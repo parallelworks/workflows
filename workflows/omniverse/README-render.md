@@ -77,7 +77,7 @@ run time:
 **Your own mesh**: tick *Fracture a mesh of yours* and give an OBJ (meters, base at
 z = 0) as the source. The first run builds the SDK, the tool and a `usd-core` venv on
 the login node under `<install directory>/omniverse/blast` (`app/install-blast.sh`:
-git, gcc, cmake and internet; about five minutes), and every run fractures the mesh
+git, gcc, cmake and internet; about eight minutes), and every run fractures the mesh
 into `fracture/scene.usda` in the job directory before rendering it.
 
 ## How it works

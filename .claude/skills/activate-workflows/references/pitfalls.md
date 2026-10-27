@@ -559,10 +559,9 @@
   list is re-polled. If an agentic/streaming service is flaky in the chat, serve its own
   web UI as a plain endpoint instead. SSE must be framed for the proxy. (Reference §11.)
 - **LLM "brain" = the platform endpoint + runtime `PW_API_KEY`** (+ `X-Allocation`
-  for `org:*` models) — no external key or org secret. To use the key in workflow
-  code, expose it with a top-level `env:` block (`PW_API_KEY: ${PW_API_KEY}`); keep
-  it out of `inputs.sh` (the `grep -v PW_API_KEY` convention) and read it from the
-  runtime env. ([pw-auth.md](pw-auth.md).)
+  for `org:*` models) — no external key or org secret. The key is in every step's
+  environment on its own; keep it out of `inputs.sh` (the `grep -v PW_API_KEY`
+  convention) and read it from the runtime env ([pw-auth.md](pw-auth.md)).
 - **Prove the risky/novel mechanism on real infra early**, before the full workflow
   is wired. For a distributed piece (e.g. cross-node `pw ssh` calls), stage the
   script on the target node and exercise it directly, then wrap it in YAML.

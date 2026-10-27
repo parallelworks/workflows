@@ -264,7 +264,8 @@ the platform tunnel into a k8s Service itself. It still works (verified 2026-09-
 session URL is `externalHref` in `pw sessions ls -o json`), but it is not the repo
 pattern. On top of Step 3 (the sidecar itself: [k8s-workflows.md §2](k8s-workflows.md)):
 
-1. Replace the `sessions:` block with `env: {PW_API_KEY: ${PW_API_KEY}}`.
+1. Delete the `sessions:` block (the run's key is in every step's environment without
+   an `env:` block: [pw-auth.md](pw-auth.md)).
 2. Delete the Service (unless another pod needs it) and the `create_k8s_session` job.
 3. Add the sidecar to the Deployment, and the **Create API Key Secret** step with its
    `cleanup:` before the Deployment apply; `--all-containers` on the log stream.

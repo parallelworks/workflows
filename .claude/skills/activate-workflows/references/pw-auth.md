@@ -8,11 +8,11 @@ they keep doing so after the run completes.
 - **The user workspace and the login node of an existing cluster** (resource
   `type: existing`, connected through the ACTIVATE agent): `pw` is signed in as the
   user; the agent keeps the credential there (agent v7.102.0 or later). Verified
-  2026-10-26 on `a30gpuserver` (agent v7.127.0): `pw auth whoami` answers after
+  2026-10-26 from a run on one (agent v7.127.0): `pw auth whoami` answers after
   `unset PW_API_KEY`.
-- **A cloud cluster**: nothing is signed in; the same step on `gcpsmall` got
-  `no context configured; use 'pw auth'`. The user signs the CLI in on the login node
-  (`pw auth`, again when that session expires) or the workflow is handed a key (below).
+- **A cloud cluster**: nothing is signed in (the same step there gets `no context
+  configured; use 'pw auth'`). The user signs the CLI in on the login node (`pw auth`,
+  again when that session expires) or the workflow is handed a key (below).
 
 `pw auth --help` says the same: pre-authenticated for user workspaces and existing
 clusters, authenticate for a cloud cluster or a local CLI. A `PW_API_KEY` environment
@@ -20,17 +20,22 @@ variable takes precedence over the saved credential.
 
 ## The run's key
 
-Expose it once with a top-level `env:` block and the platform injects it into every
-job and step:
-```yaml
-env:
-  PW_API_KEY: ${PW_API_KEY}
-```
-(`hermes-agent`, `wait_for_endpoint`, every Kubernetes YAML). A submitted script and
-the service it starts inherit it (verified via `/proc/<pid>/environ`), so a service can
-use it as the platform bearer with no org secret. Keep it out of `inputs.sh`
-(preprocessing writes `env | grep '^PW_' | grep -v 'PW_API_KEY'`) and read it from the
-runtime env.
+The platform puts the run's `PW_API_KEY` into the environment of every step, on a
+cluster login node and on the workspace alike, whether or not the YAML has a top-level
+`env:` block or `permissions` (verified 2026-10-27 with six probe runs). The
+`env: {PW_API_KEY: ${PW_API_KEY}}` block many YAMLs here carry is therefore a no-op;
+the one reason to write `env:` is a key the user hands the workflow (below). A
+submitted script and the service it starts inherit the key (verified via
+`/proc/<pid>/environ`), so a service can use it as the platform bearer with no org
+secret. Keep it out of `inputs.sh` (preprocessing writes
+`env | grep '^PW_' | grep -v 'PW_API_KEY'`) and read it from the runtime env.
+
+`permissions: ['*']` decides what the key may do, not whether it is there: without it
+the key still identifies the user (`pw auth whoami` answers) but a call beyond the
+run's own sessions is refused (`pw clusters ls`, `pw endpoints list`, `pw workflows ls`:
+`Unauthorized`; the docs: the run "will only be able to update any sessions it
+creates"; verified 2026-10-27 on a cluster login node and on the workspace). The token
+itself differs with the permission.
 
 **It belongs to the run.** It is rejected as soon as the run ends (verified 2026-09-24):
 a scheduler job or a service that inherited it keeps serving the endpoint it registered

@@ -72,7 +72,7 @@ where `pw` and `kubectl` are installed.
 4. **`apply_k8s_deployment`** — applies the PVC; creates the Secret from the run's key
    (`kubectl create secret generic <app>-pw-api-key --from-literal=PW_API_KEY="${PW_API_KEY}"
    --dry-run=client -o yaml | kubectl apply -f -`: idempotent, and the key never lands
-   in a file — the top-level `env: {PW_API_KEY: ${PW_API_KEY}}` exposes it to the step;
+   in a file — every step's environment carries the run's key ([pw-auth.md](pw-auth.md));
    on `activate.hpc.mil` the run's key lasts at most 30 days even while the run stays
    alive, so a sidecar restarted after that registers with a dead key — not verified on
    a run that old; [pw-auth.md](pw-auth.md));

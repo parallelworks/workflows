@@ -9,7 +9,7 @@ source ${PW_PARENT_JOB_DIR}/tools/oras/libs.sh
 
 # Unset any workflow env vars that arrived as empty strings so they don't
 # shadow values already in .env.example or other defaults.
-for _var in PW_API_KEY ACTIVATE_API_KEY_FILE GENAI_MIL_API_KEY JWT_SECRET JWT_REFRESH_SECRET LIBRECHAT_API_KEY LANGFLOW_API_KEY; do
+for _var in PW_API_KEY ACTIVATE_API_KEY GENAI_MIL_API_KEY JWT_SECRET JWT_REFRESH_SECRET LIBRECHAT_API_KEY LANGFLOW_API_KEY; do
     [ -z "${!_var}" ] && unset "$_var"
 done
 unset _var
@@ -73,7 +73,6 @@ fi
 
 # ── Set up .env ───────────────────────────────────────────────────────────────
 cp "$DIR/.env.example" "$DIR/.env"
-chmod 600 "$DIR/.env"
 
 # DOMAIN_CLIENT is set by the start template: the endpoint URL it needs is
 # only known once `pw endpoints run` has launched.
@@ -93,28 +92,19 @@ _upsert() {
     fi
 }
 
-# The run's PW_API_KEY is revoked when the run completes; a personal key in a file only
-# the user can read outlives it. The key never goes through the form (the platform keeps
-# form values in the run record) and set -x stays off here, or the trace would print it.
+# The run's PW_API_KEY is revoked when the run completes; a key from the form keeps the
+# ACTIVATE endpoint working afterwards. No set -x here: the trace would print the keys.
 set +x
-_key_file="${ACTIVATE_API_KEY_FILE/#'~'/${HOME}}"
-_key_file="${_key_file/#'${HOME}'/${HOME}}"
-if [ -n "${_key_file}" ] && [ -f "${_key_file}" ]; then
-    if [ -n "$(find "${_key_file}" -perm /077)" ]; then
-        echo "::error title=ACTIVATE API key file::${_key_file} is readable by other users: chmod 600 ${_key_file}"
+if [ -n "${ACTIVATE_API_KEY}" ]; then
+    if ! PW_API_KEY="${ACTIVATE_API_KEY}" pw auth whoami >/dev/null 2>&1; then
+        echo "::error title=ACTIVATE API key::The ACTIVATE API key does not authenticate on ${PW_PLATFORM_HOST}: create one under Account > Authentication > API keys"
         exit 1
     fi
-    _key=$(tr -d '[:space:]' < "${_key_file}")
-    if ! PW_API_KEY="${_key}" pw auth whoami >/dev/null 2>&1; then
-        echo "::error title=ACTIVATE API key file::The key in ${_key_file} does not authenticate on ${PW_PLATFORM_HOST}: create one under Account > Authentication > API keys and save it there"
-        exit 1
-    fi
-    _upsert PW_API_KEY "${_key}" "$DIR/.env"
-    unset _key
-    echo "::notice::The ACTIVATE endpoint uses the API key in ${_key_file}, which outlives this run"
+    _upsert PW_API_KEY "${ACTIVATE_API_KEY}" "$DIR/.env"
+    echo "::notice::The ACTIVATE endpoint uses the ACTIVATE API key from the form, which outlives this run"
 elif [ -n "${PW_API_KEY}" ]; then
     _upsert PW_API_KEY "${PW_API_KEY}" "$DIR/.env"
-    echo "::warning title=ACTIVATE API key::No ACTIVATE API key file${_key_file:+ at ${_key_file}}: the ACTIVATE models use this run's key, which stops working when the run completes"
+    echo "::warning title=ACTIVATE API key::No ACTIVATE API key was given: the ACTIVATE models use this run's key, which stops working when the run completes"
 fi
 [ -n "${GENAI_MIL_API_KEY}" ] && _upsert GENAI_MIL_API_KEY "${GENAI_MIL_API_KEY}" "$DIR/.env"
 set -x

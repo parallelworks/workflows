@@ -81,7 +81,6 @@ Optional, stripped before launch.
 | `expect` | cluster | `error` for a failure-path test: pass = the run ends in `error`, then the usual leftover checks | `completed` |
 | `endpoint_name` | both | the exact endpoint name, for a workflow that keeps a fixed one (`hpc_status`'s `hpc-status`): it replaces `*-<run-slug>` in the pass check, the teardown and the leftover check | none |
 | `secrets` | both | `{"<input path>": "<ENVIRONMENT VARIABLE>"}`: the value of each variable goes into that input (dotted path, e.g. `api_key` or `service.token`) at launch, so a `password` input never sits in the test file (`probe`'s dashboards key). The test is skipped when a variable is unset; `--emit` leaves these inputs as they are in the file | none |
-| `secret_files` | cluster | `{"<file on the resource>": "<ENVIRONMENT VARIABLE>"}`: the value of each variable is written to that file before launch, mode 600, over stdin (never on a command line or in a log), for a workflow that reads a key from a user-only file instead of the form (`librechat`'s ACTIVATE API key file). The file stays on the resource; the test is skipped when a variable is unset | none |
 
 ## Pass criteria
 

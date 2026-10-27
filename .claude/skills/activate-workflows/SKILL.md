@@ -26,6 +26,7 @@ file):
 |---|---|
 | [references/activate-platform.md](references/activate-platform.md) | Any YAML or CLI question: schema, inputs and expressions, DAG / matrix / retries, `script_submitter`, `pw` CLI, job-dir layout, endpoints, LLM services. Numbered sections, contents at the top. |
 | [references/pitfalls.md](references/pitfalls.md) | **A run misbehaves**: grep it for the symptom text before debugging from scratch. Every surprise a real run taught, grouped by theme, dated. |
+| [references/pw-auth.md](references/pw-auth.md) | The workflow's scripts call `pw` or the platform API: where `pw` is signed in on its own, the run's key and when it dies, the credential a service uses after the run completes, a key handed through the form. |
 | [references/shapes/](references/shapes/) | The jobs after preprocessing for each workflow shape (endpoint service, batch job, callable step, composed workflow): what "done" means, the teardown, the test. Step 2 picks one. |
 | [references/k8s-workflows.md](references/k8s-workflows.md) | The target is a Kubernetes cluster: no login node, no `script_submitter`, its own dev loop, tests and debugging. |
 | [references/design-parameters.md](references/design-parameters.md) | A driver (`doe`, `dakota`) and a runner (`openfoam-naca`) exchange designs: the `params.in` / `results.out` contract. |
@@ -50,7 +51,7 @@ platform and user); "Authentication has expired" needs a human to run `pw auth`.
 `permissions: ['*']` whenever the workflow or a subworkflow runs `pw` (`pw agent
 open-port` is the one exception): it lets the run use any `pw` command the launching
 user can. The `PW_API_KEY` a run exports dies with the run: a service that calls `pw`
-after the run completes needs the credential setup in reference §11.
+after the run completes needs the credential setup in [references/pw-auth.md](references/pw-auth.md).
 
 ## Golden rules
 

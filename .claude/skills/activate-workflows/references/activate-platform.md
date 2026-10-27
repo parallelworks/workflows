@@ -33,7 +33,7 @@ documented here, **trust the docs and fix this file** (Step 5 of the methodology
 8. Where to look for working patterns (the repo's workflows and tutorials)
 9. Getting your workflow code onto the node (`parallelworks/checkout`)
 10. Endpoints: `pw endpoints run`, tokens, naming, lifecycle, probing, path-based endpoints
-11. AI agents and LLM-backed services: the platform LLM endpoint, `PW_API_KEY` and what outlives the run, `--openai`, Ollama
+11. AI agents and LLM-backed services: the platform LLM endpoint, `PW_API_KEY` (pw-auth.md), `--openai`, Ollama
 
 ---
 
@@ -567,9 +567,9 @@ short-lived; they renew while the CLI is in use, but an idle shell's lapse: when
 command fails with "Authentication has expired", ask the user to run `pw auth`
 (`pw auth --device <host>` prints a code for a headless machine; a `PW_API_KEY`
 environment variable takes precedence over the credentials file). The sign-in needs a
-human; do not try to mint a token. The login node of a cluster the ACTIVATE agent
-connects is signed in without one: the agent keeps and rotates the user's credential
-there (§11, "The key belongs to the run").
+human; do not try to mint a token. Where `pw` is already signed in (the workspace, an
+existing cluster's login node) and which credential a run's scripts use:
+[pw-auth.md](pw-auth.md).
 
 ### Workflows
 ```bash
@@ -896,8 +896,7 @@ risks the empty token being eaten by the arg parser).
 
 ### Platform LLM endpoint — a service's "brain"
 OpenAI-compatible at **`https://${PW_PLATFORM_HOST}/api/openai/v1`**; auth
-`Authorization: Bearer ${PW_API_KEY}` (the run's key, which dies with the run: a
-service that outlives its run needs a durable one, below). **Org-provider models (`org:*`,
+`Authorization: Bearer ${PW_API_KEY}` (the run's key: [pw-auth.md](pw-auth.md)). **Org-provider models (`org:*`,
 e.g. `org:glm/glm-5.1`) require an `X-Allocation: <name>` header** — without it you
 get `400 "X-Allocation header is required for org provider requests"`. List
 allocation names at **`GET https://${PW_PLATFORM_HOST}/api/allocations`** (objects
@@ -927,68 +926,10 @@ ids embed the backing run's number and so change when it relaunches — resolve 
 don't hardcode. `X-Allocation` is required for `org:*` but harmless for endpoint-served
 models, which can support tool calling too (gpt-oss-20b does).
 
-### `PW_API_KEY` at runtime — the run's credential (don't persist it; it dies with the run)
-**Whenever you need `PW_API_KEY` anywhere in the workflow's code, expose it once with
-a top-level `env:` block** so the platform injects it into every job/step's runtime
-env:
-```yaml
-env:
-  PW_API_KEY: ${PW_API_KEY}
-```
-This is the canonical way (`hermes-agent`, `wait_for_endpoint`, every Kubernetes YAML). Still keep
-the key OUT of `inputs.sh`: standard preprocessing writes
-`env | grep '^PW_' | grep -v 'PW_API_KEY'` deliberately, and a long-running service
-process inherits the key directly anyway (verified via `/proc/<pid>/environ`), so a
-service can use it as the platform bearer token — `export OPENAI_API_KEY="${PW_API_KEY}"`
-— with no org secret. Expose it via the top-level `env:` block, read it from the
-runtime env, and never persist it to `inputs.sh`.
-
-**The key belongs to the run.** It is rejected as soon as the run ends, and lasts at
-most 30 days in any case. A scheduler job or a service that inherited it keeps serving
-the endpoint it registered (the tunnel runs on its own key), but every new call made
-with it after the run is over — a `pw` command, a request with it as the bearer — fails
-with `Authentication has expired` (verified 2026-09-24). A service that only serves
-needs nothing more. One that keeps calling the platform after the run completes (a
-collector, a page that launches runs, a teardown) needs a credential that outlives the
-run; the platform injects `PW_API_KEY` itself, so the job script, not the YAML, swaps
-it, and how depends on the cluster:
-
-1. **A cluster connected through the ACTIVATE agent** (an existing cluster such as
-   Nautilus): the cluster's own sign-in. The agent keeps the user's credential on the
-   login node and rotates it, so the job only drops the inherited run token before
-   calling `pw`:
-   ```bash
-   unset PW_API_KEY
-   ```
-   Nothing to manage or rotate. Needs the agent at v7.102.0 or later (verified
-   2026-10-26 from a run on `a30gpuserver`, type `existing`, agent v7.127.0: `pw auth
-   whoami` answered after the unset; the same step on `gcpsmall` got `no context
-   configured`).
-2. **A cloud cluster** (no agent-managed user credential on the nodes): a personal API
-   key, created under Account > Authentication > API keys with the 30-day maximum
-   lifetime, stored on the cluster in a file only the user can read
-   (`umask 077; cat > ~/.config/pw/api-key`, the path by convention) and exported as
-   `PW_API_KEY` at the top of the job script. Replace it before it expires:
-   only new `pw` invocations read it, a running tunnel is not affected. Setup 1 also
-   works on a cloud cluster once you sign the CLI in on its login node yourself
-   (`pw auth`), and again when that session expires: nothing rotates it there.
-
-`env -u PW_API_KEY pw auth whoami` tells at run time whether the node has a credential
-of its own, `PW_API_KEY=<key> pw auth whoami` whether a stored key still works
-(`workflows/hpc_status/app/start-template.sh` tries both and warns when neither holds).
-Setup 1 only serves `pw` calls: an app that needs the key as a string in its own
-config (LibreChat's `.env`, the bearer of its ACTIVATE endpoint) reads it from that
-file on every cluster type, the path being the input (`workflows/librechat`,
-`ACTIVATE_API_KEY_FILE`: the controller refuses a file other users can read, checks
-the key with `pw auth whoami` and writes it into a `.env` of mode 600 under `set +x`).
-
-**A key never goes through the form.** A `password` input is masked in the form only:
-the platform keeps every form value in the run's record in plain text
-(`pw workflows runs view`, verified 2026-10-27) and renders it into the step scripts
-under the job's `logs/`, and `set -x` prints it in the trace. Take the path of a
-user-only file on the resource instead (`workflows/probe` still takes `PROBE_API_KEY`
-through the form). A test seeds that file over stdin with `_test.secret_files`
-(`tools/tests/README.md`).
+### `PW_API_KEY` at runtime
+The run's key, carried by a top-level `env:` block, dies with the run; which credential
+a service calls `pw` with afterwards, and how a key the user hands the workflow is
+carried: [pw-auth.md](pw-auth.md).
 
 ### Chat surface: `--openai` endpoints (don't hand-roll a chat UI)
 Expose an OpenAI-compatible server (`GET /v1/models`, `POST /v1/chat/completions`) with

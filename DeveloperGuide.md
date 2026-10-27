@@ -146,9 +146,9 @@ Requirements:
   the kind needs none (`webshell` writes one only when it attaches to `screen`).
 - **The run's `PW_API_KEY` dies with the run.** A service that only serves needs
   nothing more; one that keeps calling `pw` after the run completes takes a credential
-  that outlives it: `unset PW_API_KEY` on a cluster the ACTIVATE agent connects, a
-  personal API key in a file only you can read on a cloud cluster
-  ([references/activate-platform.md §11](.claude/skills/activate-workflows/references/activate-platform.md);
+  that outlives it: `unset PW_API_KEY` on an existing cluster, a personal API key on a
+  cloud cluster
+  ([references/pw-auth.md](.claude/skills/activate-workflows/references/pw-auth.md);
   `workflows/hpc_status/app/start-template.sh` decides at run time).
 - **A page the workflow draws itself looks like the platform.** Vendor the theme
   contract of [`@parallelworks/ui`](https://github.com/parallelworks/foundation) with

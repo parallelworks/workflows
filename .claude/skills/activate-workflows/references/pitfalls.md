@@ -562,7 +562,7 @@
   for `org:*` models) — no external key or org secret. To use the key in workflow
   code, expose it with a top-level `env:` block (`PW_API_KEY: ${PW_API_KEY}`); keep
   it out of `inputs.sh` (the `grep -v PW_API_KEY` convention) and read it from the
-  runtime env. (Reference §11.)
+  runtime env. ([pw-auth.md](pw-auth.md).)
 - **Prove the risky/novel mechanism on real infra early**, before the full workflow
   is wired. For a distributed piece (e.g. cross-node `pw ssh` calls), stage the
   script on the target node and exercise it directly, then wrap it in YAML.
@@ -596,12 +596,7 @@
   service the run started keeps serving (open `pw endpoints run` and `pw ssh`
   connections run on their own key) but its `pw` calls fail with `Authentication has
   expired`. Plan a teardown that needs no `pw` call (`workflows/ray-cluster`), or hand
-  the service a credential that outlives the run (reference §11, "The key belongs to
-  the run").
-- **A `password` input hides the value in the form only** (verified 2026-10-27): the run
-  record (`pw workflows runs view`) and the rendered step scripts hold it in plain text.
-  A key reaches a workflow through a file only the user can read on the resource
-  (reference §11, "A key never goes through the form").
+  the service a credential that outlives the run ([pw-auth.md](pw-auth.md)).
 - **`pw ssh <resource>` suddenly answers "Cluster not found or you do not have sufficient
   permissions"** and `pw cluster ls` lists another platform's clusters: the CLI's current
   context changed under you (the user switched it in another shell; `pw context list`

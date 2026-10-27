@@ -8,7 +8,7 @@
       "meilisearch",
       "pw endpoints run"
     ],
-    "secret_files": { "~/.config/pw/api-key": "ACTIVATE_API_KEY" }
+    "secrets": { "env_vars.ACTIVATE_API_KEY": "ACTIVATE_API_KEY" }
   },
   "resource": "pw://alvaro/gcpsmall",
   "cluster": {

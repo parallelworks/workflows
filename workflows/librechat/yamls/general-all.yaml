@@ -6,7 +6,7 @@ permissions:
 # block trips the expression parser on CLI runs; v5 renames it to env_vars.
 env:
   PW_API_KEY: ${PW_API_KEY}
-  ACTIVATE_API_KEY_FILE: ${{ inputs.env_vars.ACTIVATE_API_KEY_FILE }}
+  ACTIVATE_API_KEY: ${{ inputs.env_vars.ACTIVATE_API_KEY }}
   GENAI_MIL_API_KEY: ${{ inputs.env_vars.GENAI_MIL_API_KEY }}
   JWT_SECRET: ${{ inputs.env_vars.JWT_SECRET }}
   JWT_REFRESH_SECRET: ${{ inputs.env_vars.JWT_REFRESH_SECRET }}
@@ -900,12 +900,12 @@ jobs:
         label: Environment variables
         collapsed: true
         items:
-          ACTIVATE_API_KEY_FILE:
-            type: string
-            label: ACTIVATE API key file
-            description: A file on the resource holding a personal API key of yours, readable by you alone; without it the ACTIVATE models work only while the run is open.
-            tooltip: Create the key under Account > Authentication > API keys (30 days at most) and save it on the resource with `umask 077; cat > ~/.config/pw/api-key`; replace it before it expires. LibreChat's ACTIVATE endpoint uses it instead of this run's key, which the platform revokes when the run completes. The key never goes through this form, whose values the platform keeps in the run record.
-            default: ${HOME}/.config/pw/api-key
+          ACTIVATE_API_KEY:
+            type: password
+            label: ACTIVATE API key
+            description: Keeps the ACTIVATE models working after the run completes; left empty, they work only while the run is open.
+            tooltip: Create one under Account > Authentication > API keys (30 days at most) and launch again before it expires. The ACTIVATE endpoint in LibreChat uses it instead of this run's key, which the platform revokes when the run completes.
+            default: ''
           GENAI_MIL_API_KEY:
             type: password
             label: GENAI MIL API key

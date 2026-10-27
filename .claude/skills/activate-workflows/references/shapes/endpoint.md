@@ -91,7 +91,7 @@ login node, nothing checked out, and the run stays alive until it is cancelled. 
   is for.
 - The service outlives the run; the run's `PW_API_KEY` does not. A service that only
   serves needs nothing more; one that calls `pw` after the run completes takes a
-  credential that outlives it (reference §11, "The key belongs to the run").
+  credential that outlives it ([pw-auth.md](../pw-auth.md)).
 - Cancel mid-flight (`pw workflows runs cancel <slug>` while the service is starting
   or serving) must leave nothing: no service process, no scheduler job, no container
   instance, no listener, no `stopped` record in `pw endpoints list` (a cancel while

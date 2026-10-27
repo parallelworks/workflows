@@ -55,10 +55,6 @@ The optional "_test" object is stripped before launch:
                        that input (dotted path, e.g. api_key or service.token) at launch, so a
                        password input never sits in the test file; the test is skipped when a
                        variable is unset (both lanes)
-    secret_files       {"<file on the resource>": "<ENVIRONMENT VARIABLE>"}: each variable's value
-                       is written to that file before launch, mode 600, over stdin, for a workflow
-                       that reads a key from a user-only file instead of the form; the file stays,
-                       and the test is skipped when a variable is unset (cluster lane)
 
 Failing runs keep their platform record and get their `pw workflows runs errors`
 output (plus the namespace events on the k8s lane) saved under
@@ -100,7 +96,6 @@ COMPUTE_RESOURCES_RE = re.compile(r"^\s*type:\s*compute-resources\s*$", re.M)
 WORKSPACE = {"workspace", "user-workspace"}
 DEFAULTS = {"timeout_s": 1800, "endpoint": True, "warm_marker": "", "setup": "", "resource": "",
             "scheduler": None, "expect": "completed", "endpoint_name": "", "secrets": {},
-            "secret_files": {},
             "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
             "leftover_kinds": ["deployments", "services", "pods", "persistentvolumeclaims", "secrets"]}
 
@@ -109,12 +104,12 @@ def log(msg):
     print(f"{datetime.now(timezone.utc).strftime('%H:%M:%S')} {msg}", flush=True)
 
 
-def sh(*args, timeout=120, input=None):
-    return subprocess.run(list(args), capture_output=True, text=True, timeout=timeout, input=input)
+def sh(*args, timeout=120):
+    return subprocess.run(list(args), capture_output=True, text=True, timeout=timeout)
 
 
-def pw(*args, timeout=120, input=None):
-    return sh("pw", *args, timeout=timeout, input=input)
+def pw(*args, timeout=120):
+    return sh("pw", *args, timeout=timeout)
 
 
 def git(*args):
@@ -360,8 +355,8 @@ def setup(test):
 
 def fill_secrets(test):
     """Put the environment variables named in _test.secrets into the inputs. Returns
-    the names of the variables that are not set, _test.secret_files' included."""
-    missing = [v for v in test.meta["secret_files"].values() if not os.environ.get(v)]
+    the names of the variables that are not set."""
+    missing = []
     for path, variable in test.meta["secrets"].items():
         value = os.environ.get(variable, "")
         if not value:
@@ -373,18 +368,6 @@ def fill_secrets(test):
             target = target.setdefault(key, {})
         target[keys[-1]] = value
     return missing
-
-
-def seed_secret_files(test):
-    """Write the environment variables named in _test.secret_files to those files on the
-    resource, mode 600, over stdin: the value never sits in a command line or a log."""
-    for path, variable in test.meta["secret_files"].items():
-        remote = '"' + ("$HOME" + path[1:] if path.startswith("~") else path) + '"'
-        r = pw("ssh", test.resource, f'umask 077; mkdir -p "$(dirname {remote})" && cat > {remote}',
-               input=os.environ[variable])
-        if r.returncode != 0:
-            raise RuntimeError(f"writing {path} failed: {(r.stderr or r.stdout).strip()[:300]}")
-        log(f"  wrote {path} on {test.resource} from ${variable} (_test.secret_files)")
 
 
 def launch(test, run_name):
@@ -605,10 +588,9 @@ def run_test(test, args, user):
     started, slug, endpoint_name, detail, preexisting = time.time(), "", None, "", []
     try:
         if test.k8s:
-            if test.meta["setup"] or test.meta["warm_marker"] or test.meta["secret_files"]:
-                log("  note: setup, warm_marker and secret_files need a login node; ignored on the k8s lane")
+            if test.meta["setup"] or test.meta["warm_marker"]:
+                log("  note: setup and warm_marker need a login node; ignored on the k8s lane")
         else:
-            seed_secret_files(test)
             setup(test)
             preexisting = preexisting_pids(test)
         slug = launch(test, f"{test.id} @{row['workflow_tree']}")
@@ -690,8 +672,6 @@ def main():
                     hydrate_compute_resource(t, cluster, emit_user)
             for path, variable in t.meta["secrets"].items():
                 print(f"# {path}: set from ${variable} at launch (_test.secrets)", file=sys.stderr)
-            for path, variable in t.meta["secret_files"].items():
-                print(f"# {path} on the resource: written from ${variable} before launch (_test.secret_files)", file=sys.stderr)
             print(f"# pw workflows run {t.yaml} -i <this>", file=sys.stderr)
             print(json.dumps(t.inputs, indent=2))
         return 0

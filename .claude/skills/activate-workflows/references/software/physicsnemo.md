@@ -1,7 +1,7 @@
 # NVIDIA PhysicsNeMo in the NGC container
 
 > Learned migrating `parallelworks/activate-physicsnemo` to `workflows/physicsnemo`
-> (2026-10-09, `a30gpuserver` A30 and `gcpsmall` CPU nodes). The workflow's README
+> (2026-10-09, an existing A30 GPU server and a cloud cluster's CPU nodes). The workflow's README
 > covers the design; this file lists the facts and traps.
 
 ## The image
@@ -16,8 +16,8 @@
   repository ~250 MB).
 - A SIF needs the layers, the unpacked tree and the squashfs at once: ~65-70 GB free
   while building, 13 GB afterwards; `singularity build` from `docker://` took 7 minutes
-  on a30gpuserver (Apptainer 1.3.4 as `singularity`, 20 cores) and the SIF runs the examples with `--nv`
-  as the user, unchanged. gcpsmall's login node (56 GB free on the 100 GB disk that also holds
+  on an existing GPU server (Apptainer 1.3.4 as `singularity`, 20 cores) and the SIF runs the examples with `--nv`
+  as the user, unchanged. The cloud cluster's login node (56 GB free on the 100 GB disk that also holds
   `/home`) cannot build it; there Docker on the compute nodes works (67 GB free each),
   pulling the image on every fresh cloud node.
 - Run the container as the user (`docker run --user $(id -u):$(id -g)` with
@@ -52,12 +52,12 @@
   three with scripts that called non-existent entry points.
 - Speed on one A30 at the examples' resolution 256: darcy_fno (batch 64) 80 s per
   pseudo-epoch of 2048 samples, 10.4 GB of GPU memory; darcy_transolver (batch 8)
-  350 s; ldc_pinns 0.07 s per iteration (10000 in ~12 min). On 8 CPU cores (gcpsmall) the FNO at
+  350 s; ldc_pinns 0.07 s per iteration (10000 in ~12 min). On 8 CPU cores (the cloud cluster) the FNO at
   resolution 64, batch 8, 64 samples per pseudo-epoch takes 40 s per pseudo-epoch.
-- Docker 29 with the containerd image store (gcpsmall's compute nodes) keeps the
+- Docker 29 with the containerd image store (the cloud cluster's compute nodes) keeps the
   compressed layers and the unpacked image: ~48 GB of disk for 25.06, and the pull
   took ~29 min on a fresh node (2026-10-09).
-- **That store is `/var/lib/containerd`, whatever the install directory says.** awsgpu's
+- **That store is `/var/lib/containerd`, whatever the install directory says.** The AWS GPU cluster's
   login node has `/var` as a 15 GB partition (13 GB free) beside a 160 GB `/home`: the
   pull downloaded for minutes, failed with `no space left on device` in
   `.../io.containerd.content.v1.content/ingest/`, and a plain retry loop repeated it twice
@@ -70,13 +70,13 @@
 - `tensorboard=2.20.0` imports `pkg_resources` in `tensorboard.program`, which
   setuptools 81 removed: pin `setuptools<81` in the env, and check
   `import tensorboard.program`, not just `import tensorboard`, or a fresh env passes
-  the install check and the server dies on start (gcpsmall, 2026-10-09).
+  the install check and the server dies on start (the cloud cluster, 2026-10-09).
 - `tb = program.TensorBoard(); tb.configure(argv=[None, "--logdir", d, "--host",
   "0.0.0.0", "--port", p, "--load_fast", "false"]); tb.main()` serves it from your own
   process, so one process can feed the event files and serve them under
   `pw endpoints run`.
 
-## Hardened hosts (awsgpu, Rocky 9.8, 2026-10-09)
+## Hardened hosts (an AWS GPU cluster, Rocky 9.8, 2026-10-09)
 
 - **squashfs disabled** (`/etc/modprobe.d/squashfs.conf`: `install squashfs /bin/false`):
   setuid singularity-ce 4.4.2 fails with `squashfs filesystem seems not enabled and/or

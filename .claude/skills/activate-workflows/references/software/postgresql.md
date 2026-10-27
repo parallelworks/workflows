@@ -10,7 +10,7 @@
 - **Two servers on one data directory both start.** In a container every postmaster is
   PID 1, so a second container takes the first one's `postmaster.pid` for a stale lock
   of its own, runs crash recovery on the live files and serves them (verified on
-  gcpsmall: `database system was interrupted ... automatic recovery in progress`, then
+  the cloud cluster: `database system was interrupted ... automatic recovery in progress`, then
   `ready to accept connections`). Guard the data directory outside the container: the
   start script holds `flock -n -E 75` on `<data_dir>/workflow.lock` for the server's life.
   On Kubernetes use `strategy: Recreate`, or a rolling update starts the new pod on the
@@ -35,7 +35,7 @@
   password check through `psql -h 127.0.0.1` inside the container passes with any
   password (a wrong-password test ran on, run cute-ray), and so does every connection
   through `kubectl port-forward`, which arrives on the pod's loopback (verified with
-  `wrong` on k3sgpu, run lenient-crane). `POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256`
+  `wrong` on a k3s cluster, run lenient-crane). `POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256`
   makes a new cluster ask for the password there too (only the in-container Unix socket
   stays `trust`; `pg_isready` still works). A data directory initialized without it
   keeps the trust lines, so check the login against the container's own address,
@@ -50,7 +50,7 @@
   but only a refused connection is retried: a failed login (`Error: authentication
   failed`) or a missing database exits at once. In a pod that crash-loops the container,
   the pod never turns Ready, and a `kubectl wait` on the Deployment times out after 600 s
-  with no cause (k3sgpu, run strong-gopher). Wait for the database container alone
+  with no cause (k3s cluster, run strong-gopher). Wait for the database container alone
   (`containerStatuses[?(@.name=="postgres")].ready`), check the login, then wait for the
   Deployment. `GET /api/connection` answers 200 only while it holds a connection (400 with
   the driver error otherwise), so it is the health route for the whole chain. pgweb has

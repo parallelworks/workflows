@@ -76,9 +76,9 @@
   `MPIRUN` alone with a warning (`workflows/openfoam-naca/app/simulator.sh`). Rank count is
   a stability variable on this C-grid, not just a speed one.
 - **Under SLURM** one node per case, `--nodes=1 --ntasks=N`: hydra launches its ranks
-  locally inside the allocation (verified 2026-09-30 on gcpsmall's 4-core nodes, two
+  locally inside the allocation (verified 2026-09-30 on the cloud cluster's 4-core nodes, two
   2-rank cases packed per node). PBS: `-l select=1:ncpus=N:mpiprocs=N`.
-- **When it pays** (gcpsmall login node, NACA 2412 C-grid, simpleFoam + SA):
+- **When it pays** (a cloud cluster's login node, NACA 2412 C-grid, simpleFoam + SA):
 
   | cells | 1 core | 2 ranks | 4 ranks |
   |---:|---:|---:|---:|
@@ -127,7 +127,7 @@
 ## Numerics that bit
 
 - **The same design can converge on one node type and diverge on another** (SIGFPE in
-  `simpleFoam` around iteration 170 on gcpsmall's compute nodes; 800 clean iterations
+  `simpleFoam` around iteration 170 on the cloud cluster's compute nodes; 800 clean iterations
   on its login node, serial and 4-rank alike, 2026-09-30): high-camber airfoils at the
   default mesh sit close to the stability edge, and floating-point differences between
   CPU types tip them. Treat divergence as a per-design result the optimizer absorbs

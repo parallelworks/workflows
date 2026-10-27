@@ -1,11 +1,15 @@
 set -o pipefail
 set -x
 
+# The Lock librechat_dir step took the lock and only cancel.sh, written by the start
+# script, releases it: a failure here must release it too, or the next launch refuses
+trap 'rc=$?; [ "$rc" -ne 0 ] && rm -f "${librechat_dir:-${HOME}/pw/LibreChat}/.librechat.lock"; exit $rc' EXIT
+
 source ${PW_PARENT_JOB_DIR}/tools/oras/libs.sh
 
 # Unset any workflow env vars that arrived as empty strings so they don't
 # shadow values already in .env.example or other defaults.
-for _var in PW_API_KEY GENAI_MIL_API_KEY JWT_SECRET JWT_REFRESH_SECRET LIBRECHAT_API_KEY LANGFLOW_API_KEY; do
+for _var in PW_API_KEY ACTIVATE_API_KEY GENAI_MIL_API_KEY JWT_SECRET JWT_REFRESH_SECRET LIBRECHAT_API_KEY LANGFLOW_API_KEY; do
     [ -z "${!_var}" ] && unset "$_var"
 done
 unset _var
@@ -58,10 +62,14 @@ DIR="${librechat_dir:-${HOME}/pw/LibreChat}"
 
 # ── Clone or pull ─────────────────────────────────────────────────────────────
 
-mkdir -p "$(dirname "$DIR")"
-if [ ! -d "$DIR/.git" ]; then
+mkdir -p "$DIR"
+if ! git -C "$DIR" rev-parse -q --verify HEAD >/dev/null 2>&1; then
   echo "::notice::Cloning LibreChat..."
-  git clone "$REPO" "$DIR"
+  # git clone refuses the directory: the Lock librechat_dir step created it, lock inside
+  git init -q "$DIR"
+  git -C "$DIR" remote add origin "$REPO" 2>/dev/null || git -C "$DIR" remote set-url origin "$REPO"
+  git -C "$DIR" fetch -q origin
+  git -C "$DIR" checkout -q main
 else
   echo "::notice::Pulling latest changes..."
   git -C "$DIR" pull
@@ -69,6 +77,7 @@ fi
 
 # ── Set up .env ───────────────────────────────────────────────────────────────
 cp "$DIR/.env.example" "$DIR/.env"
+touch "$DIR/.env" && chmod 600 "$DIR/.env"
 
 # DOMAIN_CLIENT is set by the start template: the endpoint URL it needs is
 # only known once `pw endpoints run` has launched.
@@ -88,8 +97,22 @@ _upsert() {
     fi
 }
 
+# The run's PW_API_KEY is revoked when the run completes; a key from the form keeps the
+# ACTIVATE endpoint working afterwards. No set -x here: the trace would print the keys.
+set +x
+if [ -n "${ACTIVATE_API_KEY}" ]; then
+    if ! PW_API_KEY="${ACTIVATE_API_KEY}" pw auth whoami >/dev/null 2>&1; then
+        echo "::error title=ACTIVATE API key::The ACTIVATE API key does not authenticate on ${PW_PLATFORM_HOST}: create one under Account > Authentication > API keys"
+        exit 1
+    fi
+    _upsert PW_API_KEY "${ACTIVATE_API_KEY}" "$DIR/.env"
+    echo "::notice::The ACTIVATE endpoint uses the ACTIVATE API key from the form, which outlives this run"
+elif [ -n "${PW_API_KEY}" ]; then
+    _upsert PW_API_KEY "${PW_API_KEY}" "$DIR/.env"
+    echo "::warning title=ACTIVATE API key::No ACTIVATE API key was given: the ACTIVATE models use this run's key, which stops working when the run completes"
+fi
 [ -n "${GENAI_MIL_API_KEY}" ] && _upsert GENAI_MIL_API_KEY "${GENAI_MIL_API_KEY}" "$DIR/.env"
-[ -n "${PW_API_KEY}" ]        && _upsert PW_API_KEY         "${PW_API_KEY}"         "$DIR/.env"
+set -x
 
 # Registration is enabled by default so users can create their first account
 _upsert ALLOW_REGISTRATION      true  "$DIR/.env"

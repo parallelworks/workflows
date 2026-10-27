@@ -27,7 +27,7 @@
   (the default starts postfix through `sudo` for password-reset mail).
 - **Routes**: `/misc/ping` answers `200 PING` without a login, also with an
   `Authorization: Bearer` header, so it is the health route; `/` answers `302
-  /login?next=/`. Cold start (account creation) took about 35 s on gcpsmall, a warm start
+  /login?next=/`. Cold start (account creation) took about 35 s on a cloud cluster, a warm start
   about 15 s.
 - **Logging in by HTTP** (verified 9.18): `GET /login` with a cookie jar; the page is React
   and carries the CSRF token in a JSON blob as `"csrfToken": "..."` (there is no `<form>`

@@ -216,8 +216,8 @@ of applying the form's default, so every `run:` step applies the defaults of the
 
 **Credentials.** Every step of a run has `PW_API_KEY`, the run's token, and that token
 is rejected as soon as the run completes (verified by testing a stored run token before
-and after completion). The node's own `pw` has no user context, and secret user
-variables are not readable from a run. The dashboards outlive their run, so
+and after completion). On a cloud cluster the node's own `pw` has no user context (an existing cluster's login node has one: `unset PW_API_KEY` would use it), and
+secret user variables are not readable from a run. The dashboards outlive their run, so
 `general.yaml` takes an API key as a `password` input and carries it in its top-level
 `env` block as `PROBE_API_KEY`, which reaches every step, including the script that
 `script_submitter` launches (`PW_API_KEY` itself cannot be overridden: the platform

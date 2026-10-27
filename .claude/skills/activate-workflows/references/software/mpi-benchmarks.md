@@ -1,7 +1,7 @@
 # MPI benchmarks: IMB-MPI1, IOR, mdtest, and the MPI under them
 
 What `workflows/benchmarks` learned building and running the Intel MPI Benchmarks
-and IOR on gcpsmall (Rocky 9, Open MPI 4.1.1 module, conda-forge Open MPI 5.0.11),
+and IOR on a cloud cluster (Rocky 9, Open MPI 4.1.1 module, conda-forge Open MPI 5.0.11),
 verified 2026-10-06. The scripts: `workflows/benchmarks/app/install-mpi.sh`,
 `install-benchmark.sh`, `run-template.sh`.
 

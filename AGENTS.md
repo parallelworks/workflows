@@ -212,6 +212,8 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
 - Scripts MUST be **idempotent** — safe to re-run (check before installing).
 - All configuration arrives via the sourced `inputs.sh` — no hardcoded paths/values.
   `PW_API_KEY` stays out of `inputs.sh`; a script that needs it reads the runtime env.
+  It dies with the run: a service that calls `pw` after the run completes needs a
+  credential that outlives it (the skill's `references/pw-auth.md`).
 - `controller.sh` runs on the login node (internet access) before anything is
   submitted; the submitted script may run on a compute node without it.
 - A **service** listens on the port `pw endpoints run` assigned (the `{port}` token or
@@ -262,7 +264,7 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
   that full prefix, including paths composed from variables. Nothing but runtime
   files sits under `app/`: a glob in preprocessing sweeps the whole directory.
 - `permissions: ['*']` on every workflow that runs `pw` (`pw agent open-port` is the
-  one exception); without it a `pw` call inside the run gets `401`.
+  one exception); without it a `pw` call inside the run beyond its own sessions gets `401`.
 - The resource is the top-level `resource` input (`compute-clusters`, read as
   `${{ inputs.resource }}`) on every variant; the `cluster` group holds the scheduler
   fields (scheduler/slurm/pbs), hidden and ignored as a whole when the resource has no

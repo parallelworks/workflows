@@ -33,7 +33,7 @@ documented here, **trust the docs and fix this file** (Step 5 of the methodology
 8. Where to look for working patterns (the repo's workflows and tutorials)
 9. Getting your workflow code onto the node (`parallelworks/checkout`)
 10. Endpoints: `pw endpoints run`, tokens, naming, lifecycle, probing, path-based endpoints
-11. AI agents and LLM-backed services: the platform LLM endpoint, `PW_API_KEY`, `--openai`, Ollama
+11. AI agents and LLM-backed services: the platform LLM endpoint, `PW_API_KEY` (pw-auth.md), `--openai`, Ollama
 
 ---
 
@@ -76,33 +76,33 @@ workflow, via `${{ inputs.<name>.* }}`):
 |-------|---------|-------|
 | `id` | `685193ec1bba202cb3341fb7` | |
 | `ip` | `34.132.29.251` | login-node IP; **empty for workspace** → step runs locally |
-| `name` | `gcpsmall` | |
-| `type` / `provider` | `google-slurm` | |
+| `name` | `<cluster>` | |
+| `type` / `provider` | `google-slurm` | `existing` for a cluster the ACTIVATE agent connects, `managed-cluster` for a managed one, `<cloud>-slurm` for a cloud cluster |
 | `schedulerType` | `slurm` / `pbs` / `''` | `''` when no scheduler (e.g. `existing`, workspace) |
-| `namespace`, `user` | `alvaro` | |
+| `namespace`, `user` | `<user>` | |
 
 **Passing a resource via the CLI:** give the **bare name string** and the platform
 resolves the full object. Do NOT hand-build the object or hardcode `ip` (login IPs
 change when a cluster restarts):
 ```bash
-pw workflows run my-session -i '{"resource":"gcpsmall","scheduler":false}'
+pw workflows run my-session -i '{"resource":"<cluster>","scheduler":false}'
 ```
 `pw cluster ls -o json` field names differ from the resolved object (`ipAddress` vs
 `ip`); rely on name resolution, not the raw cluster JSON.
 
 > **⚠ `compute-resources` inputs do NOT hydrate from the CLI (verified).** Bare-name
 > resolution is a `compute-clusters` feature. A `compute-resources` input (the picker
-> that also lists kubernetes clusters, used by `*_k8s_*.yaml`) passed as `"gcpsmall"`
-> or `"pw://alvaro/gcpsmall"` reaches the workflow as a **raw string** — `.ip`/`.type`
+> that also lists kubernetes clusters, used by `*_k8s_*.yaml`) passed as `"<cluster>"`
+> or `"pw://<user>/<cluster>"` reaches the workflow as a **raw string** — `.ip`/`.type`
 > resolve empty and `ssh.remoteHost` steps **silently run on the workspace exec node**.
 > From the UI the picker sends a full object, so this bites CLI testing only. Pass the
 > object yourself in `-i`:
-> - Cluster: `{"$type":"computeResource","id":"<id>","ip":"<ip>","name":"gcpsmall","namespace":"<user>","provider":"google-slurm","schedulerType":"slurm","type":"google-slurm","uri":"pw://<user>/gcpsmall","user":"<user>"}`
+> - Cluster: `{"$type":"computeResource","id":"<id>","ip":"<ip>","name":"<cluster>","namespace":"<user>","provider":"google-slurm","schedulerType":"slurm","type":"google-slurm","uri":"pw://<user>/<cluster>","user":"<user>"}`
 >   (fresh `id`/`ip` from `pw cluster ls -o json`, mapping `ipAddress`→`ip`).
 > - With `$type: computeResource` the server validates `id` against **clusters** — a
 >   kubernetes cluster id fails with `Compute resource not found`. Omit `$type` and the
 >   object passes through **verbatim, unvalidated**: for a kubernetes cluster send
->   `{"id":"<pw kube ls id>","name":"k3sgpu","type":"kubernetes","uri":"pw://k3sgpu"}`
+>   `{"id":"<pw kube ls id>","name":"<k8s-cluster>","type":"kubernetes","uri":"pw://<k8s-cluster>"}`
 >   (set the fields the workflow reads: `name` for `pw kube auth`, `type` for the guards).
 >   The test runner builds both objects, so a test JSON keeps the portable form: its
 >   k8s lane completes `{"name":…,"type":"kubernetes"}` from `pw kube ls -o json`, and
@@ -130,7 +130,7 @@ Top of file (enables editor autocomplete; harmless at runtime):
 |-----|---------|
 | `permissions` | `['*']` lets the workflow and its subworkflows run any `pw` command the launching user can; needed for every `pw` call but `pw agent open-port`. |
 | `jobs` | the job DAG |
-| `env` | workflow-level environment variables injected into every job/step's runtime env. **The canonical way to make `PW_API_KEY` available to your workflow code** — set `env: { PW_API_KEY: ${PW_API_KEY} }` (see §11). **⚠ Do NOT also name an input *group* `env`** if this block references `${{ inputs.env.* }}`: the shared `env` name makes the expression engine recurse → `400 Expression Parser Error: max recursion exceeded`, which fails **both `--dry-run` and `pw workflows run`** (the web UI may still submit it). Name the group e.g. `env_vars`. |
+| `env` | workflow-level environment variables injected into every job/step's runtime env. The platform puts `PW_API_KEY` there on its own; an `env:` block carries a key the user hands the workflow ([pw-auth.md](pw-auth.md)). **⚠ Do NOT also name an input *group* `env`** if this block references `${{ inputs.env.* }}`: the shared `env` name makes the expression engine recurse → `400 Expression Parser Error: max recursion exceeded`, which fails **both `--dry-run` and `pw workflows run`** (the web UI may still submit it). Name the group e.g. `env_vars`. |
 | `'on'.execute.inputs` | the input form (note the quoted `'on'` to avoid YAML's bool) |
 | `configurations` | named sets of saved inputs (`configurations.<name>.inputs.<input>: value`), loadable with `pw workflows run --saved-inputs <name>` |
 | `timeout` | workflow-level timeout (`30m`, `2h`, `1d`); also per job and per step, and every level applies |
@@ -499,7 +499,7 @@ run_my_job:
 ```
 
 > **Subworkflow required-input check (verified 2026-09-16: `pw` dry-runs + a live run
-> on gcpsmall):** `--dry-run` fails with the terse `Could not parse subworkflow` when a
+> on a cloud cluster):** `--dry-run` fails with the terse `Could not parse subworkflow` when a
 > non-optional subworkflow input with no default is missing from `with:` — the message
 > never names the field. The check honors the subworkflow's `hidden`/`ignore` rules
 > under the values you pass: `script_submitter` with `define_cleanup_script: false`
@@ -545,7 +545,7 @@ wrap the start script in `pw endpoints run` — the endpoint pattern (§10).
 
 ---
 
-### Failure path of a submitted script (verified 2026-09-09, openvscode on gcpsmall)
+### Failure path of a submitted script (verified 2026-09-09, openvscode on a cloud cluster)
 `script_submitter` does **not** forward the script's exit code: "Wait for Script" only polls
 the pid, then "Cancel Streaming" stops the `stream_output` `tail -f` job and the
 subworkflow *completes*. A workflow's error handling therefore lives in the parent's
@@ -567,7 +567,9 @@ short-lived; they renew while the CLI is in use, but an idle shell's lapse: when
 command fails with "Authentication has expired", ask the user to run `pw auth`
 (`pw auth --device <host>` prints a code for a headless machine; a `PW_API_KEY`
 environment variable takes precedence over the credentials file). The sign-in needs a
-human; do not try to mint a token.
+human; do not try to mint a token. Where `pw` is already signed in (the workspace, an
+existing cluster's login node) and which credential a run's scripts use:
+[pw-auth.md](pw-auth.md).
 
 ### Workflows
 ```bash
@@ -684,7 +686,7 @@ Debug checklist on the service node: `cat run.<JOBID>.out`, the `step.out` trace
 `ps -x | grep <your-process>`, `pw endpoints list`, then `pw workflows runs errors <slug>`.
 When a form value seems ignored, read `inputs.sh` (the values preprocessing wrote) and the
 `set -x` lines of `step.out`; the rendered step script older platform versions wrote as
-`logs/<job>/step_N/script-unstable.sh` no longer exists (checked 2026-10-12, gcpsmall).
+`logs/<job>/step_N/script-unstable.sh` no longer exists (checked 2026-10-12, cloud cluster).
 
 ---
 
@@ -894,7 +896,7 @@ risks the empty token being eaten by the arg parser).
 
 ### Platform LLM endpoint — a service's "brain"
 OpenAI-compatible at **`https://${PW_PLATFORM_HOST}/api/openai/v1`**; auth
-`Authorization: Bearer ${PW_API_KEY}` (see below). **Org-provider models (`org:*`,
+`Authorization: Bearer ${PW_API_KEY}` (the run's key: [pw-auth.md](pw-auth.md)). **Org-provider models (`org:*`,
 e.g. `org:glm/glm-5.1`) require an `X-Allocation: <name>` header** — without it you
 get `400 "X-Allocation header is required for org provider requests"`. List
 allocation names at **`GET https://${PW_PLATFORM_HOST}/api/allocations`** (objects
@@ -913,7 +915,7 @@ not the short name the Chat model picker shows (verified, lite-agent).** The end
 routes by a fully-qualified id: `org:owner/provider` (e.g. `org:glm/glm-5.1`) or — for a
 model served by another endpoint (`pw endpoints run --openai`, e.g. a vLLM
 endpoint) — `session:<user>:<provider>/<model>` (e.g.
-`session:alvaro:marketplace.vllmrag.latest_35_session//gpt-oss-20b`; the leading `/` in
+`session:<user>:marketplace.vllmrag.latest_35_session//gpt-oss-20b`; the leading `/` in
 the model name yields the `//`). The picker only displays the trailing short name
 (`/gpt-oss-20b`); sending that verbatim fails with
 `400 "Invalid provider identifier format. Expected 'owner:provider-name'"`, which
@@ -924,21 +926,10 @@ ids embed the backing run's number and so change when it relaunches — resolve 
 don't hardcode. `X-Allocation` is required for `org:*` but harmless for endpoint-served
 models, which can support tool calling too (gpt-oss-20b does).
 
-### `PW_API_KEY` at runtime — the platform credential (don't persist it)
-**Whenever you need `PW_API_KEY` anywhere in the workflow's code, expose it once with
-a top-level `env:` block** so the platform injects it into every job/step's runtime
-env:
-```yaml
-env:
-  PW_API_KEY: ${PW_API_KEY}
-```
-This is the canonical way (`hermes-agent`, `wait_for_endpoint`, every Kubernetes YAML). Still keep
-the key OUT of `inputs.sh`: standard preprocessing writes
-`env | grep '^PW_' | grep -v 'PW_API_KEY'` deliberately, and a long-running service
-process inherits the key directly anyway (verified via `/proc/<pid>/environ`), so a
-service can use it as the platform bearer token — `export OPENAI_API_KEY="${PW_API_KEY}"`
-— with no org secret. Expose it via the top-level `env:` block, read it from the
-runtime env, and never persist it to `inputs.sh`.
+### `PW_API_KEY` at runtime
+The run's key is in every step's environment and dies with the run; which credential
+a service calls `pw` with afterwards, and how a key the user hands the workflow is
+carried: [pw-auth.md](pw-auth.md).
 
 ### Chat surface: `--openai` endpoints (don't hand-roll a chat UI)
 Expose an OpenAI-compatible server (`GET /v1/models`, `POST /v1/chat/completions`) with

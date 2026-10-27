@@ -11,7 +11,7 @@
 > holding an unpacked sandbox directory) was replaced by a **SIF file**
 > (`ghcr.io/parallelworks/n8n:2.0`). Ground truth:
 > `workflows/n8n/n8n-singularity/{build-container.sh,controller.sh,start-template.sh}`.
-> Everything below was verified on live runs on gcpsmall unless marked otherwise.
+> Everything below was verified on live runs on a cloud cluster unless marked otherwise.
 
 ## Operational notes (learned from live runs)
 
@@ -50,7 +50,7 @@ singularity exec n8n.sif n8n --version   # smoke-test before pushing
 
 No upstream image (e.g. a pip-installed app)? Build from a definition file instead —
 `singularity build --force --fakeroot app.sif app.def` works unprivileged on
-apptainer 1.4.5 (verified: `streamlit-singularity/streamlit.def` on gcpsmall, 2026-07);
+apptainer 1.4.5 (verified: `streamlit-singularity/streamlit.def` on a cloud cluster, 2026-07);
 bootstrap from `docker://python:3.12-slim` and `pip install` in `%post`.
 
 Push as a plain ORAS artifact with the repo's own oras binary (`tools/oras/oras`):
@@ -111,7 +111,7 @@ fi
 - The fallback build is **offline-safe** (local unpack) and idempotent via the
   directory guard. Keep the sandbox at a distinct path (`containers/<name>-sandbox`)
   so it can't be confused with a legacy extracted sandbox at `containers/<name>`.
-- Both branches verified on gcpsmall: the live run took the SIF branch
+- Both branches verified on a cloud cluster: the live run took the SIF branch
   (`Apptainer runtime parent: n8n.sif` in `ps`), and the fallback build + a sandbox
   `n8n --version` were exercised manually on the same node.
 
@@ -138,7 +138,7 @@ Using n8n as the template (diff the old sandbox controller → the SIF controlle
 
 ## Ollama conversion notes (`ollama-gguf-container`, verified 2026-08)
 
-Verified on gcpsmall (apptainer 1.4.5, CPU) and awsgpu (singularity-ce 4.4.2,
+Verified on a cloud cluster (apptainer 1.4.5, CPU) and an AWS GPU cluster (singularity-ce 4.4.2,
 A10G GPU):
 
 - SIF built from the official image (`docker://ollama/ollama:<tag>`), pushed as
@@ -182,7 +182,7 @@ A10G GPU):
   across nodes. (Apptainer also accepts the `APPTAINER_*` names; the `SINGULARITY_*`
   ones still work everywhere this repo targets.)
 - `--fakeroot` on the fallback build preserves in-container ownership without
-  requiring sudo (works on gcpsmall's apptainer 1.4.5 out of the box).
+  requiring sudo (works on the cloud cluster's apptainer 1.4.5 out of the box).
 - `chmod a+r` the pulled SIF (the controller may run as a different user than a
   scheduled job in some setups; matches the old `chmod -R a+rX` on sandboxes —
   and is much cheaper: one file instead of a whole tree).

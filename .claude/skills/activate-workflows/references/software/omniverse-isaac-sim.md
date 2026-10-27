@@ -1,6 +1,6 @@
 # NVIDIA Omniverse: Isaac Sim in a container
 
-> Learned building `workflows/omniverse` (2026-10-22 and 2026-10-23, `awsgpu`: L4, driver
+> Learned building `workflows/omniverse` (2026-10-22 and 2026-10-23, an AWS GPU cluster: L4, driver
 > 610.43.02, Docker 29 with the containerd image store, singularity-ce 4.4.2 in `--userns`
 > mode). The workflow's README covers the design and the ecosystem; this file lists the
 > facts and traps.
@@ -29,7 +29,7 @@
   uid cannot even read it. Docker: run as the workflow user with `--group-add 1234`
   (group read access, the frames come out as the user's). Singularity: a `%post` with
   `chmod -R a+rX /isaac-sim` in the def file (`workflows/omniverse/isaac-sim.def`;
-  `--fakeroot` build works on awsgpu with the subuid range in place).
+  `--fakeroot` build works on the AWS GPU cluster with the subuid range in place).
 - Isaac Sim writes two places: `$HOME` (`.cache/ov` shader caches, `.nv`,
   `.nvidia-omniverse/logs`, `.local/share/ov`) and `/isaac-sim/kit/cache` (the shader
   database, `Failed to initialize rtx::shaderdb::ContextManager` when it cannot).
@@ -39,7 +39,7 @@
   shaders for about 150 s before its first frame; with the caches in place the first
   frame takes about 5 s and startup about 30 s (Docker) to 50 s (Singularity over FUSE).
 - `--network none` works for the built-in scene: nothing is fetched.
-- **The hardened cloud image keeps `/var` on a 15 GB partition** (awsgpu 2026-10-23, a
+- **The hardened cloud image keeps `/var` on a 15 GB partition** (an AWS GPU cluster 2026-10-23, a
   fresh instance; the day before it had room): Docker's `data-root` and containerd's
   `root` both live there, so the workflow's free-space check refuses the 35 GB pull.
   With both stores empty, `root = "/home/containerd"` in `/etc/containerd/config.toml`
@@ -70,7 +70,7 @@
   `RigidPrim.get_world_poses()` returns Warp arrays (`.numpy()` before indexing);
   `set_velocities(linear_velocities=[[x, y, z]])` after `play()`. **Create a `RigidPrim`
   view before `play()` when the scene authors `physics:velocity`** (verified 2026-10-23,
-  awsgpu): wrapping the bodies once the simulation runs zeroes their velocities (the
+  the AWS GPU cluster): wrapping the bodies once the simulation runs zeroes their velocities (the
   thrown ball of the fracture scene stopped after three physics steps and fell
   straight down); created before play, the authored throw survives. Writing poses back
   into USD during play (`with use_backend("usd"): set_world_poses(...)`) leaves plain
@@ -112,7 +112,7 @@
 ## Scheduled jobs
 
 - **A SLURM job gets one core by default, and Kit stalls on it** (verified 2026-10-23,
-  awsgpu, run pet-earwig): `task/affinity` pinned the render to core 0 (`Cpus_allowed_list:
+  the AWS GPU cluster, run pet-earwig): `task/affinity` pinned the render to core 0 (`Cpus_allowed_list:
   0`), `carb.tasking is likely stuck` repeated, Replicator logged `renderer failed to
   advance to the scheduled frame`, and the run sat at frame 1 for 17 minutes. Request
   cores ahead of the form's directives (`--cpus-per-task=8`, PBS `select=1:ncpus=8`;
@@ -193,7 +193,7 @@
 ## The GUI in a VNC desktop
 
 - **Isaac Sim's GUI needs an X server with the GLX extension, even though Kit renders
-  with Vulkan** (verified 2026-10-23 on awsgpu, driver 610.43.02). On the platform's
+  with Vulkan** (verified 2026-10-23 on the AWS GPU cluster, driver 610.43.02). On the platform's
   desktop sessions (TigerVNC 1.14.1 Xvnc, `/opt/pw/software/verified/tigervnc`, built
   without GLX: `xdpyinfo` lists DRI3 and Present but no GLX, and `+extension GLX` is a
   no-op) `isaac-sim.sh` dies about 25 s in: Xlib logs `extension "GLX" missing`, then a

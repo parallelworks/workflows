@@ -1,7 +1,7 @@
 # Dask on SLURM with dask-jobqueue (`workflows/dask-slurm`)
 
 > What a `SLURMCluster` kept alive behind a `pw` endpoint needed, verified on
-> gcpsmall 2026-10-07 with dask and distributed 2026.8.0, dask-jobqueue 0.9.0,
+> the cloud cluster 2026-10-07 with dask and distributed 2026.8.0, dask-jobqueue 0.9.0,
 > bokeh 3.10.0 and Python 3.14.7 from conda-forge (the environment pinned in
 > `workflows/dask-slurm/app/dask2026.8.0-python3.14.7.yaml`).
 
@@ -25,7 +25,7 @@
   seconds (`invalid partition specified`, rc 1) without submitting, where the adaptive
   scaler would otherwise log sbatch failures while the workload waits for workers that
   never come.
-- **gcpsmall's nodes have no memory accounting** (`sinfo` shows 1 MB): any `--mem` makes
+- **The cloud cluster's nodes had no memory accounting** (`sinfo` shows 1 MB): any `--mem` makes
   sbatch answer `Requested node configuration is not available`, so the workflow skips the
   directive dask-jobqueue derives from `memory` (`job_directives_skip=["--mem"]`) unless
   the form asks for it; `memory` still sets the workers' memory limit.
@@ -40,7 +40,7 @@
   scheduler with `client.run_on_scheduler(lambda dask_scheduler: ...)` over
   `dask_scheduler.tasks` states (`processing`, `waiting`, `queued`, `no-worker`), as
   `app/dask_demo.py` does.
-- **Timeline on gcpsmall (idle~ nodes):** the first task made the adaptive scaler submit
+- **Timeline on a cloud cluster (idle~ nodes):** the first task made the adaptive scaler submit
   the jobs within 3 s; the nodes booted and the workers joined after 150 s; once the work
   was done the workers above the minimum were retired and their jobs cancelled within 10 s
   (`slurmstepd: JOB CANCELLED` in `dask-worker-logs/`). `cluster.close()` on a STOP

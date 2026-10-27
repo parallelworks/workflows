@@ -41,7 +41,7 @@
 - **A plain-scalar `tooltip:` with a `: ` inside it is invalid YAML** (`mapping values are
   not allowed here`); the platform reports only `Invalid YAML`, so parse the file locally
   (`python3 -c "import yaml; yaml.safe_load(open(f))"`, the system python has PyYAML on
-  gcpsmall) before blaming the schema. Use a `|` block for any prose tooltip.
+  the cloud cluster) before blaming the schema. Use a `|` block for any prose tooltip.
 - **Input group named `env` + a top-level `env:` block** referencing `${{ inputs.env.* }}`
   → `Expression Parser Error: max recursion exceeded`, failing **both `--dry-run` and
   `pw workflows run`** (the web UI may still submit). Rename the group (e.g. `env_vars`).
@@ -279,15 +279,15 @@
   **fail loud (exit non-zero), don't silently skip**: a silent skip upstream plus a
   downstream job waiting on its output (e.g. a port file) becomes an indefinite hang.
 - **Only the workspace and `existing` resources carry the platform SSH key** (`~/.ssh/pwcli`,
-  verified 2026-09-23: present on the workspace and `a30gpuserver`, absent on gcpsmall's login
+  verified 2026-09-23: present on the workspace and an existing cluster, absent on a cloud cluster's login
   node, where `pw ssh` outside a run also has no context). A job that opens `ssh -i
   ~/.ssh/pwcli ... -R` tunnels to other resources must run on one of those hosts; a
   same-resource target needs no tunnel at all (see `workflows/burst-render-demo`).
-- **A run can leave `~/.ssh/pwcli` on a cloud login node** (observed 2026-10-07, gcpsmall):
+- **A run can leave `~/.ssh/pwcli` on a cloud login node** (observed 2026-10-07, cloud cluster):
   the key was absent before the first app-testbed run and present after it, so a script
   that branches on the key's presence can take another branch on a node a run has used.
 - **`nproc` inside an `srun` task counts the task's CPUs, not the node's** (verified
-  2026-10-09 on gcpsmall: 1 by default, 4 with `--cpus-per-task=4`, still 1 with
+  2026-10-09 on a cloud cluster: 1 by default, 4 with `--cpus-per-task=4`, still 1 with
   `--exclusive`). A worker pool sized from `nproc` (an "auto" threads option) runs one
   worker per node unless the step asks for `--cpus-per-task` (`workflows/monte-carlo-pricing`).
 - **`pw forward` target host (verified):** forward a service to localhost with
@@ -301,12 +301,12 @@
 - **Kubernetes-specific pitfalls** (quota, guards, sidecar lifecycle) are collected in
   [references/k8s-workflows.md §9](k8s-workflows.md).
 - **A pod that is `OOMKilled` in a restart loop looks like a slow start: the endpoint
-  answers `503` for the whole budget** (verified 2026-10-07, `workflows/mlflow` on k3sgpu):
+  answers `503` for the whole budget** (verified 2026-10-07, `workflows/mlflow` on a k3s cluster):
   the sidecar registers at once, the proxy returns `503` while nothing listens, and the
   streamed log shows the server starting again and again; only `kubectl get pod -o
   jsonpath='{.status.containerStatuses[0].lastState}'` (or the `BackOff` event) says
   `OOMKilled/137`. MLflow 3's `mlflow server` defaults are 4 uvicorn workers plus a job
-  runner of 7 huey processes, about 250 MB each (PSS 2.5 GB measured on gcpsmall), far over
+  runner of 7 huey processes, about 250 MB each (PSS 2.5 GB measured on a cloud cluster), far over
   the k8s forms' 1Gi limit; with `MLFLOW_SERVER_ENABLE_JOB_EXECUTION=false` and
   `--workers 2` it is 700 MB. Measure a new server's footprint on a login node (`ps -o
   rss`, or PSS from `/proc/<pid>/smaps_rollup`) before trusting the shared 512Mi/1Gi
@@ -340,7 +340,7 @@
   in the `with:` block (a `|` block scalar with expressions renders fine) and the user's
   line wins when they repeat it (`workflows/openfoam-naca/yamls/general.yaml`).
 - **A scheduled job gets one core unless the script asks for more, and a threaded
-  application can stall on it** (verified 2026-10-23, awsgpu, `workflows/omniverse` run
+  application can stall on it** (verified 2026-10-23, an AWS GPU cluster, `workflows/omniverse` run
   pet-earwig): `task/affinity` pinned the process to core 0 and Kit's task system never
   advanced past the first frame; `--cpus-per-task=8` composed ahead of the form's
   directives (the `cluster.cpus` input) fixed it. Details in
@@ -518,7 +518,7 @@
   `workflows/app-testbed`): `-- sh -c "exec python3 server.py {port} >> server.log 2>&1"`
   works, and `--port N` pins the port when a client must know it (a worker's tunnel).
 - **A run cancel can leave the endpoint record in `pw endpoints list` as `stopped`**
-  (observed 2026-10-07, `workflows/mlflow` on gcpsmall): `pw workflows runs cancel` while the
+  (observed 2026-10-07, `workflows/mlflow` on a cloud cluster): `pw workflows runs cancel` while the
   service was starting ran the cleanup trap, MLflow shut down gracefully and no process
   survived, but the listing kept `mlflow-<slug>  stopped` until `pw endpoints delete`; the
   `pw endpoints run` process is killed by the trap's `kill -- -$$` before it finishes
@@ -654,7 +654,7 @@
   stdout (the error goes to stderr) and a dry-run fed from it fails with `Missing required
   fields: Compute resource` (verified 2026-10-01).
 - **Two tests launched in parallel on one resource see each other's `pw endpoints run` as a
-  leftover** (verified 2026-10-06, marimo + h2o on gcpsmall): the runner ignores only the
+  leftover** (verified 2026-10-06, marimo + h2o on a cloud cluster): the runner ignores only the
   processes that existed before *its own* launch, and every endpoint workflow's default
   `leftover_patterns` include `pw endpoints run`, so a sibling run's service that started
   later shows up at teardown. The runner waits for it ("waiting for cleanup:
@@ -735,18 +735,18 @@
   export time) before `miniforge_bootstrap`, and leaves it unset for `latest` and pasted
   environments. A `conda install` into base may also bump `conda` itself (26.7.2 → 26.7.3
   seen), so the export can legitimately differ from the installer's own version.
-- **pvpython backend selection and exit hangs** (ParaView 6.1.1 on gcpsmall, 2026-10-08) are in
+- **pvpython backend selection and exit hangs** (ParaView 6.1.1 on a cloud cluster, 2026-10-08) are in
   [software/paraview.md](software/paraview.md): name the OSMesa window with
   `VTK_DEFAULT_OPENGL_WINDOW`, end the script with `os._exit()`, bound the run with `timeout`
   and judge completeness by a file written last.
-- **`nvidia-smi` says `Driver/library version mismatch` and every GPU job fails** (a30gpuserver,
+- **`nvidia-smi` says `Driver/library version mismatch` and every GPU job fails** (an existing GPU server,
   2026-10-09): unattended-upgrades replaced the NVIDIA userspace (580.173 → 580.178) under the
   running kernel module. A reboot or a module reload fixes it, an admin action on a shared box:
   ask first. `fuser /dev/nvidia*` misses holders inside containers, which open their own device
   nodes; grep `/proc/*/fd` for `nvidia` instead (there: a host `dcgm-exporter` container, gdm,
   and the GPU Operator's device plugin, paused with `nvidia.com/gpu.deploy.<operand>=false`
   node labels). `workflows/physicsnemo` checks `nvidia-smi -L` first and fails with its message.
-- **Ubuntu-based containers fail every TLS call on a FIPS host** (awsgpu, 2026-10-09):
+- **Ubuntu-based containers fail every TLS call on a FIPS host** (an AWS GPU cluster, 2026-10-09):
   `/proc/sys/crypto/fips_enabled` is not namespaced, so Ubuntu's OpenSSL 3 inside the NGC
   image switches to FIPS, finds no FIPS provider and `ssl.create_default_context()` raises
   `[CRYPTO] unknown error`; Python packages that touch `ssl` at import die with it. Pass
@@ -756,7 +756,7 @@
   ([software/physicsnemo.md](software/physicsnemo.md)).
 - **A hand-made SVG figure must fit its labels in the viewer's font, not in the local
   render** (2026-10-08, `workflows/doe-openfoam/thumbnails/doe-wiring.svg`): headless Firefox
-  on gcpsmall drew `font-family="Helvetica, Arial, sans-serif"` narrower than a browser
+  on a cloud cluster drew `font-family="Helvetica, Arial, sans-serif"` narrower than a browser
   showing the README, where a results line ran 51 px past its box. Measure each `<text>`
   with the font's advance widths (fontTools in a scratch venv; Liberation Sans has
   Helvetica's metrics, DejaVu Sans is the wide fallback) and keep it inside its `<rect>`

@@ -503,7 +503,12 @@
   `optional` takes no expression: `optional: ${{ .hidden }}` and
   `optional: ${{ inputs.x == '' }}` both left the field required. A field that only
   matters with another one stays `optional: true` (or gets a default), and the
-  controller enforces the pairing with a clear `::error`.
+  controller enforces the pairing with a clear `::error`. A `bucket` input hidden and
+  ignored under a dropdown value (`hidden: ${{ inputs.results.location != 'bucket' }}`,
+  `ignore: ${{ .hidden }}`) is **not** demanded without `optional: true`: both the dry-run
+  and real launches with the dropdown on its other value passed, and the picker stays
+  required when shown (verified 2026-10-27, `workflows/probe`, runs peaceful-eel and
+  closing-serval). Test the type you have with a dry-run before adding `optional`.
 - **An app that signs users in with ACTIVATE (OIDC)** (verified 2026-10-20,
   `workflows/openproject`) needs an app registered for its exact URL, a pinned subdomain
   and a proxy of its own in front; the recipe, the claims and how far curl can test the

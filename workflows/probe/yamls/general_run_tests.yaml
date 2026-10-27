@@ -148,8 +148,6 @@ jobs:
           bucket:
             type: bucket
             label: Bucket
-            optional: true
-            description: Required with this location; the run stops without one.
             hidden: ${{ inputs.results.location != 'bucket' }}
             ignore: ${{ .hidden }}
           path:

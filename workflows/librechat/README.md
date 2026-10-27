@@ -44,7 +44,7 @@ Expand the **Environment Variables** section to provide API keys. All fields are
 
 | Field | Description |
 |---|---|
-| **ACTIVATE API key** | A platform API key of yours (Account > Authentication > API keys, 30 days at most). The ACTIVATE endpoint uses it instead of the run's own key, which the platform revokes when the run completes: without it the ACTIVATE models work only while the run is open. A key that does not authenticate fails the run. |
+| **ACTIVATE API key** | A platform API key of yours (Account > Authentication > API keys). The ACTIVATE endpoint uses it instead of the run's own key, which the platform revokes when the run completes: without it the ACTIVATE models work only while the run is open. A key that does not authenticate fails the run. |
 | **GENAI MIL API Key** | API key for the GenAI MIL endpoint (`api.genai.mil`). Enables the pre-configured GenAI MIL custom endpoint in LibreChat. |
 | **JWT Secret** | Overrides the auto-generated JWT secret used to sign user session tokens. Set this to keep sessions valid across job restarts. |
 | **JWT Refresh Secret** | Overrides the auto-generated JWT refresh secret. Set alongside JWT Secret for persistent sessions. |

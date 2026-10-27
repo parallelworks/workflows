@@ -73,6 +73,7 @@ fi
 
 # ── Set up .env ───────────────────────────────────────────────────────────────
 cp "$DIR/.env.example" "$DIR/.env"
+touch "$DIR/.env" && chmod 600 "$DIR/.env"
 
 # DOMAIN_CLIENT is set by the start template: the endpoint URL it needs is
 # only known once `pw endpoints run` has launched.

@@ -904,7 +904,7 @@ jobs:
             type: password
             label: ACTIVATE API key
             description: Keeps the ACTIVATE models working after the run completes; left empty, they work only while the run is open.
-            tooltip: Create one under Account > Authentication > API keys (30 days at most) and launch again before it expires. The ACTIVATE endpoint in LibreChat uses it instead of this run's key, which the platform revokes when the run completes.
+            tooltip: Create one under Account > Authentication > API keys and launch again before it expires. The ACTIVATE endpoint in LibreChat uses it instead of this run's key, which the platform revokes when the run completes.
             default: ''
           GENAI_MIL_API_KEY:
             type: password

@@ -598,6 +598,10 @@
   expired`. Plan a teardown that needs no `pw` call (`workflows/ray-cluster`), or hand
   the service a credential that outlives the run (reference §11, "The key belongs to
   the run").
+- **A `password` input hides the value in the form only** (verified 2026-10-27): the run
+  record (`pw workflows runs view`) and the rendered step scripts hold it in plain text.
+  A key reaches a workflow through a file only the user can read on the resource
+  (reference §11, "A key never goes through the form").
 - **`pw ssh <resource>` suddenly answers "Cluster not found or you do not have sufficient
   permissions"** and `pw cluster ls` lists another platform's clusters: the CLI's current
   context changed under you (the user switched it in another shell; `pw context list`

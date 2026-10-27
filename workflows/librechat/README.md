@@ -44,14 +44,14 @@ Expand the **Environment Variables** section to provide API keys. All fields are
 
 | Field | Description |
 |---|---|
-| **ACTIVATE API key** | A platform API key of yours (Account > Authentication > API keys, 30 days at most). The ACTIVATE endpoint uses it instead of the run's own key, which the platform revokes when the run completes: without it the ACTIVATE models work only while the run is open. A key that does not authenticate fails the run. |
+| **ACTIVATE API key file** | A file on the resource holding a personal API key of yours (Account > Authentication > API keys, 30 days at most), readable by you alone: `umask 077; cat > ~/.config/pw/api-key`, the default path. The ACTIVATE endpoint uses it instead of the run's own key, which the platform revokes when the run completes: without the file the ACTIVATE models work only while the run is open. The key never goes through the form, whose values the platform keeps in the run record. A file other users can read, or a key that does not authenticate, fails the run. |
 | **GENAI MIL API Key** | API key for the GenAI MIL endpoint (`api.genai.mil`). Enables the pre-configured GenAI MIL custom endpoint in LibreChat. |
 | **JWT Secret** | Overrides the auto-generated JWT secret used to sign user session tokens. Set this to keep sessions valid across job restarts. |
 | **JWT Refresh Secret** | Overrides the auto-generated JWT refresh secret. Set alongside JWT Secret for persistent sessions. |
 | **LibreChat API Key** | API key for programmatic access to the LibreChat API. |
 | **Langflow API Key** | API key for Langflow integration. |
 
-Without an ACTIVATE API key the run's own `PW_API_KEY` configures the ACTIVATE endpoint, and the run log warns that it stops working when the run completes.
+Without the key file the run's own `PW_API_KEY` configures the ACTIVATE endpoint, and the run log warns that it stops working when the run completes.
 
 ### Container Runtime
 
@@ -75,7 +75,7 @@ On HSP clusters, configure your SLURM account, QoS, and node count as required b
 
 - **Singularity/Apptainer**: Must be available on the target node (loaded automatically via `module` if needed).
 - **SIF images**: Downloaded to `$service_parent_install_dir/containers/librechat/` by the controller on first run. Subsequent launches skip the download if the images are already present.
-- **AI API key**: At least one AI provider API key must be configured to start chatting. The ACTIVATE platform endpoint is available by default; give it an ACTIVATE API key to keep it working after the run completes.
+- **AI API key**: At least one AI provider API key must be configured to start chatting. The ACTIVATE platform endpoint is available by default; a personal API key saved in `~/.config/pw/api-key` on the resource keeps it working after the run completes.
 
 ## Getting Started
 

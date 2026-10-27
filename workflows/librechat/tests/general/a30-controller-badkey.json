@@ -1,0 +1,26 @@
+{
+  "_test": {
+    "expect": "error",
+    "endpoint": false,
+    "timeout_s": 900,
+    "warm_marker": "${HOME}/pw/software/containers/librechat",
+    "setup": "umask 077; mkdir -p ~/.config/pw; echo not-a-real-key > ~/.config/pw/bad-api-key",
+    "leftover_patterns": [
+      "librechat",
+      "mongod",
+      "meilisearch",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://alvaro/a30gpuserver",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "librechat_dir": "${HOME}/pw/LibreChat",
+    "domain_client": "ACTIVATE"
+  },
+  "env_vars": {
+    "ACTIVATE_API_KEY_FILE": "${HOME}/.config/pw/bad-api-key"
+  }
+}

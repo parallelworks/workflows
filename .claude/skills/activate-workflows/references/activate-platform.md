@@ -966,8 +966,9 @@ it, and how depends on the cluster:
    configured`).
 2. **A cloud cluster** (no agent-managed user credential on the nodes): a personal API
    key, created under Account > Authentication > API keys with the 30-day maximum
-   lifetime, stored on the cluster in a file only the user can read (mode `600`) and
-   exported as `PW_API_KEY` at the top of the job script. Replace it before it expires:
+   lifetime, stored on the cluster in a file only the user can read
+   (`umask 077; cat > ~/.config/pw/api-key`, the path by convention) and exported as
+   `PW_API_KEY` at the top of the job script. Replace it before it expires:
    only new `pw` invocations read it, a running tunnel is not affected. Setup 1 also
    works on a cloud cluster once you sign the CLI in on its login node yourself
    (`pw auth`), and again when that session expires: nothing rotates it there.
@@ -976,14 +977,18 @@ it, and how depends on the cluster:
 of its own, `PW_API_KEY=<key> pw auth whoami` whether a stored key still works
 (`workflows/hpc_status/app/start-template.sh` tries both and warns when neither holds).
 Setup 1 only serves `pw` calls: an app that needs the key as a string in its own
-config (LibreChat's `.env`, the bearer of its ACTIVATE endpoint) takes a key input on
-every cluster type, checked with `pw auth whoami` before it is written
-(`workflows/librechat/librechat-singularity/controller.sh`).
-A key the user hands the workflow goes in as a `password` input, carried under another
-name in the top-level `env:` block and exported as `PW_API_KEY` by the start script
-(`workflows/probe/yamls/general.yaml`, `PROBE_API_KEY`); the platform keeps inputs in
-the run's record and renders them into the step scripts under the job's `logs/`. Keep
-`set -x` off around key handling, or the trace prints the key.
+config (LibreChat's `.env`, the bearer of its ACTIVATE endpoint) reads it from that
+file on every cluster type, the path being the input (`workflows/librechat`,
+`ACTIVATE_API_KEY_FILE`: the controller refuses a file other users can read, checks
+the key with `pw auth whoami` and writes it into a `.env` of mode 600 under `set +x`).
+
+**A key never goes through the form.** A `password` input is masked in the form only:
+the platform keeps every form value in the run's record in plain text
+(`pw workflows runs view`, verified 2026-10-27) and renders it into the step scripts
+under the job's `logs/`, and `set -x` prints it in the trace. Take the path of a
+user-only file on the resource instead (`workflows/probe` still takes `PROBE_API_KEY`
+through the form). A test seeds that file over stdin with `_test.secret_files`
+(`tools/tests/README.md`).
 
 ### Chat surface: `--openai` endpoints (don't hand-roll a chat UI)
 Expose an OpenAI-compatible server (`GET /v1/models`, `POST /v1/chat/completions`) with

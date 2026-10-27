@@ -66,7 +66,7 @@ from the runtime env (`workflows/probe/yamls/general.yaml`, `PROBE_API_KEY`). An
 that needs the key as a string in its own config takes it on every cluster type
 (`workflows/librechat`, `ACTIVATE_API_KEY`: checked with `pw auth whoami` before the
 controller writes it into LibreChat's `.env`). Keep `set -x` off around it, or the
-trace prints it; the platform keeps form values, password inputs included, in the
-run's record and renders them into the step scripts under the job's `logs/`. A test
+trace prints it; the platform keeps form values, password inputs included, in plain
+text in the run's record (`pw workflows runs view`, verified 2026-10-27). A test
 passes it from an environment variable (`_test.secrets`, `tools/tests/README.md`): a
 key never sits in a test file or anywhere else in the repo.

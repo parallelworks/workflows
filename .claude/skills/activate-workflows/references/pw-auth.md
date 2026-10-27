@@ -21,10 +21,8 @@ variable takes precedence over the saved credential.
 ## The run's key
 
 The platform puts the run's `PW_API_KEY` into the environment of every step, on a
-cluster login node and on the workspace alike, whether or not the YAML has a top-level
-`env:` block or `permissions` (verified 2026-10-27 with six probe runs). The
-`env: {PW_API_KEY: ${PW_API_KEY}}` block many YAMLs here carry is therefore a no-op;
-the one reason to write `env:` is a key the user hands the workflow (below). A
+cluster login node and on the workspace alike, and a top-level `env:` block cannot
+replace it: a value set there for `PW_API_KEY` is ignored (verified 2026-10-27). A
 submitted script and the service it starts inherit the key (verified via
 `/proc/<pid>/environ`), so a service can use it as the platform bearer with no org
 secret. Keep it out of `inputs.sh` (preprocessing writes

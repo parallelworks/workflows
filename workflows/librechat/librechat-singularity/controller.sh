@@ -62,10 +62,14 @@ DIR="${librechat_dir:-${HOME}/pw/LibreChat}"
 
 # ── Clone or pull ─────────────────────────────────────────────────────────────
 
-mkdir -p "$(dirname "$DIR")"
-if [ ! -d "$DIR/.git" ]; then
+mkdir -p "$DIR"
+if ! git -C "$DIR" rev-parse -q --verify HEAD >/dev/null 2>&1; then
   echo "::notice::Cloning LibreChat..."
-  git clone "$REPO" "$DIR"
+  # git clone refuses the directory: the Lock librechat_dir step created it, lock inside
+  git init -q "$DIR"
+  git -C "$DIR" remote add origin "$REPO" 2>/dev/null || git -C "$DIR" remote set-url origin "$REPO"
+  git -C "$DIR" fetch -q origin
+  git -C "$DIR" checkout -q main
 else
   echo "::notice::Pulling latest changes..."
   git -C "$DIR" pull

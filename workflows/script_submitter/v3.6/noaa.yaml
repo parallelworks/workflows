@@ -64,8 +64,8 @@ jobs:
             echo "#SBATCH --partition=${{ inputs.slurm.partition }}" >> headers.sh
           fi
 
-          # The form's directives, with or without the #SBATCH prefix: trim each line, drop blank ones, add the prefix where missing
-          cat <<'EOF' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' -e '/^#/!s/^/#SBATCH /' >> headers.sh
+          # The form accepts directives without the #SBATCH prefix: add it where missing, drop blank lines
+          cat <<EOF | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' -e '/^#/!s/^/#SBATCH /' >> headers.sh
           ${{ inputs.slurm.scheduler_directives }}
           EOF
 
@@ -88,8 +88,8 @@ jobs:
           #PBS -j oe
           EOF
 
-          # The form's directives, with or without the #PBS prefix: trim each line, drop blank ones, add the prefix where missing
-          cat <<'EOF' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' -e '/^#/!s/^/#PBS /' >> headers.sh
+          # The form accepts directives without the #PBS prefix: add it where missing, drop blank lines
+          cat <<EOF | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' -e '/^#/!s/^/#PBS /' >> headers.sh
           ${{ inputs.pbs.scheduler_directives }}
           EOF
           echo "HEADERS=$(cat headers.sh | sed ':a;N;$!ba;s/\n/\\n/g' )" | tee -a $OUTPUTS
@@ -607,7 +607,7 @@ jobs:
             type: editor
             label: Scheduler directives
             optional: true
-            description: One per line, with or without the #SBATCH prefix.
+            description: 'One per line, with or without the #SBATCH prefix.'
             tooltip: |
               For example:
               #SBATCH --exclusive
@@ -626,7 +626,8 @@ jobs:
           scheduler_directives:
             label: Scheduler directives
             type: editor
-            description: One per line, with or without the #PBS prefix.
+            description: 'One per line, with or without the #PBS prefix.'
+            optional: true
             tooltip: |
               For example:
               #PBS -l mem=16gb

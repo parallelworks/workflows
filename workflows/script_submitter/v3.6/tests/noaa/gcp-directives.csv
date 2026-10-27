@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-27T16:49:50Z,,pass,ok,e20a8e2,e20a8e2,eef523b,59b5d92-dirty,a69b740,scheduler-directives,alvaro,useful-hamster,45,

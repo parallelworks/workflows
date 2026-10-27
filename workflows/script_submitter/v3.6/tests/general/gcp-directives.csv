@@ -1,2 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-27T16:13:23Z,,pass,ok,e20a8e2,e20a8e2,eef523b,e1c9507-dirty,a69b740,scheduler-directives,alvaro,honest-mackerel,177,
+2026-10-27T16:21:10Z,,fail,ok,e20a8e2,e20a8e2,eef523b,59b5d92-dirty,a69b740,scheduler-directives,alvaro,closing-finch,1507,timeout after 1500s; run canceled
+2026-10-27T16:53:23Z,,pass,ok,e20a8e2,e20a8e2,eef523b,59b5d92-dirty,a69b740,scheduler-directives,alvaro,tough-ewe,50,

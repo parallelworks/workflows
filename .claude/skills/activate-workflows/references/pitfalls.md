@@ -333,6 +333,10 @@
   script as the template and prepends the headers again (doubled `#SBATCH` lines, the
   `hostname > HOSTNAME` line twice). Name the script you hand it anything else
   (`workflows/openfoam-naca`: `case.sh`; `tutorials/optimization` still has the collision).
+- **A `scheduler_directives` line without the `#SBATCH`/`#PBS` prefix was dropped silently**
+  by every submitter variant before 2026-10-27 (`sed '/^#/!d'` on the headers). The
+  submitter now adds the missing prefix, so a line that is not a directive (`module load x`)
+  fails the submission instead of vanishing (verified 2026-10-27 on gcpsmall).
 - **A directive a workflow injects ahead of the form's `scheduler_directives` stays
   overridable:** sbatch keeps the LAST value of a repeated option (`--ntasks=2` then
   `--ntasks=3` → `NumTasks=3`, verified 2026-09-30 with `sbatch --hold` +

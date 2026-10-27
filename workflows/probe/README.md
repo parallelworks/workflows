@@ -12,7 +12,8 @@ Repeated over time, the records show when a workflow stops working on a system.
   runner   python3 -m probe run  --pw workflows run-->  the workflow runs on the target system
           |                                             pass = the run completes
           v
-  results bucket (ground truth)      <bucket>/<path>/<platform>/<user>/<workflow_name>/<name>/<start>_<run slug>/
+  results store (ground truth)       <bucket>/<path> or a directory on the host, then
+                                     <platform>/<user>/<workflow_name>/<name>/<start>_<run slug>/
           |
           v
   dashboards   python3 -m probe serve         matrix of workflows by system, history, logs
@@ -28,8 +29,11 @@ checked out at run time like every other workflow here) and two workflows:
 | `yamls/general.yaml` | Starts the two dashboards. The run completes once both endpoints answer; the dashboards keep serving until their endpoints are deleted. |
 | `yamls/general_run_tests.yaml` | Runs all tests, or the files named in `selection`, once. Failed tests are warnings on the run; it ends in error only when PROBE could not run the tests or record their results. No endpoint. |
 
-Both take the test definitions (repository, branch, directory) and the results bucket and
-path as inputs. `general.yaml` also takes:
+Both take the test definitions (repository, branch, directory) and the results location
+as inputs: a bucket and a path in it, restored into the run when it starts, or a directory
+on the host's filesystem (`Local filesystem`), read and written in place and kept between
+runs on that host; a bucket is the only store that runs on different hosts share.
+`general.yaml` also takes:
 
 | Input | Meaning |
 |---|---|
@@ -42,9 +46,9 @@ path as inputs. `general.yaml` also takes:
 - `probe-admin-<run slug>`: also `Run all`, `Rerun test`, `Cancel run`, and `Delete results`
   for a test whose definition is gone.
 
-`Refresh` re-fetches the test definitions from their repository and replaces the dashboard's
-results with the bucket's content. `pw endpoints list` shows the URLs;
-`pw endpoints delete <name>` stops a dashboard.
+`Refresh` re-fetches the test definitions from their repository and, with a bucket,
+replaces the dashboard's results with the bucket's content; a directory on the host is read
+as it is. `pw endpoints list` shows the URLs; `pw endpoints delete <name>` stops a dashboard.
 
 ## Running tests
 
@@ -137,8 +141,10 @@ the recorded tests then, or dry-run one: `pw workflows run --dry-run <yaml> -i '
 
 ## Results
 
+Under `<bucket>/<path>` in a bucket, or under the directory given on the host:
+
 ```
-<bucket>/<path>/<platform>/<user>/<workflow_name>/<name>/
+<platform>/<user>/<workflow_name>/<name>/
 |-- 2026-09-21T150902Z_swift-falcon/      one directory per execution: <start time>_<run slug>
 |   |-- record.json                       the record (below)
 |   |-- run.log                           what PROBE did and saw, with timestamps
@@ -151,7 +157,7 @@ the recorded tests then, or dry-run one: `pw workflows run --dry-run <yaml> -i '
 
 The current state of a test is the record of its newest execution; the history is all of
 them. Every execution writes only its own directory, so runners started anywhere share one
-bucket without overwriting each other. A directory without `record.json` is an execution
+bucket, or one directory, without overwriting each other. A directory without `record.json` is an execution
 still in progress. To reclaim space, delete the large files of old executions but keep
 `record.json`.
 

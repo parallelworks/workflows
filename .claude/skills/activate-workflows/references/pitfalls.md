@@ -707,6 +707,10 @@
   fine, the bare word is not). Write `./case` or `case/`. A function named like a
   builtin (`times`) has the same effect inside `$( )`. macOS bash 3.2 accepts both, so
   `bash -n` locally proves nothing: run it on the target.
+- **`PW_PARENT_JOB_DIR` ends with a slash** (`/home/alvaro/pw/jobs/<slug>/`, verified
+  2026-10-27 on gcpsmall, run suitable-parrot): `${PW_PARENT_JOB_DIR}/results` resolves but
+  reads `.../<slug>//results` in every command line, log and page that shows it. Join with
+  `${PW_PARENT_JOB_DIR%/}/results` when the path is displayed or compared as a string.
 
 ## Software, sites and figures
 

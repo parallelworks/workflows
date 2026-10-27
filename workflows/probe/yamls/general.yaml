@@ -5,7 +5,7 @@
 # cancelled and the run completes while the dashboards keep serving. Take them
 # down with pw endpoints delete probe-<run slug> and probe-admin-<run slug>.
 # Tests are run from the admin dashboard or from yamls/general_run_tests.yaml;
-# the results bucket is the ground truth.
+# the results store, a bucket or a directory on the host, is the ground truth.
 #
 # The run's own PW_API_KEY stops working when the run completes and cannot be
 # overridden, so the dashboards run with the API key given as input: the env
@@ -44,37 +44,55 @@ jobs:
             --directory "${TESTS_DIR}" --out tests
           python3 -m probe list --tests tests --platform "${PW_PLATFORM_HOST}" --user "${PW_USER}" \
             || echo "::warning::Some test definitions are invalid; see above"
-      - name: Restore results from the bucket
+      - name: Locate the results
         run: |
           cd ${PW_PARENT_JOB_DIR}
           export PATH=$HOME/pw:$PATH
-          BUCKET="${{ inputs.results.bucket.uri }}"
-          case "${BUCKET}" in
-            ''|undefined|pw://) echo "::error::A results bucket is required"; exit 1 ;;
+          # A run launched without a location (the CLI, a definition from before
+          # the input existed) keeps the bucket
+          LOCATION="${{ inputs.results.location }}"
+          case "${LOCATION}" in ''|undefined) LOCATION=bucket ;; esac
+          case "${LOCATION}" in
+            bucket)
+              BUCKET="${{ inputs.results.bucket.uri }}"
+              case "${BUCKET}" in
+                ''|undefined|pw://) echo "::error::A results bucket is required"; exit 1 ;;
+              esac
+              RESULTS_PATH="${{ inputs.results.path }}"
+              case "${RESULTS_PATH}" in ''|undefined) RESULTS_PATH=probe/results ;; esac
+              RESULTS_BUCKET="${BUCKET%/}/${RESULTS_PATH}"
+              RESULTS_BUCKET="${RESULTS_BUCKET%/}"
+              RESULTS_DIR=${PW_PARENT_JOB_DIR%/}/results
+              mkdir -p "${RESULTS_DIR}"
+              if out=$(pw buckets cp -r "${RESULTS_BUCKET}/" "${RESULTS_DIR}/" 2>&1); then
+                echo "::notice::Results restored from ${RESULTS_BUCKET}"
+              elif echo "${out}" | grep -q "no objects found"; then
+                echo "::notice::No results yet at ${RESULTS_BUCKET}"
+              else
+                echo "${out}"
+                echo "::error::Could not restore results from ${RESULTS_BUCKET}"
+                exit 1
+              fi
+              ;;
+            local)
+              RESULTS_BUCKET=""
+              RESULTS_DIR="${{ inputs.results.directory }}"
+              case "${RESULTS_DIR}" in ''|undefined) RESULTS_DIR=${HOME}/pw/probe/results ;; esac
+              case "${RESULTS_DIR}" in
+                /*) ;;
+                *) echo "::error::The results directory must be an absolute path: ${RESULTS_DIR}"; exit 1 ;;
+              esac
+              mkdir -p "${RESULTS_DIR}" || { echo "::error::Cannot create the results directory ${RESULTS_DIR}"; exit 1; }
+              echo "::notice::Results read and written in ${RESULTS_DIR} on $(hostname)"
+              ;;
+            *) echo "::error::Unknown results location: ${LOCATION}"; exit 1 ;;
           esac
-          RESULTS_PATH="${{ inputs.results.path }}"
-          case "${RESULTS_PATH}" in ''|undefined) RESULTS_PATH=probe/results ;; esac
-          RESULTS="${BUCKET%/}/${RESULTS_PATH}"
-          RESULTS="${RESULTS%/}"
-          mkdir -p results
-          if out=$(pw buckets cp -r "${RESULTS}/" results/ 2>&1); then
-            echo "::notice::Results restored from ${RESULTS}"
-          elif echo "${out}" | grep -q "no objects found"; then
-            echo "::notice::No results yet at ${RESULTS}"
-          else
-            echo "${out}"
-            echo "::error::Could not restore results from ${RESULTS}"
-            exit 1
-          fi
+          printf 'RESULTS_DIR=%q\nRESULTS_BUCKET=%q\n' "${RESULTS_DIR}" "${RESULTS_BUCKET}" > results.env
       - name: Create the dashboard start scripts
         run: |
           set -e
           cd ${PW_PARENT_JOB_DIR}
-          BUCKET="${{ inputs.results.bucket.uri }}"
-          RESULTS_PATH="${{ inputs.results.path }}"
-          case "${RESULTS_PATH}" in ''|undefined) RESULTS_PATH=probe/results ;; esac
-          RESULTS="${BUCKET%/}/${RESULTS_PATH}"
-          RESULTS="${RESULTS%/}"
+          source results.env
           TESTS_REPO="${{ inputs.tests.repo }}"
           case "${TESTS_REPO}" in ''|undefined) TESTS_REPO=https://github.com/parallelworks/probe-tests-activate-parallel-works.git ;; esac
           TESTS_BRANCH="${{ inputs.tests.branch }}"
@@ -91,8 +109,8 @@ jobs:
             else
               name="probe-${PW_RUN_SLUG}"; flag=""
             fi
-            # Unquoted heredoc: names, paths and the bucket are filled in now; the
-            # escaped variables are evaluated when the script runs.
+            # Unquoted heredoc: names, paths and the results location are filled in
+            # now; the escaped variables are evaluated when the script runs.
             cat > ${kind}/start.sh <<EOF
           #!/bin/bash
           # Serves the PROBE ${kind} dashboard as endpoint ${name} until the endpoint is deleted.
@@ -111,7 +129,7 @@ jobs:
           cd ${PW_PARENT_JOB_DIR}
           echo "::notice::Starting endpoint ${name}"
           pw endpoints run --name ${name} -o text -- \\
-            python3 -u -m probe serve ${flag} --port {port} --prefix {path} --results results --tests tests --bucket "${RESULTS}" \\
+            python3 -u -m probe serve ${flag} --port {port} --prefix {path} --results "${RESULTS_DIR}" --tests tests ${RESULTS_BUCKET:+--bucket ${RESULTS_BUCKET}} \\
               --tests-repo "${TESTS_REPO}" --tests-branch "${TESTS_BRANCH}" --tests-directory "${TESTS_DIR}"
           if [ \$? -ne 0 ]; then
             # pw endpoints run blocks for the life of the endpoint, so it also exits
@@ -294,13 +312,37 @@ jobs:
         type: group
         label: Results
         tooltip: |
-          The bucket holds the results. They are restored when the run starts;
-          Refresh on the dashboard pulls them again.
+          Where the results live. A bucket is restored into the run when it
+          starts and pulled again by Refresh on the dashboard; a directory on
+          the host is read and written in place and kept between runs.
         items:
+          location:
+            type: dropdown
+            label: Location
+            default: bucket
+            description: A bucket is restored when the run starts; a directory on the host is read in place.
+            options:
+              - label: Bucket
+                value: bucket
+              - label: Local filesystem
+                value: local
           bucket:
             type: bucket
             label: Bucket
+            optional: true
+            description: Required with this location; the run stops without one.
+            hidden: ${{ inputs.results.location != 'bucket' }}
+            ignore: ${{ .hidden }}
           path:
             type: string
             label: Path in bucket
             default: probe/results
+            hidden: ${{ inputs.results.location != 'bucket' }}
+            ignore: ${{ .hidden }}
+          directory:
+            type: string
+            label: Directory
+            default: ${HOME}/pw/probe/results
+            description: Absolute path on the host, created when missing; ${HOME} is the home directory there.
+            hidden: ${{ inputs.results.location != 'local' }}
+            ignore: ${{ .hidden }}

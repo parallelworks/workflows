@@ -1,8 +1,9 @@
 # yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
-# PROBE: runs tests once and exits. Every test's results go to the bucket as soon
-# as it finishes. A failed test is a result, recorded in the bucket and shown on
-# the dashboard, so it is reported as a warning; the run ends in error only when
-# PROBE could not run the tests or record their results. No endpoint.
+# PROBE: runs tests once and exits. Every test's results go to the bucket, or to
+# the directory on the host, as soon as it finishes. A failed test is a result,
+# recorded and shown on the dashboard, so it is reported as a warning; the run
+# ends in error only when PROBE could not run the tests or record their results.
+# No endpoint.
 permissions:
   - '*'
 jobs:
@@ -39,14 +40,34 @@ jobs:
           cd ${PW_PARENT_JOB_DIR}
           export PATH=$HOME/pw:$PATH
           export PYTHONPATH=${PW_PARENT_JOB_DIR}/workflows/probe/app
-          BUCKET="${{ inputs.results.bucket.uri }}"
-          case "${BUCKET}" in
-            ''|undefined|pw://) echo "::error::A results bucket is required"; exit 1 ;;
+          # A run launched without a location (the CLI, a definition from before
+          # the input existed) keeps the bucket
+          LOCATION="${{ inputs.results.location }}"
+          case "${LOCATION}" in ''|undefined) LOCATION=bucket ;; esac
+          case "${LOCATION}" in
+            bucket)
+              BUCKET="${{ inputs.results.bucket.uri }}"
+              case "${BUCKET}" in
+                ''|undefined|pw://) echo "::error::A results bucket is required"; exit 1 ;;
+              esac
+              RESULTS_PATH="${{ inputs.results.path }}"
+              case "${RESULTS_PATH}" in ''|undefined) RESULTS_PATH=probe/results ;; esac
+              RESULTS_BUCKET="${BUCKET%/}/${RESULTS_PATH}"
+              RESULTS_BUCKET="${RESULTS_BUCKET%/}"
+              RESULTS_DIR=${PW_PARENT_JOB_DIR%/}/results
+              ;;
+            local)
+              RESULTS_BUCKET=""
+              RESULTS_DIR="${{ inputs.results.directory }}"
+              case "${RESULTS_DIR}" in ''|undefined) RESULTS_DIR=${HOME}/pw/probe/results ;; esac
+              case "${RESULTS_DIR}" in
+                /*) ;;
+                *) echo "::error::The results directory must be an absolute path: ${RESULTS_DIR}"; exit 1 ;;
+              esac
+              ;;
+            *) echo "::error::Unknown results location: ${LOCATION}"; exit 1 ;;
           esac
-          RESULTS_PATH="${{ inputs.results.path }}"
-          case "${RESULTS_PATH}" in ''|undefined) RESULTS_PATH=probe/results ;; esac
-          RESULTS="${BUCKET%/}/${RESULTS_PATH}"
-          RESULTS="${RESULTS%/}"
+          mkdir -p "${RESULTS_DIR}" || { echo "::error::Cannot create the results directory ${RESULTS_DIR}"; exit 1; }
           cat > selection.txt <<'SELECTION'
           ${{ inputs.selection }}
           SELECTION
@@ -56,9 +77,8 @@ jobs:
           else
             for f in $(cat selection.txt); do ARGS="${ARGS} --test ${f}"; done
           fi
-          echo "::notice::python3 -m probe run --tests tests --results results --bucket ${RESULTS} ${ARGS}"
-          mkdir -p results
-          python3 -u -m probe run --tests tests --results results --bucket "${RESULTS}" ${ARGS} 2>&1 | tee probe-run.log
+          echo "::notice::python3 -m probe run --tests tests --results ${RESULTS_DIR} ${RESULTS_BUCKET:+--bucket ${RESULTS_BUCKET}} ${ARGS}"
+          python3 -u -m probe run --tests tests --results "${RESULTS_DIR}" ${RESULTS_BUCKET:+--bucket ${RESULTS_BUCKET}} ${ARGS} 2>&1 | tee probe-run.log
           rc=${PIPESTATUS[0]}
           summary=$(grep -E '^[0-9:]+ summary: ' probe-run.log | tail -1 | cut -d' ' -f2-)
           if [ -n "${summary}" ]; then echo "::notice title=PROBE::${summary}"; fi
@@ -111,12 +131,37 @@ jobs:
       results:
         type: group
         label: Results
-        tooltip: The bucket that holds the results; every test's records and artifacts are uploaded as it finishes.
+        tooltip: |
+          Where the results go: every test's records and artifacts are uploaded
+          to the bucket, or written to the directory on the host, as it finishes.
         items:
+          location:
+            type: dropdown
+            label: Location
+            default: bucket
+            description: A bucket shared with the dashboards, or a directory on the host, kept between runs.
+            options:
+              - label: Bucket
+                value: bucket
+              - label: Local filesystem
+                value: local
           bucket:
             type: bucket
             label: Bucket
+            optional: true
+            description: Required with this location; the run stops without one.
+            hidden: ${{ inputs.results.location != 'bucket' }}
+            ignore: ${{ .hidden }}
           path:
             type: string
             label: Path in bucket
             default: probe/results
+            hidden: ${{ inputs.results.location != 'bucket' }}
+            ignore: ${{ .hidden }}
+          directory:
+            type: string
+            label: Directory
+            default: ${HOME}/pw/probe/results
+            description: Absolute path on the host, created when missing; ${HOME} is the home directory there.
+            hidden: ${{ inputs.results.location != 'local' }}
+            ignore: ${{ .hidden }}

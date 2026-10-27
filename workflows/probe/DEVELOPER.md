@@ -198,16 +198,22 @@ passes `{path}`), `PW_ENDPOINT_PATH` or `X-Forwarded-Prefix`.
 `yamls/general.yaml` follows the endpoint pattern of the other workflows here. `setup`
 checks out `workflows/probe/app` from this repository and fetches the test definitions
 (`python3 -m probe fetch-tests`, which both workflows and the dashboard's Refresh use),
-restores the results from the bucket (a bucket path with no objects yet is fine; any
-other failure stops the run) and writes one start script per dashboard into
-`dashboard/` and `admin/`; each script puts `app/` on `PYTHONPATH` and runs
-`pw endpoints run --name probe[-admin]-${PW_RUN_SLUG} -- python3 -m probe serve ...
---bucket <bucket>/<path>`. For each dashboard a runner job submits the script through
+locates the results and writes `results.env` (`RESULTS_DIR`, `RESULTS_BUCKET`) for
+the next step: with `results.location` `bucket`, also the default for a run launched
+without the input, the results are restored from `<bucket>/<path>` into `results/` in
+the job directory (a bucket path with no objects yet is fine; any other failure stops
+the run); with `local`, `results.directory` on the host is created when missing and
+read and written in place, with no bucket behind it. It then writes one start script
+per dashboard into `dashboard/` and `admin/`; each script puts `app/` on `PYTHONPATH`
+and runs `pw endpoints run --name probe[-admin]-${PW_RUN_SLUG} -- python3 -m probe
+serve ... --results <dir>` plus `--bucket <bucket>/<path>` when there is a bucket.
+For each dashboard a runner job submits the script through
 the `script_submitter` subworkflow and a wait job calls the `wait_for_endpoint`
 subworkflow, which waits until the endpoint is listed and its URL answers, touches the
 skip-cleanups file and cancels the runner job. The run then completes while the servers
 keep running; a runner that exits before its endpoint came online fails the run. Runs
-started from the admin dashboard inherit the bucket. `pw endpoints delete` tears a
+started from the admin dashboard inherit the results location: they write into the
+same directory and sync to the same bucket, if any. `pw endpoints delete` tears a
 dashboard down.
 
 A CLI run (`pw workflows run -i`) leaves an omitted input empty or `undefined` instead
@@ -233,12 +239,12 @@ directory on the resource authenticated once with `pw auth` and selected with
 `PW_CREDENTIALS_DIR`, which the CLI honours the same way. `general_run_tests.yaml`
 needs no key: its runner works while its run is alive.
 
-`yamls/general_run_tests.yaml` has one job: checkout, fetch the test definitions, then
-`python3 -m probe run --bucket <bucket>/<path> --all` or `--test <file>` per line of the
-`selection` input. The runner exits 1 when a test failed and 2 when it could not run or
-record the tests; the step reports the first as one `::warning::` per failed test and
-exits 0, since the failures are in the bucket and on the dashboard, and fails on the
-second. The GitHub action therefore fails only when the suite could not run.
+`yamls/general_run_tests.yaml` has one job: checkout, fetch the test definitions, locate
+the results the same way, then `python3 -m probe run --results <dir> [--bucket
+<bucket>/<path>] --all` or `--test <file>` per line of the `selection` input. The runner
+exits 1 when a test failed and 2 when it could not run or record the tests; the step
+reports the first as one `::warning::` per failed test and exits 0, since the failures
+are recorded and on the dashboard, and fails on the second. The GitHub action therefore fails only when the suite could not run.
 
 The GitHub actions live in the tests repository: they install the `pw` CLI on the
 runner, authenticate with the platform's repository secret through `PW_API_KEY`, write
@@ -258,8 +264,10 @@ fetched from GitHub at run time: push the branch and point both YAMLs' checkout
 (`tests/general/gcptest.json` the same on `pw://alvaro/gcptest`) and
 `tests/general_run_tests/gcpsmall.json` runs one PROBE test (the `script_submitter`
 canary) through `general_run_tests.yaml`; all of them read and write the production
-results bucket. The dashboards test takes its API key from the environment at launch
-(`_test.secrets`: `PROBE_API_KEY`), so the key is never in the test file:
+results bucket. The `gcpsmall-local.json` test beside each does the same with the
+results in `${HOME}/pw/probe/results` on gcpsmall (`results.location: local`). The
+dashboards tests take their API key from the environment at launch (`_test.secrets`:
+`PROBE_API_KEY`), so the key is never in the test file:
 
 ```bash
 PROBE_API_KEY=<key> python3 tools/tests/run-workflow-test.py workflows/probe/tests/general/gcpsmall.json

@@ -496,19 +496,25 @@
   host** (verified 2026-10-20): an OIDC/OAuth sign-in or RP-initiated logout never reaches
   the identity provider. Intercept external 3xx in your own proxy and answer a hop page:
   [oidc-sign-in.md](oidc-sign-in.md).
-- **A hidden, ignored input is still validated as required at launch** (verified
-  2026-10-20, `workflows/openproject`): a `password` field with `hidden: ${{ inputs.x == '' }}`
-  and `ignore: ${{ .hidden }}` but no `optional: true` failed every launch without it
-  (`Missing required fields: Client secret`, HTTP 400), also from the CLI, and
-  `optional` takes no expression: `optional: ${{ .hidden }}` and
-  `optional: ${{ inputs.x == '' }}` both left the field required. A field that only
-  matters with another one stays `optional: true` (or gets a default), and the
-  controller enforces the pairing with a clear `::error`. A `bucket` input hidden and
-  ignored under a dropdown value (`hidden: ${{ inputs.results.location != 'bucket' }}`,
-  `ignore: ${{ .hidden }}`) is **not** demanded without `optional: true`: both the dry-run
-  and real launches with the dropdown on its other value passed, and the picker stays
-  required when shown (verified 2026-10-27, `workflows/probe`, runs peaceful-eel and
-  closing-serval). Test the type you have with a dry-run before adding `optional`.
+- **An ignored input is not required; an unset input equals nothing.** An input whose
+  `ignore` evaluates true at launch is neither sent nor validated, so it needs no
+  `optional: true` (verified 2026-10-27 with dry-runs of a required `password`, which the
+  dry-run does check: `ignore: true`, `hidden: ${{ inputs.x == '' }}` + `ignore: ${{ .hidden }}`
+  with `x: ""`, and `hidden: ${{ inputs.x != 'yes' }}` with `x` omitted all validated, the
+  same YAML without the ignore fails with `Missing required fields`; `workflows/probe`'s
+  `bucket` under `hidden: ${{ inputs.results.location != 'bucket' }}` launched in local mode,
+  runs peaceful-eel and closing-serval). The catch is the condition on an **unset**
+  optional input: at validation it equals nothing (`== ''`, `== null`, `== undefined`,
+  `== 'undefined'` and `!inputs.x` are all false, `default: ''` on `x` changes nothing,
+  every `!=` is true: the 2026-10-16 note above, seen from the form), so
+  `hidden: ${{ inputs.x == '' }}` never fires for a CLI launch that omits `x` and the field
+  is demanded. That is what hit `workflows/openproject`'s client secret on 2026-10-20
+  (`Missing required fields: Client secret`, HTTP 400, also from the CLI) and why it carries
+  `optional: true`: `optional` takes no expression (`optional: ${{ .hidden }}` and
+  `optional: ${{ inputs.x == '' }}` both leave the field required). Write the condition as
+  an inequality to the value that needs the field (`!= 'bucket'`, `!= 'yes'`) or drive it
+  from a dropdown, which always has a value; a field that only matters with another one
+  still has the pairing enforced by the controller with a clear `::error`.
 - **An app that signs users in with ACTIVATE (OIDC)** (verified 2026-10-20,
   `workflows/openproject`) needs an app registered for its exact URL, a pinned subdomain
   and a proxy of its own in front; the recipe, the claims and how far curl can test the

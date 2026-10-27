@@ -233,7 +233,11 @@ expressions (`ignore: ${{ .hidden }}` mirrors the hidden flag).
 | `kubernetes-clusters`, `kubernetes-namespaces`, `kubernetes-*` | Kubernetes pickers (`clusterName`, `namespace`); [k8s-workflows.md](k8s-workflows.md) |
 
 Common attributes: `label`, `default`, `tooltip`, `description` (always visible),
-`optional: true`, `disabled`, `hidden: <expr>`, `ignore: <expr>`, `collapsed: true`. A
+`optional: true`, `disabled`, `hidden: <expr>`, `ignore: <expr>`, `collapsed: true`. An
+input whose `ignore` is true at launch is neither sent nor required, so it needs no
+`optional: true`; write the condition as an inequality (`!= 'bucket'`), because an unset
+input equals nothing, not even `''` or `null` (pitfalls, "An ignored input is not
+required"). A
 `string`'s `default` fills the form only with `prefillDefault: true` (otherwise it applies
 when the run has no value); a `dropdown` whose `options` are keyed by another input
 (`option-key: ${{ inputs.x }}`) is dynamic. Expressions read other inputs, `org.<VAR>`

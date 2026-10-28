@@ -8,7 +8,7 @@
       "pw endpoints run"
     ],
     "leftover_commands": {
-      "containers": "sudo -n docker ps -aq --filter name=gitlab_ | wc -l"
+      "containers": "sudo -n docker ps -aq --filter label=activate.rundir=$HOME/gitlab-dev | wc -l"
     },
     "secrets": {
       "oidc.client_secret": "GITLAB_TEST_OIDC_CLIENT_SECRET"

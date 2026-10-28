@@ -313,6 +313,7 @@ set -x
 ${docker_cmd} rm -f "${container_name}" 2>/dev/null || true
 ${docker_cmd} run -d \
     --name "${container_name}" \
+    --label "activate.rundir=${service_rundir}" \
     --hostname "${host}" \
     -p "127.0.0.1:${PORT}:80" \
     -p "127.0.0.1:${service_ssh_port}:22" \

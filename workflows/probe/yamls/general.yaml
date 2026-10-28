@@ -1,16 +1,23 @@
 # yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
-# PROBE dashboards. Like the other endpoint workflows here: a start script per
-# dashboard is submitted through script_submitter, wait_for_endpoint waits until
-# the endpoint answers and touches the skip-cleanups file, the submitter job is
-# cancelled and the run completes while the dashboards keep serving. Take them
-# down with pw endpoints delete probe-<run slug> and probe-admin-<run slug>.
-# Tests are run from the admin dashboard or from yamls/general_run_tests.yaml;
-# the results bucket is the ground truth.
+# PROBE dashboards. Like the other endpoint workflows here: the start script
+# (app/start-dashboard.sh, run from dashboard/ and from admin/, which tells it
+# which dashboard it serves) is submitted through script_submitter once per
+# dashboard, wait_for_endpoint waits until the endpoint answers and touches the
+# skip-cleanups file, the submitter job is cancelled and the run completes while
+# the dashboards keep serving. Take them down with pw endpoints delete
+# probe-<run slug> and probe-admin-<run slug>. Tests are run from the admin
+# dashboard or from yamls/general_run_tests.yaml; the results store, a bucket
+# or a directory on the host, is the ground truth. Setup is app/setup.sh,
+# shared with general_run_tests.yaml.
 #
 # The run's own PW_API_KEY stops working when the run completes and cannot be
-# overridden, so the dashboards run with the API key given as input: the env
-# block carries it into every step, including the script the submitter
-# launches, and each start script exports it as PW_API_KEY.
+# overridden, so the dashboards run on a credential that outlives it: on a
+# cloud cluster the API key given as input (the env block carries it into
+# every step, including the script the submitter launches, which exports it as
+# PW_API_KEY); on the user workspace and the clusters the agent connects, which
+# are signed in as the user, the host's own pw sign-in (the input is hidden
+# there and the start script unsets the run's key). app/credential.sh checks
+# the credential before anything is submitted.
 permissions:
   - '*'
 env:
@@ -27,111 +34,18 @@ jobs:
           branch: canary
           sparse_checkout:
             - workflows/probe/app
-      - name: Fetch test definitions
-        run: |
-          set -eo pipefail
-          cd ${PW_PARENT_JOB_DIR}
-          export PYTHONPATH=${PW_PARENT_JOB_DIR}/workflows/probe/app
-          # A CLI run leaves an omitted input empty or undefined, so the form's
-          # defaults are applied here as well
-          TESTS_REPO="${{ inputs.tests.repo }}"
-          case "${TESTS_REPO}" in ''|undefined) TESTS_REPO=https://github.com/parallelworks/probe-tests-activate-parallel-works.git ;; esac
-          TESTS_BRANCH="${{ inputs.tests.branch }}"
-          case "${TESTS_BRANCH}" in ''|undefined) TESTS_BRANCH=main ;; esac
-          TESTS_DIR="${{ inputs.tests.directory }}"
-          case "${TESTS_DIR}" in ''|undefined) TESTS_DIR=tests ;; esac
-          python3 -m probe fetch-tests --repo "${TESTS_REPO}" --branch "${TESTS_BRANCH}" \
-            --directory "${TESTS_DIR}" --out tests
-          python3 -m probe list --tests tests --platform "${PW_PLATFORM_HOST}" --user "${PW_USER}" \
-            || echo "::warning::Some test definitions are invalid; see above"
-      - name: Restore results from the bucket
+      - name: Set up
         run: |
           cd ${PW_PARENT_JOB_DIR}
-          export PATH=$HOME/pw:$PATH
-          BUCKET="${{ inputs.results.bucket.uri }}"
-          case "${BUCKET}" in
-            ''|undefined|pw://) echo "::error::A results bucket is required"; exit 1 ;;
-          esac
-          RESULTS_PATH="${{ inputs.results.path }}"
-          case "${RESULTS_PATH}" in ''|undefined) RESULTS_PATH=probe/results ;; esac
-          RESULTS="${BUCKET%/}/${RESULTS_PATH}"
-          RESULTS="${RESULTS%/}"
-          mkdir -p results
-          if out=$(pw buckets cp -r "${RESULTS}/" results/ 2>&1); then
-            echo "::notice::Results restored from ${RESULTS}"
-          elif echo "${out}" | grep -q "no objects found"; then
-            echo "::notice::No results yet at ${RESULTS}"
-          else
-            echo "${out}"
-            echo "::error::Could not restore results from ${RESULTS}"
-            exit 1
-          fi
-      - name: Create the dashboard start scripts
+          mkdir -p dashboard admin
+          TESTS_REPO="${{ inputs.tests.repo }}" TESTS_BRANCH="${{ inputs.tests.branch }}" TESTS_DIR="${{ inputs.tests.directory }}" \
+          RESULTS_LOCATION="${{ inputs.results.location }}" RESULTS_BUCKET_URI="${{ inputs.results.bucket.uri }}" \
+          RESULTS_PATH="${{ inputs.results.path }}" RESULTS_DIRECTORY="${{ inputs.results.directory }}" RESTORE_RESULTS=true \
+            bash workflows/probe/app/setup.sh
+      - name: Check the credential
         run: |
-          set -e
           cd ${PW_PARENT_JOB_DIR}
-          BUCKET="${{ inputs.results.bucket.uri }}"
-          RESULTS_PATH="${{ inputs.results.path }}"
-          case "${RESULTS_PATH}" in ''|undefined) RESULTS_PATH=probe/results ;; esac
-          RESULTS="${BUCKET%/}/${RESULTS_PATH}"
-          RESULTS="${RESULTS%/}"
-          TESTS_REPO="${{ inputs.tests.repo }}"
-          case "${TESTS_REPO}" in ''|undefined) TESTS_REPO=https://github.com/parallelworks/probe-tests-activate-parallel-works.git ;; esac
-          TESTS_BRANCH="${{ inputs.tests.branch }}"
-          case "${TESTS_BRANCH}" in ''|undefined) TESTS_BRANCH=main ;; esac
-          TESTS_DIR="${{ inputs.tests.directory }}"
-          case "${TESTS_DIR}" in ''|undefined) TESTS_DIR=tests ;; esac
-          case "${PROBE_API_KEY}" in
-            ''|undefined) echo "::error::An API key is required: the dashboards use it after this run completes"; exit 1 ;;
-          esac
-          for kind in dashboard admin; do
-            mkdir -p ${kind}
-            if [ "${kind}" = admin ]; then
-              name="probe-admin-${PW_RUN_SLUG}"; flag="--admin"
-            else
-              name="probe-${PW_RUN_SLUG}"; flag=""
-            fi
-            # Unquoted heredoc: names, paths and the bucket are filled in now; the
-            # escaped variables are evaluated when the script runs.
-            cat > ${kind}/start.sh <<EOF
-          #!/bin/bash
-          # Serves the PROBE ${kind} dashboard as endpoint ${name} until the endpoint is deleted.
-          export PATH=\$HOME/pw:\$PATH
-          export PYTHONPATH=${PW_PARENT_JOB_DIR}/workflows/probe/app
-          export PW_PLATFORM_HOST="${PW_PLATFORM_HOST}" PW_USER="${PW_USER}"
-          # The API key from the workflow input, carried here by the workflow's env block;
-          # the run's own PW_API_KEY stops working when the run completes.
-          export PW_API_KEY="\${PROBE_API_KEY}"
-          if [ -z "\${PW_API_KEY}" ] || [ "\${PW_API_KEY}" = undefined ]; then
-            echo "::error title=Error::No API key for ${name}"
-            exit 1
-          fi
-          echo "pw endpoints delete ${name} || true" > cancel.sh
-          chmod +x cancel.sh
-          cd ${PW_PARENT_JOB_DIR}
-          echo "::notice::Starting endpoint ${name}"
-          pw endpoints run --name ${name} -o text -- \\
-            python3 -u -m probe serve ${flag} --port {port} --prefix {path} --results results --tests tests --bucket "${RESULTS}" \\
-              --tests-repo "${TESTS_REPO}" --tests-branch "${TESTS_BRANCH}" --tests-directory "${TESTS_DIR}"
-          if [ \$? -ne 0 ]; then
-            # pw endpoints run blocks for the life of the endpoint, so it also exits
-            # non-zero when this job is cancelled after a successful start. Only a
-            # start that never registered its endpoint is a failure.
-            if pw endpoints list 2>/dev/null | awk -F'\\t' '{print \$1}' | grep -qxF "${name}"; then
-              echo "::notice::Endpoint ${name} served until this job was cancelled"
-              exit 0
-            fi
-            echo "::error title=Error::pw endpoints run failed for ${name}"
-            exit 1
-          fi
-          EOF
-            chmod +x ${kind}/start.sh
-            echo "--- ${kind}/start.sh"; cat ${kind}/start.sh
-          done
-          echo "DASHBOARD_SCRIPT=${PW_PARENT_JOB_DIR}/dashboard/start.sh" | tee -a $OUTPUTS
-          echo "DASHBOARD_SKIP=${PW_PARENT_JOB_DIR}/dashboard/SKIP_CLEANUP" | tee -a $OUTPUTS
-          echo "ADMIN_SCRIPT=${PW_PARENT_JOB_DIR}/admin/start.sh" | tee -a $OUTPUTS
-          echo "ADMIN_SKIP=${PW_PARENT_JOB_DIR}/admin/SKIP_CLEANUP" | tee -a $OUTPUTS
+          bash workflows/probe/app/credential.sh
 
   dashboard_runner:
     needs:
@@ -148,14 +62,14 @@ jobs:
           resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
           use_existing_script: true
-          script_path: ${{ needs.setup.outputs.DASHBOARD_SCRIPT }}
+          script_path: ${{ env.PW_PARENT_JOB_DIR }}/workflows/probe/app/start-dashboard.sh
           define_cleanup_script: true
           cleanup_script_path: ./cancel.sh
           rundir: ${{ env.PW_PARENT_JOB_DIR }}/dashboard
           scheduler: false
           use_scheduler_agent: false
           submit_and_exit: false
-          skip_cleanups_file: ${{ needs.setup.outputs.DASHBOARD_SKIP }}
+          skip_cleanups_file: ${{ env.PW_PARENT_JOB_DIR }}/dashboard/SKIP_CLEANUP
           slurm:
             is_enabled: false
           pbs:
@@ -184,7 +98,7 @@ jobs:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: probe-${PW_RUN_SLUG}
           host: ${{ inputs.resource.ip }}
-          skip_cleanups_file: ${{ needs.setup.outputs.DASHBOARD_SKIP }}
+          skip_cleanups_file: ${{ env.PW_PARENT_JOB_DIR }}/dashboard/SKIP_CLEANUP
       - name: Release the dashboard runner
         uses: parallelworks/cancel-jobs
         with:
@@ -206,14 +120,14 @@ jobs:
           resource: ${{ inputs.resource }}
           shebang: '#!/bin/bash'
           use_existing_script: true
-          script_path: ${{ needs.setup.outputs.ADMIN_SCRIPT }}
+          script_path: ${{ env.PW_PARENT_JOB_DIR }}/workflows/probe/app/start-dashboard.sh
           define_cleanup_script: true
           cleanup_script_path: ./cancel.sh
           rundir: ${{ env.PW_PARENT_JOB_DIR }}/admin
           scheduler: false
           use_scheduler_agent: false
           submit_and_exit: false
-          skip_cleanups_file: ${{ needs.setup.outputs.ADMIN_SKIP }}
+          skip_cleanups_file: ${{ env.PW_PARENT_JOB_DIR }}/admin/SKIP_CLEANUP
           slurm:
             is_enabled: false
           pbs:
@@ -242,7 +156,7 @@ jobs:
           $yaml: workflows/wait_for_endpoint/general.yaml
           endpoint_name: probe-admin-${PW_RUN_SLUG}
           host: ${{ inputs.resource.ip }}
-          skip_cleanups_file: ${{ needs.setup.outputs.ADMIN_SKIP }}
+          skip_cleanups_file: ${{ env.PW_PARENT_JOB_DIR }}/admin/SKIP_CLEANUP
       - name: Release the admin runner
         uses: parallelworks/cancel-jobs
         with:
@@ -264,12 +178,17 @@ jobs:
       api_key:
         type: password
         label: API key
-        description: Used by the dashboards after the run to refresh results and start runs.
+        description: Required on a cloud cluster; the dashboards use it after this run completes.
         tooltip: |
           A platform API key of yours (account settings, API keys). The dashboards
-          use it after this run completes: Refresh pulls the bucket with it and the
-          admin dashboard starts and cancels runs with it. It travels through the
-          workflow's environment and stays in the dashboard processes' environment.
+          keep calling the platform after this run completes, when the run's own
+          credential stops working, and a cloud cluster has no credential of its
+          own, so they need the key there. On the user workspace or a cluster
+          connected through the ACTIVATE agent (existing or managed) the field is
+          not shown: the agent keeps the resource signed in as you, and the
+          dashboards authenticate with that sign-in.
+        hidden: ${{ inputs.resource.provider == 'existing' || inputs.resource.provider == 'managed-cluster' || inputs.resource.name == 'user-workspace' }}
+        ignore: ${{ .hidden }}
       tests:
         type: group
         label: Test definitions
@@ -294,13 +213,35 @@ jobs:
         type: group
         label: Results
         tooltip: |
-          The bucket holds the results. They are restored when the run starts;
-          Refresh on the dashboard pulls them again.
+          Where the results live. A bucket is restored into the run when it
+          starts and pulled again by Refresh on the dashboard; a directory on
+          the host is read and written in place and kept between runs.
         items:
+          location:
+            type: dropdown
+            label: Location
+            default: bucket
+            description: A bucket is restored when the run starts; a directory on the host is read in place.
+            options:
+              - label: Bucket
+                value: bucket
+              - label: Local filesystem
+                value: local
           bucket:
             type: bucket
             label: Bucket
+            hidden: ${{ inputs.results.location != 'bucket' }}
+            ignore: ${{ .hidden }}
           path:
             type: string
             label: Path in bucket
             default: probe/results
+            hidden: ${{ inputs.results.location != 'bucket' }}
+            ignore: ${{ .hidden }}
+          directory:
+            type: string
+            label: Directory
+            default: ${HOME}/pw/probe/results
+            description: Absolute path on the host, created when missing; ${HOME} is the home directory there.
+            hidden: ${{ inputs.results.location != 'local' }}
+            ignore: ${{ .hidden }}

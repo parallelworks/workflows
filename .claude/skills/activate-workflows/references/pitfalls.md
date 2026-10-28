@@ -117,6 +117,14 @@
   `if: ${{ inputs.x }}` are both true when it is unset, and so is `!= ''` with
   `default: ''` on the input. `if: ${{ inputs.x != null }}` (or `!= undefined`) is
   false when unset and true when set: that is the test for "commands were given".
+- **A `hidden`/`ignore` condition that tests an unset input with `==` never fires**
+  (verified 2026-10-27 with dry-runs, which check required fields): at launch an omitted
+  optional input equals nothing (`== ''`, `== null`, `== undefined`, `!inputs.x` are all
+  false, `default: ''` does not help; every `!=` is true), so the field stays shown and
+  required and the launch fails with `Missing required fields`, from the CLI too
+  (2026-10-20, `workflows/openproject`'s client secret, which keeps `optional: true` for
+  that reason; `optional` takes no expression). Compare with `!=` to the value that
+  needs the field, or drive the condition from a dropdown, which always has a value.
 
 - **An input path the form does not declare renders empty, silently** (verified
   2026-10-28, run summary-poodle): `${{ inputs.resource.ip }}` in a form whose resource
@@ -276,6 +284,13 @@
 - **`workspace` resolves with empty `ip`** → its SSH steps run on the workspace node
   (a *different* host than a cluster login node). Match your debugging location to
   the resource you chose.
+- **A workspace job can stay `canceling` after `parallelworks/cancel-jobs`** (seen
+  once, 2026-10-28): of two runner jobs released a second apart by their wait jobs, one
+  reached `canceled` and the other stayed `canceling`, its wait job's last step never
+  recorded although the cancel was logged as successful, the service was live and no
+  process was left; the run then refuses `pw workflows runs cancel`
+  (`run_not_cancelable`). The rerun passed and clusters never showed it: a race in the
+  workspace executor. Rerun, and report the run.
 - **Scheduled jobs run on a compute node** that may lack `${PW_PARENT_JOB_DIR}`; use
   paths relative to `rundir`. Cloud-burst nodes are slow to provision (**6+ min**
   observed; `idle~ → CF → RUNNING`, `POWERING_UP` while booting) — watch with
@@ -508,14 +523,6 @@
   host** (verified 2026-10-20): an OIDC/OAuth sign-in or RP-initiated logout never reaches
   the identity provider. Intercept external 3xx in your own proxy and answer a hop page:
   [oidc-sign-in.md](oidc-sign-in.md).
-- **A hidden, ignored input is still validated as required at launch** (verified
-  2026-10-20, `workflows/openproject`): a `password` field with `hidden: ${{ inputs.x == '' }}`
-  and `ignore: ${{ .hidden }}` but no `optional: true` failed every launch without it
-  (`Missing required fields: Client secret`, HTTP 400), also from the CLI, and
-  `optional` takes no expression: `optional: ${{ .hidden }}` and
-  `optional: ${{ inputs.x == '' }}` both left the field required. A field that only
-  matters with another one stays `optional: true` (or gets a default), and the
-  controller enforces the pairing with a clear `::error`.
 - **An app that signs users in with ACTIVATE (OIDC)** (verified 2026-10-20,
   `workflows/openproject`) needs an app registered for its exact URL, a pinned subdomain
   and a proxy of its own in front; the recipe, the claims and how far curl can test the

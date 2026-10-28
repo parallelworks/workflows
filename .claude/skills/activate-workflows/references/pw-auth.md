@@ -5,11 +5,12 @@ they keep doing so after the run completes.
 
 ## Where `pw` is signed in on its own
 
-- **The user workspace and the login node of an existing cluster** (resource
-  `type: existing`, connected through the ACTIVATE agent): `pw` is signed in as the
-  user; the agent keeps the credential there (agent v7.102.0 or later). Verified
-  2026-10-26 from a run on one (agent v7.127.0): `pw auth whoami` answers after
-  `unset PW_API_KEY`.
+- **The user workspace and the login node of an existing or managed cluster**
+  (resource `type: existing` or `managed-cluster`, connected through the ACTIVATE
+  agent): `pw` is signed in as the user; the agent keeps the credential there (agent
+  v7.102.0 or later). Verified 2026-10-26 from a run on an existing cluster (agent
+  v7.127.0) and 2026-10-28 on a managed cluster and the workspace: `pw auth whoami`
+  answers after `unset PW_API_KEY`.
 - **A cloud cluster**: nothing is signed in (the same step there gets `no context
   configured; use 'pw auth'`). The user signs the CLI in on the login node (`pw auth`,
   again when that session expires) or the workflow is handed a key (below).
@@ -65,7 +66,14 @@ its own, `PW_API_KEY=<key> pw auth whoami` whether a given key works;
 ## A key the user hands the workflow
 
 A `password` input, carried under another name in the top-level `env:` block and read
-from the runtime env (`workflows/probe/yamls/general.yaml`, `PROBE_API_KEY`). An app
+from the runtime env (`workflows/probe/yamls/general.yaml`, `PROBE_API_KEY`). Show it
+only where the host has no sign-in of its own: hide and ignore it for `existing`,
+`managed-cluster` and the workspace (the resource fields,
+[activate-platform.md](activate-platform.md) §2), and before anything is submitted
+check the key given with `PW_API_KEY=<key> pw auth whoami`, else the host's sign-in
+with `env -u PW_API_KEY pw auth whoami`, else fail the run
+(`workflows/probe/app/credential.sh`); the start script then exports the key or unsets
+the run's. An app
 that needs the key as a string in its own config takes it on every cluster type
 (`workflows/librechat`, `ACTIVATE_API_KEY`: checked with `pw auth whoami` before the
 controller writes it into LibreChat's `.env`). Keep `set -x` off around it, or the

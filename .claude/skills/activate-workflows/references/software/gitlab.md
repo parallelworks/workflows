@@ -28,7 +28,14 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
     entrypoint; `/assets/gitlab.rb` already sets `manage_accounts['enable'] = false` and
     `package['modify_kernel_parameters'] = false`) in the launcher's foreground. The
     container shares the host's network, so `nginx['listen_port'] = $PORT` with
-    `nginx['listen_addresses'] = ['127.0.0.1']`. `GITLAB_OMNIBUS_CONFIG` goes in as
+    `nginx['listen_addresses'] = ['127.0.0.1']`, and the package's other fixed loopback
+    listeners (which Docker isolates per container) are moved or turned off so two
+    GitLabs can share a node: `puma['port']` (workhorse uses puma's unix socket),
+    `gitlab_workhorse['prometheus_listen_addr']` and `gitaly['configuration'] =
+    { prometheus_listen_addr: ... }` to free ports, `sidekiq['metrics_enabled']`,
+    `sidekiq['health_checks_enabled']`, `nginx['status']['enable']` (port 8060 on every
+    interface) and `gitlab_kas['enable']` to false; verified with `ss -ltn` on the host:
+    PostgreSQL and Redis listen on unix sockets only. `GITLAB_OMNIBUS_CONFIG` goes in as
     `APPTAINERENV_`/`SINGULARITYENV_` with `$`, backticks and backslashes escaped;
     `GITLAB_SKIP_TAIL_LOGS=true` keeps the package's logs in `logs/` instead of the job
     output. `gitlab_exec` is `exec instance://<name>`. A cold start answered in about
@@ -160,4 +167,10 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
   with `sacct`; on a cluster without `AccountingStorageType` the job's script runs
   to the end and the CI job still fails with `unable to obtained output via sacct:
   Slurm accounting storage is disabled` (the lab GPU box, 2026-10-28). No option
-  turns this off; the controller refuses the SLURM runner there.
+  turns this off; the controller refuses the SLURM runner there. On gcpsmall
+  (`accounting_storage/slurmdbd`) the whole path ran through the workflow (2026-10-28):
+  the demo pipeline's `hello-slurm` job became SLURM job `ci-4_<id>` on a compute node
+  that SLURM powered on for it, Jacamar read `COMPLETED` from `sacct`, the job succeeded;
+  the pipeline took about 220 s with the node boot. A test's teardown right after the run
+  completes aborts a pipeline still running (`Job failed: aborted: terminated` in
+  `runner.log`), which is the test, not the runner.

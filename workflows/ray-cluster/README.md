@@ -138,7 +138,7 @@ workflows/ray-cluster/
 ├── yamls/
 │   ├── general.yaml            # Multi-site cluster: standard cloud/on-prem SLURM & PBS clusters
 │   ├── hsp.yaml                # Same, HSP form (SLURM account/QoS fields, DSRC hints)
-│   ├── noaa.yaml               # Same, NOAA form (account/QoS on on-prem sites, /contrib/pw installs)
+│   ├── noaa.yaml               # Same, NOAA form (account/QoS on on-prem sites, shared-tree installs)
 │   ├── general_add_worker.yaml # Attach workers to a running cluster
 │   ├── hsp_add_worker.yaml
 │   └── noaa_add_worker.yaml
@@ -173,8 +173,9 @@ form: it adds the SLURM **Account** and **QoS** fields and a PBS **Account** fie
 worker site and pre-fills the DSRC `--constraint=mla` hint. `yamls/noaa.yaml` is the
 NOAA (`noaa.parallel.works`) form: it submits through the `noaa` script submitter,
 shows the SLURM **Account** and **QoS** fields only for on-prem (`existing`) worker
-resources, and installs Ray under `/contrib/pw` on a head that has it (NOAA's shared
-software directory; elsewhere the default applies). The orchestration and scripts
+resources, and installs Ray in the cluster's shared software directory (`/contrib/pw`
+on Hera, Mercury and Ursa, `/usw/rdhpcs/software/pw` on Gaea, `/app/pw` on PPAN) when
+the account can write there; elsewhere the default applies. The orchestration and scripts
 are identical; on a cloud cluster the three variants behave the same. The
 `*_add_worker.yaml` forms differ in the same way (the install directory does not
 apply there: added same-resource workers reuse the cluster's Ray environment, and a

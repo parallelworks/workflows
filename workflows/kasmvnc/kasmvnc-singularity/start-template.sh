@@ -538,9 +538,13 @@ if [ -n "${startup_command}" ]; then
     # EOF: a console-driven GUI app (vmd) otherwise sees EOF on the backgrounded
     # job's stdin and exits normally right after starting (verified on emed).
     mkfifo startup-stdin.fifo 2>/dev/null || true
-    eval ${startup_command} 0<> startup-stdin.fifo &
+    # Its own session, so cancel.sh reaches what the command spawned: a desktop
+    # app's helper (RStudio's rsession) moves to its own process group and
+    # outlives a crashed parent, re-parented to PID 1, but stays in the session
+    setsid bash -c "${startup_command}" 0<> startup-stdin.fifo &
     startup_command_pid=$!
-    echo "kill ${startup_command_pid} || true # startup_command" >> cancel.sh
+    echo "pkill -TERM -s ${startup_command_pid} 2>/dev/null || true # startup_command and everything it spawned" >> cancel.sh
+    echo "sleep 2; pkill -KILL -s ${startup_command_pid} 2>/dev/null || true" >> cancel.sh
     echo "rm -f $PWD/startup-stdin.fifo" >> cancel.sh
 fi
 
@@ -569,8 +573,14 @@ endpoint_pid=$!
 echo "kill ${endpoint_pid} || true # pw endpoints http" >> cancel.sh
 
 # Job lifetime = container AND endpoint client: whichever exits first ends the
-# job. This is what makes `pw endpoints delete` stop the whole desktop.
-wait -n ${kasmvnc_container_pid} ${endpoint_pid}
+# job. This is what makes `pw endpoints delete` stop the whole desktop. Polled
+# because bash before 5.1 (EL8) ignores the pids passed to `wait -n` and returns
+# when any background job ends, the xterm loop included.
+set +x
+while kill -0 ${kasmvnc_container_pid} 2>/dev/null && kill -0 ${endpoint_pid} 2>/dev/null; do
+    sleep 5
+done
+set -x
 echo "::warning::Container or endpoint client exited; tearing down"
 # Run the cleanup here instead of relying on the workflow's exit trap, so the
 # containers die even if this template runs without the trap wrapper. Safe both

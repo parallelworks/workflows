@@ -28,7 +28,7 @@ for _workdir in "${WORKDIR:-}" "${SCRATCH:-}" "${WORK:-}" "${SCRATCHDIR:-}"; do
         break
     fi
 done
-# An explicit install directory (the noaa variant's /contrib/pw) wins over the search
+# An explicit install directory (the noaa variant's shared software tree) wins over the search
 [ -n "${RAY_SOFTWARE_DIR:-}" ] && SOFTWARE_DIR="${RAY_SOFTWARE_DIR%/}"
 VENV_DIR="${SOFTWARE_DIR}/ray-${RAY_VERSION}"
 UV_DIR="${SOFTWARE_DIR}/.uv"

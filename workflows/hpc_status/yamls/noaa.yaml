@@ -14,6 +14,7 @@ jobs:
           branch: canary
           sparse_checkout:
             - workflows/hpc_status/app
+            - tools/utils
       - name: Create Inputs
         run: |
           set -x
@@ -57,13 +58,7 @@ jobs:
           if [ -n "${service_parent_install_dir}" ]; then
             echo "::notice title=Install Directory::Using Install Directory from the input form: ${service_parent_install_dir}"
           else
-            case "${{ inputs.cluster.resource.ip }}" in
-              hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
-              mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
-              ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
-              gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
-              *) shared="" ;;                                                    # workspace, PPAN, cloud clusters
-            esac
+            shared=$(bash tools/utils/shared-software-dir.sh "${{ inputs.cluster.resource.ip }}") || exit 1
             install_dir="${HOME}/pw/software"
             if [ -n "${shared}" ] && mkdir -p "${shared}/hpc_status" 2>/dev/null; then
               install_dir="${shared}"

@@ -87,13 +87,7 @@ jobs:
           # this account can write there. Probe by creating the directory rather than
           # reading mode bits: the trees are group- or ACL-writable and list as root-owned.
           if [ -z "${service_parent_install_dir:-}" ]; then
-            case "${{ inputs.resource.ip }}" in
-              hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
-              mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
-              ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
-              gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
-              *) shared="" ;;                                                    # PPAN, cloud clusters
-            esac
+            shared=$(bash tools/utils/shared-software-dir.sh "${{ inputs.resource.ip }}") || exit 1
             install_dir="${HOME}/pw/software"
             if [ -n "${shared}" ] && mkdir -p "${shared}/benchmarks" 2> /dev/null; then
               install_dir="${shared}"
@@ -452,4 +446,5 @@ jobs:
               and reused by later runs; the conda-forge OpenMPI, when used, goes under
               <install directory>/benchmarks/miniforge. Leave empty for the cluster's shared
               software tree when this account can write there (/contrib/pw on Hera, Mercury
-              and Ursa, /usw/rdhpcs/software/pw on Gaea), ${HOME}/pw/software otherwise.
+              and Ursa, /usw/rdhpcs/software/pw on Gaea, /app/pw on PPAN), ${HOME}/pw/software
+              otherwise.

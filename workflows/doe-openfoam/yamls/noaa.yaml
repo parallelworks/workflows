@@ -98,13 +98,7 @@ jobs:
           # reading mode bits: the trees are group- or ACL-writable and list as
           # root-owned. Only the installers read this; the environment files they
           # write record the absolute prefixes.
-          case "${{ inputs.resource.ip }}" in
-            hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
-            mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
-            ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
-            gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
-            *) shared="" ;;                                                    # PPAN, cloud clusters
-          esac
+          shared=$(bash tools/utils/shared-software-dir.sh "${{ inputs.resource.ip }}") || exit 1
           if [ -n "${shared}" ] && mkdir -p "${shared}/openfoam-naca" 2>/dev/null; then
             export service_parent_install_dir="${shared}"
             echo "::notice::installing under the shared software directory ${shared}"

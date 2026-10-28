@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-07T12:56:38Z,warm,pass,ok,7801ed4,74bcc3d,ef324c0,5bc0528,5bc0528,dask,alvaro,credible-python,54,
 2026-10-07T13:05:03Z,warm,pass,ok,29ddf6f,74bcc3d,ef324c0,318f44b,318f44b,dask,alvaro,absolute-stingray,53,
+2026-10-28T09:55:52Z,cold,pass,ok,9a22e2a,162207a,727fc42,c763a15-dirty,c763a15,noaa-shared-directory,alvaro,resolved-molly,84,

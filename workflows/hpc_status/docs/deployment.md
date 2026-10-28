@@ -107,8 +107,9 @@ a launch with the defaults is one click. Everything else is in the deployment's 
 
 Each passes its platform's script submitter. `noaa.yaml` also picks the install directory
 at run time, as the other NOAA variants here do: the cluster's shared software tree
-(`/contrib/pw` on Hera, Mercury and Ursa, `/usw/rdhpcs/software/pw` on Gaea) when the
-account can write there, `${HOME}/pw/software` otherwise (the workspace included).
+(`/contrib/pw` on Hera, Mercury and Ursa, `/usw/rdhpcs/software/pw` on Gaea, `/app/pw` on
+PPAN) when the account can write there, `${HOME}/pw/software` otherwise (the workspace
+included).
 
 ## Running from the CLI
 

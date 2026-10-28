@@ -15,7 +15,7 @@ permissions:
   - '*'
 
 jobs:
-  preprocessing:
+  install_dir:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
@@ -26,6 +26,40 @@ jobs:
           branch: canary
           sparse_checkout:
             - workflows/rag-vllm/app
+            - tools/utils
+      - name: Set Up Install Parent Directory
+        run: |
+          set -o pipefail
+          set -x
+          # The images and the models can exceed the ${HOME} quota on the NOAA
+          # systems, so an empty install directory resolves to the cluster's
+          # shared software directory. Its own job, with the checkout, because
+          # preprocessing and the model downloads run concurrently and all of them
+          # read it.
+          install_dir="${{ inputs.service.parent_install_dir }}"
+          if [ -n "${install_dir}" ] && [ "${install_dir}" != "undefined" ]; then
+            echo "::notice title=Install Directory::Using Install Directory from the input form: ${install_dir}"
+          else
+            if [ "existing" != "${{ inputs.resource.provider }}" ]; then
+              # Cloud clusters have no shared software directory
+              install_dir="${HOME}/pw/software"
+            else
+              install_dir=$(bash tools/utils/shared-software-dir.sh "${{ inputs.resource.ip }}") || exit 1
+              # Unknown host: keep the old default of /contrib/pw when present
+              if [ -z "${install_dir}" ]; then
+                [ -d /contrib/pw ] && install_dir=/contrib/pw || install_dir="${HOME}/pw/software"
+              fi
+            fi
+            echo "::notice title=Install Directory::Using Install Directory: ${install_dir}"
+          fi
+          echo "INSTALL_DIR=${install_dir}" | tee -a $OUTPUTS
+
+  preprocessing:
+    needs:
+      - install_dir
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
       - name: Create Inputs
         run: |
           set -x
@@ -37,7 +71,7 @@ jobs:
           cat <<'EOF' >> inputs.sh
           PATH=$HOME/pw:$PATH
           runtype="${{ inputs.runtype }}"
-          service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
+          service_parent_install_dir="${{ needs.install_dir.outputs.INSTALL_DIR }}"
           container_uri="${{ inputs.service.container_uri }}"
           rag_container_uri="${{ inputs.service.rag_container_uri }}"
           rag_rundir="${{ inputs.service.rundir }}"
@@ -60,12 +94,12 @@ jobs:
           # and the fallbacks in controller/start scripts never fire
           model_cache_dir="${{ inputs.model.cache_dir }}"
           if [ -z "${model_cache_dir}" ] || [ "${model_cache_dir}" = "undefined" ]; then
-            model_cache_dir="${{ inputs.service.parent_install_dir }}/models"
+            model_cache_dir="${{ needs.install_dir.outputs.INSTALL_DIR }}/models"
           fi
           echo "model_cache_dir=\"${model_cache_dir}\"" >> inputs.sh
           rag_embedding_cache_dir="${{ inputs.rag.embedding_model_cache_dir }}"
           if [ -z "${rag_embedding_cache_dir}" ] || [ "${rag_embedding_cache_dir}" = "undefined" ]; then
-            rag_embedding_cache_dir="${{ inputs.service.parent_install_dir }}/models"
+            rag_embedding_cache_dir="${{ needs.install_dir.outputs.INSTALL_DIR }}/models"
           fi
           echo "rag_embedding_cache_dir=\"${rag_embedding_cache_dir}\"" >> inputs.sh
           vllm_args="--tensor-parallel-size ${{ inputs.vllm.num_gpus }} --gpu-memory-utilization ${{ inputs.vllm.gpu_memory }}"
@@ -128,6 +162,8 @@ jobs:
 
   prepare_model:
     if: ${{ inputs.model.source == 'huggingface' }}
+    needs:
+      - install_dir
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
@@ -139,13 +175,13 @@ jobs:
           MODEL_ID="${{ inputs.model.hf_model_id }}"
           HF_TOKEN="${{ inputs.model.hf_token }}"
           CACHE_DIR="${{ inputs.model.cache_dir }}"
-          # Empty resolves under parent_install_dir, matching the Create Inputs step
+          # Empty resolves under the install directory, matching the Create Inputs step
           if [ -z "${CACHE_DIR}" ] || [ "${CACHE_DIR}" = "undefined" ]; then
-              CACHE_DIR="${{ inputs.service.parent_install_dir }}/models"
+              CACHE_DIR="${{ needs.install_dir.outputs.INSTALL_DIR }}/models"
           fi
           CACHE_DIR="${CACHE_DIR/#\~/$HOME}"
           NAME="${MODEL_ID##*/}"
-          # A shared cache (/contrib/pw/models on NOAA) is usually owned by whoever
+          # A shared cache (<shared software directory>/models on NOAA) is usually owned by whoever
           # staged it first: a model already there is served read-only by every
           # account, and one that still has to be downloaded goes there only when this
           # account can write it, otherwise into a private cache. start-template.sh
@@ -192,7 +228,7 @@ jobs:
           export HF_HOME="${CACHE_DIR}/cache"
           usable_dir "${HF_HOME}" || export HF_HOME="${PRIVATE_CACHE_DIR}/cache"
 
-          VENV_BASE="${{ inputs.service.parent_install_dir }}"
+          VENV_BASE="${{ needs.install_dir.outputs.INSTALL_DIR }}"
           if [ -z "${VENV_BASE}" ] || [ "${VENV_BASE}" = "undefined" ]; then
               VENV_BASE=${HOME}/pw/software
           fi
@@ -254,6 +290,8 @@ jobs:
 
   prepare_embedding_model:
     if: ${{ inputs.runtype == 'all' && inputs.rag.embedding_model_source != 'local' }}
+    needs:
+      - install_dir
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
@@ -265,9 +303,9 @@ jobs:
           MODEL_ID="${{ inputs.rag.embedding_model_id }}"
           HF_TOKEN="${{ inputs.model.hf_token }}"
           CACHE_DIR="${{ inputs.rag.embedding_model_cache_dir }}"
-          # Empty resolves under parent_install_dir, matching the Create Inputs step
+          # Empty resolves under the install directory, matching the Create Inputs step
           if [ -z "${CACHE_DIR}" ] || [ "${CACHE_DIR}" = "undefined" ]; then
-              CACHE_DIR="${{ inputs.service.parent_install_dir }}/models"
+              CACHE_DIR="${{ needs.install_dir.outputs.INSTALL_DIR }}/models"
           fi
           CACHE_DIR="${CACHE_DIR/#\~/$HOME}"
           NAME="${MODEL_ID##*/}"
@@ -306,7 +344,7 @@ jobs:
           export HF_HOME="${CACHE_DIR}/cache"
           usable_dir "${HF_HOME}" || export HF_HOME="${PRIVATE_CACHE_DIR}/cache"
 
-          VENV_BASE="${{ inputs.service.parent_install_dir }}"
+          VENV_BASE="${{ needs.install_dir.outputs.INSTALL_DIR }}"
           if [ -z "${VENV_BASE}" ] || [ "${VENV_BASE}" = "undefined" ]; then
               VENV_BASE=${HOME}/pw/software
           fi
@@ -729,7 +767,6 @@ jobs:
             label: Embedding model cache directory
             type: string
             optional: true
-            placeholder: ${{ inputs.service.parent_install_dir }}/models
             tooltip: Directory to store the embedding model. Leave empty to use <Parent install directory>/models.
             hidden: ${{ inputs.rag.embedding_model_source == 'local' }}
             ignore: ${{ inputs.rag.embedding_model_source == 'local' }}
@@ -751,11 +788,10 @@ jobs:
             default: vllm
           parent_install_dir:
             label: Parent install directory
-            description: Needs enough free space for the container images.
+            description: Leave empty for the cluster's shared software directory; needs enough free space for the container images.
             type: string
-            default: /contrib/pw
-            prefillDefault: true
-            tooltip: Single install root — containers go to containers/, models to models/, HF caches to models/cache and tools under this directory (/contrib/pw is the NOAA persistent project space, shared by every account of the project). Whatever is already staged here is reused by every account; what this account cannot write here is downloaded into ${HOME}/pw/software instead. Ensure it has sufficient space!
+            optional: true
+            tooltip: Single install root — containers go to containers/, models to models/, HF caches to models/cache and tools under this directory. Empty means the cluster's shared software directory (/contrib/pw on Hera, Mercury and Ursa; /usw/rdhpcs/software/pw on Gaea; /app/pw on PPAN), shared by every account of the project, or ${HOME}/pw/software on cloud clusters. Whatever is already staged here is reused by every account; what this account cannot write here is downloaded into ${HOME}/pw/software instead. Ensure it has sufficient space!
           container_uri:
             label: vLLM container
             type: string

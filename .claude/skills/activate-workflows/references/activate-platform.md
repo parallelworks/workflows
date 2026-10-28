@@ -77,7 +77,7 @@ workflow, via `${{ inputs.<name>.* }}`):
 | `id` | `685193ec1bba202cb3341fb7` | |
 | `ip` | `34.132.29.251` | login-node IP; **empty for workspace** → step runs locally |
 | `name` | `<cluster>` | |
-| `type` / `provider` | `google-slurm` | `existing` for a cluster the ACTIVATE agent connects, `managed-cluster` for a managed one, `<cloud>-slurm` for a cloud cluster |
+| `type` / `provider` | `google-slurm` | `existing` for a cluster the ACTIVATE agent connects, `managed-cluster` for a managed one, `<cloud>-slurm` for a cloud cluster. Both fields carry the value in form expressions (`hidden: ${{ inputs.resource.provider == 'existing' \|\| inputs.resource.provider == 'managed-cluster' }}` and the same on `.type` hid a field for `pw://labcluster` and an `existing` cluster and showed it for a cloud one; dry-runs 2026-10-28), while `pw cluster ls -o json` fills only `type`. The workspace matches neither: it is `name == 'user-workspace'` (or `ip == ''`), also when passed as `workspace` |
 | `schedulerType` | `slurm` / `pbs` / `''` | `''` when no scheduler (e.g. `existing`, workspace) |
 | `namespace`, `user` | `<user>` | |
 

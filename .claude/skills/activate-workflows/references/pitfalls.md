@@ -131,6 +131,15 @@
   lives under `inputs.head` became `case "" in` and the step carried on; `--dry-run` does
   not catch it. When a `case` or `if` on an input never matches, read the rendered
   `logs/<job>/step_N/script-unstable.sh` for the empty value.
+- **In the launch form the user workspace is an object with only `id` and `uri`**
+  (2026-10-28, `workflows/probe`'s `api_key`): a `hidden:`/`ignore:` condition on
+  `inputs.resource.name`, `.provider` or `.ip` never fires for it; the full object
+  (`name`, `ip`, `provider`, `schedulerType`) exists only once the run resolves the
+  resource. Test `inputs.resource.id == 'user-workspace'`; a cluster carries its full
+  object in the form, so `provider == 'existing'` keeps working beside it. To see the
+  object a form input holds, add a temporary `string` input with
+  `default: ${{ toJSON(inputs.resource) }}` and `prefillDefault: true`: the form
+  shows it filled in.
 
 ## Jobs, outputs, matrix and retries
 

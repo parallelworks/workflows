@@ -84,10 +84,16 @@ directory finds its runners again.
 | **SLURM** (tag `slurm`) | GitLab's custom executor with Jacamar CI | `tags: [slurm]` | `before_script` + `script` inside an `sbatch` job submitted as your user; sources, artifacts and `after_script` on the service host |
 
 A SLURM job passes its `sbatch` options in the `SCHEDULER_PARAMETERS` variable (`-o`,
-`-e`, `-J` and `--wait` are Jacamar's). Set a wall time: GitLab's job timeout keeps
-counting while the job waits in the queue.
+`-e`, `-J` and `--wait` are Jacamar's) and must carry the `CI_JOB_JWT` id token Jacamar
+reads, which a `default:` block gives every job of the project. Set a wall time:
+GitLab's job timeout keeps counting while the job waits in the queue.
 
 ```yaml
+default:
+  id_tokens:
+    CI_JOB_JWT:
+      aud: $CI_SERVER_URL
+
 hello-slurm:
   tags: [slurm]
   variables:

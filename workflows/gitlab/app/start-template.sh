@@ -433,16 +433,18 @@ if [ -n "${runners}" ]; then
             fi
             if [ "${runners_slurm}" = "true" ]; then
                 runner_block slurm custom
+                # Plain jacamar (no jacamar-auth in front) refuses to run
+                # without --no-auth; every stage takes it
                 cat <<TOMLEOF
   [runners.custom]
     config_exec = "${jacamar_bin}"
-    config_args = ["config", "--configuration", "${runner_root}/jacamar.toml"]
+    config_args = ["--no-auth", "config", "--configuration", "${runner_root}/jacamar.toml"]
     prepare_exec = "${jacamar_bin}"
-    prepare_args = ["prepare"]
+    prepare_args = ["--no-auth", "prepare"]
     run_exec = "${jacamar_bin}"
-    run_args = ["run"]
+    run_args = ["--no-auth", "run"]
     cleanup_exec = "${jacamar_bin}"
-    cleanup_args = ["cleanup", "--configuration", "${runner_root}/jacamar.toml"]
+    cleanup_args = ["--no-auth", "cleanup", "--configuration", "${runner_root}/jacamar.toml"]
     graceful_kill_timeout = 600
     force_kill_timeout = 300
 TOMLEOF
@@ -452,10 +454,13 @@ TOMLEOF
     if [ "${runners_slurm}" = "true" ]; then
         mkdir -p "${runner_root}/jacamar"
         chmod 700 "${runner_root}/jacamar"
+        # Jacamar verifies the job's id token against GitLab's keys; fetched
+        # through the public URL they come back as the platform's sign-in page
         cat > "${runner_root}/jacamar.toml" <<TOMLEOF
 [general]
   executor = "slurm"
   data_dir = "${runner_root}/jacamar"
+  gitlab_server = "http://127.0.0.1:${PORT}"
 TOMLEOF
     fi
     # The runner outlives this run like the container does and must not die
@@ -486,7 +491,14 @@ if [ "${runners_demo_project}" = "true" ] && [ -n "${runners}" ]; then
         if [ "${api_status}" != "201" ] || [ -z "${project_id}" ]; then
             echo "::warning::Could not create the hpc-ci-demo project (HTTP ${api_status}): ${api_body}"
         else
-            ci_yaml="stages: [test]
+            # Jacamar reads the job's id token; without the default every
+            # SLURM job would have to declare it
+            ci_yaml="default:
+  id_tokens:
+    CI_JOB_JWT:
+      aud: \$CI_SERVER_URL
+
+stages: [test]
 
 hello-service-host:
   stage: test

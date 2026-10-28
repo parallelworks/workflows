@@ -12,6 +12,11 @@ app/probe/server.py         dashboard server: static web/ plus the JSON API
 app/probe/tests_source.py   fetch the test definitions directory from its git repository (probe fetch-tests)
 app/web/                    index.html, app.js, styles.css; theme.css, fonts.css and the two Geist fonts
                             vendored from @parallelworks/ui (no build step, no external assets)
+app/setup.sh                the step both workflows share: form defaults, probe.env, test definitions,
+                            results location (and the bucket restore for the dashboards)
+app/credential.sh           the dashboards' credential check, before anything is submitted
+app/start-dashboard.sh      the start script of one dashboard, submitted through script_submitter
+app/run-tests.sh            one run of the tests named in selection.txt (general_run_tests.yaml)
 selftest/                   offline unit tests with a mock pw CLI, browser check
 scripts/import_workflow_tests.py  converts this repository's recorded tests into definitions
 yamls/general.yaml          platform workflow: the two dashboards
@@ -195,30 +200,31 @@ passes `{path}`), `PW_ENDPOINT_PATH` or `X-Forwarded-Prefix`.
 
 ## The workflows
 
-`yamls/general.yaml` follows the endpoint pattern of the other workflows here. `setup`
-checks out `workflows/probe/app` from this repository and fetches the test definitions
-(`python3 -m probe fetch-tests`, which both workflows and the dashboard's Refresh use),
-locates the results and writes `results.env` (`RESULTS_DIR`, `RESULTS_BUCKET`) for
-the next step: with `results.location` `bucket`, also the default for a run launched
-without the input, the results are restored from `<bucket>/<path>` into `results/` in
-the job directory (a bucket path with no objects yet is fine; any other failure stops
-the run); with `local`, `results.directory` on the host is created when missing and
-read and written in place, with no bucket behind it. It then writes one start script
-per dashboard into `dashboard/` and `admin/`; each script puts `app/` on `PYTHONPATH`
-and runs `pw endpoints run --name probe[-admin]-${PW_RUN_SLUG} -- python3 -m probe
-serve ... --results <dir>` plus `--bucket <bucket>/<path>` when there is a bucket.
-For each dashboard a runner job submits the script through
-the `script_submitter` subworkflow and a wait job calls the `wait_for_endpoint`
-subworkflow, which waits until the endpoint is listed and its URL answers, touches the
-skip-cleanups file and cancels the runner job. The run then completes while the servers
-keep running; a runner that exits before its endpoint came online fails the run. Runs
-started from the admin dashboard inherit the results location: they write into the
-same directory and sync to the same bucket, if any. `pw endpoints delete` tears a
-dashboard down.
-
-A CLI run (`pw workflows run -i`) leaves an omitted input empty or `undefined` instead
-of applying the form's default, so every `run:` step applies the defaults of the
-`tests` and `results` inputs itself.
+Both YAMLs are thin: their steps hand the form values to scripts under `app/` as
+environment variables. `yamls/general.yaml` follows the endpoint pattern of the other
+workflows here. `setup` checks out `workflows/probe/app` from this repository and runs
+`app/setup.sh`, shared with `general_run_tests.yaml`: it applies the form's defaults (a
+CLI run leaves an omitted input empty or `undefined`), fetches the test definitions
+(`python3 -m probe fetch-tests`, which the dashboard's Refresh uses too), locates the
+results and writes `probe.env` (`TESTS_*`, `RESULTS_DIR`, `RESULTS_BUCKET`, the `PW_*`
+identity of the run) for the later steps and scripts. With `results.location` `bucket`,
+also the default for a run launched without the input, the results are restored from
+`<bucket>/<path>` into `results/` in the job directory when `RESTORE_RESULTS` is true,
+which the dashboards ask for (a bucket path with no objects yet is fine; any other
+failure stops the run); with `local`, `results.directory` on the host is created when
+missing and read and written in place, with no bucket behind it. `app/credential.sh`
+then decides the credential (below) and appends `PROBE_AUTH` to `probe.env`. For each
+dashboard a runner job submits `app/start-dashboard.sh` through the `script_submitter`
+subworkflow from `dashboard/` or `admin/`: the directory it runs in names the
+dashboard, `../probe.env` holds the rest, and it runs `pw endpoints run --name
+probe[-admin]-${PW_RUN_SLUG} -- python3 -m probe serve ... --results <dir>` plus
+`--bucket <bucket>/<path>` when there is a bucket. A wait job calls the
+`wait_for_endpoint` subworkflow, which waits until the endpoint is listed and its URL
+answers, touches the skip-cleanups file and cancels the runner job. The run then
+completes while the servers keep running; a runner that exits before its endpoint came
+online fails the run. Runs started from the admin dashboard inherit the results
+location: they write into the same directory and sync to the same bucket, if any.
+`pw endpoints delete` tears a dashboard down.
 
 **Credentials.** Every step of a run has `PW_API_KEY`, the run's token, and that token
 is rejected as soon as the run completes (verified by testing a stored run token before
@@ -230,14 +236,14 @@ dashboards outlive their run, so `general.yaml` runs them on a credential that d
 `existing` or `managed-cluster`, or `inputs.resource.name` is `user-workspace`) and
 required on a cloud cluster; it travels in the top-level `env` block as `PROBE_API_KEY`,
 which reaches every step, including the script that `script_submitter` launches
-(`PW_API_KEY` itself cannot be overridden: the platform injects the run's token). The
-setup step decides before anything is submitted and writes the choice into the start
-scripts: a key given must authenticate (`PW_API_KEY=<key> pw auth whoami`) and the
-scripts export it as `PW_API_KEY`; without one the host's own sign-in must
-(`env -u PW_API_KEY pw auth whoami`) and the scripts `unset PW_API_KEY` so it takes over;
-neither working ends the run with an error. The scripts read `${PROBE_API_KEY}` at run
-time, so the key lives in the environment of `pw endpoints run`, `probe serve` and the
-runners it spawns, and nowhere on disk.
+(`PW_API_KEY` itself cannot be overridden: the platform injects the run's token).
+`app/credential.sh` decides before anything is submitted and records `PROBE_AUTH` in
+`probe.env`: a key given must authenticate (`PW_API_KEY=<key> pw auth whoami`) and the
+start script exports it as `PW_API_KEY`; without one the host's own sign-in must
+(`env -u PW_API_KEY pw auth whoami`) and the start script does `unset PW_API_KEY` so it
+takes over; neither working ends the run with an error. The start script reads
+`${PROBE_API_KEY}` from its environment, so the key lives in the environment of
+`pw endpoints run`, `probe serve` and the runners it spawns, and nowhere on disk.
 
 Like every other input, the platform keeps it in the run's record (`pw workflows runs
 view -o json` shows it in `inputs`, in plain text as of September 2026) and renders it
@@ -247,12 +253,13 @@ directory on the resource authenticated once with `pw auth` and selected with
 `PW_CREDENTIALS_DIR`, which the CLI honours the same way. `general_run_tests.yaml`
 needs no key: its runner works while its run is alive.
 
-`yamls/general_run_tests.yaml` has one job: checkout, fetch the test definitions, locate
-the results the same way, then `python3 -m probe run --results <dir> [--bucket
-<bucket>/<path>] --all` or `--test <file>` per line of the `selection` input. The runner
-exits 1 when a test failed and 2 when it could not run or record the tests; the step
-reports the first as one `::warning::` per failed test and exits 0, since the failures
-are recorded and on the dashboard, and fails on the second. The GitHub action therefore fails only when the suite could not run.
+`yamls/general_run_tests.yaml` has one job: checkout, `app/setup.sh` (without the
+bucket restore), then `app/run-tests.sh`, which runs `python3 -m probe run --results
+<dir> [--bucket <bucket>/<path>] --all` or `--test <file>` per line of the `selection`
+input (written to `selection.txt` by the step). The runner exits 1 when a test failed
+and 2 when it could not run or record the tests; the script reports the first as one
+`::warning::` per failed test and exits 0, since the failures are recorded and on the
+dashboard, and fails on the second. The GitHub action therefore fails only when the suite could not run.
 
 The GitHub actions live in the tests repository: they install the `pw` CLI on the
 runner, authenticate with the platform's repository secret through `PW_API_KEY`, write
@@ -265,6 +272,9 @@ Validate a change with `pw workflows run --trust --dry-run -i inputs.json
 /abs/path/workflows/probe/yamls/<file>.yaml`. The YAML is read locally, but `app/` is
 fetched from GitHub at run time: push the branch and point both YAMLs' checkout
 `branch:` at it while developing, and restore `canary` before the change merges.
+`setup.sh` and `credential.sh` also run on a laptop from a directory holding a copy of
+`workflows/probe/app`, with the form values as environment variables, which is the
+quickest check of a change to them.
 
 ## End-to-end tests of PROBE itself
 

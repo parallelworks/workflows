@@ -134,7 +134,7 @@ jobs:
           fi
           CACHE_DIR="${CACHE_DIR/#\~/$HOME}"
           NAME="${MODEL_ID##*/}"
-          # A shared cache (/contrib/pw/models on NOAA) is usually owned by whoever
+          # A shared cache (<shared software directory>/models on NOAA) is usually owned by whoever
           # staged it first: a model already there is served read-only by every
           # account, and one that still has to be downloaded goes there only when this
           # account can write it, otherwise into a private cache. start-template.sh

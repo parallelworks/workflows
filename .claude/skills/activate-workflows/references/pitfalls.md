@@ -708,13 +708,11 @@
   builtin (`times`) has the same effect inside `$( )`. macOS bash 3.2 accepts both, so
   `bash -n` locally proves nothing: run it on the target.
 
-- **`wait -n <pid>...` waits for any background job on bash before 5.1**: the pids are
-  ignored (they are accepted from 5.1 on), so on EL8's bash 4.4 the first job to end
-  returns it. On PPAN a kasmvnc desktop came up and tore itself down the moment its endpoint
-  registered, because the background xterm loop had died (2026-10-19, run test-00128,
-  `Container or endpoint client exited; tearing down`). To end a service when one of
-  several processes exits, poll them instead (`while kill -0 $a && kill -0 $b; do sleep 5;
-  done`, under `set +x` so the trace stays readable) (`workflows/kasmvnc/kasmvnc-singularity/start-template.sh`).
+- **`wait -n <pid>...` ignores its pids on bash before 5.1** (EL8 ships 4.4) and returns
+  when any background job ends: on PPAN a kasmvnc desktop tore itself down the moment its
+  endpoint registered because the xterm loop had died (2026-10-19, run test-00128). To end
+  a service when one of several processes exits, poll them (`while kill -0 $a && kill -0 $b;
+  do sleep 5; done`, under `set +x`): `workflows/kasmvnc/kasmvnc-singularity/start-template.sh`.
 
 ## Software, sites and figures
 

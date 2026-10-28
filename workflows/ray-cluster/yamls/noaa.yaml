@@ -39,10 +39,20 @@ jobs:
       - name: Set Up Install Parent Directory
         run: |
           set -x
-          # NOAA clusters share software under /contrib/pw
-          if [ -d /contrib/pw ] && [ -w /contrib/pw ]; then
-            echo "::notice title=Install Directory::Using Install Directory: /contrib/pw"
-            echo 'export RAY_SOFTWARE_DIR="/contrib/pw"' >> inputs.sh
+          # NOAA home directories are small: Ray goes to the cluster's shared software tree
+          # if this account can write there. Probe by creating the directory rather than
+          # reading mode bits: the trees are group- or ACL-writable and list as root-owned.
+          case "${{ inputs.resource.ip }}" in
+            hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
+            mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
+            ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
+            gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
+            an[0-9]*.princeton.rdhpcs.noaa.gov) shared=/app/pw ;;              # PPAN
+            *) shared="" ;;                                                    # cloud clusters
+          esac
+          if [ -n "${shared}" ] && mkdir -p "${shared}/.uv" 2>/dev/null; then
+            echo "::notice title=Install Directory::Using Install Directory: ${shared}"
+            echo "export RAY_SOFTWARE_DIR=\"${shared}\"" >> inputs.sh
           fi
       - name: Create Service Script
         run: |

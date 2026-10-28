@@ -16,7 +16,7 @@
   with no display it falls back to the bundled OSMesa (`lib/mesa`, "OSMesa not found.
   Fallback to bundled libOSMesa"). The separate 5.13 `-osmesa-` build fails at once on
   a minimal cloud image: `error while loading shared libraries: libglapi.so.0` (a
-  system Mesa library that gcpsmall's Rocky 9 image does not have). Verified 6.1.1
+  system Mesa library that the cloud cluster's Rocky 9 image does not have). Verified 6.1.1
   works and 5.13.3-osmesa does not, 2026-10-08.
 - Pin the version (`PARAVIEW_VERSION`, default 6.1.1) and let `PARAVIEW_URL` replace
   the whole URL; the Python version in the file name changes between releases, so a
@@ -29,7 +29,7 @@
 
 - **Name the OSMesa window outright:** `VTK_DEFAULT_OPENGL_WINDOW=vtkOSOpenGLRenderWindow`
   with `pvpython --force-offscreen-rendering`. Left to VTK's own choice, a run from a
-  detached process on gcpsmall picked EGL (NVIDIA EGL libraries are installed, there is
+  detached process on a cloud cluster picked EGL (NVIDIA EGL libraries are installed, there is
   no GPU), failed `eglMakeCurrent: 12296` and died with `corrupted double-linked list`,
   while the same command from an interactive shell tried X (`bad X server connection.
   DISPLAY=`) and then fell back to OSMesa fine. The choice depended on something

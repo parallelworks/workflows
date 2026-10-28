@@ -2,7 +2,7 @@
 
 > The one place for everything Kubernetes in this repo. SKILL.md, AGENTS.md,
 > `activate-platform.md`, the upgrade playbook and the tests README point here instead
-> of repeating it. Verified on the platform cluster `k3sgpu` on 2026-09-16: every file
+> of repeating it. Verified on a k3s GPU cluster on 2026-09-16: every file
 > named below ran (§8).
 
 ## 1. Layouts and examples
@@ -72,7 +72,10 @@ where `pw` and `kubectl` are installed.
 4. **`apply_k8s_deployment`** — applies the PVC; creates the Secret from the run's key
    (`kubectl create secret generic <app>-pw-api-key --from-literal=PW_API_KEY="${PW_API_KEY}"
    --dry-run=client -o yaml | kubectl apply -f -`: idempotent, and the key never lands
-   in a file — the top-level `env: {PW_API_KEY: ${PW_API_KEY}}` exposes it to the step);
+   in a file — every step's environment carries the run's key ([pw-auth.md](pw-auth.md));
+   on `activate.hpc.mil` the run's key lasts at most 30 days even while the run stays
+   alive, so a sidecar restarted after that registers with a dead key — not verified on
+   a run that old; [pw-auth.md](pw-auth.md));
    applies the Deployment; waits for it and its pod (`kubectl wait`, 600 s; wait for
    **every** Deployment the file creates); then **streams the pod logs for as long as
    the service runs** (`kubectl logs -f … --all-containers`, so the sidecar's URL and
@@ -100,10 +103,10 @@ There is no login node and `pw ssh` does not apply. Work from your machine:
 
 ```bash
 pw kube ls -o json                                   # clusters: id, name, cpus, memory
-pw kube auth --no-context-switch k3sgpu              # context pw#k3sgpu; your current context stays
-K="kubectl --context pw#k3sgpu -n alvarok8s"
+pw kube auth --no-context-switch <cluster>              # context pw#<cluster>; your current context stays
+K="kubectl --context pw#<cluster> -n <namespace>"
 $K get resourcequota; $K get storageclass; $K get runtimeclass
-kubectl --context pw#k3sgpu get nodes -o wide        # taints: kubectl get nodes -o json | jq '.items[].spec.taints'
+kubectl --context pw#<cluster> get nodes -o wide        # taints: kubectl get nodes -o json | jq '.items[].spec.taints'
 ```
 
 Prove the image serves on its port before writing any YAML (verified 2026-09-16,
@@ -199,20 +202,20 @@ Run k8s tests **one at a time**: the namespace quota (§7) is shared.
   step on localhost` and proceeds (jupyterlab's `preprocessing` cloned canary for
   nothing until 2026-09-16).
 
-## 7. Cluster facts (k3sgpu, 2026-09-16)
+## 7. Cluster facts (the k3s GPU cluster used here, 2026-09-16)
 
 - One untainted control-plane node, `gpu.parallel.works`: 20 CPU, 64 GiB, 2 GPUs (A30 +
   RTX 3050, `nvidia.com/gpu: 2`). CPU-only pods schedule without tolerations.
 - Default StorageClass `local-path` (`WaitForFirstConsumer`); RuntimeClasses include
   `nvidia` — attach `runtimeClassName: nvidia` only when GPUs are requested.
-- Namespaces carry a `pw-quota` ResourceQuota. `alvarok8s`: cpu 4, memory 10Gi,
+- Namespaces carry a `pw-quota` ResourceQuota. The namespace used here: cpu 4, memory 10Gi,
   nvidia.com/gpu 2 (other users' namespaces allow 100 CPUs). Requests add up per pod
   (init containers do not), the sidecar's 50m counts, and every container must declare
   requests. `ollama-openwebui`'s defaults (2 + 1 CPU) fit exactly.
 - Image pulls: jupyter datascience ≈2 GB, ollama ≈3.7 GB, kasmweb ≈1.5 GB, code-server
   ≈0.4 GB; a first pull adds up to a minute, then it is cached on the node.
 
-## 8. Run evidence (2026-09-16, k3sgpu, namespace `alvarok8s`)
+## 8. Run evidence (2026-09-16, a k3s GPU cluster)
 
 | YAML | before conversion | after conversion (runner rows) |
 |---|---|---|
@@ -233,7 +236,7 @@ anonymous curl, which only ever saw the `307` login redirect.)
 - A readiness step that waits for one of two Deployments hangs when the other cannot
   schedule; wait for all of them.
 - Guard cluster-only jobs at the job level, not the step level (§6).
-- `runtimeClassName: nvidia` attached unconditionally works on k3sgpu but is wrong for
+- `runtimeClassName: nvidia` attached unconditionally works on that cluster but is wrong for
   CPU pods; make it conditional on the GPU limits.
 - kasmweb serves TLS: `endpoints https`, and one `health check failed … not reachable
   yet` while it boots is normal.

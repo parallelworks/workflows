@@ -135,14 +135,12 @@ jobs:
             fi
           fi
 
-          # The scheduler directives parameter is always optional
+          # The form accepts directives without the #SBATCH prefix: add it where missing, drop blank lines
           # Scheduler directives must be the last to be added to avoid format issues
-          if ! [ -z "${{ inputs.slurm.scheduler_directives }}" ]; then
-            echo "${{ inputs.slurm.scheduler_directives }}" >> headers.sh
-          fi
+          cat <<EOF | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' -e '/^#/!s/^/#SBATCH /' >> headers.sh
+          ${{ inputs.slurm.scheduler_directives }}
+          EOF
 
-          # Remove lines that don't start with #
-          sed -i '/^#/!d' headers.sh
           echo "HEADERS=$(cat headers.sh)" | tee -a $OUTPUTS
           echo "SCHEDULER_TYPE=slurm" | tee -a $OUTPUTS
       - name: Create PBS Headers
@@ -156,12 +154,10 @@ jobs:
           #PBS -j oe
           EOF
 
-          # The scheduler directives parameter is always optional
-          if ! [ -z "${{ inputs.pbs.scheduler_directives }}" ]; then
-            echo "${{ inputs.pbs.scheduler_directives }}" >> headers.sh
-          fi
-          # Remove lines that don't start with #
-          sed -i '/^#/!d' headers.sh
+          # The form accepts directives without the #PBS prefix: add it where missing, drop blank lines
+          cat <<EOF | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' -e '/^#/!s/^/#PBS /' >> headers.sh
+          ${{ inputs.pbs.scheduler_directives }}
+          EOF
           echo "HEADERS=$(cat headers.sh)" | tee -a $OUTPUTS
           echo "SCHEDULER_TYPE=pbs" | tee -a $OUTPUTS
   ssh_job:
@@ -598,6 +594,17 @@ jobs:
         type: string
         hidden: ${{ inputs.use_existing_script == false }}
         ignore: ${{ .hidden }}
+      define_cleanup_script:
+        type: boolean
+        default: false
+        label: Run a cleanup script
+        description: "Runs after the main script to undo its changes: files, processes, containers."
+      cleanup_script_path:
+        label: Cleanup script path
+        description: On the target resource; the main script may create it.
+        type: string
+        hidden: ${{ inputs.define_cleanup_script == false }}
+        ignore: ${{ .hidden }}
       scheduler:
         type: boolean
         default: false
@@ -725,10 +732,11 @@ jobs:
             type: editor
             label: Scheduler directives
             optional: true
+            description: 'One per line, with or without the #SBATCH prefix.'
             tooltip: |
-              Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+              For example:
               #SBATCH --exclusive
-              #SBATCH --nodelist=<node-name>
+              --nodelist=<node-name>
             default: |
               ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
       pbs:
@@ -748,10 +756,12 @@ jobs:
           scheduler_directives:
             label: Scheduler directives
             type: editor
+            description: 'One per line, with or without the #PBS prefix.'
+            optional: true
             tooltip: |
-              Add extra PBS directives, one per line, using the #PBS prefix. For example:
+              For example:
               #PBS -l mem=16gb
-              #PBS -l ngpus=1
+              -l ngpus=1
             default: |
               # Parameters that apply to all sites
               #PBS -l walltime=00:30:00

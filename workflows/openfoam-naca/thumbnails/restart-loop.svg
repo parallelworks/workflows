@@ -45,7 +45,7 @@
 
   <!-- the report -->
   <rect x="650" y="222" width="290" height="170" rx="6" fill="#eefaf1" stroke="#1a9850"/>
-  <text x="660" y="242" font-size="13" font-weight="bold" fill="#0b0b0b">Report (if: always)</text>
+  <text x="660" y="242" font-size="13" font-weight="bold" fill="#0b0b0b">Report (if: always())</text>
   <text x="660" y="260" font-size="11" fill="#52514e">reads attempts.log and the state files:</text>
   <text x="660" y="282" font-size="11" fill="#1a9850">solved in N attempts, K interrupted</text>
   <text x="660" y="296" font-size="11" fill="#1a9850">→ Cd, Cl, the run completes</text>

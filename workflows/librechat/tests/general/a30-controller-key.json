@@ -1,0 +1,21 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "warm_marker": "${HOME}/pw/software/containers/librechat",
+    "leftover_patterns": [
+      "librechat",
+      "mongod",
+      "meilisearch",
+      "pw endpoints run"
+    ],
+    "secrets": { "env_vars.ACTIVATE_API_KEY": "ACTIVATE_API_KEY" }
+  },
+  "resource": "pw://alvaro/a30gpuserver",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "librechat_dir": "${HOME}/pw/LibreChat",
+    "domain_client": "ACTIVATE"
+  }
+}

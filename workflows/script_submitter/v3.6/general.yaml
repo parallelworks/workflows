@@ -69,12 +69,10 @@ jobs:
             echo "#SBATCH --gpus=${{ inputs.slurm.gpus }}" >> headers.sh
           fi
 
-          # The scheduler directives parameter is always optional
-          if ! [ -z "${{ inputs.slurm.scheduler_directives }}" ]; then
-            echo "${{ inputs.slurm.scheduler_directives }}" >> headers.sh
-          fi
-          # Remove lines that don't start with #
-          sed -i '/^#/!d' headers.sh
+          # The form accepts directives without the #SBATCH prefix: add it where missing, drop blank lines
+          cat <<EOF | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' -e '/^#/!s/^/#SBATCH /' >> headers.sh
+          ${{ inputs.slurm.scheduler_directives }}
+          EOF
           echo "HEADERS=$(cat headers.sh)" | tee -a $OUTPUTS
           echo "SCHEDULER_TYPE=slurm" | tee -a $OUTPUTS
       - name: Create PBS Headers
@@ -87,12 +85,10 @@ jobs:
           #PBS -j oe
           EOF
 
-          # The scheduler directives parameter is always optional
-          if ! [ -z "${{ inputs.pbs.scheduler_directives }}" ]; then
-            echo "${{ inputs.pbs.scheduler_directives }}" >> headers.sh
-          fi
-          # Remove lines that don't start with #
-          sed -i '/^#/!d' headers.sh
+          # The form accepts directives without the #PBS prefix: add it where missing, drop blank lines
+          cat <<EOF | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' -e '/^#/!s/^/#PBS /' >> headers.sh
+          ${{ inputs.pbs.scheduler_directives }}
+          EOF
           echo "HEADERS=$(cat headers.sh | sed ':a;N;$!ba;s/\n/\\n/g' )" | tee -a $OUTPUTS
           echo "SCHEDULER_TYPE=pbs" | tee -a $OUTPUTS
   ssh_job:
@@ -608,10 +604,11 @@ jobs:
             type: editor
             label: Scheduler directives
             optional: true
+            description: 'One per line, with or without the #SBATCH prefix.'
             tooltip: |
-              Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+              For example:
               #SBATCH --exclusive
-              #SBATCH --nodelist=<node-name>
+              --nodelist=<node-name>
       pbs:
         type: group
         label: PBS directives
@@ -626,7 +623,9 @@ jobs:
           scheduler_directives:
             label: Scheduler directives
             type: editor
+            description: 'One per line, with or without the #PBS prefix.'
+            optional: true
             tooltip: |
-              Add extra PBS directives, one per line, using the #PBS prefix. For example:
+              For example:
               #PBS -l mem=16gb
-              #PBS -l ngpus=1
+              -l ngpus=1

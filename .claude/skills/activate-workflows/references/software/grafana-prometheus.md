@@ -28,14 +28,14 @@
   13.2.3 unchanged.
 - Host metrics from a container on the compose network, no host port: `pid: host`,
   `/:/host:ro,rslave` and `--path.rootfs=/host --path.procfs=/host/proc --path.sysfs=/host/sys`
-  (`node_memory_MemTotal_bytes` matched `free -b` on gcpsmall); network interfaces are then
+  (`node_memory_MemTotal_bytes` matched `free -b` on a cloud cluster); network interfaces are then
   the container's, which `network_mode: host` would fix at the price of a fixed host port.
 - Something listening on the host is `host.docker.internal:<port>` from the containers with
-  `extra_hosts: ["host.docker.internal:host-gateway"]` (Docker 29 on gcpsmall).
+  `extra_hosts: ["host.docker.internal:host-gateway"]` (Docker 29 on a cloud cluster).
 - A compose file that reserves a GPU (`deploy.resources.reservations.devices`, driver `nvidia`)
   fails on a node without the driver, so dcgm-exporter is a separate `-f docker-compose.gpu.yml`
   added only when `nvidia-smi -L` succeeds and `docker info` lists the `nvidia` runtime
-  (gcpsmall has the runtime and no driver). Prometheus 3 accepts UTF-8 label names, 2.x does
+  (the cloud cluster has the runtime and no driver). Prometheus 3 accepts UTF-8 label names, 2.x does
   not: the source's `exported-by` label is `exported_by` here.
 - `pw agent start-existing --experimental-prometheus-exporter --experimental-prometheus-exporter-port N`
   (CLI v7.105.0) serves 15 `pw_agent_*` families (CPU, memory, storage of the node) on `[::]:N`.

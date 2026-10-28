@@ -1,0 +1,23 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "warm_marker": "${HOME}/openproject-docker/.secret_key_base",
+    "leftover_patterns": [
+      "docker logs -f openproject_",
+      "pw endpoints run"
+    ],
+    "leftover_commands": {
+      "containers": "sudo docker ps -aq --filter name=openproject_ | wc -l"
+    }
+  },
+  "resource": "pw://alvaro/gcptest",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "container_runtime": "openproject-docker",
+    "subdomain": "openproject-alvaro-docker",
+    "rundir": "${HOME}/openproject-docker"
+  },
+  "oidc": {}
+}

@@ -108,13 +108,13 @@ jobs:
             openfoam_load: ${{ inputs.openfoam_load }}
             paraview_load: ${{ inputs.paraview_load }}
 
-  # if: always — this job must reach its verdict even when optimize crashed or a
+  # if: always() — this job must reach its verdict even when optimize crashed or a
   # worker failed: any non-CONVERGED/FAILED state exits 1, which fails this run and
   # makes the parent's retry re-enter the loop (a crashed attempt re-runs the same
   # iteration off the state files — self-healing).
   decide:
     needs: [optimize, workers]
-    if: ${{ always }}
+    if: ${{ always() }}
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:

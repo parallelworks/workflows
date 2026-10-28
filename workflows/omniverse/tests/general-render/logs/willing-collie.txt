@@ -1,0 +1,25 @@
+Run willing-collie: error (1m45s)
+Reason: executorExitedEarly
+
+Error annotations:
+
+  Error: Could not download pw://alvaro/alvarotest20261010/omniverse/pyramid
+    in preprocessing → Fetch Source
+
+Failed jobs/steps:
+
+  preprocessing > Fetch Source (error, 0s)
+    warning: Download attempt 1 failed; retrying in 30 s
+    warning: Download attempt 2 failed; retrying in 30 s
+    warning: Download attempt 3 failed; retrying in 30 s
+    Error: Could not download pw://alvaro/alvarotest20261010/omniverse/pyramid
+    ── Source Download ──
+    2026-10-23T09:16:03Z [ERROR] no objects found with prefix "omniverse/pyramid/"
+    ! Warning: Download attempt 1 failed; retrying in 30 s
+    2026-10-23T09:16:33Z [ERROR] no objects found with prefix "omniverse/pyramid/"
+    ! Warning: Download attempt 2 failed; retrying in 30 s
+    2026-10-23T09:17:03Z [ERROR] no objects found with prefix "omniverse/pyramid/"
+    ! Warning: Download attempt 3 failed; retrying in 30 s
+    ✗ Error: Could not download pw://alvaro/alvarotest20261010/omniverse/pyramid
+
+Summary: 1 job(s) failed, 1 step(s) failed

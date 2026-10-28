@@ -71,11 +71,11 @@ jobs:
           stall_generations: ${{ inputs.optimizer.stall_generations }}
           state_dir: ${{ needs.preprocessing.outputs.STATE_DIR }}
           app_dir: ${{ needs.preprocessing.outputs.APP_DIR }}
-      # if: always — the run's verdict comes from the state files, not from how the
+      # if: always() — the run's verdict comes from the state files, not from how the
       # Iterate step ended: CONVERGED is the only success, whether the loop stopped
       # by decision (Iterate succeeded) or by exhausting its retries (Iterate failed).
       - name: Report
-        if: ${{ always }}
+        if: ${{ always() }}
         run: |
           state="${{ needs.preprocessing.outputs.STATE_DIR }}"
           status=$(cat "${state}/status" 2>/dev/null || echo MISSING)

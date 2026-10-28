@@ -50,8 +50,9 @@ results with the bucket's content. `pw endpoints list` shows the URLs;
 
 From the admin dashboard, a test shows as running until its record is written; a request
 that overlaps a run in progress is refused. Up to 8 tests run at the same time
-(`--workers`); two tests of the same workflow on the same system never overlap. Only tests
-whose `platform` and `user` match the runner's own are run: the `pw` context selects them,
+(`--workers`); two tests of the same workflow on the same system never overlap, and the
+wait is not part of the waiting test's duration or timeout. Only tests whose `platform`
+and `user` match the runner's own are run: the `pw` context selects them,
 `PW_PLATFORM_HOST` and `PW_USER` override it.
 
 From a shell, with the test definitions checked out at `../tests`:
@@ -91,7 +92,6 @@ errors.
   },
   "timeout_s": 1200,
   "warm_marker": "${HOME}/pw/software/noVNC-1.3.0/ttyd.x86_64",
-  "leftover_patterns": ["ttyd", "pw endpoints run"],
   "inputs": {
     "cluster": { "resource": "pw://alvaro/gcpsmall", "scheduler": false },
     "service": {}
@@ -105,11 +105,9 @@ errors.
 | `platform`, `user` | Platform host and user that run the test. |
 | `workflow_name` | Groups the tests of one workflow, for example its directory name. |
 | `workflow.repo`, `.path`, `.ref` | Any git repository the runner can fetch (GitHub, GitLab, ...): host and path, or a git URL; path of the workflow YAML in it; branch, tag or commit. A branch follows development; a tag or commit pins a release. |
-| `timeout_s` | Seconds to wait for the run, default 1800. On timeout the run is canceled and the test fails. |
+| `timeout_s` | Seconds to wait for the run after its launch, default 1800. On timeout the run is canceled and the test fails. |
 | `inputs` | Passed verbatim to `pw workflows run -i`. The target system comes from `resource` or `cluster.resource`; `scheduler: true` marks a compute-node test. |
 | `warm_marker` | Optional. Path, or list of paths, on the target system. All present before launch: phase `warm`; none: `cold`; some: `partial`. |
-| `leftover_patterns` | Optional. Process command-line patterns that must be gone from the target system after cleanup; compute tests also require an empty scheduler queue. Processes that existed before the launch are ignored. |
-| `leftover_commands` | Optional. `{name: shell snippet}`; each snippet runs on the target after cleanup and must print `0`, for example `docker ps -q \| wc -l` for containers `ps` cannot see. |
 | `setup` | Optional. Shell snippet run on the target before the launch, for example to seed input files. Must be safe to repeat. |
 
 ```
@@ -117,13 +115,19 @@ errors.
   launch    pw workflows run <YAML at ref> -i inputs                    -->  fail at launch
   wait      pw workflows runs view every 15 s until the run ends        -->  fail at run (error, timeout)
   verdict   run completed                                               -->  pass
-  cleanup   pw endpoints delete *-<run slug>; leftover check            -->  cleanup ok | leftover | unknown
+  cleanup   pw endpoints delete *-<run slug>, waited until gone         -->  cleanup ok | leftover | unknown
   record    record.json + logs written, uploaded to the bucket
 ```
 
 The workflow is responsible for failing its run when its service is not healthy and
-completing once it is; PROBE trusts the run status. A workflow whose run stays alive to serve
-(the older `sessions:` pattern) cannot be tested: its run never completes. The tests recorded
+completing once it is; PROBE trusts the run status. After the run PROBE deletes the
+endpoints named after the run slug and nothing else: it does not look for leftover
+processes or scheduler jobs, because a queued job carries nothing that ties it to the run
+that submitted it, so such a check blames concurrent tests for each other's jobs
+([DEVELOPER.md](DEVELOPER.md) has the reasoning). That a workflow leaves nothing behind
+is checked while it is developed, one test at a time on a resource
+(`tools/tests/README.md`). A workflow whose run stays alive to serve (the older
+`sessions:` pattern) cannot be tested: its run never completes. The tests recorded
 under `workflows/<name>/tests/<variant>/` in this repository convert into definitions with
 `scripts/import_workflow_tests.py`. `inputs` must follow the workflow's current form: PROBE
 only reads the target system from it, so a form change (the cluster moved from
@@ -176,10 +180,10 @@ still in progress. To reclaim space, delete the large files of old executions bu
 | `outcome.failed_at` | `launch`, `run`, or null. |
 | `outcome.error` | One line; the skip reason for skipped tests. Details are in `run.log` and `errors.txt`. |
 | `outcome.phase` | `cold`, `warm`, `partial`, or null without `warm_marker`. |
-| `outcome.cleanup` | `ok`, `leftover`, `unknown` (the check could not run), `kept` (`--keep`). Independent of `status`. |
+| `outcome.cleanup` | What became of the endpoints the run registered: `ok` (deleted), `leftover` (still listed a minute after `pw endpoints delete`), `unknown` (the endpoint listing failed), `kept` (`--keep`); null when the run registered none. Independent of `status`. |
 | `outcome.run_slug` | Platform handle: `pw workflows runs view <slug>`. |
 | `outcome.endpoint` | Endpoint names deleted after the verdict, comma separated; null when the run registered none. |
-| `outcome.duration_s` | Test start to verdict, excluding cleanup. |
+| `outcome.duration_s` | Test start to verdict, excluding cleanup. The test starts (`started_at`) once it has its turn on the system; a wait for another test of the same workflow there is in `run.log` only. |
 
 Every key is always present; not applicable or unknown is null. A `pass` followed by a `fail`
 for the same test, ignoring skips in between, is a regression; the dashboard marks it.

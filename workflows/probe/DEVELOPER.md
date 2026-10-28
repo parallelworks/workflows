@@ -39,7 +39,8 @@ PYTHONPATH=app python3 -m unittest discover -s selftest -t .
 No platform needed. `selftest/mockbin/pw` stands in for the CLI and follows a JSON
 configuration (see its docstring); every test also gets a small local git repository
 shaped like this one. Covered: definition validation, target derivation, every verdict
-path (pass, skip, launch failure, run error, timeout, setup, leftovers, `--keep`),
+path (pass, skip, launch failure, run error, timeout, setup, a stuck endpoint, `--keep`,
+the wait behind another test of the workflow),
 selection by file, record and directory layout, bucket upload, the results reader
 (regressions, running detection, malformed records) and the server API including path
 safety and the read-only refusal of admin actions. Under two minutes.
@@ -97,21 +98,21 @@ reference's "Verify" section says.
 3. Workflow YAML: one shallow `git fetch --depth 1` per `(repo, ref)` per suite run, the
    YAML materialised with sparse checkout. Its HEAD is `workflow.commit`.
 4. Under a lock per `(resource, workflow_name)`, so two tests of one workflow never
-   install into the same directory at once: `warm_marker` check, `setup` snippet and
-   process snapshot over `pw ssh`, then `pw workflows run --trust <local yaml> -i
+   install into the same directory at once: the test's clock starts (`started_at`,
+   `duration_s`; a wait for the lock is logged, not counted), then `warm_marker` check
+   and `setup` snippet over `pw ssh`, then `pw workflows run --trust <local yaml> -i
    <inputs> --name "probe: <id>" -o json`, retried on transient errors. A failing setup
    fails the test at `launch`.
 5. Poll `pw workflows runs view -o json` every 15 s until a final status, the timeout
-   (then `pw workflows runs cancel`) or an interrupt.
+   (`timeout_s` from the launch, then `pw workflows runs cancel`) or an interrupt.
 6. Verdict: `completed` passes; anything else fails at `run` with the first error
    annotation of `pw workflows runs errors`. The workflow, not PROBE, checks that its
    service is healthy before it completes. This is why only workflows that run to
    completion are supported and the older session pattern (a `sessions:` block, a run
    that stays alive) is not.
-7. Teardown: every endpoint named `*-<slug>` is deleted and waited for, then the
-   `leftover_patterns` and `leftover_commands` checks run over `pw ssh`, retried for two
-   minutes. A run that registered no endpoint has nothing to delete; every test is
-   treated the same.
+7. Teardown: every endpoint named `*-<slug>` is deleted and waited for, up to a
+   minute; `outcome.cleanup` records what became of them. A run that registered no
+   endpoint has nothing to delete and a null `cleanup`. Nothing else is checked (below).
 8. `record.json` is written into the execution directory (atomically), then the
    directory is uploaded to the bucket (`--bucket`). Each execution has its own
    directory, so uploads never overwrite another runner's results. A failed upload is
@@ -129,12 +130,36 @@ repository at the ref and launches the YAML as a local file, which gets a slug o
 own. The YAML's own `parallelworks/checkout` and `uses:` references are untouched, so
 the run is the same one, and the checkout's HEAD is the exact commit for the record.
 
+### Why there is no leftover check
+
+PROBE used to look for leftover processes after the teardown: `leftover_patterns`
+matched against `ps -u $USER`, `leftover_commands` snippets and, for compute tests, an
+empty `squeue`/`qstat`. The check could not tell the run's leftovers from anyone else's:
+tests run in parallel on one cluster, so two tests of one workflow, or two workflows
+serving the same program, matched each other's processes, and `squeue -u $USER` counted
+every job of the user; a test without patterns was recorded as `cleanup ok` without any
+check. A check that attributes what it finds to the run that made it needs a mark the
+platform puts on everything a run starts, and only processes on the login node have
+one: each step exports `PW_RUN_SLUG`, what the step starts inherits it unless it clears
+its environment, and `/proc/<pid>/environ` shows it (verified on gcpsmall for a
+detached process, a process inside a `screen` session and one inside an Apptainer
+container; a Docker container takes its environment from the image). Scheduler jobs
+have no such mark: SLURM records a job's working directory, script and submit line but
+not the environment it was submitted from (`scontrol show job`, `sacct`,
+`scontrol write batch_script`), PBS lists only `PBS_O_*` in `qstat -f` unless the job
+was submitted with `-V`, and the only trace of the run is the job directory
+`~/pw/jobs/<slug>` in those paths, which a workflow is free to leave before submitting.
+Nor can PROBE mark the run itself: `pw workflows run` takes no environment, and
+`pw endpoints list` reports no run for an endpoint. So a general check does not exist,
+and rather than a partial one PROBE records only what its own teardown did.
+
 ### Concurrency
 
 Tests run in a thread pool (`--workers`, default 8). Launches of the same workflow on
-the same resource are serialised; everything else runs in parallel. `SIGINT` and
-`SIGTERM` stop the suite: polling loops cancel their runs and record them as failed;
-queued tests are not started.
+the same resource are serialised, and the wait counts neither in the waiting test's
+`duration_s` nor against its `timeout_s`; everything else runs in parallel. `SIGINT`
+and `SIGTERM` stop the suite: polling loops cancel their runs and record them as
+failed; queued tests are not started.
 
 ## Results and the dashboard
 
@@ -191,8 +216,8 @@ of applying the form's default, so every `run:` step applies the defaults of the
 
 **Credentials.** Every step of a run has `PW_API_KEY`, the run's token, and that token
 is rejected as soon as the run completes (verified by testing a stored run token before
-and after completion). The node's own `pw` has no user context, and secret user
-variables are not readable from a run. The dashboards outlive their run, so
+and after completion). On a cloud cluster the node's own `pw` has no user context (an existing cluster's login node has one: `unset PW_API_KEY` would use it), and
+secret user variables are not readable from a run. The dashboards outlive their run, so
 `general.yaml` takes an API key as a `password` input and carries it in its top-level
 `env` block as `PROBE_API_KEY`, which reaches every step, including the script that
 `script_submitter` launches (`PW_API_KEY` itself cannot be overridden: the platform
@@ -246,6 +271,7 @@ python3 tools/tests/run-workflow-test.py workflows/probe/tests/general_run_tests
 The format is in [README.md](README.md); adding, changing and running tests is described in
 the tests repository's README. `scripts/import_workflow_tests.py` converts the tests recorded
 under `workflows/<name>/tests/<variant>/` here (their `_test` object maps to `timeout_s`,
-`warm_marker`, `leftover_patterns`, `leftover_commands` and `setup`; tests with other `_test`
-keys are reported and skipped). A `script_submitter` test needs `define_cleanup_script: false`
-in its inputs or the platform rejects the launch.
+`warm_marker` and `setup`; `leftover_patterns` and `leftover_commands` belong to that
+runner's own check and are dropped; tests with other `_test` keys are reported and
+skipped). A `script_submitter` test needs `define_cleanup_script: false` in its inputs or
+the platform rejects the launch.

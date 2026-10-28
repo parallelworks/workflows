@@ -1,0 +1,29 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "warm_marker": "${HOME}/pw/software/containers/openproject.sif",
+    "leftover_patterns": [
+      "postgres -D",
+      "puma",
+      "good_job",
+      "nginx: master",
+      "pw endpoints run"
+    ],
+    "secrets": {
+      "oidc.client_secret": "OPENPROJECT_TEST_OIDC_CLIENT_SECRET",
+      "oidc.enterprise_token": "OPENPROJECT_TEST_ENTERPRISE_TOKEN"
+    }
+  },
+  "resource": "pw://alvaro/gcptest",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "container_runtime": "openproject-singularity",
+    "subdomain": "openproject-alvaro-sif",
+    "rundir": "${HOME}/openproject-sif-test"
+  },
+  "oidc": {
+    "client_id": "pwapp_254b29d69085165ecabd10ceeab31a88"
+  }
+}

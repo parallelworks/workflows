@@ -27,7 +27,7 @@ By the end of this tutorial you will understand how to:
 - Pass small values between jobs and layers as step outputs (`$OUTPUTS`), and
   everything else as files whose *paths* travel as inputs
 - Make a workflow report success and failure explicitly, from state files, with
-  `if: ${{ always }}` steps
+  `if: ${{ always() }}` steps
 - Keep a loop self-healing: idempotent state updates, safe re-runs after a crashed
   attempt, and results (CSV + plot) that outlive the run
 
@@ -162,7 +162,7 @@ references per case in `workflows/doe-openfoam` and `workflows/dakota-openfoam`)
 
 ### The `decide` job — an exit code as the loop signal
 
-`decide` runs `if: ${{ always }}` (even after a crash upstream), reads
+`decide` runs `if: ${{ always() }}` (even after a crash upstream), reads
 `state/status`, and turns it into this run's exit status:
 
 | `state/status` | `decide` | Meaning for the parent |
@@ -192,7 +192,7 @@ optimization_loop
  │   │                    ⋮      │            └─ exit 0 → loop over
  │   │                workers-B ─┘
  │   │
- └─ Report            if: always — reads state/status, sets the run's verdict
+ └─ Report            if: always() — reads state/status, sets the run's verdict
 ```
 
 (B = `batch_size`. The run page numbers the matrix workers from 0, so `job_id: 1`
@@ -243,7 +243,7 @@ Two things to keep straight when reading a run:
 
 ### The `Report` step — the verdict
 
-`Report` runs `if: ${{ always }}` and maps `state/status` to the run's outcome, so
+`Report` runs `if: ${{ always() }}` and maps `state/status` to the run's outcome, so
 a finished run always says *why* it finished: `CONVERGED` prints the front and
 succeeds; anything else prints a targeted `::error` and fails the run. The loop's
 success is defined by the optimizer's verdict, never by "the steps happened to
@@ -276,7 +276,7 @@ or **an explained error (run fails)**. Nothing ends silently.
 |---|---|---|
 | Case | one simulation crashes → no `results.out` | `fail-fast: false` lets the rest of the batch finish; the optimizer drops the missing result and continues |
 | Generation | *every* case of a generation came back without results | the next attempt re-proposes the same generation once (the case files are intact); a second all-miss means something is systematically broken → the optimizer writes `FAILED` |
-| Attempt | the cycle crashed mid-flight (node hiccup, worker infrastructure failure) | `decide` still runs (`if: ${{ always }}`) and exits 1, so the retry re-runs the **same** iteration: `state.json` is written atomically *after* the case directories, so a re-run always finds a consistent state — self-healing, at the price of one attempt from the budget |
+| Attempt | the cycle crashed mid-flight (node hiccup, worker infrastructure failure) | `decide` still runs (`if: ${{ always() }}`) and exits 1, so the retry re-runs the **same** iteration: `state.json` is written atomically *after* the case directories, so a re-run always finds a consistent state — self-healing, at the price of one attempt from the budget |
 | Contract | the optimizer proposed more cases than `batch_size`, the matrix width | the guard step fails the cycle rather than silently evaluating a subset; since re-proposals repeat the violation, the generation-level escalation ends it as `FAILED` two attempts later |
 | Budget | the retries ran out while `state/status` still says `CONTINUE` | `Report` fails the run and says so: raise `max_iterations` (crashed attempts also consume budget) or loosen the convergence knobs |
 

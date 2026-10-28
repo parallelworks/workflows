@@ -1,0 +1,12 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-20T09:24:51Z,warm,fail,ok,5e9ce3c,c37a825,eef523b,c438bb5,c438bb5,openproject,alvaro,alert-hippo,122,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"
+2026-10-20T09:48:10Z,warm,pass,ok,395c2bf,c37a825,eef523b,3d2bb03,3d2bb03,openproject,alvaro,workable-lobster,100,
+2026-10-20T10:22:47Z,warm,fail,ok,278e1d7,c37a825,eef523b,d968fba,d968fba,openproject,alvaro,certain-wallaby,1835,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"
+2026-10-20T11:34:37Z,warm,pass,ok,1054ae2,c37a825,eef523b,0452096,0452096,openproject,alvaro,neutral-giraffe,100,
+2026-10-20T13:46:11Z,warm,fail,ok,6b9b28d,c37a825,eef523b,affa331,affa331,openproject-oidc,alvaro,unique-satyr,38,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"
+2026-10-20T13:52:52Z,warm,pass,ok,3e6a386,c37a825,eef523b,dc72044,dc72044,openproject-oidc,alvaro,fond-rat,116,
+2026-10-20T14:07:31Z,warm,fail,,8ee08d7,c37a825,eef523b,0f8dc7c,0f8dc7c,openproject-oidc,alvaro,,5,"launch failed: { |   ""detail"": ""Missing required fields: Client secret"", |   ""errors"": [ |     { |       ""code"": ""invalid"", |       ""detail"": ""This value isn't valid."", |       ""pointer"": ""#/oidc/client_secret"", |       ""type"": ""/problems/invalid"" |     } |   ], |   ""status"": 400, |   ""title"": ""Bad "
+2026-10-20T14:08:46Z,warm,pass,ok,6a398c1,c37a825,eef523b,87ebaef,87ebaef,openproject-oidc,alvaro,key-skylark,116,
+2026-10-20T14:15:28Z,warm,fail,,f1b738e,c37a825,eef523b,8d964a8,8d964a8,openproject-oidc,alvaro,,33,"launch failed: { |   ""detail"": ""Missing required fields: Client secret, OpenProject Enterprise token"", |   ""errors"": [ |     { |       ""code"": ""invalid"", |       ""detail"": ""This value isn't valid."", |       ""pointer"": ""#/oidc/client_secret"", |       ""type"": ""/problems/invalid"" |     }, |     { |    "
+2026-10-20T14:18:21Z,warm,pass,ok,aea158d,c37a825,eef523b,21c71b6,21c71b6,openproject-oidc,alvaro,profound-marten,100,
+2026-10-20T14:31:33Z,warm,pass,ok,df95652,c37a825,eef523b,c5b6a11,c5b6a11,openproject-oidc,alvaro,coherent-gibbon,100,

@@ -22,11 +22,15 @@ fi
 
 echo "::notice::Starting MongoDB..."
 stop_existing mongodb
+# The bind hides the kernel's FIPS flag from the container's OpenSSL; a kernel without
+# the flag (a30gpuserver) has nothing to hide, and binding over a missing path fails
+_nofips_bind=""
+[ -e /proc/sys/crypto/fips_enabled ] && _nofips_bind="$DATA/nofips:/proc/sys/crypto/fips_enabled:ro"
 run_bg mongodb \
   singularity exec \
     --writable-tmpfs \
     --bind "$MONGO_DATA_DIR:/data/db" \
-    --bind "$DATA/nofips:/proc/sys/crypto/fips_enabled:ro" \
+    ${_nofips_bind:+--bind "$_nofips_bind"} \
     "$SIF/mongodb.sif" \
     mongod --noauth --dbpath /data/db --bind_ip_all --port "$MONGODB_PORT"
 

@@ -6,6 +6,7 @@ permissions:
 # block trips the expression parser on CLI runs; v5 renames it to env_vars.
 env:
   PW_API_KEY: ${PW_API_KEY}
+  ACTIVATE_API_KEY: ${{ inputs.env_vars.ACTIVATE_API_KEY }}
   JWT_SECRET: ${{ inputs.env_vars.JWT_SECRET }}
   JWT_REFRESH_SECRET: ${{ inputs.env_vars.JWT_REFRESH_SECRET }}
   LIBRECHAT_API_KEY: ${{ inputs.env_vars.LIBRECHAT_API_KEY }}
@@ -299,6 +300,12 @@ jobs:
         label: Environment variables
         collapsed: true
         items:
+          ACTIVATE_API_KEY:
+            type: password
+            label: ACTIVATE API key
+            description: Keeps the ACTIVATE models working after the run completes; left empty, they work only while the run is open.
+            tooltip: Create one under Account > Authentication > API keys and launch again before it expires. The ACTIVATE endpoint in LibreChat uses it instead of this run's key, which the platform revokes when the run completes.
+            default: ''
           JWT_SECRET:
             type: password
             label: JWT secret

@@ -1,0 +1,304 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/openproject/${{ inputs.service.container_runtime }}
+            - tools/oras
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW environment variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # An Enterprise token spans several lines, so it goes into its own file
+          cat <<'EOF' > enterprise-token.txt
+          ${{ inputs.oidc.enterprise_token }}
+          EOF
+          tr -d '\r' < enterprise-token.txt | sed '/^[[:space:]]*$/d; /^undefined$/d' > enterprise-token.tmp
+          mv enterprise-token.tmp enterprise-token.txt
+          chmod 600 enterprise-token.txt
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_rundir="${{ inputs.service.rundir }}"
+          service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
+          service_subdomain="${{ inputs.service.subdomain }}"
+          service_image="${{ inputs.service.image }}"
+          service_enterprise_token_file="${PW_PARENT_JOB_DIR}/enterprise-token.txt"
+          oidc_client_id="${{ inputs.oidc.client_id }}"
+          oidc_client_secret="${{ inputs.oidc.client_secret }}"
+          oidc_display_name="${{ inputs.oidc.display_name }}"
+          pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          EOF
+          # Remove empty and undefined variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh
+          # Add export to all lines
+          sed -i 's/^/export /' inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/openproject/${{ inputs.service.container_runtime }}/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/openproject/${{ inputs.service.container_runtime }}/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  session_runner:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            time: ${{ inputs.cluster.slurm.time }}
+            gpus: ${{ inputs.cluster.slurm.gpus }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::Session runner failed before the endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
+          host: ${{ inputs.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          path: /login
+          healthy: '2*'
+          budget: 1800
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Service host
+        include-workspace: false
+      cluster:
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
+        type: group
+        label: Compute cluster settings
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
+          slurm:
+            type: group
+            label: SLURM directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+              time:
+                label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              gpus:
+                label: Number of GPUs
+                type: number
+                optional: true
+                min: 0
+                step: 1
+                default: 0
+                hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
+                ignore: ${{ .hidden }}
+                tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
+              scheduler_directives:
+                type: editor
+                label: Scheduler directives
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+          pbs:
+            type: group
+            label: PBS directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler directives
+                type: editor
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+      service:
+        type: group
+        label: OpenProject settings
+        collapsed: true
+        items:
+          name:
+            type: string
+            hidden: true
+            default: openproject
+          container_runtime:
+            type: dropdown
+            label: Run container using
+            description: Singularity runs everything as your user from a prebuilt image; Docker runs the official all-in-one image as root.
+            default: openproject-singularity
+            options:
+              - label: Singularity
+                value: openproject-singularity
+              - label: Docker
+                value: openproject-docker
+            tooltip: |
+              Singularity: one SIF (ghcr.io/parallelworks/openproject:17.0, the official slim image plus PostgreSQL 17 and nginx) runs PostgreSQL, OpenProject and nginx as your user, no root or Docker needed; the run directory stays yours. Docker: the official all-in-one image (needs Docker, directly or through sudo); its run directory is written as root.
+          subdomain:
+            label: Subdomain
+            description: Label of the URL, https://<label>.<sessions domain>, the same on every run; empty uses openproject-<your username>.
+            type: string
+            optional: true
+            tooltip: |
+              The endpoint is served at https://<label>.<sessions domain>/ on every run, so bookmarks, browser state and the redirect URI registered for Sign in with ACTIVATE keep working. Lowercase letters, digits and dashes; reserve it with 'pw subdomains reserve <label>' so nobody else takes it. Two OpenProjects of yours (two clusters) need two labels.
+          rundir:
+            label: Run directory
+            description: Keeps the database and attachments; reuse it to keep projects and users, delete it to start over. A run directory belongs to one runtime.
+            type: string
+            default: ${HOME}/openproject
+            tooltip: |
+              Holds pgdata/ (PostgreSQL), assets/ (attachments) and the generated secrets. Singularity writes it as your user; Docker as root and the container's postgres user, so deleting a Docker run directory needs sudo and the Singularity runtime refuses it. One OpenProject per run directory at a time.
+          image:
+            label: OpenProject image
+            description: Keep the major version of an existing run directory.
+            type: string
+            default: openproject/openproject:17
+            hidden: ${{ inputs.service.container_runtime == 'openproject-singularity' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              The all-in-one Docker image (web, worker, PostgreSQL, memcached). A new major version may need the PostgreSQL data upgraded first; see the OpenProject upgrade guide. The Singularity runtime uses the prebuilt ghcr.io/parallelworks/openproject:17.0 image instead.
+          parent_install_dir:
+            type: string
+            hidden: true
+            default: ${HOME}/pw/software
+      oidc:
+        type: group
+        label: Sign in with ACTIVATE
+        description: Lets users sign in to OpenProject with their ACTIVATE account; a client ID reveals the secret and the Enterprise token fields. Leave it empty for OpenProject's own accounts only.
+        collapsed: true
+        items:
+          client_id:
+            label: Client ID
+            description: The pwapp_ ID of the application an organization admin registered for this OpenProject URL; empty means no ACTIVATE sign-in is configured.
+            type: string
+            optional: true
+            tooltip: |
+              Organization -> Settings -> Applications (behind the OIDC Applications preview): kind web, consent none, scopes openid profile email, redirect URI https://<subdomain>.<sessions domain>/auth/activate/callback, post-logout redirect URI https://<subdomain>.<sessions domain>/. The redirect URI is matched exactly, so it must carry the subdomain this run pins. The provider is written into OpenProject's database on every start and stays there: a later run without a client ID keeps the stored one (remove it under Administration -> Authentication -> OpenID providers).
+          client_secret:
+            label: Client secret
+            description: Required with a client ID; shown once when the secret is created, an organization admin can reveal it again on the application's page.
+            type: password
+            optional: true
+            hidden: ${{ inputs.oidc.client_id == '' }}
+            ignore: ${{ .hidden }}
+          enterprise_token:
+            label: OpenProject Enterprise token
+            description: Required with a client ID until the run directory holds an imported token; the Sign in with ACTIVATE button is hidden until OpenProject has a valid Enterprise edition token.
+            type: editor
+            optional: true
+            hidden: ${{ inputs.oidc.client_id == '' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              OpenProject (Community edition) accepts the OIDC configuration but hides every single sign-on provider until an Enterprise edition token is active. Paste the whole block (-----BEGIN OPENPROJECT-EE TOKEN----- ... -----END ...): the launcher imports it the first time and keeps a marker in the run directory, so later runs only check it. A token is bound to the OpenProject host name (the subdomain) and has an expiry date; a free trial requested inside OpenProject (Administration -> Enterprise edition) is stored the same way.
+          display_name:
+            type: string
+            hidden: true
+            default: ACTIVATE

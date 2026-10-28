@@ -64,7 +64,7 @@ jobs:
           kubectl apply -f pvc.yaml --dry-run=client
 
   prepare_k8s_deployment:
-    if: ${{ always }}
+    if: ${{ always() }}
     needs:
       - prepare_k8s_pvc
     steps:

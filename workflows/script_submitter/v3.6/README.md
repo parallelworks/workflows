@@ -14,6 +14,10 @@ The workflow auto-detects whether the selected resource is a SLURM or PBS cluste
 
 3. **Run directly on the controller**: Launch the script on the login/controller node via SSH. The script is submitted detached and monitored until it finishes.
 
+### Scheduler directives
+
+`slurm.scheduler_directives` and `pbs.scheduler_directives` take one directive per line. Write each with its `#SBATCH` / `#PBS` prefix, as in a batch script. A line without the prefix gets it added, blank lines are dropped, and a line that already starts with `#` (a prefixed directive or a comment) is kept as typed.
+
 ## Monitoring & Cleanup
 
 For PBS and SLURM direct submissions, the workflow continuously monitors job status until completion or until the job is no longer found in the queue. If the workflow is canceled, the cleanup logic automatically terminates the remote job (`qdel` or `scancel`) to prevent orphaned workloads.
@@ -165,7 +169,7 @@ jobs:
 | `shebang` | Script shebang (default: `#!/bin/bash`) | No |
 | `scheduler` | Submit to job scheduler (true/false) | No |
 | `use_scheduler_agent` | Use the scheduler agent instead of direct submission (true/false, default: false) | No |
-| `define_cleanup_script` | Run a custom cleanup script when the workflow is canceled (true/false, default: false) | No |
+| `define_cleanup_script` | Run a custom cleanup script when the workflow is canceled (true/false, default: false). Pass it even when `false`: left out, the platform requires `cleanup_script_path` | Yes |
 | `cleanup_script_path` | Path to the cleanup script on the remote resource (required when `define_cleanup_script: true`) | No |
 | `submit_and_exit` | Submit the script and exit immediately without monitoring; the job or process keeps running on the resource (true/false, default: false) | No |
 | `skip_cleanups_file` | Path to a file checked when the workflow ends: if it exists, all cleanup steps are skipped and the job or process is left running. Hidden input intended for subworkflow use | No |

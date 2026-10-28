@@ -25,7 +25,7 @@ general.yaml
  ├─ preprocessing       checks the OpenFOAM and ParaView environments, then calls doe (the designs
  │                      into cases/) and, with images on, design-explorer (the page, once it answers)
  ├─ workers-1..n        matrix, if: job_id <= N_CASES — openfoam-naca on cases/case_<j>
- └─ results             if: always — every case into results.csv; fails only if none solved
+ └─ results             if: always() — every case into results.csv; fails only if none solved
 ```
 
 The pieces share only the files under `cases/`: the sampler writes

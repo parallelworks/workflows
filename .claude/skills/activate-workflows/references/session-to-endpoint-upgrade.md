@@ -26,7 +26,7 @@
 > `kasmvnc-container/hsp_v5.yaml`). Also drop the v4 hsp extras: the
 > `PW_PLATFORM_HOST=activate.hpc.mil` fallback, the random `password=`, the
 > `module load singularity` line, and `service_rootless_docker`. Verified end-to-end
-> with `jupyterlab-host/hsp_v5.yaml` on gcpsmall, 2026-07-29 (run completed in ~2 min,
+> with `jupyterlab-host/hsp_v5.yaml` on a cloud cluster, 2026-07-29 (run completed in ~2 min,
 > `{port}` substituted, 200 on `/lab`, anon 307, delete killed the tree); same checks
 > passed for the pre-existing `openvscode/hsp_v5.yaml` the same day.
 > **Check whether an `hsp_v5.yaml` already exists before writing one** — openvscode's
@@ -42,7 +42,7 @@
 > `service_parent_install_dir` is empty and `/contrib/pw` exists, append it to
 > `inputs.sh`) — `script_submitter` does not compute it. Drop the v4 noaa extras: Juice
 > lines and the `PW_PLATFORM_HOST=noaa.parallel.works` fallback. Verified end-to-end on
-> gcpsmall 2026-07-30 for jupyter-host, jupyterlab-host, webshell, n8n, openvscode, and
+> the cloud cluster 2026-07-30 for jupyter-host, jupyterlab-host, webshell, n8n, openvscode, and
 > kasmvnc (desktop + rstudio): all runs completed, `{port}` substituted, local 200s,
 > anon 307, `pw endpoints delete` killed the trees. Two catches: (1) jupyter-host
 > noaa_v4's `conda_install_dir: .miniconda3c` collides with jupyterlab-host's — the
@@ -177,7 +177,7 @@ Contract differences vs v3:
   login vs compute support can differ); on failure build a sandbox once:
   `singularity build --fakeroot --force --sandbox <dir> <sif>` with
   `SINGULARITY_TMPDIR`/`SINGULARITY_CACHEDIR` under `${HOME}` (both paths verified on
-  gcpsmall, n8n conversion). Full build/push/convert recipe:
+  the cloud cluster, n8n conversion). Full build/push/convert recipe:
   [software/singularity-sif-containers.md](software/singularity-sif-containers.md).
 - Password/token: optional password → hash it (`jupyter_server.auth.passwd` via a
   python heredoc — avoids shell-quoting the `$`-laden hash); none → `token = ''` is
@@ -264,7 +264,8 @@ the platform tunnel into a k8s Service itself. It still works (verified 2026-09-
 session URL is `externalHref` in `pw sessions ls -o json`), but it is not the repo
 pattern. On top of Step 3 (the sidecar itself: [k8s-workflows.md §2](k8s-workflows.md)):
 
-1. Replace the `sessions:` block with `env: {PW_API_KEY: ${PW_API_KEY}}`.
+1. Delete the `sessions:` block (the run's key is in every step's environment without
+   an `env:` block: [pw-auth.md](pw-auth.md)).
 2. Delete the Service (unless another pod needs it) and the `create_k8s_session` job.
 3. Add the sidecar to the Deployment, and the **Create API Key Secret** step with its
    `cleanup:` before the Deployment apply; `--all-containers` on the log stream.
@@ -311,7 +312,7 @@ is not recorded. A workflow that must be found by another agent therefore tags
 itself via `--description` (returned verbatim in the session row): the agent
 fleet uses `--description agent-worker:<cluster>`, and `agent-orchestrator`'s
 `discover_workers()` accepts both this and the v4 tunnel-session shape
-(verified live: workspace orchestrator → lite-agent endpoint worker on gcpsmall,
+(verified live: workspace orchestrator → lite-agent endpoint worker on a cloud cluster,
 full ask_cluster round trip).
 
 ## Gotchas checklist (each one bit a real run)

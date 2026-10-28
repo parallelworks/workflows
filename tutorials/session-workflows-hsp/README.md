@@ -375,6 +375,7 @@ The whole submit/stream/monitor/cleanup dance collapses into one job that calls 
           shebang: '#!/bin/bash'
           use_existing_script: true                            # we built the script in install...
           script_path: ${{ needs.install.outputs.SCRIPT_PATH }} # ...so pass its absolute path
+          define_cleanup_script: false                         # always pass it: left out, cleanup_script_path becomes required
           scheduler: ${{ inputs.scheduler }}
           use_scheduler_agent: false
           slurm:                                               # pass the SLURM group straight through

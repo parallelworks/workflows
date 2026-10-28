@@ -5,7 +5,7 @@
 #
 #   condition      on a STEP: looks at its own job so far      on a JOB: looks at the jobs in `needs`
 #   ------------   -----------------------------------------   ---------------------------------------
-#   always         runs                                        runs
+#   always()       runs                                        runs
 #   false          skipped                                     skipped
 #   success()      no earlier step failed, job not canceled    no needed job failed or was canceled
 #   failure()      an earlier step failed                      a needed job failed
@@ -17,11 +17,12 @@
 # Leaving `if:` out behaves like `if: ${{ success() }}`, and so does an `if:`
 # that calls no status function: `${{ inputs.debug == true }}` runs only when
 # nothing failed. Calling one replaces that check. `canceled()` is another
-# spelling of `cancelled()`. The word `always` on its own is the one keyword,
-# the same as `always()`; any other bare word is text, which is true, so
-# `${{ error }}` is the string "error", not a status check.
+# spelling of `cancelled()`. A bare word is text, which is true, so
+# `${{ error }}` is the string "error", not a status check. The exception is
+# `always`, the older spelling of `always()`: still accepted as the whole
+# condition, but text inside a larger one. Write `always()`.
 # The functions combine with inputs, outputs and operators (&&, ||, !,
-# ternary): see the `fallback` job. Combine `always()`, not the word.
+# ternary): see the `fallback` job.
 
 # parallelworks/cancel-jobs needs the grant.
 permissions:
@@ -62,8 +63,8 @@ jobs:
         if: ${{ !success() }}
         run: echo "ran because a step failed OR the job was canceled"
 
-      - name: "if: always"
-        if: ${{ always }}
+      - name: "if: always()"
+        if: ${{ always() }}
         run: echo "ran no matter what happened above"
 
       - name: "if: false"
@@ -114,7 +115,7 @@ jobs:
   report:
     needs:
       - work
-    if: ${{ always }}
+    if: ${{ always() }}
     steps:
       - run: echo "ran no matter how work ended, so this is a good place for teardown or a summary"
 

@@ -1,0 +1,70 @@
+Run harmless-roughy: error (33m30s)
+
+Error annotations:
+
+  Error: Session runner failed before the endpoint came online
+    in session_runner → Exit Workflow with Error
+  Error: Endpoint openproject-harmless-roughy is unhealthy (HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1803s)
+    in wait_for_endpoint > wait_for_endpoint → Check endpoint health
+
+Failed jobs/steps:
+
+  session_runner > Exit Workflow with Error (error, 0s)
+    Error: Session runner failed before the endpoint came online
+    ✗ Error: Session runner failed before the endpoint came online
+
+  wait_for_endpoint > Check endpoint health (error, 0s)
+    notice: Checking that https://openproject-alvaro-sif.activate.pw/login answers
+    Error: Endpoint openproject-harmless-roughy is unhealthy (HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1803s)
+    Tue Oct 20 11:22:55 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1555s; retrying in 5 seconds
+    Tue Oct 20 11:23:00 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1560s; retrying in 5 seconds
+    Tue Oct 20 11:23:05 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1565s; retrying in 5 seconds
+    Tue Oct 20 11:23:10 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1570s; retrying in 5 seconds
+    Tue Oct 20 11:23:16 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1576s; retrying in 5 seconds
+    Tue Oct 20 11:23:21 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1581s; retrying in 5 seconds
+    Tue Oct 20 11:23:26 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1586s; retrying in 5 seconds
+    Tue Oct 20 11:23:31 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1591s; retrying in 5 seconds
+    Tue Oct 20 11:23:36 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1596s; retrying in 5 seconds
+    Tue Oct 20 11:23:41 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1601s; retrying in 5 seconds
+    Tue Oct 20 11:23:46 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1606s; retrying in 5 seconds
+    Tue Oct 20 11:23:51 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1611s; retrying in 5 seconds
+    Tue Oct 20 11:23:56 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1616s; retrying in 5 seconds
+    Tue Oct 20 11:24:01 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1621s; retrying in 5 seconds
+    Tue Oct 20 11:24:06 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1626s; retrying in 5 seconds
+    Tue Oct 20 11:24:11 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1631s; retrying in 5 seconds
+    Tue Oct 20 11:24:16 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1636s; retrying in 5 seconds
+    Tue Oct 20 11:24:21 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1641s; retrying in 5 seconds
+    Tue Oct 20 11:24:26 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1646s; retrying in 5 seconds
+    Tue Oct 20 11:24:31 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1651s; retrying in 5 seconds
+    Tue Oct 20 11:24:36 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1656s; retrying in 5 seconds
+    Tue Oct 20 11:24:42 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1662s; retrying in 5 seconds
+    Tue Oct 20 11:24:47 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1667s; retrying in 5 seconds
+    Tue Oct 20 11:24:52 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1672s; retrying in 5 seconds
+    Tue Oct 20 11:24:57 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1677s; retrying in 5 seconds
+    Tue Oct 20 11:25:02 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1682s; retrying in 5 seconds
+    Tue Oct 20 11:25:07 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1687s; retrying in 5 seconds
+    Tue Oct 20 11:25:12 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1692s; retrying in 5 seconds
+    Tue Oct 20 11:25:17 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1697s; retrying in 5 seconds
+    Tue Oct 20 11:25:22 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1702s; retrying in 5 seconds
+    Tue Oct 20 11:25:27 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1707s; retrying in 5 seconds
+    Tue Oct 20 11:25:32 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1712s; retrying in 5 seconds
+    Tue Oct 20 11:25:37 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1717s; retrying in 5 seconds
+    Tue Oct 20 11:25:42 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1722s; retrying in 5 seconds
+    Tue Oct 20 11:25:47 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1727s; retrying in 5 seconds
+    Tue Oct 20 11:25:52 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1732s; retrying in 5 seconds
+    Tue Oct 20 11:25:58 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1738s; retrying in 5 seconds
+    Tue Oct 20 11:26:03 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1743s; retrying in 5 seconds
+    Tue Oct 20 11:26:08 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1748s; retrying in 5 seconds
+    Tue Oct 20 11:26:13 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1753s; retrying in 5 seconds
+    Tue Oct 20 11:26:18 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1758s; retrying in 5 seconds
+    Tue Oct 20 11:26:23 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1763s; retrying in 5 seconds
+    Tue Oct 20 11:26:28 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1768s; retrying in 5 seconds
+    Tue Oct 20 11:26:33 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1773s; retrying in 5 seconds
+    Tue Oct 20 11:26:38 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1778s; retrying in 5 seconds
+    Tue Oct 20 11:26:43 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1783s; retrying in 5 seconds
+    Tue Oct 20 11:26:48 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1788s; retrying in 5 seconds
+    Tue Oct 20 11:26:53 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1793s; retrying in 5 seconds
+    Tue Oct 20 11:26:58 AM UTC 2026 HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1798s; retrying in 5 seconds
+    ✗ Error: Endpoint openproject-harmless-roughy is unhealthy (HTTP 503 from https://openproject-alvaro-sif.activate.pw/login after 1803s)
+
+Summary: 2 job(s) failed, 2 step(s) failed

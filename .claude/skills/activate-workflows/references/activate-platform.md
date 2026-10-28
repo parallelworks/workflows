@@ -33,7 +33,7 @@ documented here, **trust the docs and fix this file** (Step 5 of the methodology
 8. Where to look for working patterns (the repo's workflows and tutorials)
 9. Getting your workflow code onto the node (`parallelworks/checkout`)
 10. Endpoints: `pw endpoints run`, tokens, naming, lifecycle, probing, path-based endpoints
-11. AI agents and LLM-backed services: the platform LLM endpoint, `PW_API_KEY`, `--openai`, Ollama
+11. AI agents and LLM-backed services: the platform LLM endpoint, `PW_API_KEY` (pw-auth.md), `--openai`, Ollama
 
 ---
 
@@ -76,33 +76,33 @@ workflow, via `${{ inputs.<name>.* }}`):
 |-------|---------|-------|
 | `id` | `685193ec1bba202cb3341fb7` | |
 | `ip` | `34.132.29.251` | login-node IP; **empty for workspace** → step runs locally |
-| `name` | `gcpsmall` | |
-| `type` / `provider` | `google-slurm` | |
+| `name` | `<cluster>` | |
+| `type` / `provider` | `google-slurm` | `existing` for a cluster the ACTIVATE agent connects, `managed-cluster` for a managed one, `<cloud>-slurm` for a cloud cluster |
 | `schedulerType` | `slurm` / `pbs` / `''` | `''` when no scheduler (e.g. `existing`, workspace) |
-| `namespace`, `user` | `alvaro` | |
+| `namespace`, `user` | `<user>` | |
 
 **Passing a resource via the CLI:** give the **bare name string** and the platform
 resolves the full object. Do NOT hand-build the object or hardcode `ip` (login IPs
 change when a cluster restarts):
 ```bash
-pw workflows run my-session -i '{"resource":"gcpsmall","scheduler":false}'
+pw workflows run my-session -i '{"resource":"<cluster>","scheduler":false}'
 ```
 `pw cluster ls -o json` field names differ from the resolved object (`ipAddress` vs
 `ip`); rely on name resolution, not the raw cluster JSON.
 
 > **⚠ `compute-resources` inputs do NOT hydrate from the CLI (verified).** Bare-name
 > resolution is a `compute-clusters` feature. A `compute-resources` input (the picker
-> that also lists kubernetes clusters, used by `*_k8s_*.yaml`) passed as `"gcpsmall"`
-> or `"pw://alvaro/gcpsmall"` reaches the workflow as a **raw string** — `.ip`/`.type`
+> that also lists kubernetes clusters, used by `*_k8s_*.yaml`) passed as `"<cluster>"`
+> or `"pw://<user>/<cluster>"` reaches the workflow as a **raw string** — `.ip`/`.type`
 > resolve empty and `ssh.remoteHost` steps **silently run on the workspace exec node**.
 > From the UI the picker sends a full object, so this bites CLI testing only. Pass the
 > object yourself in `-i`:
-> - Cluster: `{"$type":"computeResource","id":"<id>","ip":"<ip>","name":"gcpsmall","namespace":"<user>","provider":"google-slurm","schedulerType":"slurm","type":"google-slurm","uri":"pw://<user>/gcpsmall","user":"<user>"}`
+> - Cluster: `{"$type":"computeResource","id":"<id>","ip":"<ip>","name":"<cluster>","namespace":"<user>","provider":"google-slurm","schedulerType":"slurm","type":"google-slurm","uri":"pw://<user>/<cluster>","user":"<user>"}`
 >   (fresh `id`/`ip` from `pw cluster ls -o json`, mapping `ipAddress`→`ip`).
 > - With `$type: computeResource` the server validates `id` against **clusters** — a
 >   kubernetes cluster id fails with `Compute resource not found`. Omit `$type` and the
 >   object passes through **verbatim, unvalidated**: for a kubernetes cluster send
->   `{"id":"<pw kube ls id>","name":"k3sgpu","type":"kubernetes","uri":"pw://k3sgpu"}`
+>   `{"id":"<pw kube ls id>","name":"<k8s-cluster>","type":"kubernetes","uri":"pw://<k8s-cluster>"}`
 >   (set the fields the workflow reads: `name` for `pw kube auth`, `type` for the guards).
 >   The test runner builds both objects, so a test JSON keeps the portable form: its
 >   k8s lane completes `{"name":…,"type":"kubernetes"}` from `pw kube ls -o json`, and
@@ -130,7 +130,7 @@ Top of file (enables editor autocomplete; harmless at runtime):
 |-----|---------|
 | `permissions` | `['*']` lets the workflow and its subworkflows run any `pw` command the launching user can; needed for every `pw` call but `pw agent open-port`. |
 | `jobs` | the job DAG |
-| `env` | workflow-level environment variables injected into every job/step's runtime env. **The canonical way to make `PW_API_KEY` available to your workflow code** — set `env: { PW_API_KEY: ${PW_API_KEY} }` (see §11). **⚠ Do NOT also name an input *group* `env`** if this block references `${{ inputs.env.* }}`: the shared `env` name makes the expression engine recurse → `400 Expression Parser Error: max recursion exceeded`, which fails **both `--dry-run` and `pw workflows run`** (the web UI may still submit it). Name the group e.g. `env_vars`. |
+| `env` | workflow-level environment variables injected into every job/step's runtime env. The platform puts `PW_API_KEY` there on its own; an `env:` block carries a key the user hands the workflow ([pw-auth.md](pw-auth.md)). **⚠ Do NOT also name an input *group* `env`** if this block references `${{ inputs.env.* }}`: the shared `env` name makes the expression engine recurse → `400 Expression Parser Error: max recursion exceeded`, which fails **both `--dry-run` and `pw workflows run`** (the web UI may still submit it). Name the group e.g. `env_vars`. |
 | `'on'.execute.inputs` | the input form (note the quoted `'on'` to avoid YAML's bool) |
 | `configurations` | named sets of saved inputs (`configurations.<name>.inputs.<input>: value`), loadable with `pw workflows run --saved-inputs <name>` |
 | `timeout` | workflow-level timeout (`30m`, `2h`, `1d`); also per job and per step, and every level applies |
@@ -286,10 +286,11 @@ use. The job graph gives you sequencing, data flow, conditionals, and parallelis
   They combine with expressions (`if: ${{ failure() && inputs.fallback }}`; quote a
   ternary). The keywords ACTIVATE v7.69 added (`completed`, `error`, `canceled`,
   `never`, their `!` forms, and `success`, `failure`, `cancelled` without parentheses)
-  were removed in v7.112: the word `always` alone is the one keyword left, and any
-  other bare word is a non-empty string, which is true (`${{ !completed }}` is always
-  false; pitfalls). `if: ${{ always }}` steps run in order and, like `cleanup:`
-  steps, keep running through a cancel. See `tutorials/if-conditions/`.
+  were removed in v7.112: a bare word is now a non-empty string, which is true
+  (`${{ !completed }}` is always false; pitfalls). The exception is the word `always`
+  alone, the older spelling of `always()`, which still works; write `always()`.
+  `if: ${{ always() }}` steps run in order and, like `cleanup:` steps, keep running
+  through a cancel. See `tutorials/if-conditions/`.
 - **Fan-out / fan-in:** sibling jobs that share a common `needs` but don't depend on
   each other **run concurrently**; a downstream job with `needs: [w1, w2, w3]` joins
   them. (Verified: 3 workers logged the same finish second.) For N identical workers,
@@ -310,9 +311,9 @@ use. The job graph gives you sequencing, data flow, conditionals, and parallelis
   width can be a form input (honda) **or a runtime output** —
   `if: ${{ matrix.job_id <= needs.gen.outputs.N_CASES }}` compares numerically and
   skips the excess workers (verified live 2026-09-28: 2 of 4 ran; a downstream
-  `if: ${{ always }}` job joined the partially-skipped matrix cleanly, and a per-case
-  `rundir: ${{ needs.gen.outputs.ITER_DIR }}/case_${{ matrix.job_id }}` composed
-  fine into script_submitter's `with:`). Worked, tested example:
+  `if: ${{ always() }}` job, then spelled `always`, joined the partially-skipped matrix
+  cleanly, and a per-case `rundir: ${{ needs.gen.outputs.ITER_DIR }}/case_${{ matrix.job_id }}`
+  composed fine into script_submitter's `with:`). Worked, tested example:
   `tutorials/optimization/iteration.yaml` (`workers` job — computed case set from an
   optimizer, all of the above in one place). **A form input is concrete at submission,
   so a matrix can be sized by one:** `job_id: ${{ 1 range inputs.batch_size + 1 }}`
@@ -362,11 +363,11 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
     ssh "${TARGET_IP}" nvidia-smi   # exit code drives the retry
 ```
 - **`exit <code>` drives it:** zero = success (stop), non-zero = retry. A step that
-  exhausts its retries ends the run as **error**, and a later `if: ${{ always }}`
-  step that exits 0 does not change that (verified 2026-10-16, probe run
-  settling-hedgehog: the step failed after its retries, the `if: always` step ran and
-  exited 0, the job and the run ended `error`). Use that step to report what happened,
-  never to turn the run green.
+  exhausts its retries ends the run as **error**, and a later `if: ${{ always() }}`
+  step that exits 0 does not change that (verified 2026-10-16 with the older spelling
+  `always`, probe run settling-hedgehog: the step failed after its retries, the
+  `if: always` step ran and exited 0, the job and the run ended `error`). Use that
+  step to report what happened, never to turn the run green.
 - **Per-attempt env vars:** `PW_WORKFLOW_STEP_CURRENT_RETRY` (0 on the first try) and
   `PW_WORKFLOW_STEP_MAX_RETRIES` are exported each attempt. `index % N` over a list turns
   the retry counter into a **round-robin selector** (fail over to the next resource).
@@ -392,7 +393,7 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   = next loop iteration; `exit 0` ends the loop. State kept in files under the top
   job's own working dir (paths passed down as inputs, published via `$OUTPUTS`)
   persists across attempts. Remember attempt ≠ iteration: keep the true iteration
-  counter in a state file, and let a trailing `if: ${{ always }}` step map a status
+  counter in a state file, and let a trailing `if: ${{ always() }}` step map a status
   file (CONVERGED/CONTINUE/FAILED) to the run's final exit. The full pattern —
   retry-as-loop + guarded static matrix + results-file protocol, tested end-to-end
   (run dear-crow, 2026-09-28) — is `tutorials/optimization/` (staged README);
@@ -405,7 +406,7 @@ A step can declare a `retry` block; it re-runs the step while it exits **non-zer
   input is simpler and saves the nesting level: `openfoam-naca`'s `restart.attempt`
   makes its results step exit 0 on a case that failed on its own (final) and 1 on an
   interrupted one, so `yamls/general-restart.yaml` retries `general.yaml` directly. A retried
-  step that fails is retried whatever a later `if: always` step in the same job
+  step that fails is retried whatever a later `if: always()` step in the same job
   returns, so the verdict must be the status of the first failing step, not of a step
   after it.
 - **`max-retries` can be computed:** `max-retries: ${{ needs.<job>.outputs.N - 1 }}` —
@@ -498,14 +499,19 @@ run_my_job:
 ```
 
 > **Subworkflow required-input check (verified 2026-09-16: `pw` dry-runs + a live run
-> on gcpsmall):** `--dry-run` fails with the terse `Could not parse subworkflow` when a
+> on a cloud cluster):** `--dry-run` fails with the terse `Could not parse subworkflow` when a
 > non-optional subworkflow input with no default is missing from `with:` — the message
 > never names the field. The check honors the subworkflow's `hidden`/`ignore` rules
 > under the values you pass: `script_submitter` with `define_cleanup_script: false`
 > accepts a missing `cleanup_script_path` (dry-run and real run both pass) and rejects
-> it once `define_cleanup_script: true`. `--dry-run` does NOT flag unknown fields
+> it once `define_cleanup_script: true`. It also rejects it when `define_cleanup_script`
+> is left out, on every variant: the flag's `default: false` does not reach
+> `cleanup_script_path`'s `hidden:` test, so always pass the flag, `false` when unused
+> (verified 2026-10-20, dry-runs on gcptest). `--dry-run` does NOT flag unknown fields
 > (`partition_default` passed to `general`, or `general`'s `slurm.partition` passed to
-> `emed`) — they pass silently. (`hsp` has no `cleanup_script_path` input at all.)
+> `emed`) — they pass silently, and at run time an undeclared field still reaches the
+> subworkflow as `inputs.<field>` (verified 2026-10-20: the `hsp` submitter, before it
+> declared the cleanup inputs, ran the caller's cleanup script).
 
 > **Best practice — paths inside the submitted script:** `script_submitter` `cd`s
 > into `rundir` before running your script, so reference files **relative to rundir**
@@ -525,9 +531,11 @@ compute node. The login-node path (`scheduler:false`) is the fast, reliable chec
 use SLURM when you genuinely need a compute node.
 
 `script_submitter` builds the sbatch script as (verified): shebang → `#SBATCH` headers
-(`--job-name`, `--time`, `--chdir=<rundir>`, `-o/-e → run.<slug>.out`) → `hostname >
-HOSTNAME` → your script body. `--chdir` is why your script's cwd is `rundir` on the
-compute node (relative paths work). A scheduled batch run's job dir adds `headers.sh`,
+(`--job-name`, `--time`, `--chdir=<rundir>`, `-o/-e → run.<slug>.out`, then the form's
+`scheduler_directives`, one per line, the `#SBATCH`/`#PBS` prefix added where a line has
+none; verified 2026-10-27) → `hostname > HOSTNAME` → your script body. `--chdir` is why
+your script's cwd is `rundir` on the compute node (relative paths work). A scheduled
+batch run's job dir adds `headers.sh`,
 `run.sh` (the sbatch script), and `run.<slug>.out` (job stdout/stderr) alongside your
 own files and outputs. Since the workflow exec node is the cluster **login node**, watch it
 live there with `squeue` / `sinfo` / `sacct`. On cancel, `script_submitter` runs
@@ -539,7 +547,7 @@ wrap the start script in `pw endpoints run` — the endpoint pattern (§10).
 
 ---
 
-### Failure path of a submitted script (verified 2026-09-09, openvscode on gcpsmall)
+### Failure path of a submitted script (verified 2026-09-09, openvscode on a cloud cluster)
 `script_submitter` does **not** forward the script's exit code: "Wait for Script" only polls
 the pid, then "Cancel Streaming" stops the `stream_output` `tail -f` job and the
 subworkflow *completes*. A workflow's error handling therefore lives in the parent's
@@ -561,7 +569,9 @@ short-lived; they renew while the CLI is in use, but an idle shell's lapse: when
 command fails with "Authentication has expired", ask the user to run `pw auth`
 (`pw auth --device <host>` prints a code for a headless machine; a `PW_API_KEY`
 environment variable takes precedence over the credentials file). The sign-in needs a
-human; do not try to mint a token.
+human; do not try to mint a token. Where `pw` is already signed in (the workspace, an
+existing cluster's login node) and which credential a run's scripts use:
+[pw-auth.md](pw-auth.md).
 
 ### Workflows
 ```bash
@@ -678,7 +688,7 @@ Debug checklist on the service node: `cat run.<JOBID>.out`, the `step.out` trace
 `ps -x | grep <your-process>`, `pw endpoints list`, then `pw workflows runs errors <slug>`.
 When a form value seems ignored, read `inputs.sh` (the values preprocessing wrote) and the
 `set -x` lines of `step.out`; the rendered step script older platform versions wrote as
-`logs/<job>/step_N/script-unstable.sh` no longer exists (checked 2026-10-12, gcpsmall).
+`logs/<job>/step_N/script-unstable.sh` no longer exists (checked 2026-10-12, cloud cluster).
 
 ---
 
@@ -705,7 +715,7 @@ to your task.
 | **Step `retry`, attempt-aware vars, `list` inputs, computed `max-retries`, failover** | `tutorials/endpoint-workflows/{06-first-start-wins,07-failover}.yaml` |
 | **Iterative loop over computed cases** (retry-as-loop + guarded static matrix) | `tutorials/optimization/` |
 | **Resubmit an interrupted simulation until it completes** (a walltime, a preempted or lost node, a cancel: checkpoints, a run script that resumes, the signal forwarded, retry-as-loop whose callee tells a final failure from an interruption) | `workflows/openfoam-naca/yamls/general-restart.yaml` (+ `hsp-restart`, `noaa-restart`; the README's "Resubmitting an interrupted case" is the walkthrough; the resume logic in `app/restart.sh`) |
-| **`if:` status functions on steps and jobs** (`success()`, `failure()`, `cancelled()`, `!success()`, `always`), and what replaced the removed keywords | `tutorials/if-conditions/` |
+| **`if:` status functions on steps and jobs** (`success()`, `failure()`, `cancelled()`, `!success()`, `always()`), and what replaced the removed keywords | `tutorials/if-conditions/` |
 | **Compose standalone workflows** (sampler or optimizer → matrix of evaluators → a live page; files as the only coupling) | `workflows/doe-openfoam/`, `workflows/dakota-openfoam/` (READMEs show the wiring); the file contract in [design-parameters.md](design-parameters.md) |
 | **A workflow others can call** (form as the interface, paths as inputs, one `general.yaml` for every platform) | `workflows/doe/`, `workflows/design-explorer/`, `workflows/wait_for_endpoint/` |
 | **A page the workflow draws itself, in the platform's look** (the vendored theme contract, the component recipes, inline icons, light and dark, a server under the endpoint prefix) | `workflows/probe/app/web/` (+ `app/probe/server.py`); [app-ui.md](app-ui.md); `tools/ui/sync-theme.sh` |
@@ -857,6 +867,13 @@ all verified on live runs:
   stops `wait_for_endpoint`. Both vars reach scheduled
   compute nodes via the `inputs.sh` `env | grep '^PW_'` capture.
 
+### Signing users in with ACTIVATE (OIDC)
+
+An app that lets visitors sign in with their ACTIVATE account registers an application
+for its exact URL and needs a proxy of its own in front; the recipe, the claims, the
+session proxy's constraints and how to test the flow are in
+[oidc-sign-in.md](oidc-sign-in.md) (`workflows/openproject` is the worked example).
+
 ### Apps that need a base path (path-based endpoints)
 
 Subdomain endpoints serve at the URL root, so most apps need no base-URL config and no
@@ -881,7 +898,7 @@ risks the empty token being eaten by the arg parser).
 
 ### Platform LLM endpoint — a service's "brain"
 OpenAI-compatible at **`https://${PW_PLATFORM_HOST}/api/openai/v1`**; auth
-`Authorization: Bearer ${PW_API_KEY}` (see below). **Org-provider models (`org:*`,
+`Authorization: Bearer ${PW_API_KEY}` (the run's key: [pw-auth.md](pw-auth.md)). **Org-provider models (`org:*`,
 e.g. `org:glm/glm-5.1`) require an `X-Allocation: <name>` header** — without it you
 get `400 "X-Allocation header is required for org provider requests"`. List
 allocation names at **`GET https://${PW_PLATFORM_HOST}/api/allocations`** (objects
@@ -900,7 +917,7 @@ not the short name the Chat model picker shows (verified, lite-agent).** The end
 routes by a fully-qualified id: `org:owner/provider` (e.g. `org:glm/glm-5.1`) or — for a
 model served by another endpoint (`pw endpoints run --openai`, e.g. a vLLM
 endpoint) — `session:<user>:<provider>/<model>` (e.g.
-`session:alvaro:marketplace.vllmrag.latest_35_session//gpt-oss-20b`; the leading `/` in
+`session:<user>:marketplace.vllmrag.latest_35_session//gpt-oss-20b`; the leading `/` in
 the model name yields the `//`). The picker only displays the trailing short name
 (`/gpt-oss-20b`); sending that verbatim fails with
 `400 "Invalid provider identifier format. Expected 'owner:provider-name'"`, which
@@ -911,21 +928,10 @@ ids embed the backing run's number and so change when it relaunches — resolve 
 don't hardcode. `X-Allocation` is required for `org:*` but harmless for endpoint-served
 models, which can support tool calling too (gpt-oss-20b does).
 
-### `PW_API_KEY` at runtime — the platform credential (don't persist it)
-**Whenever you need `PW_API_KEY` anywhere in the workflow's code, expose it once with
-a top-level `env:` block** so the platform injects it into every job/step's runtime
-env:
-```yaml
-env:
-  PW_API_KEY: ${PW_API_KEY}
-```
-This is the canonical way (`hermes-agent`, `wait_for_endpoint`, every Kubernetes YAML). Still keep
-the key OUT of `inputs.sh`: standard preprocessing writes
-`env | grep '^PW_' | grep -v 'PW_API_KEY'` deliberately, and a long-running service
-process inherits the key directly anyway (verified via `/proc/<pid>/environ`), so a
-service can use it as the platform bearer token — `export OPENAI_API_KEY="${PW_API_KEY}"`
-— with no org secret. Expose it via the top-level `env:` block, read it from the
-runtime env, and never persist it to `inputs.sh`.
+### `PW_API_KEY` at runtime
+The run's key is in every step's environment and dies with the run; which credential
+a service calls `pw` with afterwards, and how a key the user hands the workflow is
+carried: [pw-auth.md](pw-auth.md).
 
 ### Chat surface: `--openai` endpoints (don't hand-roll a chat UI)
 Expose an OpenAI-compatible server (`GET /v1/models`, `POST /v1/chat/completions`) with

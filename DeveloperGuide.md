@@ -52,6 +52,10 @@ unclear or behaves differently:
 [actions](https://parallelworks.com/docs/run/workflows/building-workflows/actions)) ·
 [endpoint sessions](https://parallelworks.com/docs/run/sessions/endpoints) ·
 [`pw endpoints` CLI](https://parallelworks.com/docs/cli/pw/endpoints).
+An app that signs its users in with their ACTIVATE account (OIDC): the recipe and the
+proxy constraints are in
+[references/oidc-sign-in.md](.claude/skills/activate-workflows/references/oidc-sign-in.md);
+`workflows/openproject` is the worked example.
 
 **Develop on the target machine first.** Pick the resource (`pw cluster ls`, it must be
 `active`), run the program there by hand (`pw ssh <resource>`) until it starts from a
@@ -140,6 +144,12 @@ Requirements:
   `screen` session, a docker container, an app that daemonizes and re-parents to PID 1
   (RStudio's `rsession`). The submitter runs it on cancel. A service with nothing of
   the kind needs none (`webshell` writes one only when it attaches to `screen`).
+- **The run's `PW_API_KEY` dies with the run.** A service that only serves needs
+  nothing more; one that keeps calling `pw` after the run completes takes a credential
+  that outlives it: `unset PW_API_KEY` on an existing cluster, a personal API key on a
+  cloud cluster
+  ([references/pw-auth.md](.claude/skills/activate-workflows/references/pw-auth.md);
+  `workflows/hpc_status/app/start-template.sh` decides at run time).
 - **A page the workflow draws itself looks like the platform.** Vendor the theme
   contract of [`@parallelworks/ui`](https://github.com/parallelworks/foundation) with
   `bash tools/ui/sync-theme.sh workflows/my-workflow/app/web` (the `--theme-*` tokens
@@ -312,7 +322,9 @@ Everything a run did is in its job dir on the execution node:
 - **A registered workflow ignoring your defaults** — the registration pins one YAML
   path (`pw workflows get <name>` → `remote.yaml`); if it points at the wrong variant,
   the form (and its defaults) are the wrong variant's.
-- **"Authentication has expired"** — `pw` tokens lapse; re-run `pw auth`.
+- **"Authentication has expired"** — `pw` tokens lapse; re-run `pw auth`. From a
+  service after its run completed: the run's `PW_API_KEY` was revoked with the run
+  (section 2).
 
 ## Appendix: converting an older workflow
 

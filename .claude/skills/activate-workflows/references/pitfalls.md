@@ -118,6 +118,12 @@
   `default: ''` on the input. `if: ${{ inputs.x != null }}` (or `!= undefined`) is
   false when unset and true when set: that is the test for "commands were given".
 
+- **An input path the form does not declare renders empty, silently** (verified
+  2026-10-28, run summary-poodle): `${{ inputs.resource.ip }}` in a form whose resource
+  lives under `inputs.head` became `case "" in` and the step carried on; `--dry-run` does
+  not catch it. When a `case` or `if` on an input never matches, read the rendered
+  `logs/<job>/step_N/script-unstable.sh` for the empty value.
+
 ## Jobs, outputs, matrix and retries
 
 - **A matrix over a computed list fails at submission** (`Could not expand matrix

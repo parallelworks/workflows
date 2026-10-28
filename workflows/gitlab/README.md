@@ -23,7 +23,9 @@ sign-in page answers; the service outlives the run until
   and 4 GB of RAM free for GitLab (8 GB recommended). GitLab's Linux package runs as root
   with its own init system, which is why there is no Singularity runtime.
 - A platform with session subdomains (GitLab serves at the root of its address).
-- `sbatch`, `squeue` and `scancel` on the service host for the SLURM runner.
+- For the SLURM runner: `sbatch`, `squeue`, `scancel` and `sacct` on the service host, and
+  SLURM accounting on (Jacamar reads every job's final state from `sacct`; the
+  controller refuses the runner on a cluster without `AccountingStorageType`).
 
 ## Signing in
 

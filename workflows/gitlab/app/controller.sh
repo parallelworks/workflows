@@ -75,12 +75,21 @@ if [ "${runners_shell}" = "true" ] || [ "${runners_slurm}" = "true" ]; then
 fi
 
 if [ "${runners_slurm}" = "true" ]; then
-    for tool in sbatch squeue scancel; do
+    for tool in sbatch squeue scancel sacct; do
         if ! command -v ${tool} >/dev/null 2>&1; then
             echo "::error title=Error::The SLURM runner needs ${tool} on $(hostname); it is not on the PATH"
             exit 1
         fi
     done
+    # Jacamar reads a job's final state from sacct, which answers only with
+    # accounting storage configured
+    accounting=$(scontrol show config 2>/dev/null | awk -F'= *' '/^AccountingStorageType/ { print $2 }')
+    case "${accounting}" in
+        ""|"(null)"|*none*)
+            echo "::error title=Error::The SLURM runner needs SLURM accounting (sacct), which this cluster has off (AccountingStorageType=${accounting:-unset}): Jacamar CI reads every job's final state from it. Launch without the SLURM runner"
+            exit 1
+            ;;
+    esac
     jacamar_dir="${service_parent_install_dir}/jacamar-ci/${JACAMAR_VERSION}"
     jacamar_bin="${jacamar_dir}/jacamar"
     if ! [ -x "${jacamar_bin}" ] || ! "${jacamar_bin}" --version >/dev/null 2>&1; then

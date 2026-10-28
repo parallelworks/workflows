@@ -109,8 +109,22 @@ mechanics are [../activate-platform.md](../activate-platform.md) §10, the OIDC 
   `["--no-auth", "cleanup", "--configuration", "<jacamar.toml>"]`. `jacamar-auth` is
   the privileged wrapper (setuid or sudo downscoping) for a shared runner; an
   unprivileged per-user runner does not need it.
-- `jacamar.toml` is two lines, `[general] executor = "slurm"` and `data_dir = <a
-  directory the user owns, mode 0700 enforced>`. A job's `SCHEDULER_PARAMETERS`
-  variable carries the `sbatch` options (`--nodes=1 --time=00:10:00`); `-o`, `-e`,
-  `-J` and `--wait` are Jacamar's. Only `before_script` + `script` run in the batch
-  job; sources, artifacts and `after_script` run on the runner's host.
+- `jacamar.toml`: `[general] executor = "slurm"`, `data_dir = <a directory the user
+  owns, mode 0700 enforced>` and **`gitlab_server = "http://127.0.0.1:<port>"`**:
+  Jacamar verifies the job's id token against GitLab's JWKS, fetched by default from
+  the `CI_SERVER_URL` of the job response, the public endpoint, where the proxy
+  answers the sign-in page (`unable to retrieve key from JWKS endpoint: failed to
+  decode response, invalid character '<'`). Every job also needs the token itself,
+  or `prepare_executor` fails with "No id_token found on CI_JOB_JWT variable": a
+  `default: id_tokens: CI_JOB_JWT: aud: $CI_SERVER_URL` block at the top of
+  `.gitlab-ci.yml` covers the project (verified: GitLab 19.5 accepts the variable as
+  `aud`, Jacamar accepted the token). A job's `SCHEDULER_PARAMETERS` variable carries
+  the `sbatch` options (`--nodes=1 --time=00:10:00`); `-o`, `-e`, `-J` and `--wait`
+  are Jacamar's. Only `before_script` + `script` run in the batch job (`sbatch
+  --wait`, output tailed from `slurm-ci-<job>.out`); sources, artifacts and
+  `after_script` run on the runner's host.
+- **Jacamar needs SLURM accounting.** After the batch job ends it reads the state
+  with `sacct`; on a cluster without `AccountingStorageType` the job's script runs
+  to the end and the CI job still fails with `unable to obtained output via sacct:
+  Slurm accounting storage is disabled` (the lab GPU box, 2026-10-28). No option
+  turns this off; the controller refuses the SLURM runner there.

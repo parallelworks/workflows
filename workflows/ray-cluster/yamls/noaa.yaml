@@ -14,6 +14,7 @@ jobs:
           branch: canary
           sparse_checkout:
             - workflows/ray-cluster/app
+            - tools/utils
       - name: Create Inputs
         run: |
           set -x
@@ -42,14 +43,7 @@ jobs:
           # NOAA home directories are small: Ray goes to the cluster's shared software tree
           # if this account can write there. Probe by creating the directory rather than
           # reading mode bits: the trees are group- or ACL-writable and list as root-owned.
-          case "${{ inputs.head.resource.ip }}" in
-            hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
-            mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
-            ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
-            gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
-            an[0-9]*.princeton.rdhpcs.noaa.gov) shared=/app/pw ;;              # PPAN
-            *) shared="" ;;                                                    # cloud clusters
-          esac
+          shared=$(bash tools/utils/shared-software-dir.sh "${{ inputs.head.resource.ip }}") || exit 1
           if [ -n "${shared}" ] && mkdir -p "${shared}/.uv" 2>/dev/null; then
             echo "::notice title=Install Directory::Using Install Directory: ${shared}"
             echo "export RAY_SOFTWARE_DIR=\"${shared}\"" >> inputs.sh

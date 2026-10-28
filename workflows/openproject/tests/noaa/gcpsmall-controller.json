@@ -1,0 +1,22 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "warm_marker": "${HOME}/pw/containers/openproject.sif",
+    "leftover_patterns": [
+      "postgres -D",
+      "puma",
+      "good_job",
+      "nginx: master",
+      "pw endpoints run"
+    ]
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "cluster": {
+    "scheduler": false
+  },
+  "service": {
+    "subdomain": "openproject-alvaro-sif",
+    "rundir": "${HOME}/openproject-sif-test"
+  },
+  "oidc": {}
+}

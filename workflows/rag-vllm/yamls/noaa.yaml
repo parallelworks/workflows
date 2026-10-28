@@ -19,14 +19,23 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/rag-vllm/app
+            - tools/utils
       - name: Set Up Install Parent Directory
         run: |
           set -o pipefail
           set -x
           # The images and the models can exceed the ${HOME} quota on the NOAA
           # systems, so an empty install directory resolves to the cluster's
-          # shared software directory. Its own job because preprocessing and the
-          # model downloads run concurrently and all of them read it.
+          # shared software directory. Its own job, with the checkout, because
+          # preprocessing and the model downloads run concurrently and all of them
+          # read it.
           install_dir="${{ inputs.service.parent_install_dir }}"
           if [ -n "${install_dir}" ] && [ "${install_dir}" != "undefined" ]; then
             echo "::notice title=Install Directory::Using Install Directory from the input form: ${install_dir}"
@@ -35,15 +44,11 @@ jobs:
               # Cloud clusters have no shared software directory
               install_dir="${HOME}/pw/software"
             else
-              case "${{ inputs.resource.ip }}" in
-                hfe[0-9]*.fairmont.rdhpcs.noaa.gov) install_dir=/contrib/pw ;; # Hera
-                mfe[0-9]*.fairmont.rdhpcs.noaa.gov) install_dir=/contrib/pw ;; # Mercury
-                ufe[0-9]*.fairmont.rdhpcs.noaa.gov) install_dir=/contrib/pw ;; # Ursa
-                gaea[0-9]*.ncrc.gov) install_dir=/usw/rdhpcs/software/pw ;; # Gaea
-                an[0-9]*.princeton.rdhpcs.noaa.gov) install_dir=/app/pw ;; # PPAN
-                # Unknown host: keep the old default of /contrib/pw when present
-                *) [ -d /contrib/pw ] && install_dir=/contrib/pw || install_dir="${HOME}/pw/software" ;;
-              esac
+              install_dir=$(bash tools/utils/shared-software-dir.sh "${{ inputs.resource.ip }}") || exit 1
+              # Unknown host: keep the old default of /contrib/pw when present
+              if [ -z "${install_dir}" ]; then
+                [ -d /contrib/pw ] && install_dir=/contrib/pw || install_dir="${HOME}/pw/software"
+              fi
             fi
             echo "::notice title=Install Directory::Using Install Directory: ${install_dir}"
           fi
@@ -55,13 +60,6 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      - name: Checkout
-        uses: parallelworks/checkout
-        with:
-          repo: https://github.com/parallelworks/workflows.git
-          branch: canary
-          sparse_checkout:
-            - workflows/rag-vllm/app
       - name: Create Inputs
         run: |
           set -x

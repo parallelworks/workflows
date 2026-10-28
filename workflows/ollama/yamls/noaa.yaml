@@ -15,6 +15,7 @@ jobs:
           sparse_checkout:
             - workflows/ollama/${{ inputs.service.name }}
             - tools/oras
+            - tools/utils
       - name: Create Inputs
         run: |
           set -x
@@ -54,15 +55,11 @@ jobs:
             # Cloud clusters have no shared software directory
             PROJECTS_HOME="${HOME}/pw"
           else
-            case "${{ inputs.resource.ip }}" in
-              hfe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Hera
-              mfe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Mercury
-              ufe[0-9]*.fairmont.rdhpcs.noaa.gov) PROJECTS_HOME=/contrib/pw ;; # Ursa
-              gaea[0-9]*.ncrc.gov) PROJECTS_HOME=/usw/rdhpcs/software/pw ;; # Gaea
-              an[0-9]*.princeton.rdhpcs.noaa.gov) PROJECTS_HOME=/app/pw ;; # PPAN
-              # Unknown host: keep the old default of /contrib/pw when present
-              *) [ -d /contrib/pw ] && PROJECTS_HOME=/contrib/pw || PROJECTS_HOME="${HOME}/pw" ;;
-            esac
+            PROJECTS_HOME=$(bash tools/utils/shared-software-dir.sh "${{ inputs.resource.ip }}") || exit 1
+            # Unknown host: keep the old default of /contrib/pw when present
+            if [ -z "${PROJECTS_HOME}" ]; then
+              [ -d /contrib/pw ] && PROJECTS_HOME=/contrib/pw || PROJECTS_HOME="${HOME}/pw"
+            fi
           fi
           echo "export PROJECTS_HOME=\"${PROJECTS_HOME}\"" >> inputs.sh
           # Name the shared store whether or not this account can write it: an image

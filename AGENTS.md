@@ -59,7 +59,9 @@ workflows/probe/             # PROBE: runs a platform's workflow tests (definiti
                              # app/web, the dashboards' page in the platform's look
 tools/oras, tools/utils      # shared runtime tools, referenced as tools/... from run dirs
                              # (tools/utils/{miniforge,prepare-env}.sh: conda installs + env files;
-                             # tools/utils/check-params.sh: the design-parameters check)
+                             # tools/utils/check-params.sh: the design-parameters check;
+                             # tools/utils/shared-software-dir.sh: NOAA login host -> the
+                             # cluster's shared software directory, the one host table)
 tools/tests/                 # the test runner (run-workflow-test.py) and its README
 tools/ui/                    # sync-theme.sh: vendors the platform's theme contract (@parallelworks/ui
                              # tokens + Geist fonts) into a workflow app's web directory

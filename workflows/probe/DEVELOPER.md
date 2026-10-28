@@ -222,14 +222,20 @@ of applying the form's default, so every `run:` step applies the defaults of the
 
 **Credentials.** Every step of a run has `PW_API_KEY`, the run's token, and that token
 is rejected as soon as the run completes (verified by testing a stored run token before
-and after completion). On a cloud cluster the node's own `pw` has no user context (an existing cluster's login node has one: `unset PW_API_KEY` would use it), and
-secret user variables are not readable from a run. The dashboards outlive their run, so
-`general.yaml` takes an API key as a `password` input and carries it in its top-level
-`env` block as `PROBE_API_KEY`, which reaches every step, including the script that
-`script_submitter` launches (`PW_API_KEY` itself cannot be overridden: the platform
-injects the run's token). Each start script exports it as `PW_API_KEY`, so the key lives
-in the environment of `pw endpoints run`, `probe serve` and the runners it spawns, and
-nowhere on disk.
+and after completion). The user workspace and a cluster the ACTIVATE agent connects
+(`existing`, `managed-cluster`) are signed in as the user on their own; a cloud cluster's
+node has no user context, and secret user variables are not readable from a run. The
+dashboards outlive their run, so `general.yaml` runs them on a credential that does. The
+optional `api_key` input travels in the top-level `env` block as `PROBE_API_KEY`, which
+reaches every step, including the script that `script_submitter` launches
+(`PW_API_KEY` itself cannot be overridden: the platform injects the run's token). The
+setup step decides before anything is submitted and writes the choice into the start
+scripts: a key given must authenticate (`PW_API_KEY=<key> pw auth whoami`) and the
+scripts export it as `PW_API_KEY`; without one the host's own sign-in must
+(`env -u PW_API_KEY pw auth whoami`) and the scripts `unset PW_API_KEY` so it takes over;
+neither working ends the run with an error. The scripts read `${PROBE_API_KEY}` at run
+time, so the key lives in the environment of `pw endpoints run`, `probe serve` and the
+runners it spawns, and nowhere on disk.
 
 Like every other input, the platform keeps it in the run's record (`pw workflows runs
 view -o json` shows it in `inputs`, in plain text as of September 2026) and renders it
@@ -267,7 +273,11 @@ canary) through `general_run_tests.yaml`; all of them read and write the product
 results bucket. The `gcpsmall-local.json` test beside each does the same with the
 results in `${HOME}/pw/probe/results` on gcpsmall (`results.location: local`). The
 dashboards tests take their API key from the environment at launch (`_test.secrets`:
-`PROBE_API_KEY`), so the key is never in the test file:
+`PROBE_API_KEY`), so the key is never in the test file. `tests/general/labcluster.json`,
+`a30gpuserver.json` and `workspace.json` start the dashboards without a key on a managed
+cluster, an existing cluster (the same machine, two resource types) and the user
+workspace, with the results on the host, and `gcpsmall-no-key.json` is the failure path:
+a cloud cluster without a key ends the run at setup.
 
 ```bash
 PROBE_API_KEY=<key> python3 tools/tests/run-workflow-test.py workflows/probe/tests/general/gcpsmall.json

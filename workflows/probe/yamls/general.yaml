@@ -8,9 +8,12 @@
 # the results store, a bucket or a directory on the host, is the ground truth.
 #
 # The run's own PW_API_KEY stops working when the run completes and cannot be
-# overridden, so the dashboards run with the API key given as input: the env
-# block carries it into every step, including the script the submitter
-# launches, and each start script exports it as PW_API_KEY.
+# overridden, so the dashboards run on a credential that outlives it: the API
+# key given as input (the env block carries it into every step, including the
+# script the submitter launches, and the start script exports it as
+# PW_API_KEY) or, without one, the host's own pw sign-in, which the user
+# workspace and agent-connected clusters have (the start script unsets the
+# run's key). Setup checks the credential before anything is submitted.
 permissions:
   - '*'
 env:
@@ -99,9 +102,20 @@ jobs:
           case "${TESTS_BRANCH}" in ''|undefined) TESTS_BRANCH=main ;; esac
           TESTS_DIR="${{ inputs.tests.directory }}"
           case "${TESTS_DIR}" in ''|undefined) TESTS_DIR=tests ;; esac
-          case "${PROBE_API_KEY}" in
-            ''|undefined) echo "::error::An API key is required: the dashboards use it after this run completes"; exit 1 ;;
-          esac
+          export PATH=$HOME/pw:$PATH
+          case "${PROBE_API_KEY}" in ''|undefined) PROBE_API_KEY="" ;; esac
+          if [ -n "${PROBE_API_KEY}" ]; then
+            if ! PW_API_KEY="${PROBE_API_KEY}" pw auth whoami >/dev/null 2>&1; then
+              echo "::error::The API key given does not authenticate on $(hostname)"; exit 1
+            fi
+            AUTH_LINE='export PW_API_KEY="${PROBE_API_KEY}"'
+            echo "::notice::The dashboards authenticate with the API key given, which outlives this run"
+          elif env -u PW_API_KEY pw auth whoami >/dev/null 2>&1; then
+            AUTH_LINE='unset PW_API_KEY'
+            echo "::notice::The dashboards authenticate with the pw sign-in of $(hostname), which outlives this run"
+          else
+            echo "::error::No credential outlives this run on $(hostname): give an API key, or run pw auth there"; exit 1
+          fi
           for kind in dashboard admin; do
             mkdir -p ${kind}
             if [ "${kind}" = admin ]; then
@@ -117,13 +131,10 @@ jobs:
           export PATH=\$HOME/pw:\$PATH
           export PYTHONPATH=${PW_PARENT_JOB_DIR}/workflows/probe/app
           export PW_PLATFORM_HOST="${PW_PLATFORM_HOST}" PW_USER="${PW_USER}"
-          # The API key from the workflow input, carried here by the workflow's env block;
-          # the run's own PW_API_KEY stops working when the run completes.
-          export PW_API_KEY="\${PROBE_API_KEY}"
-          if [ -z "\${PW_API_KEY}" ] || [ "\${PW_API_KEY}" = undefined ]; then
-            echo "::error title=Error::No API key for ${name}"
-            exit 1
-          fi
+          # The run's own PW_API_KEY stops working when the run completes: the key from
+          # the workflow input, carried here by the workflow's env block, or the host's
+          # own pw sign-in serves the dashboard, as decided at setup.
+          ${AUTH_LINE}
           echo "pw endpoints delete ${name} || true" > cancel.sh
           chmod +x cancel.sh
           cd ${PW_PARENT_JOB_DIR}
@@ -282,12 +293,20 @@ jobs:
       api_key:
         type: password
         label: API key
-        description: Used by the dashboards after the run to refresh results and start runs.
+        optional: true
+        description: Needed on a cloud cluster; leave it empty on the user workspace or an agent-connected cluster, which sign in on their own.
         tooltip: |
-          A platform API key of yours (account settings, API keys). The dashboards
-          use it after this run completes: Refresh pulls the bucket with it and the
-          admin dashboard starts and cancels runs with it. It travels through the
-          workflow's environment and stays in the dashboard processes' environment.
+          The dashboards keep calling the platform after this run completes, when
+          the run's own credential stops working: Refresh pulls the bucket and the
+          admin dashboard starts and cancels runs. The user workspace and a cluster
+          the ACTIVATE agent connects (existing or managed) are signed in as you,
+          and the dashboards use that sign-in when this field is empty. A cloud
+          cluster has no sign-in of its own and needs a platform API key of yours
+          (account settings, API keys). A key given on any host is used instead of
+          the host's sign-in, for example on a cluster whose agent is older than
+          v7.102.0. The key travels through the workflow's environment and stays in
+          the dashboard processes' environment. The run stops before starting
+          anything when neither the key nor the host's sign-in works.
       tests:
         type: group
         label: Test definitions

@@ -270,6 +270,18 @@
 - **`workspace` resolves with empty `ip`** → its SSH steps run on the workspace node
   (a *different* host than a cluster login node). Match your debugging location to
   the resource you chose.
+- **The workspace's job directory is `/tmp/runs/<run-slug>/`**, not `~/pw/jobs/<slug>/`
+  (verified 2026-10-28, probe runs big-husky and cuddly-bee on `pw-user-alvaro`): look
+  there for `inputs.sh`, the generated scripts and `run.*.out`; `~/pw/jobs` holds only
+  older runs. `pw ssh workspace` reaches it from a laptop.
+- **A workspace job can stick in `canceling` after `parallelworks/cancel-jobs`** (seen
+  once, 2026-10-28, probe run big-husky): two wait jobs released their two runner jobs
+  one second apart; the first runner reached `canceled`, the second stayed `canceling`
+  and its wait job never recorded its last step, although the log shows `Canceled
+  successfully!`, both endpoints were live and no process was left. The run sat in
+  `canceling` and `pw workflows runs cancel` answers `run_not_cancelable`. The same test
+  passed in 16 s right after (cuddly-bee) and passes every time on clusters, so treat it
+  as a platform race on the workspace executor: rerun, and report the slug.
 - **Scheduled jobs run on a compute node** that may lack `${PW_PARENT_JOB_DIR}`; use
   paths relative to `rundir`. Cloud-burst nodes are slow to provision (**6+ min**
   observed; `idle~ → CF → RUNNING`, `POWERING_UP` while booting) — watch with

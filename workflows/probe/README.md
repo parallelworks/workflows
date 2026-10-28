@@ -38,7 +38,7 @@ runs on that host; a bucket is the only store that runs on different hosts share
 | Input | Meaning |
 |---|---|
 | Where to run | The user workspace or a cluster login node with the `pw` CLI, `python3` and `git`. Tests started from the admin dashboard are launched from here. |
-| API key | A platform API key of yours. The run's own credential stops working when the run completes, so the dashboards use this key afterwards. |
+| API key | Needed on a cloud cluster: the run's own credential stops working when the run completes, so the dashboards use this key afterwards. The user workspace and a cluster the ACTIVATE agent connects sign in on their own; leave the field empty there, or give a key to use instead. |
 
 ## Dashboards
 

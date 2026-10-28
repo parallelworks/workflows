@@ -65,7 +65,13 @@ its own, `PW_API_KEY=<key> pw auth whoami` whether a given key works;
 ## A key the user hands the workflow
 
 A `password` input, carried under another name in the top-level `env:` block and read
-from the runtime env (`workflows/probe/yamls/general.yaml`, `PROBE_API_KEY`). An app
+from the runtime env (`workflows/probe/yamls/general.yaml`, `PROBE_API_KEY`). Make it
+optional and fall back to the host's own sign-in when it is empty, the way `hpc_status`
+does: probe's setup step checks the key with `PW_API_KEY=<key> pw auth whoami`, or the
+sign-in with `env -u PW_API_KEY pw auth whoami`, fails the run when neither works, and
+writes `export PW_API_KEY="${PROBE_API_KEY}"` or `unset PW_API_KEY` into the start script
+(verified 2026-10-28 on a cloud cluster, a managed cluster, an existing cluster and the
+workspace). An app
 that needs the key as a string in its own config takes it on every cluster type
 (`workflows/librechat`, `ACTIVATE_API_KEY`: checked with `pw auth whoami` before the
 controller writes it into LibreChat's `.env`). Keep `set -x` off around it, or the

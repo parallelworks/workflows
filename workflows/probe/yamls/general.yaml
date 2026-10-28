@@ -8,12 +8,13 @@
 # the results store, a bucket or a directory on the host, is the ground truth.
 #
 # The run's own PW_API_KEY stops working when the run completes and cannot be
-# overridden, so the dashboards run on a credential that outlives it: the API
-# key given as input (the env block carries it into every step, including the
-# script the submitter launches, and the start script exports it as
-# PW_API_KEY) or, without one, the host's own pw sign-in, which the user
-# workspace and agent-connected clusters have (the start script unsets the
-# run's key). Setup checks the credential before anything is submitted.
+# overridden, so the dashboards run on a credential that outlives it: on a
+# cloud cluster the API key given as input (the env block carries it into
+# every step, including the script the submitter launches, and the start
+# script exports it as PW_API_KEY); on the user workspace and the clusters the
+# agent connects, which are signed in as the user, the host's own pw sign-in
+# (the input is hidden there and the start script unsets the run's key).
+# Setup checks the credential before anything is submitted.
 permissions:
   - '*'
 env:
@@ -293,20 +294,10 @@ jobs:
       api_key:
         type: password
         label: API key
-        optional: true
-        description: Needed on a cloud cluster; leave it empty on the user workspace or an agent-connected cluster, which sign in on their own.
-        tooltip: |
-          The dashboards keep calling the platform after this run completes, when
-          the run's own credential stops working: Refresh pulls the bucket and the
-          admin dashboard starts and cancels runs. The user workspace and a cluster
-          the ACTIVATE agent connects (existing or managed) are signed in as you,
-          and the dashboards use that sign-in when this field is empty. A cloud
-          cluster has no sign-in of its own and needs a platform API key of yours
-          (account settings, API keys). A key given on any host is used instead of
-          the host's sign-in, for example on a cluster whose agent is older than
-          v7.102.0. The key travels through the workflow's environment and stays in
-          the dashboard processes' environment. The run stops before starting
-          anything when neither the key nor the host's sign-in works.
+        description: Required on a cloud cluster; the dashboards use it after this run completes.
+        tooltip: A platform API key of yours (account settings, API keys).
+        hidden: ${{ inputs.resource.provider == 'existing' || inputs.resource.provider == 'managed-cluster' || inputs.resource.name == 'user-workspace' }}
+        ignore: ${{ .hidden }}
       tests:
         type: group
         label: Test definitions

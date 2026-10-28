@@ -226,8 +226,10 @@ and after completion). The user workspace and a cluster the ACTIVATE agent conne
 (`existing`, `managed-cluster`) are signed in as the user on their own; a cloud cluster's
 node has no user context, and secret user variables are not readable from a run. The
 dashboards outlive their run, so `general.yaml` runs them on a credential that does. The
-optional `api_key` input travels in the top-level `env` block as `PROBE_API_KEY`, which
-reaches every step, including the script that `script_submitter` launches
+`api_key` input is hidden and ignored on those hosts (`inputs.resource.provider` is
+`existing` or `managed-cluster`, or `inputs.resource.name` is `user-workspace`) and
+required on a cloud cluster; it travels in the top-level `env` block as `PROBE_API_KEY`,
+which reaches every step, including the script that `script_submitter` launches
 (`PW_API_KEY` itself cannot be overridden: the platform injects the run's token). The
 setup step decides before anything is submitted and writes the choice into the start
 scripts: a key given must authenticate (`PW_API_KEY=<key> pw auth whoami`) and the
@@ -276,8 +278,8 @@ dashboards tests take their API key from the environment at launch (`_test.secre
 `PROBE_API_KEY`), so the key is never in the test file. `tests/general/labcluster.json`,
 `a30gpuserver.json` and `workspace.json` start the dashboards without a key on a managed
 cluster, an existing cluster (the same machine, two resource types) and the user
-workspace, with the results on the host, and `gcpsmall-no-key.json` is the failure path:
-a cloud cluster without a key ends the run at setup.
+workspace, with the results on the host; on a cloud cluster the form refuses a launch
+without a key.
 
 ```bash
 PROBE_API_KEY=<key> python3 tools/tests/run-workflow-test.py workflows/probe/tests/general/gcpsmall.json

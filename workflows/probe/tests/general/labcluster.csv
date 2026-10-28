@@ -1,3 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-28T09:08:07Z,,pass,ok,9de6f2c,162207a,eef523b,99a330e-dirty,4ca7631,probe,alvaro,living-locust,36,
 2026-10-28T09:10:17Z,,pass,kept,9de6f2c,162207a,eef523b,99a330e-dirty,4ca7631,probe,alvaro,picked-mongoose,36,
+2026-10-28T09:33:29Z,,pass,ok,9de6f2c,162207a,eef523b,7846c0d-dirty,4ca7631,probe,alvaro,arriving-ray,36,

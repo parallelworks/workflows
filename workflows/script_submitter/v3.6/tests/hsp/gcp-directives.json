@@ -1,0 +1,22 @@
+{
+  "_test": {
+    "timeout_s": 1500,
+    "endpoint": false,
+    "scheduler": true
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "shebang": "#!/bin/bash",
+  "rundir": "",
+  "use_existing_script": false,
+  "script": "echo \"$(date) Running in directory ${PWD} on ${HOSTNAME}\"\necho \"nodes=${SLURM_JOB_NUM_NODES} tasks=${SLURM_NTASKS} cpus_per_task=${SLURM_CPUS_PER_TASK}\"\n",
+  "define_cleanup_script": false,
+  "scheduler": true,
+  "use_scheduler_agent": false,
+  "submit_and_exit": false,
+  "slurm": {
+    "is_enabled": true,
+    "partition": "compute",
+    "time": "00:30:00",
+    "scheduler_directives": "##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems\n--nodes=2\n#SBATCH --ntasks-per-node=1\n\n  --cpus-per-task=1  \n"
+  }
+}

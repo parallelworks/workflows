@@ -14,6 +14,10 @@ The workflow auto-detects whether the selected resource is a SLURM or PBS cluste
 
 3. **Run directly on the controller**: Launch the script on the login/controller node via SSH. The script is submitted detached and monitored until it finishes.
 
+### Scheduler directives
+
+`slurm.scheduler_directives` and `pbs.scheduler_directives` take one directive per line. Write each with its `#SBATCH` / `#PBS` prefix, as in a batch script. A line without the prefix gets it added, blank lines are dropped, and a line that already starts with `#` (a prefixed directive or a comment) is kept as typed.
+
 ## Monitoring & Cleanup
 
 For PBS and SLURM direct submissions, the workflow continuously monitors job status until completion or until the job is no longer found in the queue. If the workflow is canceled, the cleanup logic automatically terminates the remote job (`qdel` or `scancel`) to prevent orphaned workloads.

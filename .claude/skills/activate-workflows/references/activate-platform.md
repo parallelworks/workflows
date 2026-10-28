@@ -531,9 +531,11 @@ compute node. The login-node path (`scheduler:false`) is the fast, reliable chec
 use SLURM when you genuinely need a compute node.
 
 `script_submitter` builds the sbatch script as (verified): shebang → `#SBATCH` headers
-(`--job-name`, `--time`, `--chdir=<rundir>`, `-o/-e → run.<slug>.out`) → `hostname >
-HOSTNAME` → your script body. `--chdir` is why your script's cwd is `rundir` on the
-compute node (relative paths work). A scheduled batch run's job dir adds `headers.sh`,
+(`--job-name`, `--time`, `--chdir=<rundir>`, `-o/-e → run.<slug>.out`, then the form's
+`scheduler_directives`, one per line, the `#SBATCH`/`#PBS` prefix added where a line has
+none; verified 2026-10-27) → `hostname > HOSTNAME` → your script body. `--chdir` is why
+your script's cwd is `rundir` on the compute node (relative paths work). A scheduled
+batch run's job dir adds `headers.sh`,
 `run.sh` (the sbatch script), and `run.<slug>.out` (job stdout/stderr) alongside your
 own files and outputs. Since the workflow exec node is the cluster **login node**, watch it
 live there with `squeue` / `sinfo` / `sacct`. On cancel, `script_submitter` runs

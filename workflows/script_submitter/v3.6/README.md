@@ -16,7 +16,7 @@ The workflow auto-detects whether the selected resource is a SLURM or PBS cluste
 
 ### Scheduler directives
 
-`slurm.scheduler_directives` and `pbs.scheduler_directives` take one directive per line, with or without the `#SBATCH` / `#PBS` prefix: the submitter adds the prefix to a line that has none, drops blank lines and keeps a line that already starts with `#` (a prefixed directive or a comment) as typed. They follow the headers the submitter writes itself, so a repeated option (`--nodes`, `--time`) takes the user's value; `emed` and `noaa` append a few site-specific headers after them.
+`slurm.scheduler_directives` and `pbs.scheduler_directives` take one directive per line. Write each with its `#SBATCH` / `#PBS` prefix, as in a batch script. A line without the prefix gets it added, blank lines are dropped, and a line that already starts with `#` (a prefixed directive or a comment) is kept as typed.
 
 ## Monitoring & Cleanup
 

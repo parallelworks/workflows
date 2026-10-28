@@ -1,18 +1,41 @@
-# GitLab (Linux package in Docker) behind an endpoint, with CI runners
+# GitLab (Linux package image, Docker or a fakeroot Apptainer instance) behind an endpoint, with CI runners
 
 What building `workflows/gitlab` taught (2026-10-28, GitLab 19.5.1-ee, gitlab-runner
-19.5.1, Jacamar CI 0.31.0, on a cloud node with Docker through `sudo`). The endpoint
-mechanics are [../activate-platform.md](../activate-platform.md) §10, the OIDC recipe
-[../oidc-sign-in.md](../oidc-sign-in.md); this file is what GitLab adds to them.
+19.5.1, Jacamar CI 0.31.0; Docker through `sudo` on a lab node and on gcpsmall, apptainer
+1.5.5 on gcpsmall). The endpoint mechanics are [../activate-platform.md](../activate-platform.md)
+§10, the OIDC recipe [../oidc-sign-in.md](../oidc-sign-in.md); this file is what GitLab
+adds to them. The two runtimes share `lib/` (controller checks and runner tools, the
+start template's first half, the launcher's GitLab logic); each runtime's files only
+start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitlab_logs`.
 
 ## Running it
 
-- **Docker only.** The Linux package (`gitlab/gitlab-ee`, `gitlab/gitlab-ce`) runs as
-  root with runit as PID 1 and bundles Puma, Sidekiq, Gitaly, PostgreSQL, Redis and
-  nginx; the image is 4.7 GB. No Singularity runtime: the `openproject-docker` pattern
-  (`docker run -d` in a launcher under `pw endpoints run`, `exec docker logs -f`,
-  `cancel.sh` with `docker rm -f`, `flock` on the run directory). A cold start answered
-  `/users/sign_in` in about 2.5 minutes on a 20-core node; later starts take about 2.
+- **The image needs root, not necessarily Docker.** The Linux package (`gitlab/gitlab-ee`,
+  `gitlab/gitlab-ce`) runs as root with runit as PID 1 and its services as eight accounts
+  (`git` 998, `gitlab-www`, `gitlab-psql`, ...), bundling Puma, Sidekiq, Gitaly,
+  PostgreSQL, Redis and nginx; the image is 4.7 GB, the SIF 1.8 GB. Two runtimes:
+  - **Docker** (`gitlab-docker/`): the `openproject-docker` pattern (`docker run -d` in a
+    launcher under `pw endpoints run`, `docker logs -f & wait` as the foreground,
+    `cancel.sh` with `docker rm -f`, `flock` on the run directory). A cold start answered
+    `/users/sign_in` in about 2.5 minutes on a 20-core node; later starts take about 2.
+  - **Singularity** (`gitlab-singularity/`, SIF `ghcr.io/parallelworks/gitlab:19.5.1-ee`
+    built from `gitlab.def`, the image unchanged): an Apptainer **instance** started with
+    `--fakeroot --writable-tmpfs --contain --cleanenv --uts --hostname <host>`, the three
+    volumes bound from the run directory plus `tmp/` (`chmod 1777`) as `/tmp`, the
+    snippet directory as `/etc/gitlab/activate` and a copy of `/assets/sshd_config` with
+    the form's port (`ListenAddress 127.0.0.1`) over the image's; then
+    `exec --cleanenv --pwd / instance://<name> /assets/init-container` (the image's
+    entrypoint; `/assets/gitlab.rb` already sets `manage_accounts['enable'] = false` and
+    `package['modify_kernel_parameters'] = false`) in the launcher's foreground. The
+    container shares the host's network, so `nginx['listen_port'] = $PORT` with
+    `nginx['listen_addresses'] = ['127.0.0.1']`. `GITLAB_OMNIBUS_CONFIG` goes in as
+    `APPTAINERENV_`/`SINGULARITYENV_` with `$`, backticks and backslashes escaped;
+    `GITLAB_SKIP_TAIL_LOGS=true` keeps the package's logs in `logs/` instead of the job
+    output. `gitlab_exec` is `exec instance://<name>`. A cold start answered in about
+    3.5 minutes on a 16-core node (FUSE mounts: squashfuse + fuse-overlayfs, no setuid).
+    What it needs and how it stops: pitfalls, "A root-only image runs under Apptainer as a
+    `--fakeroot` instance" (a subuid range for the user, a local filesystem, the 1777
+    `/tmp`, `gitlab-ctl stop` through `exec instance://` in `cancel.sh`).
 - **Configuration in one env line.** `GITLAB_OMNIBUS_CONFIG` is Ruby evaluated after
   `/etc/gitlab/gitlab.rb` at every start; a docker `--env-file` takes no newlines, so
   join the statements with `; `. It must contain `external_url 'https://<host>'`,

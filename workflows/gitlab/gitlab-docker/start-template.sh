@@ -16,6 +16,7 @@
 ################################################################################
 
 set -x
+set -o pipefail
 
 source "${PW_PARENT_JOB_DIR}/workflows/gitlab/lib/start.sh"
 
@@ -64,6 +65,7 @@ echo "::group::Starting GitLab"
 cat > launch-gitlab-${PW_JOB_ID}.sh <<'LAUNCHEOF'
 #!/bin/bash
 set -x
+set -o pipefail
 
 source "${gitlab_lib}/launcher.sh"
 gitlab_launcher_init

@@ -174,14 +174,14 @@ gitlab_write_omnibus_config() {
 # The first boot of a run directory runs the whole configuration (minutes);
 # later boots only reconfigure and migrate. The endpoint is already listed
 # (the host name had to be known before the container could start), so a boot
-# that fails must end this launcher, with the container's log, well inside
-# the wait job's budget. The sign-in page, probed without a forwarded protocol
+# that fails must end this launcher, with the container's log, before the wait
+# job's budget (1800 s) ends the run with a message that has none. The sign-in page, probed without a forwarded protocol
 # like the platform does, answers 200 only when the header fix is in place
 # (302 to itself otherwise)
 gitlab_wait_ready() {
     echo "Waiting for GitLab to answer on 127.0.0.1:${PORT}"
     local code="" i
-    for i in $(seq 1 360); do
+    for i in $(seq 1 300); do
         if ! gitlab_alive; then
             gitlab_logs
             fail "The GitLab container exited during start-up (log above)"
@@ -198,7 +198,7 @@ gitlab_wait_ready() {
     done
     if [ "${code}" != "200" ]; then
         gitlab_logs
-        fail "GitLab's sign-in page did not answer 200 within 30 minutes (last status: ${code:-none})"
+        fail "GitLab's sign-in page did not answer 200 within 25 minutes (last status: ${code:-none})"
     fi
     echo "::notice::GitLab is serving at ${public_url}"
 }

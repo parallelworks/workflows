@@ -1,8 +1,8 @@
 # GitLab
 
 Runs a self-hosted [GitLab](https://about.gitlab.com/) (repositories, merge requests,
-issues, CI/CD) on a cluster's node in Docker and serves it as a `pw` endpoint on a fixed
-subdomain. Users can sign in with their ACTIVATE account, and the workflow registers
+issues, CI/CD) on a cluster's node, from the official image under Singularity or Docker,
+and serves it as a `pw` endpoint on a fixed subdomain. Users can sign in with their ACTIVATE account, and the workflow registers
 CI/CD runners that run pipelines on the cluster: on the service host, and through the
 SLURM scheduler with [Jacamar CI](https://gitlab.com/ecp-ci/jacamar-ci).
 
@@ -12,17 +12,27 @@ form ──► preprocessing ──► start script ──► GitLab answers, �
           tools)             runners)       demo project created  runners run until you delete the endpoint
 ```
 
-The first start of a run directory takes three to five minutes (GitLab configures
-itself and creates its database); later starts about two. The run completes once the
+The first start of a run directory takes three to six minutes (GitLab configures
+itself and creates its database); later starts two to four. The run completes once the
 sign-in page answers and the runners are registered (until then the page answers 503
 to the platform's probe); the service outlives the run until
 `pw endpoints delete gitlab-<run-slug>`, which also stops the runners.
 
+## Two ways to run it
+
+| Run container using | What runs | Needs |
+|---|---|---|
+| **Singularity** (default) | The official image as a SIF, `ghcr.io/parallelworks/gitlab:19.5.1-ee`, as an Apptainer instance started with `--fakeroot`: the package's own init runs its services as the image's accounts, mapped onto your subuid range, so nothing runs as root on the host and no Docker daemon is needed | `apptainer`/`singularity` with a subuid/subgid range for your user on the service host (`grep $USER /etc/subuid`; an administrator adds one with `apptainer config fakeroot --add <user>`), a run directory on a filesystem local to that node (the login node's home on the cloud clusters; a compute node's is NFS, where the namespace cannot change file ownership), 1.8 GB for the image |
+| **Docker** | The official all-in-one image `gitlab/gitlab-ee:19.5.1-ee.0`, as root | Docker on the service host, directly or through `sudo`, 5 GB for the image |
+
+Both need about 4 GB of RAM free for GitLab (8 GB recommended) and keep everything in the
+**Run directory**. A run directory belongs to one runtime: Docker writes its `config/`,
+`data/` and `logs/` as root, Singularity with the ids of your fakeroot range, and each
+runtime refuses the other's directory.
+
 ## Requirements
 
-- Docker on the service host, directly or through `sudo`, with about 5 GB for the image
-  and 4 GB of RAM free for GitLab (8 GB recommended). GitLab's Linux package runs as root
-  with its own init system, which is why there is no Singularity runtime.
+- One of the two runtimes above on the service host.
 - A platform with session subdomains (GitLab serves at the root of its address).
 - For the SLURM runner: `sbatch`, `squeue`, `scancel` and `sacct` on the service host, and
   SLURM accounting on (Jacamar reads every job's final state from `sacct`; the
@@ -150,9 +160,10 @@ need no license.
 
 | Field | Default | Notes |
 |---|---|---|
+| Run container using | Singularity | See above |
 | Subdomain | `gitlab-<username>` | Decides the address, the clone URLs and the OIDC redirect URI. Reserve it with `pw subdomains reserve <label>` |
-| Run directory | `${HOME}/gitlab` | `config/`, `data/`, `logs/` (written as root by Docker), `runner/` (yours) and the generated secrets. One GitLab at a time |
-| GitLab image | `gitlab/gitlab-ee:19.5.1-ee.0` | Change the tag one minor version at a time on an existing run directory (GitLab's upgrade path) |
+| Run directory | `${HOME}/gitlab` | `config/`, `data/`, `logs/` (written by the container), `runner/` (yours) and the generated secrets. One GitLab at a time, one runtime per directory |
+| GitLab image | `gitlab/gitlab-ee:19.5.1-ee.0` | Docker only. Change the tag one minor version at a time on an existing run directory (GitLab's upgrade path) |
 | Root password | empty | Applied on the first start only; empty generates one into `<run directory>/.root_password` |
 | SSH port | `2222` | Loopback port of GitLab's SSH on the service host, shown in GitLab's SSH clone URLs |
 | GitLab license | empty | See above |
@@ -164,14 +175,33 @@ need no license.
 
 ## Teardown
 
-`pw endpoints delete gitlab-<run-slug>` stops the container and the runners (through
-the start script's cleanup, which `docker rm -f`s the container and kills the runner's
-session). The run directory keeps everything; its `config/`, `data/` and `logs/`
-belong to root, so removing it needs `sudo rm -rf`.
+`pw endpoints delete gitlab-<run-slug>` stops GitLab and the runners through the start
+script's cleanup: under Singularity a `gitlab-ctl stop` inside the instance and then the
+instance itself (`apptainer instance list` shows none left), under Docker a
+`docker rm -f`; the runner's session is killed either way. The run directory keeps
+everything. Its `config/`, `data/` and `logs/` belong to the container's accounts, so
+removing them is `sudo rm -rf` for a Docker directory and, for a Singularity one, a
+fakeroot shell of your own:
+
+```bash
+apptainer exec --fakeroot -B "$HOME/gitlab" ~/pw/software/containers/gitlab.sif rm -rf "$HOME/gitlab"/{config,data,logs}
+```
+
+## Building the Singularity image
+
+```bash
+cd workflows/gitlab/gitlab-singularity
+./build-container.sh        # the official gitlab/gitlab-ee image, nothing added (gitlab.def)
+tools/oras/oras push ghcr.io/parallelworks/gitlab:19.5.1-ee gitlab-19.5.1-ee.sif
+```
+
+New GitLab version: a new `From:` line in `gitlab.def`, a new `GITLAB_SIF_TAG` in
+`controller.sh`, a new tag on the registry. Keep the package public.
 
 ## On activate.hpc.mil
 
-Launch `yamls/hsp.yaml` on a cloud cluster whose node has Docker. The sessions domain
-is `pw.hsp.mil`, so the application is registered for
+Launch `yamls/hsp.yaml` on a cloud cluster: the Singularity runtime needs a subuid
+range for your user on its login node (`grep $USER /etc/subuid`), the Docker one needs
+Docker there. The sessions domain is `pw.hsp.mil`, so the application is registered for
 `https://<subdomain>.pw.hsp.mil/users/auth/openid_connect/callback` by an organization
 admin of that platform, and the subdomain reserved there.

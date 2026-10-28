@@ -528,6 +528,32 @@
   container even with `--cleanenv` and stay out of `ps`, but `$…`, backticks and
   backslashes are still expanded in them: escape those three (`sed 's/[\\$`]/\\&/g'`)
   and the value arrives verbatim, double quotes included.
+- **A root-only image (its own init, services as several accounts) runs under Apptainer
+  as a `--fakeroot` instance** (verified 2026-10-28, apptainer 1.5.5 without setuid,
+  `workflows/gitlab/gitlab-singularity`): `instance start --fakeroot --writable-tmpfs
+  --contain --cleanenv` (instances always get a PID namespace; `--pid` is not a flag of
+  `instance start`), then `exec --cleanenv --pwd / instance://<name> <entrypoint>` in the
+  launcher's foreground and `exec instance://<name> <admin command>` for anything the
+  setup needs inside (`gitlab-rails runner` took 72 s through FUSE, 40 s in Docker).
+  Conditions, all probed in the start template on the node that runs the service:
+  `/etc/subuid` must give the user a range (`awk 'NR > 1 { print $3 }' /proc/self/uid_map`
+  inside a `--fakeroot` exec, 65536 or more; the cloud clusters' login nodes have
+  `<user>:165536:131072`, their compute nodes nothing, and a fakeroot without a range maps
+  one id and every `chown` fails); the bound data directories must be on a local
+  filesystem (the chown of a mapped id reaches an NFS server as the user's own id and is
+  refused; compute nodes mount home over NFS); `/tmp` bound from the run directory must be
+  `chmod 1777` (Ruby's `Dir.tmpdir` rejected a 755 one: "could not find a temporary
+  directory", and the migrations died); writes to the image's own paths stayed under 6 MB,
+  so `--writable-tmpfs` was enough (fuse-overlayfs reported 32 GB free, not the 64 MB
+  `sessiondir max size`). A `TERM` to the host-side `apptainer exec` process ends it in a
+  second without reaching the script inside (the entrypoint's own `trap TERM` never ran),
+  so a graceful stop is an explicit `exec instance://<name> <stop command>` in `cancel.sh`
+  before `instance stop -F`, whose PID namespace kills the rest. Files the container
+  writes belong to mapped ids on the host (`166533` for the image's `git`), so a run
+  directory is removed from a `--fakeroot` shell, not with `rm` alone; a test's leftover
+  check counts processes whose mount namespace still binds the run directory
+  (`grep -l <rundir>/data /proc/[0-9]*/mountinfo | wc -l`), since `ps -u $USER` misses
+  the processes running as mapped ids.
 - **The session proxy rewrites every redirect to another host onto the session's own
   host** (verified 2026-10-20): an OIDC/OAuth sign-in or RP-initiated logout never reaches
   the identity provider. Intercept external 3xx in your own proxy and answer a hop page:

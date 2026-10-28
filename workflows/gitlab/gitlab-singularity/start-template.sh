@@ -20,6 +20,7 @@
 ################################################################################
 
 set -x
+set -o pipefail
 
 source "${PW_PARENT_JOB_DIR}/workflows/gitlab/lib/start.sh"
 
@@ -82,10 +83,14 @@ export instance_name="gitlab_${PW_RUN_SLUG}"
 # The instance outlives the endpoint's process tree: cancel.sh stops the
 # package's services (a TERM to the entrypoint's host-side process does not
 # reach the script inside), then the instance, whose PID namespace takes the
-# rest with it
+# rest with it. The submitter runs it over ssh, in a shell that has not loaded
+# the module this script may have
 cat >> cancel.sh <<CANCELEOF
+if ! command -v singularity >/dev/null 2>&1; then
+    module load apptainer 2>/dev/null || module load singularity 2>/dev/null
+fi
 if singularity instance list 2>/dev/null | awk '{ print \$1 }' | grep -qxF "${instance_name}"; then
-    timeout 90 singularity exec --cleanenv --pwd / instance://${instance_name} gitlab-ctl stop 2>/dev/null
+    timeout 30 singularity exec --cleanenv --pwd / instance://${instance_name} gitlab-ctl stop 2>/dev/null
     singularity instance stop -F ${instance_name} 2>/dev/null || true
 fi
 CANCELEOF
@@ -101,13 +106,31 @@ echo "::group::Starting GitLab"
 cat > launch-gitlab-${PW_JOB_ID}.sh <<'LAUNCHEOF'
 #!/bin/bash
 set -x
+set -o pipefail
 
 source "${gitlab_lib}/launcher.sh"
 gitlab_launcher_init
 gitlab_write_nginx_snippet
 # The container shares the host's network, so the bundled nginx listens on the
-# endpoint's own port and GitLab's sshd on the form's
-gitlab_write_omnibus_config "${PORT}" "nginx['listen_addresses'] = ['127.0.0.1']"
+# endpoint's own port and GitLab's sshd on the form's, and every other TCP
+# listener of the package (fixed loopback ports in the image, which Docker
+# isolates per container) is moved to a free port or turned off, so that two
+# GitLabs on one host do not collide: puma's port (workhorse reaches it over
+# its unix socket), the metrics of workhorse and gitaly, sidekiq's metrics and
+# health checks, nginx's status page (on every interface) and the Kubernetes
+# agent server
+free_port() {
+    python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
+}
+gitlab_write_omnibus_config "${PORT}" \
+    "nginx['listen_addresses'] = ['127.0.0.1']" \
+    "nginx['status']['enable'] = false" \
+    "puma['port'] = $(free_port)" \
+    "gitlab_workhorse['prometheus_listen_addr'] = '127.0.0.1:$(free_port)'" \
+    "gitaly['configuration'] = { prometheus_listen_addr: '127.0.0.1:$(free_port)' }" \
+    "sidekiq['metrics_enabled'] = false" \
+    "sidekiq['health_checks_enabled'] = false" \
+    "gitlab_kas['enable'] = false"
 singularity exec "${container_sif}" cat /assets/sshd_config \
     | sed "s/^Port 22$/Port ${service_ssh_port}\nListenAddress 127.0.0.1/" > "${run_dir}/sshd_config"
 

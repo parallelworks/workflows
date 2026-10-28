@@ -160,6 +160,19 @@ A10G GPU):
   singularity-ce, and leaves sibling endpoints' trees untouched (verified with
   two ollama endpoints on one node).
 
+## An image that needs root: run it as a `--fakeroot` instance (GitLab, 2026-10)
+
+An official image whose entrypoint is an init that `chown`s and `setuid`s to several
+accounts (GitLab's Linux package, runit) cannot run as the user, but it can run as an
+Apptainer instance under `--fakeroot` when the user has a subuid range: the namespace
+maps the image's accounts and the init runs unchanged. The SIF is then a plain
+conversion of the image (`workflows/gitlab/gitlab-singularity/gitlab.def`), pushed as
+`ghcr.io/parallelworks/gitlab:<tag>` with the file named `gitlab-<tag>.sif`. The
+pattern, its probes and its stop sequence: pitfalls.md, "A root-only image runs under
+Apptainer as a `--fakeroot` instance"; the GitLab specifics: [gitlab.md](gitlab.md).
+No sandbox fallback there: a node that cannot mount the SIF is also one without the
+user namespaces fakeroot needs.
+
 ## Gotchas (def-file builds — verified, rag-service 2026-08)
 
 - **Upgrade pip first in `%post`** when bootstrapping from `python:3.9-slim`: its

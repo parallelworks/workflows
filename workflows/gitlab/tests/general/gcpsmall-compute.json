@@ -1,16 +1,7 @@
 {
   "_test": {
-    "timeout_s": 3000,
-    "warm_marker": "${HOME}/gitlab-test/data/postgresql/data",
-    "leftover_patterns": [
-      "assets/init-container",
-      "runsvdir -P /opt/gitlab/service",
-      "gitlab-runner run",
-      "pw endpoints run"
-    ],
-    "leftover_commands": {
-      "instances": "grep -l $HOME/gitlab-test/data /proc/[0-9]*/mountinfo 2>/dev/null | wc -l"
-    }
+    "expect": "error",
+    "timeout_s": 1800
   },
   "resource": "pw://alvaro/gcpsmall",
   "cluster": {

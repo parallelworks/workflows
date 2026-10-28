@@ -42,7 +42,7 @@ jobs:
           # NOAA home directories are small: Ray goes to the cluster's shared software tree
           # if this account can write there. Probe by creating the directory rather than
           # reading mode bits: the trees are group- or ACL-writable and list as root-owned.
-          case "${{ inputs.resource.ip }}" in
+          case "${{ inputs.head.resource.ip }}" in
             hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
             mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
             ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa

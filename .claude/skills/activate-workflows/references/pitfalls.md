@@ -117,6 +117,14 @@
   `if: ${{ inputs.x }}` are both true when it is unset, and so is `!= ''` with
   `default: ''` on the input. `if: ${{ inputs.x != null }}` (or `!= undefined`) is
   false when unset and true when set: that is the test for "commands were given".
+- **A `hidden`/`ignore` condition that tests an unset input with `==` never fires**
+  (verified 2026-10-27 with dry-runs, which check required fields): at launch an omitted
+  optional input equals nothing (`== ''`, `== null`, `== undefined`, `!inputs.x` are all
+  false, `default: ''` does not help; every `!=` is true), so the field stays shown and
+  required and the launch fails with `Missing required fields`, from the CLI too
+  (2026-10-20, `workflows/openproject`'s client secret, which keeps `optional: true` for
+  that reason; `optional` takes no expression). Compare with `!=` to the value that
+  needs the field, or drive the condition from a dropdown, which always has a value.
 
 ## Jobs, outputs, matrix and retries
 
@@ -270,18 +278,13 @@
 - **`workspace` resolves with empty `ip`** → its SSH steps run on the workspace node
   (a *different* host than a cluster login node). Match your debugging location to
   the resource you chose.
-- **The workspace's job directory is `/tmp/runs/<run-slug>/`**, not `~/pw/jobs/<slug>/`
-  (verified 2026-10-28, probe runs big-husky and cuddly-bee on `pw-user-alvaro`): look
-  there for `inputs.sh`, the generated scripts and `run.*.out`; `~/pw/jobs` holds only
-  older runs. `pw ssh workspace` reaches it from a laptop.
-- **A workspace job can stick in `canceling` after `parallelworks/cancel-jobs`** (seen
-  once, 2026-10-28, probe run big-husky): two wait jobs released their two runner jobs
-  one second apart; the first runner reached `canceled`, the second stayed `canceling`
-  and its wait job never recorded its last step, although the log shows `Canceled
-  successfully!`, both endpoints were live and no process was left. The run sat in
-  `canceling` and `pw workflows runs cancel` answers `run_not_cancelable`. The same test
-  passed in 16 s right after (cuddly-bee) and passes every time on clusters, so treat it
-  as a platform race on the workspace executor: rerun, and report the slug.
+- **A workspace job can stay `canceling` after `parallelworks/cancel-jobs`** (seen
+  once, 2026-10-28): of two runner jobs released a second apart by their wait jobs, one
+  reached `canceled` and the other stayed `canceling`, its wait job's last step never
+  recorded although the cancel was logged as successful, the service was live and no
+  process was left; the run then refuses `pw workflows runs cancel`
+  (`run_not_cancelable`). The rerun passed and clusters never showed it: a race in the
+  workspace executor. Rerun, and report the run.
 - **Scheduled jobs run on a compute node** that may lack `${PW_PARENT_JOB_DIR}`; use
   paths relative to `rundir`. Cloud-burst nodes are slow to provision (**6+ min**
   observed; `idle~ → CF → RUNNING`, `POWERING_UP` while booting) — watch with
@@ -508,25 +511,6 @@
   host** (verified 2026-10-20): an OIDC/OAuth sign-in or RP-initiated logout never reaches
   the identity provider. Intercept external 3xx in your own proxy and answer a hop page:
   [oidc-sign-in.md](oidc-sign-in.md).
-- **An ignored input is not required; an unset input equals nothing.** An input whose
-  `ignore` evaluates true at launch is neither sent nor validated, so it needs no
-  `optional: true` (verified 2026-10-27 with dry-runs of a required `password`, which the
-  dry-run does check: `ignore: true`, `hidden: ${{ inputs.x == '' }}` + `ignore: ${{ .hidden }}`
-  with `x: ""`, and `hidden: ${{ inputs.x != 'yes' }}` with `x` omitted all validated, the
-  same YAML without the ignore fails with `Missing required fields`; `workflows/probe`'s
-  `bucket` under `hidden: ${{ inputs.results.location != 'bucket' }}` launched in local mode,
-  runs peaceful-eel and closing-serval). The catch is the condition on an **unset**
-  optional input: at validation it equals nothing (`== ''`, `== null`, `== undefined`,
-  `== 'undefined'` and `!inputs.x` are all false, `default: ''` on `x` changes nothing,
-  every `!=` is true: the 2026-10-16 note above, seen from the form), so
-  `hidden: ${{ inputs.x == '' }}` never fires for a CLI launch that omits `x` and the field
-  is demanded. That is what hit `workflows/openproject`'s client secret on 2026-10-20
-  (`Missing required fields: Client secret`, HTTP 400, also from the CLI) and why it carries
-  `optional: true`: `optional` takes no expression (`optional: ${{ .hidden }}` and
-  `optional: ${{ inputs.x == '' }}` both leave the field required). Write the condition as
-  an inequality to the value that needs the field (`!= 'bucket'`, `!= 'yes'`) or drive it
-  from a dropdown, which always has a value; a field that only matters with another one
-  still has the pairing enforced by the controller with a clear `::error`.
 - **An app that signs users in with ACTIVATE (OIDC)** (verified 2026-10-20,
   `workflows/openproject`) needs an app registered for its exact URL, a pinned subdomain
   and a proxy of its own in front; the recipe, the claims and how far curl can test the
@@ -730,10 +714,6 @@
   fine, the bare word is not). Write `./case` or `case/`. A function named like a
   builtin (`times`) has the same effect inside `$( )`. macOS bash 3.2 accepts both, so
   `bash -n` locally proves nothing: run it on the target.
-- **`PW_PARENT_JOB_DIR` ends with a slash** (`/home/alvaro/pw/jobs/<slug>/`, verified
-  2026-10-27 on gcpsmall, run suitable-parrot): `${PW_PARENT_JOB_DIR}/results` resolves but
-  reads `.../<slug>//results` in every command line, log and page that shows it. Join with
-  `${PW_PARENT_JOB_DIR%/}/results` when the path is displayed or compared as a string.
 
 ## Software, sites and figures
 

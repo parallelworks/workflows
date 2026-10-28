@@ -77,7 +77,7 @@ workflow, via `${{ inputs.<name>.* }}`):
 | `id` | `685193ec1bba202cb3341fb7` | |
 | `ip` | `34.132.29.251` | login-node IP; **empty for workspace** → step runs locally |
 | `name` | `<cluster>` | |
-| `type` / `provider` | `google-slurm` | `existing` for a cluster the ACTIVATE agent connects, `managed-cluster` for a managed one, `<cloud>-slurm` for a cloud cluster. Both fields carry the value in form expressions (`hidden: ${{ inputs.resource.provider == 'existing' \|\| inputs.resource.provider == 'managed-cluster' }}` and the same on `.type` hid a field for `pw://labcluster` and an `existing` cluster and showed it for a cloud one; dry-runs 2026-10-28), while `pw cluster ls -o json` fills only `type`. The workspace matches neither: it is `name == 'user-workspace'` (or `ip == ''`), also when passed as `workspace` |
+| `type` / `provider` | `google-slurm` | `existing` for a cluster the ACTIVATE agent connects, `managed-cluster` for a managed one, `<cloud>-slurm` for a cloud cluster; both fields carry it in form expressions (`pw cluster ls -o json` fills only `type`). The workspace matches neither: test `name == 'user-workspace'` (or `ip == ''`) |
 | `schedulerType` | `slurm` / `pbs` / `''` | `''` when no scheduler (e.g. `existing`, workspace) |
 | `namespace`, `user` | `<user>` | |
 
@@ -235,9 +235,7 @@ expressions (`ignore: ${{ .hidden }}` mirrors the hidden flag).
 Common attributes: `label`, `default`, `tooltip`, `description` (always visible),
 `optional: true`, `disabled`, `hidden: <expr>`, `ignore: <expr>`, `collapsed: true`. An
 input whose `ignore` is true at launch is neither sent nor required, so it needs no
-`optional: true`; write the condition as an inequality (`!= 'bucket'`), because an unset
-input equals nothing, not even `''` or `null` (pitfalls, "An ignored input is not
-required"). A
+`optional: true` (the condition itself: pitfalls, "Inputs and expressions"). A
 `string`'s `default` fills the form only with `prefillDefault: true` (otherwise it applies
 when the run has no value); a `dropdown` whose `options` are keyed by another input
 (`option-key: ${{ inputs.x }}`) is dynamic. Expressions read other inputs, `org.<VAR>`
@@ -668,8 +666,9 @@ with no extra flags.
 Registered-workflow run → `~/pw/jobs/<workflow-name>/<run-number>/` on the
 **execution node** (run number **zero-padded to 5 digits**, e.g.
 `~/pw/jobs/my-session/00002/`). CLI file (inline) run → `~/pw/jobs/<run-slug>/`
-(e.g. `~/pw/jobs/rational-lionfish/`). Both verified live; this path is
-`${PW_PARENT_JOB_DIR}`.
+(e.g. `~/pw/jobs/rational-lionfish/`); on the user workspace `/tmp/runs/<run-slug>/`.
+All verified live; this path is `${PW_PARENT_JOB_DIR}`, with a trailing slash: join
+with `${PW_PARENT_JOB_DIR%/}/<file>` wherever the result is shown or compared.
 
 Contents after an endpoint-pattern launch (all verified on live runs):
 ```

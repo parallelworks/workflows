@@ -1,7 +1,7 @@
 {
   "_test": {
     "timeout_s": 2400,
-    "warm_marker": "${HOME}/pw/containers/kasmvnc-rocky9-gpu.sif",
+    "warm_marker": "/app/pw/containers/kasmvnc-rocky9-gpu.sif",
     "leftover_patterns": [
       "Xvnc",
       "kasmvnc",

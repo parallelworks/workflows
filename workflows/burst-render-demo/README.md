@@ -96,9 +96,9 @@ on-prem `existing` resources) plus the DSRC `--constraint=mla` hint.
 submitter, the same per-site **Account** and **QoS** dropdowns, and an install
 directory chosen at run time — NOAA home directories are small, so the dashboard's
 virtualenv goes in the cluster's shared software tree (`/contrib/pw` on Hera, Mercury
-and Ursa, `/usw/rdhpcs/software/pw` on Gaea) when the account can write there, and in
-`${HOME}/pw/software` otherwise. The scripts are identical across all three; on a
-cloud cluster the variants behave the same.
+and Ursa, `/usw/rdhpcs/software/pw` on Gaea, `/app/pw` on PPAN) when the account can
+write there, and in `${HOME}/pw/software` otherwise. The scripts are identical across
+all three; on a cloud cluster the variants behave the same.
 
 ## Running from the CLI
 

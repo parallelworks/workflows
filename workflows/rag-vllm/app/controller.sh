@@ -33,7 +33,8 @@ fi
 service_parent_install_dir="${service_parent_install_dir/#\~/$HOME}"
 
 # On NOAA and HSP the install directory is a store shared between accounts
-# (/contrib/pw, $PROJECTS_HOME/hsp), usually owned by whoever staged it first.
+# (the cluster's shared software directory, $PROJECTS_HOME/hsp), usually owned by
+# whoever staged it first.
 # Whatever is already there is reused read-only by every account; what still
 # has to be downloaded goes there when this account can write it and into a
 # private directory otherwise. Each artifact decides on its own, so one

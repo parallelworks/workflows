@@ -15,6 +15,7 @@ jobs:
           sparse_checkout:
             - workflows/jupyterlab/app
             - tools/oras
+            - tools/utils
       - name: Create Inputs
         run: |
           set -x
@@ -53,10 +54,18 @@ jobs:
         run: |
           source inputs.sh
           set -x
-          # This script prepares the target host and always runs in the controller node
-          if [ -z "${service_parent_install_dir}" ] && [ -d /contrib/pw ]; then
-            echo "::notice title=Install Directory::Using Install Directory: /contrib/pw"
-            echo "service_parent_install_dir=/contrib/pw" >> inputs.sh
+          # NOAA home directories are small: with no install directory given, the conda
+          # install goes to the cluster's shared software tree if this account can write
+          # there. Probe by creating the directory rather than reading mode bits: the trees
+          # are group- or ACL-writable and list as root-owned.
+          if [ -z "${service_parent_install_dir:-}" ] && [ -n "${service_conda_install_dir:-}" ]; then
+            shared=$(bash tools/utils/shared-software-dir.sh "${{ inputs.resource.ip }}") || exit 1
+            install_dir="${HOME}/pw/software"
+            if [ -n "${shared}" ] && mkdir -p "${shared}/${service_conda_install_dir}" 2> /dev/null; then
+              install_dir="${shared}"
+            fi
+            echo "export service_parent_install_dir=\"${install_dir}\"" >> inputs.sh
+            echo "::notice::Installing under ${install_dir}"
           fi
       - name: Controller Preprocessing
         run: |
@@ -286,12 +295,15 @@ jobs:
             ignore: ${{ .hidden }}
           parent_install_dir:
             label: Parent install directory
-            description: Needs enough free space for the installs.
+            description: Leave empty for the cluster's shared software directory when this account can write there, ${HOME}/pw/software otherwise.
             type: string
-            default: ${HOME}/pw/software
+            optional: true
             hidden: ${{ inputs.service.conda_install == false || ('existing' == inputs.resource.provider &&  inputs.service.use_conda == false) }}
             ignore: ${{ .hidden }}
-            tooltip: Software dependencies are installed in this directory. Defaults to ~/pw/software. Ensure the directory has sufficient space!
+            tooltip: |
+              Software dependencies are installed in this directory. The shared software directory is
+              /contrib/pw on Hera, Mercury and Ursa, /usw/rdhpcs/software/pw on Gaea and /app/pw on
+              PPAN. Ensure the directory has sufficient space!
           conda_install_dir:
             label: Name of the Conda installation directory
             type: string

@@ -33,13 +33,7 @@ fi
 # bits: the trees are group- or ACL-writable and list as root-owned. Only the
 # installer reads this; the environment file it writes records the absolute
 # prefix
-case "${RESOURCE_IP}" in
-    hfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Hera
-    mfe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Mercury
-    ufe[0-9]*.fairmont.rdhpcs.noaa.gov) shared=/contrib/pw ;;          # Ursa
-    gaea[0-9]*.ncrc.gov) shared=/usw/rdhpcs/software/pw ;;             # Gaea
-    *) shared="" ;;                                                    # PPAN, cloud clusters, every other platform
-esac
+shared=$(bash tools/utils/shared-software-dir.sh "${RESOURCE_IP}") || exit 1
 if [ -n "${shared}" ] && mkdir -p "${shared}/openfoam-naca" 2>/dev/null; then
     export service_parent_install_dir="${shared}"
     echo "::notice::installing under the shared software directory ${shared}"

@@ -3,3 +3,5 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-01T10:46:57Z,warm,pass,ok,ca10ee4,74bcc3d,7c7ffa7,cd09985,cd09985,dakota-demo,alvaro,fitting-molly,19,
 2026-10-12T11:04:39Z,warm,pass,ok,c9137b7,74bcc3d,c6c3dbb,154c5e2-dirty,29187fa,claude-skill,alvaro,awaited-gobbler,25,
 2026-10-12T12:09:27Z,warm,pass,ok,b3d0560,74bcc3d,c6c3dbb,b1ce74d-dirty,403af2f,variantes,alvaro,honest-moth,26,
+2026-10-28T08:49:47Z,cold,pass,ok,1f803de,162207a,eef523b,ce8a3ff-dirty,ce8a3ff,noaa-shared-directory,alvaro,ultimate-alien,38,
+2026-10-28T09:31:16Z,warm,pass,ok,c04860b,162207a,727fc42,ab37c83-dirty,ab37c83,noaa-shared-directory,alvaro,mint-fawn,22,

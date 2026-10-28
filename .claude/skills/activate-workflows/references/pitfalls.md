@@ -126,6 +126,12 @@
   that reason; `optional` takes no expression). Compare with `!=` to the value that
   needs the field, or drive the condition from a dropdown, which always has a value.
 
+- **An input path the form does not declare renders empty, silently** (verified
+  2026-10-28, run summary-poodle): `${{ inputs.resource.ip }}` in a form whose resource
+  lives under `inputs.head` became `case "" in` and the step carried on; `--dry-run` does
+  not catch it. When a `case` or `if` on an input never matches, read the rendered
+  `logs/<job>/step_N/script-unstable.sh` for the empty value.
+
 ## Jobs, outputs, matrix and retries
 
 - **A matrix over a computed list fails at submission** (`Could not expand matrix
@@ -498,6 +504,12 @@
   to see whether anything is left, `-KILL` after a grace period). `nohup` cannot run a
   shell function either: build the common `singularity exec` options as an array and
   pass plain commands.
+- **A desktop app's helper re-groups itself and outlives a crashed parent** (verified
+  2026-10-28, gcpsmall, runs thankful-rodent, more-mustang, regular-cub): RStudio's
+  `rsession` moved to its own process group, so neither a kill of the startup command's
+  pid nor `kill -- -pgid` reached it; it stayed in the session, so the command runs under
+  `setsid` and `cancel.sh` kills by session (`pkill -TERM -s $pid`, `-KILL` after a grace
+  period) (`workflows/kasmvnc/kasmvnc-singularity/start-template.sh`).
 - **Passing secrets and values with spaces into Apptainer** (verified 2026-10-20,
   apptainer 1.4.5, `workflows/openproject`): `--env-file` is evaluated like a shell
   script, so `KEY=openid profile email` aborts every container start (`FATAL: while
@@ -714,6 +726,12 @@
   fine, the bare word is not). Write `./case` or `case/`. A function named like a
   builtin (`times`) has the same effect inside `$( )`. macOS bash 3.2 accepts both, so
   `bash -n` locally proves nothing: run it on the target.
+
+- **`wait -n <pid>...` ignores its pids on bash before 5.1** (EL8 ships 4.4) and returns
+  when any background job ends: on PPAN a kasmvnc desktop tore itself down the moment its
+  endpoint registered because the xterm loop had died (2026-10-19, run test-00128). To end
+  a service when one of several processes exits, poll them (`while kill -0 $a && kill -0 $b;
+  do sleep 5; done`, under `set +x`): `workflows/kasmvnc/kasmvnc-singularity/start-template.sh`.
 
 ## Software, sites and figures
 

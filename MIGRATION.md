@@ -250,8 +250,8 @@ per-site SLURM **Account** and **QoS** dropdowns shown for `existing` resources 
 `hsp.yaml`), and a **Set Up Install Parent Directory** step. That step picks the install
 tree at run time because NOAA home quotas are small and this workflow builds a virtualenv
 there (and downloads a standalone python when the system one predates FastAPI's minimum):
-`/contrib/pw` on Hera, Mercury and Ursa, `/usw/rdhpcs/software/pw` on Gaea, `${HOME}/pw/software`
-on PPAN, cloud clusters and anything unrecognised. Unlike the staged-tarball workflows
+`/contrib/pw` on Hera, Mercury and Ursa, `/usw/rdhpcs/software/pw` on Gaea, `/app/pw` on PPAN,
+`${HOME}/pw/software` on cloud clusters and anything unrecognised. Unlike the staged-tarball workflows
 (`webshell`), which let a non-privileged account reuse a shared copy read-only, this one
 **must** be able to write to the tree it uses — the controller rebuilds the virtualenv
 whenever it fails to import — so the shared directory is taken only when a `mkdir` probe

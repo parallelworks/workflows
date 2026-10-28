@@ -14,6 +14,7 @@ jobs:
           branch: canary
           sparse_checkout:
             - workflows/ray-cluster/app
+            - tools/utils
       - name: Create Inputs
         run: |
           set -x
@@ -39,10 +40,13 @@ jobs:
       - name: Set Up Install Parent Directory
         run: |
           set -x
-          # NOAA clusters share software under /contrib/pw
-          if [ -d /contrib/pw ] && [ -w /contrib/pw ]; then
-            echo "::notice title=Install Directory::Using Install Directory: /contrib/pw"
-            echo 'export RAY_SOFTWARE_DIR="/contrib/pw"' >> inputs.sh
+          # NOAA home directories are small: Ray goes to the cluster's shared software tree
+          # if this account can write there. Probe by creating the directory rather than
+          # reading mode bits: the trees are group- or ACL-writable and list as root-owned.
+          shared=$(bash tools/utils/shared-software-dir.sh "${{ inputs.head.resource.ip }}") || exit 1
+          if [ -n "${shared}" ] && mkdir -p "${shared}/.uv" 2>/dev/null; then
+            echo "::notice title=Install Directory::Using Install Directory: ${shared}"
+            echo "export RAY_SOFTWARE_DIR=\"${shared}\"" >> inputs.sh
           fi
       - name: Create Service Script
         run: |

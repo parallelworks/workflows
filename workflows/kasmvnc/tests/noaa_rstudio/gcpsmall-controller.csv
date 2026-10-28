@@ -1,0 +1,4 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-28T09:42:40Z,warm,pass,leftover:proc:rsession,f0fa69c,162207a,727fc42,c763a15-dirty,c763a15,noaa-shared-directory,alvaro,thankful-rodent,67,
+2026-10-28T10:11:07Z,warm,pass,leftover:proc:rsession,55874c5,162207a,727fc42,4612375-dirty,4612375,noaa-shared-directory,alvaro,more-mustang,67,
+2026-10-28T10:18:07Z,warm,pass,ok,cf9a321,162207a,727fc42,9e50aee-dirty,9e50aee,noaa-shared-directory,alvaro,regular-cub,68,

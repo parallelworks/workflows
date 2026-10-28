@@ -28,9 +28,10 @@ starts under one.
 
 ## Sign in with ACTIVATE
 
-OpenProject hides every single sign-on provider unless it holds an **Enterprise
-edition token** (a free trial from Administration → Enterprise edition works). With a
-token, this is how to connect it to ACTIVATE:
+Single sign-on (OIDC) is an **Enterprise edition** feature: OpenProject hides every
+sign-on provider unless it holds an Enterprise token. A 14-day free trial is
+available at <https://www.openproject.org/enterprise-edition/> under **Get a free
+on-premises trial license**. With a token, this is how to connect it to ACTIVATE:
 
 1. **Pick the address, then register an application for it** (organization admin,
    once). An application is registered for one exact redirect URI, and that URI is

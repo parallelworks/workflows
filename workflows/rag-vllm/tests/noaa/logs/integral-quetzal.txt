@@ -1,0 +1,16 @@
+Run integral-quetzal: error (52s)
+
+Error annotations:
+
+  Error: service exited during startup; last log lines:
+    in script_submitter > stream_output → Stream Output
+  Error: Service ended before the endpoint came online
+    in script_submitter → Exit Workflow with Error
+
+Failed jobs/steps:
+
+  script_submitter > Exit Workflow with Error (error, 0s)
+    Error: Service ended before the endpoint came online
+    ✗ Error: Service ended before the endpoint came online
+
+Summary: 1 job(s) failed, 1 step(s) failed

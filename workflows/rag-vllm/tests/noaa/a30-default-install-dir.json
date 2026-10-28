@@ -21,7 +21,7 @@
   },
   "vllm": {
     "num_gpus": "1",
-    "gpu_memory": "0.70",
+    "gpu_memory": "0.20",
     "max_model_len": "4096",
     "dtype": "float16",
     "attention_backend": "TRITON_ATTN",

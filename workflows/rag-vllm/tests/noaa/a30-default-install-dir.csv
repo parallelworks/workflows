@@ -1,2 +1,4 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-19T15:45:36Z,unknown,pass,unknown,9c36e25,c37a825,eef523b,0cd6067-dirty,0cd6067,noaa-shared-directory,alvaro,fresh-newt,84,
+2026-10-28T09:30:36Z,warm,fail,ok,2a91da7,162207a,727fc42,ab37c83-dirty,ab37c83,noaa-shared-directory,alvaro,integral-quetzal,69,"run error, expected completed: script_submitter > Exit Workflow with Error (error, 0s)"
+2026-10-28T09:33:33Z,warm,pass,ok,2a91da7,162207a,727fc42,ab37c83-dirty,ab37c83,noaa-shared-directory,alvaro,better-leopard,83,

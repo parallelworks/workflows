@@ -1,0 +1,349 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: gitlab
+          sparse_checkout:
+            - workflows/gitlab/app
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW environment variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Secrets and the multi-line license go into their own mode-600 files
+          umask 077
+          cat <<'EOF' > root-password.txt
+          ${{ inputs.service.root_password }}
+          EOF
+          cat <<'EOF' > oidc-client-secret.txt
+          ${{ inputs.oidc.client_secret }}
+          EOF
+          cat <<'EOF' > license.gitlab-license
+          ${{ inputs.service.license }}
+          EOF
+          for f in root-password.txt oidc-client-secret.txt license.gitlab-license; do
+            tr -d '\r' < "$f" | sed '/^[[:space:]]*$/d; /^undefined$/d' > "$f.tmp"
+            mv "$f.tmp" "$f"
+          done
+          umask 022
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_rundir="${{ inputs.service.rundir }}"
+          service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
+          service_subdomain="${{ inputs.service.subdomain }}"
+          service_image="${{ inputs.service.image }}"
+          service_ssh_port="${{ inputs.service.ssh_port }}"
+          service_root_password_file="${PW_PARENT_JOB_DIR}/root-password.txt"
+          service_license_file="${PW_PARENT_JOB_DIR}/license.gitlab-license"
+          runners_shell="${{ inputs.runners.shell }}"
+          runners_slurm="${{ inputs.runners.slurm }}"
+          runners_demo_project="${{ inputs.runners.demo_project }}"
+          oidc_client_id="${{ inputs.oidc.client_id }}"
+          oidc_client_secret_file="${PW_PARENT_JOB_DIR}/oidc-client-secret.txt"
+          oidc_block_new_users="${{ inputs.oidc.block_new_users }}"
+          oidc_display_name="${{ inputs.oidc.display_name }}"
+          pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          EOF
+          # Remove empty and undefined variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh
+          # Add export to all lines
+          sed -i 's/^/export /' inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/gitlab/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/gitlab/app/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  session_runner:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            time: ${{ inputs.cluster.slurm.time }}
+            gpus: ${{ inputs.cluster.slurm.gpus }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::Session runner failed before the endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
+          host: ${{ inputs.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          path: /users/sign_in
+          healthy: '2*'
+          budget: 1800
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Service host
+        include-workspace: false
+      cluster:
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
+        type: group
+        label: Compute cluster settings
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
+          slurm:
+            type: group
+            label: SLURM directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+              time:
+                label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
+                type: string
+                default: '01:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              gpus:
+                label: Number of GPUs
+                type: number
+                optional: true
+                min: 0
+                step: 1
+                default: 0
+                hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
+                ignore: ${{ .hidden }}
+                tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
+              scheduler_directives:
+                type: editor
+                label: Scheduler directives
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+          pbs:
+            type: group
+            label: PBS directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler directives
+                type: editor
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+      service:
+        type: group
+        label: GitLab settings
+        collapsed: true
+        items:
+          name:
+            type: string
+            hidden: true
+            default: gitlab
+          subdomain:
+            label: Subdomain
+            description: Label of the URL, https://<label>.<sessions domain>, the same on every run; empty uses gitlab-<your username>.
+            type: string
+            optional: true
+            tooltip: |
+              GitLab builds its clone URLs and the Sign in with ACTIVATE redirect URI from this address, so it is pinned instead of taking a random subdomain. Lowercase letters, digits and dashes; reserve it with 'pw subdomains reserve <label>' so nobody else takes it. Two GitLabs of yours (two clusters) need two labels.
+          rundir:
+            label: Run directory
+            description: Keeps the repositories, database and settings; reuse it to keep them, delete it (with sudo) to start over.
+            type: string
+            default: ${HOME}/gitlab
+            tooltip: |
+              Holds config/ (gitlab.rb, secrets), data/ (repositories, PostgreSQL, uploads), logs/ and runner/ (the CI runners' configuration and builds). Docker writes config/, data/ and logs/ as root. One GitLab per run directory at a time; the first start of a run directory takes several minutes (database setup).
+          image:
+            label: GitLab image
+            description: Keep the major version of an existing run directory; gitlab/gitlab-ce for the open-source Community Edition, which takes no license.
+            type: string
+            default: gitlab/gitlab-ee:19.5.1-ee.0
+            tooltip: |
+              The official all-in-one Linux package image (Puma, Sidekiq, Gitaly, PostgreSQL, Redis, nginx). gitlab/gitlab-ee runs the Free tier without a license and takes a Premium or Ultimate license; gitlab/gitlab-ce is the MIT-licensed edition. GitLab upgrades one minor version at a time (see its upgrade path), so change the tag in steps.
+          root_password:
+            label: Root password
+            description: Initial password of the root account, 8 characters or more, applied on the first start of a run directory only; empty generates one, saved to <run directory>/.root_password.
+            type: password
+            optional: true
+          ssh_port:
+            label: SSH port
+            description: Loopback port of GitLab's SSH on the service host; reach it from your machine with 'pw forward -L <port>:localhost:<port> <cluster>'.
+            type: number
+            default: 2222
+            min: 1024
+            max: 65535
+            step: 1
+            tooltip: |
+              The platform endpoint only serves HTTPS pages, and the platform's sign-in stands in front of it, so git clone, push and pull from your machine go through a pw forward tunnel to this port (SSH) or to the HTTP port the run logs print; from the cluster itself use http://localhost:<HTTP port>. GitLab's SSH clone URLs show this port.
+          license:
+            label: GitLab license
+            description: Contents of a .gitlab-license file (Premium, Ultimate or a trial), applied once; empty runs the Free tier, which includes Sign in with ACTIVATE and the CI/CD runners.
+            type: editor
+            optional: true
+            tooltip: |
+              Paste the whole license key (the long base64 block). It needs the gitlab-ee image; the Community Edition takes no license. GitLab remembers it in the run directory, so later runs may leave this empty; a new key replaces the current one. Add or change a license later under Admin -> Settings -> General -> Add License.
+          parent_install_dir:
+            type: string
+            hidden: true
+            default: ${HOME}/pw/software
+      runners:
+        type: group
+        label: CI/CD runners
+        description: Runners registered with this GitLab that run pipelines on the service host as your user; the runners' configuration lives in the run directory and is reused.
+        collapsed: true
+        items:
+          shell:
+            type: boolean
+            default: true
+            label: Register a shell runner
+            description: Runs CI jobs directly on the service host (shell executor); it takes untagged jobs.
+          slurm:
+            type: boolean
+            default: false
+            label: Register a SLURM runner
+            description: Submits each CI job to the cluster's scheduler with Jacamar CI; jobs select it with the tag slurm and pass sbatch options in the SCHEDULER_PARAMETERS variable.
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              The runner uses GitLab's custom executor with Jacamar CI (ECP): the job's before_script and script run inside an sbatch job submitted as your user from the service host, after_script on the service host. A job sets SCHEDULER_PARAMETERS to the sbatch options it needs, for example "--nodes=1 --partition=debug --time=00:10:00"; -o, -e, -J and --wait are reserved by Jacamar. Jobs wait for the allocation inside GitLab's job timeout.
+          demo_project:
+            type: boolean
+            default: true
+            label: Create the hpc-ci-demo project
+            description: A project with a pipeline that runs on the registered runners, created once under the root account.
+      oidc:
+        type: group
+        label: Sign in with ACTIVATE
+        description: Lets users sign in to GitLab with their ACTIVATE account; a client ID reveals the secret and the approval fields. Leave it empty for GitLab's own accounts only.
+        collapsed: true
+        items:
+          client_id:
+            label: Client ID
+            description: The pwapp_ ID of the application an organization admin registered for this GitLab URL; empty means no ACTIVATE sign-in is configured.
+            type: string
+            optional: true
+            tooltip: |
+              Organization -> Settings -> Applications (behind the OIDC Applications preview): kind web, consent none, scopes openid profile email, redirect URI https://<subdomain>.<sessions domain>/users/auth/openid_connect/callback, post-logout redirect URI https://<subdomain>.<sessions domain>/. The redirect URI is matched exactly, so it must carry the subdomain this run pins. The provider is part of GitLab's configuration, so a later run without a client ID removes the button.
+          client_secret:
+            label: Client secret
+            description: Required with a client ID; shown once when the secret is created, an organization admin can reveal it again on the application's page.
+            type: password
+            optional: true
+            hidden: ${{ inputs.oidc.client_id == '' }}
+            ignore: ${{ .hidden }}
+          block_new_users:
+            label: New users wait for approval
+            description: An account created by a first ACTIVATE sign-in stays blocked until an administrator approves it under Admin -> Users; off lets every ACTIVATE user in.
+            type: boolean
+            default: false
+            hidden: ${{ inputs.oidc.client_id == '' }}
+            ignore: ${{ .hidden }}
+          display_name:
+            type: string
+            hidden: true
+            default: ACTIVATE

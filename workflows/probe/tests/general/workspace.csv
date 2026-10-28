@@ -2,3 +2,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-28T09:08:10Z,,fail,ok,9de6f2c,162207a,eef523b,99a330e-dirty,4ca7631,probe,alvaro,big-husky,920,timeout after 900s; run canceled
 2026-10-28T09:25:31Z,,pass,ok,9de6f2c,162207a,eef523b,99a330e-dirty,4ca7631,probe,alvaro,cuddly-bee,22,
 2026-10-28T09:33:32Z,,pass,ok,9de6f2c,162207a,eef523b,7846c0d-dirty,4ca7631,probe,alvaro,fine-tadpole,21,
+2026-10-28T10:05:14Z,,pass,ok,32b7332,162207a,eef523b,83578f6,83578f6,probe,alvaro,easy-moose,21,

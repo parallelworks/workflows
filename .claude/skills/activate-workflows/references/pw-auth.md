@@ -70,11 +70,12 @@ from the runtime env (`workflows/probe/yamls/general.yaml`, `PROBE_API_KEY`). Hi
 where the host signs in on its own and use that sign-in there, the way `hpc_status`
 does at run time: probe's form hides and ignores the key with
 `inputs.resource.provider == 'existing' || inputs.resource.provider == 'managed-cluster' || inputs.resource.name == 'user-workspace'`
-(required elsewhere), and its setup step checks the key with
+(required elsewhere), and `app/credential.sh` checks the key with
 `PW_API_KEY=<key> pw auth whoami`, or the sign-in with `env -u PW_API_KEY pw auth whoami`,
-fails the run when neither works, and writes `export PW_API_KEY="${PROBE_API_KEY}"` or
-`unset PW_API_KEY` into the start script (verified 2026-10-28 on a cloud cluster, a
-managed cluster, an existing cluster and the workspace). An app
+fails the run when neither works, and records the choice for the start script, which
+does `export PW_API_KEY="${PROBE_API_KEY}"` or `unset PW_API_KEY` before `pw endpoints run`
+(verified 2026-10-28 on a cloud cluster, a managed cluster, an existing cluster and the
+workspace). An app
 that needs the key as a string in its own config takes it on every cluster type
 (`workflows/librechat`, `ACTIVATE_API_KEY`: checked with `pw auth whoami` before the
 controller writes it into LibreChat's `.env`). Keep `set -x` off around it, or the

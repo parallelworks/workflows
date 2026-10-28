@@ -16,7 +16,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: probe
+          branch: canary
           sparse_checkout:
             - workflows/probe/app
       - name: Set up

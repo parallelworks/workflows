@@ -291,7 +291,7 @@ jobs:
             ignore: ${{ .hidden }}
           enterprise_token:
             label: OpenProject Enterprise token
-            description: Without a token here or already imported into the run directory, the run still starts but the Sign in with ACTIVATE button stays hidden until OpenProject has a valid Enterprise edition token.
+            description: Required with a client ID until the run directory holds an imported token; the Sign in with ACTIVATE button is hidden until OpenProject has a valid Enterprise edition token.
             type: editor
             optional: true
             hidden: ${{ inputs.oidc.client_id == '' }}

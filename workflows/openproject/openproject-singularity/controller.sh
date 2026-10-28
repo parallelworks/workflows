@@ -63,7 +63,8 @@ if [ -n "${oidc_client_id}" ]; then
         exit 1
     fi
     if ! [ -s "${service_enterprise_token_file}" ] && ! ls "${rundir}"/.enterprise-token-* >/dev/null 2>&1; then
-        echo "::warning title=Warning::Sign in with ACTIVATE needs an OpenProject Enterprise token: ${rundir} holds none yet and the form's token is empty, so the button stays hidden until one is active (Administration -> Enterprise edition)"
+        echo "::error title=Error::Sign in with ACTIVATE needs an OpenProject Enterprise token: ${rundir} holds none yet and the form's token is empty"
+        exit 1
     fi
 fi
 if [ -z "${oidc_client_id}" ] && [ -n "${oidc_client_secret}" ]; then

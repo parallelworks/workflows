@@ -538,13 +538,13 @@ if [ -n "${startup_command}" ]; then
     # EOF: a console-driven GUI app (vmd) otherwise sees EOF on the backgrounded
     # job's stdin and exits normally right after starting (verified on emed).
     mkfifo startup-stdin.fifo 2>/dev/null || true
-    # Its own process group, so cancel.sh reaches what the command spawned: a
-    # desktop app's helper (RStudio's rsession) outlives a crashed parent and
-    # re-parents to PID 1, out of reach of a kill of the parent's pid
+    # Its own session, so cancel.sh reaches what the command spawned: a desktop
+    # app's helper (RStudio's rsession) moves to its own process group and
+    # outlives a crashed parent, re-parented to PID 1, but stays in the session
     setsid bash -c "${startup_command}" 0<> startup-stdin.fifo &
     startup_command_pid=$!
-    echo "kill -TERM -- -${startup_command_pid} 2>/dev/null || true # startup_command and its children" >> cancel.sh
-    echo "sleep 2; kill -KILL -- -${startup_command_pid} 2>/dev/null || true" >> cancel.sh
+    echo "pkill -TERM -s ${startup_command_pid} 2>/dev/null || true # startup_command and everything it spawned" >> cancel.sh
+    echo "sleep 2; pkill -KILL -s ${startup_command_pid} 2>/dev/null || true" >> cancel.sh
     echo "rm -f $PWD/startup-stdin.fifo" >> cancel.sh
 fi
 

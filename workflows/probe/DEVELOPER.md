@@ -279,7 +279,8 @@ dashboards tests take their API key from the environment at launch (`_test.secre
 `a30gpuserver.json` and `workspace.json` start the dashboards without a key on a managed
 cluster, an existing cluster (the same machine, two resource types) and the user
 workspace, with the results on the host; on a cloud cluster the form refuses a launch
-without a key.
+without a key, and `gcpsmall-bad-key.json` is the dashboards' failure path: a key that
+does not authenticate ends the run at setup.
 
 ```bash
 PROBE_API_KEY=<key> python3 tools/tests/run-workflow-test.py workflows/probe/tests/general/gcpsmall.json

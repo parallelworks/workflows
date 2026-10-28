@@ -50,6 +50,7 @@ jobs:
             || echo "::warning::Some test definitions are invalid; see above"
       - name: Locate the results
         run: |
+          set -eo pipefail
           cd ${PW_PARENT_JOB_DIR}
           export PATH=$HOME/pw:$PATH
           # A run launched without a location (the CLI, a definition from before
@@ -115,7 +116,7 @@ jobs:
             AUTH_LINE='unset PW_API_KEY'
             echo "::notice::The dashboards authenticate with the pw sign-in of $(hostname), which outlives this run"
           else
-            echo "::error::No credential outlives this run on $(hostname): give an API key, or run pw auth there"; exit 1
+            echo "::error::No credential outlives this run on $(hostname): the host has no pw sign-in of its own (run pw auth there) and no API key was given"; exit 1
           fi
           for kind in dashboard admin; do
             mkdir -p ${kind}

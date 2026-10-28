@@ -5,11 +5,12 @@ they keep doing so after the run completes.
 
 ## Where `pw` is signed in on its own
 
-- **The user workspace and the login node of an existing cluster** (resource
-  `type: existing`, connected through the ACTIVATE agent): `pw` is signed in as the
-  user; the agent keeps the credential there (agent v7.102.0 or later). Verified
-  2026-10-26 from a run on one (agent v7.127.0): `pw auth whoami` answers after
-  `unset PW_API_KEY`.
+- **The user workspace and the login node of an existing or managed cluster**
+  (resource `type: existing` or `managed-cluster`, connected through the ACTIVATE
+  agent): `pw` is signed in as the user; the agent keeps the credential there (agent
+  v7.102.0 or later). Verified 2026-10-26 from a run on an existing cluster (agent
+  v7.127.0) and 2026-10-28 on `pw://labcluster` (managed) and the workspace:
+  `pw auth whoami` answers after `unset PW_API_KEY`.
 - **A cloud cluster**: nothing is signed in (the same step there gets `no context
   configured; use 'pw auth'`). The user signs the CLI in on the login node (`pw auth`,
   again when that session expires) or the workflow is handed a key (below).

@@ -320,12 +320,6 @@
   run completed 20 min late). A retried attempt whose `timeout` is shorter than queue +
   `ResumeTimeout` + walltime is cancelled before such a requeue gets to run
   (`workflows/openfoam-naca/yamls/general-restart.yaml`, `restart.attempt_timeout`).
-  Same thing on a cloud cluster 2026-10-27 without a boot problem: the two nodes powered down
-  seconds after a 2-node test finished (`sacctmgr list event`: `Powered down after
-  resume`), the next 2-node run launched that moment sat `CF` for 22 min until
-  `ResumeTimeout reached`, and the test runner's 1500 s timeout cancelled it; the same
-  test passed on the next launch. A `fail … timeout` row for a scheduled test whose
-  `run.sh` is correct and whose job shows `CF` in the monitor step is this, not the YAML.
 - **The test runner counts every queued job of the user after a scheduled test**
   (`squeue -h -u $USER`), not only the test's own: an interactive `srun bash` running
   meanwhile makes the row read `cleanup=leftover:squeue` (2026-10-16). Check with
@@ -339,10 +333,6 @@
   script as the template and prepends the headers again (doubled `#SBATCH` lines, the
   `hostname > HOSTNAME` line twice). Name the script you hand it anything else
   (`workflows/openfoam-naca`: `case.sh`; `tutorials/optimization` still has the collision).
-- **A `scheduler_directives` line without the `#SBATCH`/`#PBS` prefix was dropped silently**
-  by every submitter variant before 2026-10-27 (`sed '/^#/!d'` on the headers). The
-  submitter now adds the missing prefix, so a line that is not a directive (`module load x`)
-  fails the submission instead of vanishing (verified 2026-10-27 on a cloud cluster).
 - **A directive a workflow injects ahead of the form's `scheduler_directives` stays
   overridable:** sbatch keeps the LAST value of a repeated option (`--ntasks=2` then
   `--ntasks=3` → `NumTasks=3`, verified 2026-09-30 with `sbatch --hold` +

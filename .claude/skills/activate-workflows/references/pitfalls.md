@@ -527,6 +527,15 @@
   `workflows/openproject`) needs an app registered for its exact URL, a pinned subdomain
   and a proxy of its own in front; the recipe, the claims and how far curl can test the
   flow are in [oidc-sign-in.md](oidc-sign-in.md).
+- **A command-line client cannot authenticate to the served app through the endpoint**
+  (verified 2026-10-28, `workflows/gitlab`): the proxy wants the platform's login or a
+  bearer key and strips `Authorization` before the app sees it, so `git clone
+  https://<endpoint>/...` (and any client that sends its own `Authorization`) reaches the
+  app anonymous at best. Publish the app's port on the node's loopback too and send
+  clients there: `localhost:<port>` from the cluster, `pw forward -L` from a laptop; a
+  helper on the node that must call the app's API (a CI runner, Jacamar's JWKS fetch)
+  gets the loopback URL as well, never `CI_SERVER_URL`
+  ([software/gitlab.md](software/gitlab.md)).
 - **`pw agent open-port` is a TOCTOU trap for slow-starting services:** the port
   sits unbound while the service boots (a SIF conversion takes ~1 min), and busy
   siblings on the node (MATLAB's dynamic services) steal it from the ephemeral
@@ -720,6 +729,11 @@
   `workflows/dakota-openfoam`, run vocal-magpie). Build the argument before the heredoc
   with `printf -v arg -- '--link %q' "Pareto front=${url}"` and write `${arg}`.
 
+- **`$!` after `cd dir && setsid cmd ... &` is a subshell, not `cmd`** (2026-10-28, a
+  hand-restarted GitLab runner survived its `cancel.sh`): bash backgrounds the whole
+  `&&` list as a subshell, so the recorded pid is the subshell's and the session id to
+  kill (`pkill -s`) is `cmd`'s own pid, one fork later. Background `setsid cmd &` on its
+  own (then `setsid` needs no fork and `$!` is `cmd`, the session leader), `cd` before it.
 - **bash 5.1 reads a bare `case` inside `$( )` as the keyword** and fails the whole script
   at parse time with `unexpected EOF while looking for matching` (gcptest, bash 5.1.8,
   2026-10-16: `echo "$(list_times case)"` broke a test driver; `case/log.x` as a path is

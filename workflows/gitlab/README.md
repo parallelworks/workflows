@@ -7,14 +7,15 @@ CI/CD runners that run pipelines on the cluster: on the service host, and throug
 SLURM scheduler with [Jacamar CI](https://gitlab.com/ecp-ci/jacamar-ci).
 
 ```
-form ──► preprocessing ──► start script ──► GitLab ──► https://<subdomain>.<sessions domain>/
-         (checks, runner    (container,     answers      the run completes; GitLab and its
-          tools)             runners)       /users/sign_in   runners run until you delete the endpoint
+form ──► preprocessing ──► start script ──► GitLab answers, ──► https://<subdomain>.<sessions domain>/
+         (checks, runner    (container,     runners registered,   the run completes; GitLab and its
+          tools)             runners)       demo project created  runners run until you delete the endpoint
 ```
 
-The first start of a run directory takes about five minutes (GitLab configures itself
-and creates its database); later starts two to three. The run completes when the
-sign-in page answers; the service outlives the run until
+The first start of a run directory takes three to five minutes (GitLab configures
+itself and creates its database); later starts about two. The run completes once the
+sign-in page answers and the runners are registered (until then the page answers 503
+to the platform's probe); the service outlives the run until
 `pw endpoints delete gitlab-<run-slug>`, which also stops the runners.
 
 ## Requirements

@@ -204,11 +204,32 @@ fi
 # oidc/authorize instead of the platform's sign-in: for the one route that
 # redirects to the identity provider, nginx intercepts the 3xx and answers a
 # 200 page that navigates there itself (redirects within this host are
-# re-issued as they were). The file is mounted into the config volume and
-# included from the server block, so the host's user can rewrite it on every
-# start although the volume belongs to root
+# re-issued as they were). The directory is mounted into the config volume
+# and its file included from the server block, so the host's user can rewrite
+# it on every start although the volume belongs to root.
+#
+# The run completes as soon as the platform's probe of /users/sign_in gets a
+# 200, while the runners are registered after GitLab answers: until this
+# launcher touches the ready marker that page answers 503 to everyone but
+# this launcher's own probe, so a setup failure fails the run instead of
+# leaving a completed run whose service the cleanup then removed
 host_re=$(printf '%s' "${host}" | sed 's/[.]/\\./g')
-cat > "${run_dir}/nginx-activate.conf" <<NGINXEOF
+mkdir -p "${run_dir}/activate"
+rm -f "${run_dir}/activate/ready"
+cat > "${run_dir}/activate/nginx.conf" <<NGINXEOF
+location = /users/sign_in {
+    set \$activate_gate 0;
+    if (!-f /etc/gitlab/activate/ready) { set \$activate_gate 1; }
+    if (\$http_x_activate_probe) { set \$activate_gate 0; }
+    if (\$activate_gate = 1) { return 503; }
+    proxy_pass http://gitlab-workhorse;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$http_host_with_default;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Ssl on;
+}
 location = /users/auth/openid_connect {
     proxy_pass http://gitlab-workhorse;
     proxy_http_version 1.1;
@@ -288,7 +309,7 @@ ${docker_cmd} run -d \
     -v "${service_rundir}/config:/etc/gitlab" \
     -v "${service_rundir}/logs:/var/log/gitlab" \
     -v "${service_rundir}/data:/var/opt/gitlab" \
-    -v "${run_dir}/nginx-activate.conf:/etc/gitlab/activate/nginx.conf:ro" \
+    -v "${run_dir}/activate:/etc/gitlab/activate:ro" \
     "${service_image}"
 
 # The first boot of a run directory runs the whole configuration (minutes);
@@ -307,7 +328,7 @@ for i in $(seq 1 360); do
         exit 1
     fi
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-        -H "Host: ${host}" "http://127.0.0.1:${PORT}/users/sign_in")
+        -H "Host: ${host}" -H "X-Activate-Probe: 1" "http://127.0.0.1:${PORT}/users/sign_in")
     if [ "${code}" = "200" ]; then
         break
     fi
@@ -547,6 +568,9 @@ if [ -n "${oidc_client_id}" ]; then
     echo "::notice::Sign in with ${oidc_display_name} from GitLab's own tab (${public_url}users/sign_in): redirect URI ${public_url}users/auth/openid_connect/callback"
 fi
 echo "::notice::Git over HTTP from this host: http://127.0.0.1:${PORT}/<group>/<project>.git; from your machine: pw forward -L ${PORT}:localhost:${PORT} <cluster> (or -L ${service_ssh_port}:localhost:${service_ssh_port} for SSH)"
+
+# Opens the sign-in page to the platform's probe: the run completes from here
+touch "${run_dir}/activate/ready"
 
 exec ${docker_cmd} logs -f "${container_name}"
 LAUNCHEOF

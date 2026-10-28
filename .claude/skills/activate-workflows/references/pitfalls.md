@@ -465,6 +465,15 @@
   completed run with a dead endpoint. Find a free loopback port, start the service on it,
   check it, then `pw endpoints run --port <port> -- <foreground command>` (`docker compose
   logs -f` for a container that is already up); `app/start-template.sh` there.
+- **Setup that must run after the service answers gates the probed route** (verified
+  2026-10-28, `workflows/gitlab`): the first test's teardown came 1 s after the run
+  completed, while the launcher was still registering the CI runners behind the
+  already-answering sign-in page; a failure there would have left a completed run whose
+  cleanup then removed the service. When the setup needs the live service (its API), make
+  the route `wait_for_endpoint` probes answer `503` until a marker file exists (nginx:
+  `if (!-f <marker>) { return 503; }`, with a header the launcher's own probe sends to
+  bypass it), touch the marker last, and keep `exit 1` for every setup failure: the run
+  then completes on the whole setup and fails loud otherwise.
 - **Endpoint names must be lowercase `[a-z0-9-]`** (undocumented; one uppercase letter
   fails the launch). `<service>-${PW_RUN_SLUG}` is safe; a name typed into a form is not:
   fold it before it reaches `pw endpoints`, and make the wait step look for the same
@@ -729,6 +738,13 @@
   `workflows/dakota-openfoam`, run vocal-magpie). Build the argument before the heredoc
   with `printf -v arg -- '--link %q' "Pareto front=${url}"` and write `${arg}`.
 
+- **`sudo` closes inherited file descriptors, so a `flock` held on fd 9 is dropped at
+  `exec sudo docker logs -f`** (found in review, 2026-10-28, `workflows/gitlab`; the same
+  construct is in `workflows/openproject/openproject-docker/start-template.sh`): once
+  the launcher execs into the foreground log, the run directory's lock is free and a
+  second run on the same directory starts a second container on the same data. Keep the
+  shell that took the lock alive for the service's life (`docker logs -f … & wait $!`,
+  then fail), or hold the lock in a child that is not `sudo`.
 - **`$!` after `cd dir && setsid cmd ... &` is a subshell, not `cmd`** (2026-10-28, a
   hand-restarted GitLab runner survived its `cancel.sh`): bash backgrounds the whole
   `&&` list as a subshell, so the recorded pid is the subshell's and the session id to

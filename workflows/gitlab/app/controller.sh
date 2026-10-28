@@ -21,6 +21,8 @@ set -o pipefail
 ################################################################################
 
 GITLAB_RUNNER_VERSION=v19.5.1
+# From the release's release.sha256 (binaries/gitlab-runner-linux-amd64)
+GITLAB_RUNNER_SHA256=0e11e71404352e67d286269aee397ec8e2825e0fc91a12f60c04cef0b85edb85
 JACAMAR_VERSION=0.31.0
 # The ubi9 build is a static binary; the checksum is the registry's
 JACAMAR_TARBALL="jacamar-ci-${JACAMAR_VERSION}.ubi9.amd64.tar.gz"
@@ -65,6 +67,11 @@ if [ "${runners_shell}" = "true" ] || [ "${runners_slurm}" = "true" ]; then
         if ! curl -sSL --retry 3 -o "${runner_bin}.tmp" \
             "https://gitlab-runner-downloads.s3.amazonaws.com/${GITLAB_RUNNER_VERSION}/binaries/gitlab-runner-linux-amd64"; then
             echo "::error title=Error::Could not download gitlab-runner ${GITLAB_RUNNER_VERSION}"
+            exit 1
+        fi
+        if ! echo "${GITLAB_RUNNER_SHA256}  ${runner_bin}.tmp" | sha256sum -c --quiet; then
+            echo "::error title=Error::gitlab-runner ${GITLAB_RUNNER_VERSION} does not match its checksum"
+            rm -f "${runner_bin}.tmp"
             exit 1
         fi
         chmod +x "${runner_bin}.tmp"

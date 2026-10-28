@@ -173,27 +173,35 @@ cat > launch-gitlab-${PW_JOB_ID}.sh <<'LAUNCHEOF'
 #!/bin/bash
 set -x
 
+# A failure here ends pw endpoints run with the endpoint already registered,
+# which the start script cannot tell from the cancel that releases a healthy
+# run: the exit file says which it was
+fail() {
+    echo "::error title=Error::$1"
+    echo "${2:-1}" > "${run_dir}/launcher.exit"
+    exit "${2:-1}"
+}
+rm -f "${run_dir}/launcher.exit"
+
 host="${PW_ENDPOINT_HOST}"
 if [ -z "${host}" ]; then
     host=$(printf '%s' "${PW_ENDPOINT_URL}" | sed -E 's#^https?://##; s#[/?].*$##')
 fi
 if [ -z "${host}" ]; then
-    echo "::error title=Error::pw endpoints run did not export the endpoint host (PW_ENDPOINT_HOST / PW_ENDPOINT_URL)"
-    exit 1
+    fail "pw endpoints run did not export the endpoint host (PW_ENDPOINT_HOST / PW_ENDPOINT_URL)"
 fi
 if [ -n "${PW_ENDPOINT_PATH%/}" ]; then
-    echo "::error title=Error::GitLab serves at the root of its address; the endpoint path ${PW_ENDPOINT_PATH} is not supported"
-    exit 1
+    fail "GitLab serves at the root of its address; the endpoint path ${PW_ENDPOINT_PATH} is not supported"
 fi
 public_url="https://${host}/"
 api="http://127.0.0.1:${PORT}/api/v4"
 
 # Two servers on one data directory would both start and corrupt it; the lock
-# is held for the life of this launcher, which `exec`s into `docker logs -f`
+# is held on fd 9 for the life of this launcher, which therefore waits for
+# `docker logs -f` instead of exec'ing into it (sudo closes inherited fds)
 exec 9>"${service_rundir}/.lock"
 if ! flock -n 9; then
-    echo "::error title=Error::${service_rundir} is in use by another GitLab run; choose another run directory or stop that one first"
-    exit 75
+    fail "${service_rundir} is in use by another GitLab run; choose another run directory or stop that one first" 75
 fi
 
 # The platform proxy forwards X-Forwarded-Proto: http, under which GitLab (an
@@ -214,7 +222,10 @@ fi
 # this launcher's own probe, so a setup failure fails the run instead of
 # leaving a completed run whose service the cleanup then removed
 host_re=$(printf '%s' "${host}" | sed 's/[.]/\\./g')
+# nginx's workers (an unprivileged user in the container) test the marker, so
+# the directory stays readable whatever the umask here
 mkdir -p "${run_dir}/activate"
+chmod 755 "${run_dir}/activate"
 rm -f "${run_dir}/activate/ready"
 cat > "${run_dir}/activate/nginx.conf" <<NGINXEOF
 location = /users/sign_in {
@@ -249,6 +260,7 @@ location @activate_hop {
     return 200 '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=\$upstream_http_location"><title>Redirecting</title></head><body><p>Continue to <a href="\$upstream_http_location">sign in</a>.</p></body></html>';
 }
 NGINXEOF
+chmod 644 "${run_dir}/activate/nginx.conf"
 
 # One Ruby line: a docker env file takes no newlines. Secrets are read from
 # their files here, so they stay out of the set -x trace
@@ -324,8 +336,7 @@ code=""
 for i in $(seq 1 360); do
     if [ -z "$(${docker_cmd} ps -q --filter "name=^${container_name}$")" ]; then
         ${docker_cmd} logs --tail 80 "${container_name}"
-        echo "::error title=Error::The GitLab container exited during start-up (log above)"
-        exit 1
+        fail "The GitLab container exited during start-up (log above)"
     fi
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
         -H "Host: ${host}" -H "X-Activate-Probe: 1" "http://127.0.0.1:${PORT}/users/sign_in")
@@ -339,8 +350,7 @@ for i in $(seq 1 360); do
 done
 if [ "${code}" != "200" ]; then
     ${docker_cmd} logs --tail 80 "${container_name}"
-    echo "::error title=Error::GitLab's sign-in page did not answer 200 within 30 minutes (last status: ${code:-none})"
-    exit 1
+    fail "GitLab's sign-in page did not answer 200 within 30 minutes (last status: ${code:-none})"
 fi
 echo "::notice::GitLab is serving at ${public_url}"
 
@@ -351,8 +361,7 @@ set +x
 admin_token=$(${docker_cmd} exec "${container_name}" gitlab-rails runner \
     "t = User.find_by_username('root').personal_access_tokens.create!(scopes: ['api', 'create_runner'], name: 'activate-workflow-${PW_RUN_SLUG}', expires_at: 1.day.from_now); puts t.token" 2>/dev/null | tail -n 1)
 if [ -z "${admin_token}" ]; then
-    echo "::error title=Error::Could not create a root API token in the container (gitlab-rails runner failed)"
-    exit 1
+    fail "Could not create a root API token in the container (gitlab-rails runner failed)"
 fi
 api_call() {
     # api_call <method> <path> [curl args...]: sets api_status and api_body
@@ -435,11 +444,11 @@ TOMLEOF
 }
 runners=""
 if [ "${runners_shell}" = "true" ]; then
-    register_runner shell true || exit 1
+    register_runner shell true || fail "The shell runner was not registered (above)"
     runners="${runners} shell"
 fi
 if [ "${runners_slurm}" = "true" ]; then
-    register_runner slurm false || exit 1
+    register_runner slurm false || fail "The SLURM runner was not registered (above)"
     runners="${runners} slurm"
 fi
 if [ -n "${runners}" ]; then
@@ -495,8 +504,7 @@ TOMLEOF
     sleep 3
     if ! kill -0 "$(cat "${run_dir}/runner.pid")" 2>/dev/null; then
         tail -n 30 "${runner_root}/runner.log"
-        echo "::error title=Error::gitlab-runner exited right after starting (log above)"
-        exit 1
+        fail "gitlab-runner exited right after starting (log above)"
     fi
     echo "::notice::CI runners started:${runners} (log: ${runner_root}/runner.log)"
 fi
@@ -571,8 +579,11 @@ echo "::notice::Git over HTTP from this host: http://127.0.0.1:${PORT}/<group>/<
 
 # Opens the sign-in page to the platform's probe: the run completes from here
 touch "${run_dir}/activate/ready"
+chmod 644 "${run_dir}/activate/ready"
 
-exec ${docker_cmd} logs -f "${container_name}"
+${docker_cmd} logs -f "${container_name}" &
+wait $!
+fail "The GitLab container stopped (its log is above)"
 LAUNCHEOF
 chmod +x launch-gitlab-${PW_JOB_ID}.sh
 
@@ -581,8 +592,13 @@ pw endpoints run ${pw_endpoints_args} -- ./launch-gitlab-${PW_JOB_ID}.sh
 if [ $? -ne 0 ]; then
     # The pw endpoints command blocks for the life of the service, so it also
     # returns non-zero when the workflow cancels this job after a *successful*
-    # launch - which is exactly how wait_for_endpoint releases the run. Only a
-    # launch that never registered its endpoint is a real failure.
+    # launch - which is exactly how wait_for_endpoint releases the run. A
+    # launch that never registered its endpoint, or a launcher that gave up
+    # after registering it, is a real failure.
+    if [ -s "${run_dir}/launcher.exit" ]; then
+        echo "::error title=Error::The GitLab launcher failed with status $(cat "${run_dir}/launcher.exit") (its messages are above)"
+        exit 1
+    fi
     served_name=$(printf '%s' "${pw_endpoints_args}" | sed -n 's/.*--name[ =]\{1,\}\([^ ]*\).*/\1/p')
     if [ -n "${served_name}" ] && pw endpoints list 2>/dev/null | awk '{print $1}' | grep -qxF "${served_name}"; then
         echo "::notice::Endpoint ${served_name} served until this job was cancelled; exiting cleanly"

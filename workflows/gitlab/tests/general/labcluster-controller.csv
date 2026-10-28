@@ -2,3 +2,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-28T12:41:25Z,cold,pass,ok,6dfe68d,162207a,727fc42,b939881,b939881,gitlab,alvaro,stirring-pony,178,
 2026-10-28T12:46:12Z,warm,pass,ok,ad3d4b1,162207a,727fc42,9c35e78,9c35e78,gitlab,alvaro,elegant-asp,194,
 2026-10-28T12:57:33Z,warm,pass,leftover:containers,e2b9559,162207a,727fc42,2534a87,2534a87,gitlab,alvaro,eminent-guppy,182,
+2026-10-28T13:20:20Z,warm,pass,ok,9a5299a,162207a,727fc42,dfc8053,dfc8053,gitlab,alvaro,integral-walrus,179,

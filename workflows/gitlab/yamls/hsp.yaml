@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: gitlab
+          branch: canary
           sparse_checkout:
             - workflows/gitlab/app
       - name: Create Inputs

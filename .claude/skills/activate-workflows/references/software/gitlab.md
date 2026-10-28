@@ -93,6 +93,16 @@ mechanics are [../activate-platform.md](../activate-platform.md) §10, the OIDC 
   `.gitlab-ci.yml` starts the first pipeline at once.
 - **A success body can carry a secret** (the runner token): print `message` from an
   error body, never the body of a call that may have succeeded.
+- **The run must not complete before this setup is done.** The platform's probe of
+  `/users/sign_in` would see 200 as soon as Puma serves, so the nginx snippet gates
+  that one route (503 until the launcher touches `ready`, bypassed by the launcher's
+  own `X-Activate-Probe` header); the general entry is in pitfalls.md ("Setup that
+  must run after the service answers gates the probed route"). The gate directory is
+  `chmod 755`: nginx's workers test the marker as an unprivileged user.
+- **Two GitLabs on one host** (a kept demo instance beside a test) need distinct run
+  directories, subdomains and SSH ports; the container carries
+  `--label activate.rundir=<run directory>` so a test's leftover check counts only its
+  own (`docker ps -aq --filter label=activate.rundir=$HOME/<dir>`).
 
 ## Jacamar CI (the SLURM runner)
 

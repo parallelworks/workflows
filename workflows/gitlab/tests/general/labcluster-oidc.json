@@ -19,6 +19,7 @@
     "scheduler": false
   },
   "service": {
+    "container_runtime": "gitlab-docker",
     "subdomain": "gitlab-alvaro",
     "rundir": "${HOME}/gitlab-dev"
   },

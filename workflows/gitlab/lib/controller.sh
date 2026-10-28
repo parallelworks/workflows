@@ -1,14 +1,13 @@
-set -o pipefail
-
 ################################################################################
-# Interactive Session Controller - GitLab
+# GitLab controller, shared by gitlab-docker and gitlab-singularity
 #
 # Purpose: Check the form's values and install the CI runner tools on the
-#          login node. The GitLab image is pulled in start-template.sh on the
-#          node where the job runs, because image caches are not shared
-#          between nodes.
+#          login node. Each runtime's controller.sh sources this file and adds
+#          what its runtime needs (the Singularity one pulls the SIF; the
+#          Docker image is pulled in start-template.sh on the node where the
+#          job runs, because image caches are not shared between nodes).
 # Runs on: Controller node
-# Called by: Workflow preprocessing step
+# Called by: workflows/gitlab/<runtime>/controller.sh (workflow preprocessing step)
 #
 # Required Environment Variables:
 #   - service_rundir: holds config/, data/, logs/ and runner/
@@ -120,4 +119,3 @@ if [ "${runners_slurm}" = "true" ]; then
     ln -sfn "${JACAMAR_VERSION}" "${service_parent_install_dir}/jacamar-ci/current"
 fi
 
-echo "::notice title=Info::Controller setup complete."

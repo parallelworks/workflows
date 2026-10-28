@@ -58,7 +58,9 @@ token, this is how to connect it to ACTIVATE:
    ```
 
 2. **Launch** with the client ID, the client secret and the Enterprise token in the
-   *Sign in with ACTIVATE* group. The token is imported once per run directory.
+   *Sign in with ACTIVATE* group. The token is imported once per run directory; a run
+   without one starts anyway, with a warning, and the button stays hidden until a
+   token is active (a trial requested inside OpenProject works).
 3. **Sign in** with the ACTIVATE button on the login page. A first sign-in creates the
    OpenProject account (login = ACTIVATE username) and asks for the last name once.
 
@@ -80,7 +82,7 @@ Two things to know:
 | OpenProject image | `openproject/openproject:17` | Docker only. Keep the major version of an existing run directory |
 | Client ID | empty | Empty = OpenProject accounts only. A provider stays in the database once configured; remove it under Administration → Authentication |
 | Client secret | | Required with a client ID |
-| OpenProject Enterprise token | | Required with a client ID until the run directory holds one; bound to the subdomain, has an expiry date |
+| OpenProject Enterprise token | | Imported once per run directory; without one the Sign in with ACTIVATE button stays hidden; bound to the subdomain, has an expiry date |
 
 ## Building the Singularity image
 

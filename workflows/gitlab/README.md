@@ -112,7 +112,11 @@ directory finds its runners again.
 A SLURM job passes its `sbatch` options in the `SCHEDULER_PARAMETERS` variable (`-o`,
 `-e`, `-J` and `--wait` are Jacamar's) and must carry the `CI_JOB_JWT` id token Jacamar
 reads, which a `default:` block gives every job of the project. Set a wall time:
-GitLab's job timeout keeps counting while the job waits in the queue.
+GitLab's job timeout keeps counting while the job waits in the queue. Jacamar runs the
+stages it keeps on the login node (sources, artifacts, cache) in a login shell with a
+clean environment, so the workflow links `gitlab-runner` into `~/bin`, which the login
+profile puts on the PATH; a profile that does not gets a warning in the run's log, and
+artifacts of SLURM jobs then stay on the cluster.
 
 ```yaml
 default:

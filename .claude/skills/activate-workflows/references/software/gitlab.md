@@ -179,6 +179,15 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
   are Jacamar's. Only `before_script` + `script` run in the batch job (`sbatch
   --wait`, output tailed from `slurm-ci-<job>.out`); sources, artifacts and
   `after_script` run on the runner's host.
+- **Jacamar's host-side stages run as `env -i /bin/bash --login` scripts** (its docs, and
+  verified 2026-10-29): the runner's environment never reaches them, and the artifact and
+  cache stages look `gitlab-runner` up by name, so a runner binary outside the login
+  shell's PATH gives "Missing gitlab-runner. Uploading artifacts is disabled." (the job
+  still succeeds, the artifacts never arrive, a `needs:` consumer finds nothing). A
+  symlink in `~/bin` (on the PATH of the default Rocky and Ubuntu profiles) fixed it;
+  `user_bash_env = ["PATH=<dir>:$PATH"]` in `jacamar.toml` does not: the value goes to
+  `env -i` as is, `$PATH` stays literal and the job dies with `bash: No such file or
+  directory`. The launcher creates the link and probes a login shell for it.
 - **Jacamar needs SLURM accounting.** After the batch job ends it reads the state
   with `sacct`; on a cluster without `AccountingStorageType` the job's script runs
   to the end and the CI job still fails with `unable to obtained output via sacct:

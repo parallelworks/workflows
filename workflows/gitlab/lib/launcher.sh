@@ -335,6 +335,19 @@ TOMLEOF
         if [ "${runners_slurm}" = "true" ]; then
             mkdir -p "${runner_root}/jacamar"
             chmod 700 "${runner_root}/jacamar"
+            # Jacamar runs the stages it keeps on this host (sources, artifacts,
+            # cache) as `env -i bash --login` scripts, so the runner's
+            # environment never reaches them, and the artifact and cache stages
+            # look gitlab-runner up by name ("Missing gitlab-runner. Uploading
+            # artifacts is disabled." otherwise): the binary is linked into
+            # ~/bin, which the login profile puts on the PATH. Jacamar's
+            # user_bash_env is no alternative: it is passed to env -i as is,
+            # so a PATH set there replaces the profile's (verified)
+            mkdir -p "${HOME}/bin"
+            ln -sfn "${gitlab_runner_bin}" "${HOME}/bin/gitlab-runner"
+            if ! env -i HOME="${HOME}" USER="$(id -un)" /bin/bash --login -c 'command -v gitlab-runner' >/dev/null 2>&1; then
+                echo "::warning::A login shell on $(hostname) does not find ~/bin/gitlab-runner on its PATH: jobs of the SLURM runner cannot upload artifacts or caches. Add \$HOME/bin to the PATH in your shell profile"
+            fi
             # Jacamar verifies the job's id token against GitLab's keys; fetched
             # through the public URL they come back as the platform's sign-in page
             cat > "${runner_root}/jacamar.toml" <<TOMLEOF
@@ -347,11 +360,10 @@ TOMLEOF
         # The runner outlives this run like the container does and must not die
         # with the endpoint's process tree by accident, so it gets a session of
         # its own, which cancel.sh kills by session id. Its environment is the
-        # jobs' environment: the binary's directory joins the PATH because the
-        # custom executor's artifact and cache stages look up gitlab-runner by
-        # name ("Missing gitlab-runner. Uploading artifacts is disabled."
-        # otherwise), and the run's API key leaves, since it dies with the run
-        # and a pipeline that calls pw brings its own (a CI variable)
+        # shell runner's jobs' environment: the binary's directory joins the
+        # PATH for the artifact and cache stages, and the run's API key leaves,
+        # since it dies with the run and a pipeline that calls pw brings its
+        # own (a CI variable)
         PATH="${gitlab_runner_bin%/*}:${PATH}" setsid nohup env -u PW_API_KEY "${gitlab_runner_bin}" run \
             --config "${runner_root}/config.toml" \
             --working-directory "${runner_root}" \

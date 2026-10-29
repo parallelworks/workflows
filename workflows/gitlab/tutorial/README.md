@@ -203,8 +203,8 @@ artifacts land in GitLab as before.
 | | |
 |---|---|
 | GitLab, the runners | the cluster's login node, started by the workflow; they stay up after the run completes, until `pw endpoints delete gitlab-<run slug>` |
-| A SLURM job's script and output | `~/gitlab/runner/builds/slurm/<...>/<project>/`: the checkout the job ran in, with `slurm-ci-<job id>.out` beside it |
-| The runners' log | `~/gitlab/runner/runner.log` |
+| A job's checkout on the cluster | shell runner: `~/gitlab/runner/builds/shell/<...>/<group>/<project>/`; SLURM runner: `~/gitlab/runner/jacamar/<you>/builds/<...>/<group>/<project>/`, on the shared home so the compute node sees it |
+| The batch job's output | streamed into the job's log in GitLab; the runners' own log is `~/gitlab/runner/runner.log` |
 | The job in SLURM | `squeue -u $USER` while it runs, `sacct` afterwards; its name starts with `ci-` |
 
 ## When a job does not run

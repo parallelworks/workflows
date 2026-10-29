@@ -346,8 +346,13 @@ TOMLEOF
         fi
         # The runner outlives this run like the container does and must not die
         # with the endpoint's process tree by accident, so it gets a session of
-        # its own, which cancel.sh kills by session id
-        setsid nohup "${gitlab_runner_bin}" run \
+        # its own, which cancel.sh kills by session id. Its environment is the
+        # jobs' environment: the binary's directory joins the PATH because the
+        # custom executor's artifact and cache stages look up gitlab-runner by
+        # name ("Missing gitlab-runner. Uploading artifacts is disabled."
+        # otherwise), and the run's API key leaves, since it dies with the run
+        # and a pipeline that calls pw brings its own (a CI variable)
+        PATH="${gitlab_runner_bin%/*}:${PATH}" setsid nohup env -u PW_API_KEY "${gitlab_runner_bin}" run \
             --config "${runner_root}/config.toml" \
             --working-directory "${runner_root}" \
             > "${runner_root}/runner.log" 2>&1 < /dev/null &

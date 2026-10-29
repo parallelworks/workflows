@@ -50,9 +50,11 @@ gitlab_launcher_init() {
     # Two servers on one data directory would both start and corrupt it; the
     # lock is held on fd 9 for the life of the launcher, which therefore waits
     # for its foreground command instead of exec'ing into it (sudo closes
-    # inherited fds)
+    # inherited fds). A run started right after the previous one's session
+    # was deleted finds the old launcher still letting go, so the lock is
+    # waited for a minute
     exec 9>"${service_rundir}/.lock"
-    if ! flock -n 9; then
+    if ! flock -w 60 9; then
         fail "${service_rundir} is in use by another GitLab run; choose another run directory or stop that one first" 75
     fi
 }

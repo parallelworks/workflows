@@ -191,13 +191,25 @@ gitlab_logs() {
     tail -n 80 "${run_dir}/gitlab.log"
 }
 
+# A host in FIPS mode (fips=1 on its kernel command line: STIG images) shows
+# /proc/sys/crypto/fips_enabled = 1 to the container, whose OpenSSH then
+# wants a FIPS provider the image does not have and dies while the entrypoint
+# creates the SSH host keys ("PRNG is not seeded"). The image is not a FIPS
+# build (GitLab ships those separately), so it is given a 0 to read
+fips_bind=""
+if [ "$(cat /proc/sys/crypto/fips_enabled 2>/dev/null)" = "1" ]; then
+    echo 0 > "${run_dir}/fips_enabled"
+    fips_bind="--bind ${run_dir}/fips_enabled:/proc/sys/crypto/fips_enabled"
+    echo "::notice::$(hostname) runs in FIPS mode; the container reads fips_enabled=0 (the GitLab image is not a FIPS build)"
+fi
+
 # The image's volumes are bound from the run directory (every mount point
 # exists in the image: --writable creates none), the snippet directory and
 # the sshd configuration (whose port is fixed in the image) from this job
 singularity instance stop -F "${instance_name}" 2>/dev/null || true
 if ! singularity instance start --fakeroot --writable --contain --cleanenv \
         --uts --hostname "${host}" \
-        --workdir "${work_dir}" \
+        --workdir "${work_dir}" ${fips_bind} \
         --bind "${service_rundir}/config:/etc/gitlab" \
         --bind "${service_rundir}/logs:/var/log/gitlab" \
         --bind "${service_rundir}/data:/var/opt/gitlab" \

@@ -66,6 +66,13 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
     `lib/start.sh` treats an existing `state/data.img` as "database exists". Hidden inputs
     `service.state_layout` (auto|directories|image) and `service.state_image_size` (GB)
     force it for tests (`tests/general/gcpsmall-image.json`).
+  - **Runtime selection as in kasmvnc** (2026-10-29): apptainer first, then singularity,
+    each from the PATH or its module, taken only when `--version` answers (a module can
+    ship a build whose engine panics on the node); the chosen name goes into every
+    invocation, `cancel.sh` included. kasmvnc's other lessons that apply here: an
+    extracted sandbox on a parallel filesystem returns truncated reads, so an image
+    that cannot be mounted on a Lustre-home node has no fallback (the template says so);
+    FIPS-Go apptainer builds and noexec tmpdirs exist in the fleet.
   - **Login node only, both runtimes** (2026-10-29): the YAMLs have no scheduler section
     and call the submitter with `scheduler: false`. A service that outlives the run has
     no place in an allocation, and on the cloud clusters a compute node has no subuid

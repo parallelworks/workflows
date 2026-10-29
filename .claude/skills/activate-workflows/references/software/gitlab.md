@@ -60,7 +60,7 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
     /var/opt/gitlab/.gitconfig`): the template probes a `chown 998` in `data/` through
     the container; on failure three sparse ext3 images under `state/` (`apptainer
     overlay create`; `config.img`, `logs.img`, `data.img`) are bound in place of the
-    three directories (`--bind state/data.img:/var/opt/gitlab:image-src=/upper`), the
+    three directories (`--bind state/data.img:/var/opt/gitlab:image-src=/gitlab`, a root-made directory inside each image), the
     rootfs keeps `--writable-tmpfs` (a single `--overlay` image broke runit: pitfalls),
     the host-side files (runner/, .root_password, markers) stay as they are, and
     `lib/start.sh` treats an existing `state/data.img` as "database exists". Hidden inputs

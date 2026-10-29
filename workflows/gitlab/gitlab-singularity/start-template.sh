@@ -157,27 +157,34 @@ case "${state_layout}" in
             echo "::error title=Error::$(hostname) can neither mount ${container_sif} nor change file ownership in ${service_rundir}: an extracted image needs a run directory on a local filesystem. Choose one there"
             exit 1
         fi
-        for tool in fuse2fs mkfs.ext3; do
-            if ! command -v ${tool} >/dev/null 2>&1; then
-                echo "::error title=Error::Keeping GitLab's state in an ext3 image needs ${tool} (e2fsprogs) on $(hostname); install it, or use a run directory on a local filesystem"
-                exit 1
-            fi
-        done
+        if ! command -v fuse2fs >/dev/null 2>&1; then
+            echo "::error title=Error::Keeping GitLab's state in ext3 images needs fuse2fs (e2fsprogs) on $(hostname); install it, or use a run directory on a local filesystem"
+            exit 1
+        fi
         # data.img takes the form's size (repositories, database, uploads);
-        # the sparse files only hold what is written
+        # the sparse files only hold what is written. The directory bound
+        # from each image is made by the namespace's root, so it belongs to
+        # an id the namespace maps: the image's own upper/ belongs to the
+        # user, whose id may lie beyond the mapped range (65536 ids on some
+        # HPC systems), and root in the namespace cannot write there
         mkdir -p "${state_dir}"
         state_image_size="${service_state_image_size:-20}"
         for spec in "config 256" "logs 4096" "data $(( state_image_size * 1024 ))"; do
             set -- ${spec}
             if ! [ -s "${state_dir}/$1.img" ]; then
                 if ! singularity overlay create --sparse --size "$2" "${state_dir}/$1.img"; then
-                    echo "::error title=Error::Could not create ${state_dir}/$1.img (above)"
+                    echo "::error title=Error::Could not create ${state_dir}/$1.img (above; it needs mkfs.ext3 of e2fsprogs on $(hostname))"
+                    exit 1
+                fi
+                if ! singularity exec --fakeroot --bind "${state_dir}/$1.img:/mnt:image-src=/" "${image_ref}" mkdir -p /mnt/gitlab; then
+                    echo "::error title=Error::Could not mount ${state_dir}/$1.img inside the container (above; fuse2fs on $(hostname))"
+                    rm -f "${state_dir}/$1.img"
                     exit 1
                 fi
                 echo "::notice::Created ${state_dir}/$1.img ($2 MiB, sparse; grow it with resize2fs while GitLab is stopped)"
             fi
         done
-        state_binds="--bind ${state_dir}/config.img:/etc/gitlab:image-src=/upper --bind ${state_dir}/logs.img:/var/log/gitlab:image-src=/upper --bind ${state_dir}/data.img:/var/opt/gitlab:image-src=/upper"
+        state_binds="--bind ${state_dir}/config.img:/etc/gitlab:image-src=/gitlab --bind ${state_dir}/logs.img:/var/log/gitlab:image-src=/gitlab --bind ${state_dir}/data.img:/var/opt/gitlab:image-src=/gitlab"
         ;;
     directories)
         state_binds="--bind ${service_rundir}/config:/etc/gitlab --bind ${service_rundir}/logs:/var/log/gitlab --bind ${service_rundir}/data:/var/opt/gitlab"

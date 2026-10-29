@@ -554,8 +554,12 @@
   on compute nodes), and a `stat -f` type check misses half of them, so the template
   probes with an actual `chown 998` in the run directory and, where it fails, keeps each
   state directory in an **ext3 image bound in place** (`apptainer overlay create --sparse
-  --size <MiB> state/data.img`, then `--bind state/data.img:/var/opt/gitlab:image-src=
-  /upper`, one image per directory so no image is mounted twice): fuse2fs mounts them
+  --size <MiB> state/data.img`, a `mkdir /mnt/gitlab` through `--bind img:/mnt:image-src=/`
+  so the bound directory belongs to the namespace's root, then `--bind
+  state/data.img:/var/opt/gitlab:image-src=/gitlab`, one image per directory so no image
+  is mounted twice; the image's own `upper/` belongs to the user, whose uid can lie
+  beyond the mapped range, 65536 ids on barfoot, and root in the namespace then cannot
+  write there, "Permission denied"): fuse2fs mounts them
   inside the namespace, ownership, FIFOs and unix sockets live in the images, the network
   filesystem sees three files of the user's; needs `fuse2fs` and `mkfs.ext3` on the node
   (both in e2fsprogs on Rocky 9 and in the cloud images). Not `--overlay <img>` for the

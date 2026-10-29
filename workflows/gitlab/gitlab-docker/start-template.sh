@@ -82,8 +82,14 @@ gitlab_logs() {
     ${docker_cmd} logs --tail 80 "${container_name}"
 }
 
+# The 0 a FIPS-mode host hands the container (lib/start.sh)
+fips_mount=""
+if [ -n "${fips_enabled_file}" ]; then
+    fips_mount="-v ${fips_enabled_file}:/proc/sys/crypto/fips_enabled:ro"
+fi
+
 ${docker_cmd} rm -f "${container_name}" 2>/dev/null || true
-${docker_cmd} run -d \
+${docker_cmd} run -d ${fips_mount} \
     --name "${container_name}" \
     --label "activate.rundir=${service_rundir}" \
     --hostname "${host}" \

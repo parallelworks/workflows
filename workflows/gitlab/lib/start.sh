@@ -127,7 +127,20 @@ if [ -n "${oidc_client_id}" ] && [ -z "${platform_host}" ]; then
     exit 1
 fi
 
-export gitlab_lib service_rundir service_subdomain service_ssh_port platform_host oidc_display_name root_password_file gitlab_runner_bin jacamar_bin
+# A host in FIPS mode (fips=1 on its kernel command line: STIG images) shows
+# /proc/sys/crypto/fips_enabled = 1 to the container, whose OpenSSH then wants
+# a FIPS provider the image does not have and dies while the entrypoint
+# creates the SSH host keys ("PRNG is not seeded"). The image is not a FIPS
+# build (GitLab ships those separately), so each runtime mounts this file,
+# holding a 0, over that path when it is set
+fips_enabled_file=""
+if [ "$(cat /proc/sys/crypto/fips_enabled 2>/dev/null)" = "1" ]; then
+    echo 0 > "${run_dir}/fips_enabled"
+    fips_enabled_file="${run_dir}/fips_enabled"
+    echo "::notice::$(hostname) runs in FIPS mode; the container reads fips_enabled=0 (the GitLab image is not a FIPS build)"
+fi
+
+export gitlab_lib service_rundir service_subdomain service_ssh_port platform_host oidc_display_name root_password_file gitlab_runner_bin jacamar_bin fips_enabled_file
 
 finish_endpoint_run() {
     # finish_endpoint_run <status of pw endpoints run>

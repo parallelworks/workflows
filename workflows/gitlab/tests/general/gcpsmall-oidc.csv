@@ -1,2 +1,5 @@
 date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
 2026-10-28T16:33:55Z,cold,pass,kept,1bdae8f,162207a,727fc42,c6f6f1f,c6f6f1f,gitlab,alvaro,driving-heron,367,
+2026-10-29T09:23:10Z,cold,pass,kept,23cebdd,162207a,727fc42,0350fd9,0350fd9,gitlab,alvaro,advanced-whale,385,
+2026-10-29T09:36:35Z,warm,pass,kept,8e00aae,162207a,727fc42,d0a28cb,d0a28cb,gitlab,alvaro,guiding-filly,194,
+2026-10-29T09:53:02Z,warm,pass,kept,0db9c15,162207a,727fc42,1ed4557,1ed4557,gitlab,alvaro,peaceful-crawdad,193,

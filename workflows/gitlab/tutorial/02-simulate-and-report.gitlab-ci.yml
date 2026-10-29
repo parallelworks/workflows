@@ -8,8 +8,8 @@ default:
       aud: $CI_SERVER_URL          # this GitLab's address, e.g. https://gitlab-jane.activate.pw
 
 variables:
-  # sbatch options for the SLURM job; add --account=<account>, --partition=...
-  # as your cluster requires
+  # The SLURM job's own sbatch options (the cluster's account, partition, ...
+  # come from the workflow form, added to every submission)
   SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=4 --time=00:10:00"
   # A value the simulation reads. Override it when you start a pipeline by hand
   # (Build -> Pipelines -> New pipeline -> Variables) to run another case.

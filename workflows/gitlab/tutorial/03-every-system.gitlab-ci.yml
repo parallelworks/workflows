@@ -10,19 +10,23 @@ default:
 
 submit-everywhere:
   tags: [shell]                    # the shell runner: pw runs on the login node
-  # "parallel: matrix:" turns this one definition into one job per value:
-  # "submit-everywhere: [<resource_1>]", "submit-everywhere: [<resource_2>]", ...
-  # each with RESOURCE set to its value. Put your resources' names here, as
-  # `pw cluster ls` prints them (the part after pw://<user>/); they must be on.
+  # "parallel: matrix:" turns this one definition into one job per entry, each
+  # with the entry's variables set. One entry per system: its name as
+  # `pw cluster ls` prints it (the part after pw://<user>/; it must be on) and
+  # the sbatch options that system wants, including what it requires of every
+  # job (--account=<account>, --partition=<partition>, ...). The workflow's
+  # "SLURM options for every CI job" only cover the SLURM runner's own cluster.
   parallel:
     matrix:
-      - RESOURCE: ["<resource_1>", "<resource_2>"]
+      - RESOURCE: "<resource_1>"
+        SBATCH_OPTIONS: "--nodes=1 --time=00:10:00"
+      - RESOURCE: "<resource_2>"
+        SBATCH_OPTIONS: "--nodes=1 --time=00:10:00"
   script:
     - export PATH="$HOME/pw:$PATH"
     - pw auth whoami                 # who pw is signed in as
     - pw cluster ls | grep "$RESOURCE"
     # Submit a batch job on the resource, wait for it, and read its output back.
-    # Add the options the resource requires to sbatch: --account=<account>,
-    # --partition=<partition>, ... The outer double quotes expand $CI_JOB_ID
-    # here; the inner single quotes keep the job's commands for the resource.
-    - pw ssh "$RESOURCE" "sbatch --wait --job-name=ci-$CI_JOB_ID --output=ci-$CI_JOB_ID.out --time=00:10:00 --wrap='hostname; nproc; date' && cat ci-$CI_JOB_ID.out"
+    # The outer double quotes expand $SBATCH_OPTIONS and $CI_JOB_ID here; the
+    # inner single quotes keep the job's commands for the resource.
+    - pw ssh "$RESOURCE" "sbatch --wait $SBATCH_OPTIONS --job-name=ci-$CI_JOB_ID --output=ci-$CI_JOB_ID.out --wrap='hostname; nproc; date' && cat ci-$CI_JOB_ID.out"

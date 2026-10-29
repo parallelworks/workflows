@@ -15,9 +15,10 @@ default:
 
 # "variables:" defines values every job can read as environment variables.
 variables:
-  # The options Jacamar passes to sbatch, as one string. Add what your cluster
-  # requires, for example --account=<account> --partition=<partition>, or
-  # --qos=<qos>; -o, -e, -J and --wait are Jacamar's own and cannot be set.
+  # The job's own sbatch options, as one string: what this job needs. What the
+  # cluster requires of every job (an account, a partition, a QoS) is not here:
+  # the workflow's "SLURM options for every CI job" adds it to every
+  # submission. -o, -e, -J and --wait are Jacamar's own and cannot be set.
   SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=4 --time=00:10:00"
 
 # Everything else at the top level is a job, named by its key.

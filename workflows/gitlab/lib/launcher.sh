@@ -16,7 +16,8 @@
 # Required Environment Variables (exported by lib/start.sh):
 #   - run_dir: this job's run/ directory (activate/, gitlab.env, launcher.exit)
 #   - service_rundir, service_ssh_port, root_password_file, service_license_file
-#   - runners_shell, runners_slurm, runners_demo_project, gitlab_runner_bin, jacamar_bin
+#   - runners_shell, runners_slurm, runners_scheduler_directives (optional),
+#     runners_demo_project, gitlab_runner_bin, jacamar_bin
 #   - platform_host, oidc_client_id, oidc_client_secret_file, oidc_display_name,
 #     oidc_block_new_users
 #   - runner_pw_auth (key | host | none) and GITLAB_PW_API_KEY when key
@@ -357,6 +358,20 @@ TOMLEOF
   data_dir = "${runner_root}/jacamar"
   gitlab_server = "http://127.0.0.1:${PORT}"
 TOMLEOF
+            # What the cluster requires of every batch job (the form's SLURM
+            # options) goes to sbatch with every submission; a job's own
+            # SCHEDULER_PARAMETERS come on top
+            local default_args="" arg
+            for arg in ${runners_scheduler_directives:-}; do
+                default_args="${default_args}${default_args:+, }\"${arg}\""
+            done
+            if [ -n "${default_args}" ]; then
+                cat >> "${runner_root}/jacamar.toml" <<TOMLEOF
+[batch]
+  default_args = [${default_args}]
+TOMLEOF
+                echo "Every SLURM runner job submits with:${runners_scheduler_directives:+ }${runners_scheduler_directives}"
+            fi
         fi
         # The runner outlives this run like the container does and must not die
         # with the endpoint's process tree by accident, so it gets a session of

@@ -108,10 +108,13 @@ directory finds its runners again.
 | **shell** (tag `shell`, takes untagged jobs) | GitLab's shell executor | any | the whole job on the service host, as your user, with `pw` signed in (below) |
 | **SLURM** (tag `slurm`) | GitLab's custom executor with Jacamar CI | `tags: [slurm]` | `before_script` + `script` inside an `sbatch` job submitted as your user; sources, artifacts and `after_script` on the service host |
 
-A SLURM job passes its `sbatch` options in the `SCHEDULER_PARAMETERS` variable (`-o`,
-`-e`, `-J` and `--wait` are Jacamar's) and must carry the `CI_JOB_JWT` id token Jacamar
-reads, which a `default:` block gives every job of the project. Set a wall time:
-GitLab's job timeout keeps counting while the job waits in the queue. Jacamar runs the
+What the cluster requires of every batch job (an account, a partition, a QoS) goes once
+into the form's **SLURM options for every CI job**, which the runner adds to every
+submission (Jacamar's `default_args`). A SLURM job then passes only its own `sbatch`
+options in the `SCHEDULER_PARAMETERS` variable (`-o`, `-e`, `-J` and `--wait` are
+Jacamar's) and must carry the `CI_JOB_JWT` id token Jacamar reads, which a `default:`
+block gives every job of the project. Set a wall time: GitLab's job timeout keeps
+counting while the job waits in the queue. Jacamar runs the
 stages it keeps on the login node (sources, artifacts, cache) in a login shell with a
 clean environment, so the workflow links `gitlab-runner` into `~/bin`, which the login
 profile puts on the PATH; a profile that does not gets a warning in the run's log, and
@@ -126,7 +129,7 @@ default:
 hello-slurm:
   tags: [slurm]
   variables:
-    SCHEDULER_PARAMETERS: "--nodes=1 --time=00:10:00"   # plus --account, --partition, ... as the cluster requires
+    SCHEDULER_PARAMETERS: "--nodes=1 --time=00:10:00"   # the job's own options; the cluster's come from the form
   script:
     - echo "SLURM job $SLURM_JOB_ID on $SLURM_NODELIST"
     - srun hostname
@@ -134,8 +137,8 @@ hello-slurm:
 
 With **Create the hpc-ci-demo project** on, the run creates the private project
 `root/hpc-ci-demo` with a pipeline of exactly these jobs, so a fresh GitLab shows a
-pipeline that ran on the cluster; a cluster that requires an account or a partition for
-batch jobs wants them added to that file's `SCHEDULER_PARAMETERS`.
+pipeline that ran on the cluster, as long as the form's **SLURM options for every CI
+job** carries what the cluster requires.
 
 ### Pipelines that call `pw`
 
@@ -199,6 +202,7 @@ need no license.
 | GitLab license | empty | See above |
 | Register a shell runner | on | |
 | Register a SLURM runner | off | Shown on SLURM clusters |
+| SLURM options for every CI job | empty | Shown with the SLURM runner; `--account=...`, `--partition=...` and the like, added to every submission |
 | ACTIVATE API key | empty | Shown on cloud clusters; what pipelines run `pw` with after the run completes |
 | Create the hpc-ci-demo project | off | An example project, created once under root; the tutorial starts from it |
 | Client ID / Client secret | empty | Sign in with ACTIVATE; both or neither |

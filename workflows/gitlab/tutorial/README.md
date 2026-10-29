@@ -44,8 +44,9 @@ as you, so a job can do what you can do on the cluster.
 
 Throughout, `<resource>` stands for the cluster you launch GitLab on, as `pw cluster ls`
 names it. If batch jobs on it need an account, a partition or a QoS (as they do on many
-HPC systems), keep those `sbatch` options at hand: every example has one line to put
-them on.
+HPC systems), you give those `sbatch` options to the workflow once, in step 1; the
+pipeline files then carry only what each job needs, and the same file works on another
+cluster.
 
 ## Step 1: launch GitLab with the SLURM runner
 
@@ -55,6 +56,7 @@ In the ACTIVATE marketplace open the **GitLab** workflow and fill the form:
 |---|---|
 | Service host | a SLURM cluster of yours that is on |
 | CI/CD runners → Register a SLURM runner | **on** (it only shows for SLURM clusters) |
+| CI/CD runners → SLURM options for every CI job | what your cluster requires of every batch job, for example `--account=<account> --partition=<partition>`; empty if it requires nothing. The runner adds them to every job it submits |
 | CI/CD runners → Create the hpc-ci-demo project | **on**. Off by default; it creates a ready-made example project that step 2 reads. From step 3 on you create projects yourself, which is all this option does for you |
 | everything else | the defaults |
 
@@ -116,20 +118,23 @@ default:
 hello-slurm:
   tags: [slurm]                 # the SLURM runner
   variables:
-    SCHEDULER_PARAMETERS: "--nodes=1 --time=00:10:00"   # the sbatch options, as one string
+    SCHEDULER_PARAMETERS: "--nodes=1 --time=00:10:00"   # this job's own sbatch options, as one string
   script:                       # runs inside the SLURM job, on the compute node
     - echo "SLURM job $SLURM_JOB_ID on $SLURM_NODELIST"
     - srun hostname
 ```
 
-Three things to remember: a job reaches the scheduler with `tags: [slurm]`, its `sbatch`
-options go in `SCHEDULER_PARAMETERS` (`-o`, `-e`, `-J` and `--wait` are Jacamar's), and the
-`default: id_tokens:` block at the top is required.
+Three things to remember: a job reaches the scheduler with `tags: [slurm]`; its own
+`sbatch` options go in `SCHEDULER_PARAMETERS` (`-o`, `-e`, `-J` and `--wait` are Jacamar's),
+while what the cluster requires of every job came from the form in step 1 and is added
+by the runner; and the `default: id_tokens:` block at the top is required.
 
-If `hello-slurm` is red instead, read the `sbatch` error in its log: a cluster that
-requires an account or a partition wants them in `SCHEDULER_PARAMETERS`. Open the file
-(**Edit → Edit single file**), add them, **Commit changes**: the commit starts a new
-pipeline, which is how every change gets tested from now on.
+If `hello-slurm` is red instead, read the `sbatch` error in its log. An option the
+cluster requires and did not get belongs in the form's **SLURM options for every CI job**:
+launch the workflow again on the same run directory with it, then **Build → Pipelines**
+and the pipeline's **Retry** button. An option this job alone needs goes in the file:
+open it (**Edit → Edit single file**), change `SCHEDULER_PARAMETERS`, **Commit changes**,
+and the commit starts a new pipeline, which is how every change gets tested from now on.
 
 ## Step 3: your first job on a compute node
 
@@ -139,8 +144,7 @@ pipeline, which is how every change gets tested from now on.
 2. **Add the pipeline file.** In the new project open **Code → Repository**, click the
    **+** above the file list → **New file**, name it `.gitlab-ci.yml` and paste the whole of
    [`01-hello-slurm.gitlab-ci.yml`](01-hello-slurm.gitlab-ci.yml). Its comments explain
-   every line. If your cluster needs an account or a partition, add them to
-   `SCHEDULER_PARAMETERS`. **Commit changes**.
+   every line. **Commit changes**.
 3. **Watch it run.** Committing a `.gitlab-ci.yml` is all it takes: GitLab reads the file
    after every commit to the repository and starts a pipeline from it (the file itself
    can narrow that down with `rules:`, which these examples do not use). Open **Build →
@@ -156,8 +160,8 @@ commit, and it runs again.
 
 Real work produces files. Open **Build → Pipeline editor**, which shows `.gitlab-ci.yml`
 and checks it as you type, replace its contents with
-[`02-simulate-and-report.gitlab-ci.yml`](02-simulate-and-report.gitlab-ci.yml) (same
-`SCHEDULER_PARAMETERS` adjustment as before) and **Commit changes**. Its two stages:
+[`02-simulate-and-report.gitlab-ci.yml`](02-simulate-and-report.gitlab-ci.yml) and
+**Commit changes**. Its two stages:
 
 ```mermaid
 flowchart LR
@@ -212,24 +216,26 @@ several systems at once, or start a registered workflow on one of them.
    masked, protected CI/CD variable named `PW_API_KEY`, under **Settings → CI/CD →
    Variables**; it takes precedence.)
 2. **Add the job.** Replace `.gitlab-ci.yml` with
-   [`03-every-system.gitlab-ci.yml`](03-every-system.gitlab-ci.yml) and put the names of
-   two of your resources, as `pw cluster ls` prints them, in place of `<resource_1>` and
-   `<resource_2>`. They must be on. Add to the `sbatch` line whatever each of them
-   requires (an account, a partition). Commit.
-3. **Watch the pipeline:** one job per resource, named `submit-everywhere: [<resource_1>]`,
-   `submit-everywhere: [<resource_2>]`. Each signs in (`pw auth whoami`), submits a batch
-   job to its resource with `sbatch --wait` through `pw ssh`, and prints the job's output
-   when it ends.
+   [`03-every-system.gitlab-ci.yml`](03-every-system.gitlab-ci.yml). Its `matrix:` has one
+   entry per system: the name as `pw cluster ls` prints it, in place of `<resource_1>`
+   and `<resource_2>` (they must be on), and that system's `sbatch` options in
+   `SBATCH_OPTIONS`, including what it requires of every job (an account, a partition):
+   the options you gave the workflow in step 1 only cover the SLURM runner's own
+   cluster. Commit.
+3. **Watch the pipeline:** one job per entry, named after the entry's values,
+   `submit-everywhere: [<resource_1>, --nodes=1 --time=00:10:00]` and so on. Each signs
+   in (`pw auth whoami`), submits a batch job to its system with `sbatch --wait` through
+   `pw ssh`, and prints the job's output when it ends.
 
 ```mermaid
 flowchart LR
-    p["pipeline"] --> a["submit-everywhere: [&lt;resource_1&gt;]<br/>pw ssh &lt;resource_1&gt; sbatch ..."]
-    p --> b["submit-everywhere: [&lt;resource_2&gt;]<br/>pw ssh &lt;resource_2&gt; sbatch ..."]
+    p["pipeline"] --> a["submit-everywhere: [&lt;resource_1&gt;, ...]<br/>pw ssh &lt;resource_1&gt; sbatch $SBATCH_OPTIONS ..."]
+    p --> b["submit-everywhere: [&lt;resource_2&gt;, ...]<br/>pw ssh &lt;resource_2&gt; sbatch $SBATCH_OPTIONS ..."]
     p --> c["submit-everywhere: [...]"]
 ```
 
-`parallel: matrix:` is how one job definition becomes one job per value; the systems
-attached to your account are values like any other. Replace the `sbatch` line with
+`parallel: matrix:` is how one job definition becomes one job per entry; the systems
+attached to your account are entries like any other. Replace the `sbatch` line with
 `pw workflows run <workflow> -i '{...}'` to launch a registered workflow instead, or with
 an `rsync`/`scp` of the project's files before the submission; the job's log and
 artifacts land in GitLab as before.
@@ -249,7 +255,7 @@ artifacts land in GitLab as before.
 |---|---|---|
 | The job stays *pending*; "This job is stuck because of one of the following problems" | no runner has its tag | Check `tags:`; relaunch the workflow with **Register a SLURM runner** on |
 | `No id_token found on CI_JOB_JWT variable` | the `default: id_tokens:` block is missing | Copy it from the examples |
-| `sbatch: error: ...` in the log | an option in `SCHEDULER_PARAMETERS` the cluster rejects, or one it requires is missing (account, partition, QoS) | Try the same `sbatch` options by hand on the cluster |
+| `sbatch: error: ...` in the log | an option the cluster rejects, or one it requires is missing (account, partition, QoS) | Try the same `sbatch` options by hand on the cluster; what every job needs goes in the form's **SLURM options for every CI job**, the rest in `SCHEDULER_PARAMETERS` |
 | The job runs for an hour and fails with a timeout | the node took too long or the script hangs | Shorter `--time`, a higher job timeout, check `squeue` |
 | `Running with gitlab-runner ...` then nothing for minutes | SLURM is booting or waiting for a node | `squeue -u $USER` on the cluster shows the job's state and reason |
 

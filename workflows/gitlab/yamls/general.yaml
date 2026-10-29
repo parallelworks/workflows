@@ -17,7 +17,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: gitlab
           sparse_checkout:
             - workflows/gitlab/${{ inputs.service.container_runtime }}
             - workflows/gitlab/lib
@@ -57,6 +57,7 @@ jobs:
           service_license_file="${PW_PARENT_JOB_DIR}/license.gitlab-license"
           runners_shell="${{ inputs.runners.shell }}"
           runners_slurm="${{ inputs.runners.slurm }}"
+          runners_scheduler_directives="${{ inputs.runners.scheduler_directives }}"
           runners_demo_project="${{ inputs.runners.demo_project }}"
           oidc_client_id="${{ inputs.oidc.client_id }}"
           oidc_client_secret_file="${PW_PARENT_JOB_DIR}/oidc-client-secret.txt"
@@ -264,6 +265,15 @@ jobs:
             ignore: ${{ .hidden }}
             tooltip: |
               The runner uses GitLab's custom executor with Jacamar CI (ECP): the job's before_script and script run inside an sbatch job submitted as your user from the service host, after_script on the service host. A job sets SCHEDULER_PARAMETERS to the sbatch options it needs, for example "--nodes=1 --time=00:10:00" plus the account, partition or QoS the cluster requires; -o, -e, -J and --wait are reserved by Jacamar. Jobs wait for the allocation inside GitLab's job timeout.
+          scheduler_directives:
+            type: string
+            label: SLURM options for every CI job
+            description: Added to the sbatch command of every job the SLURM runner submits, for example --account=<account> --partition=<partition>; a job adds its own (nodes, time) in SCHEDULER_PARAMETERS.
+            optional: true
+            tooltip: |
+              What this cluster requires of every batch job (an account, a partition or queue, a QoS, a constraint) goes here once, as Jacamar's default arguments, so the pipeline files of every project carry only what each job needs. Changing it takes a new launch on the same run directory.
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.runners.slurm == false }}
+            ignore: ${{ .hidden }}
           api_key:
             type: password
             label: ACTIVATE API key

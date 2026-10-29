@@ -1,26 +1,23 @@
 # Step 3 of the tutorial: one job definition, run once per ACTIVATE resource.
-# The shell runner on the login node drives the other systems with the pw CLI,
-# signed in with the ACTIVATE API key the workflow was launched with (or, on a
-# cluster connected through the ACTIVATE agent, the login node's own sign-in).
+# The shell runner on the login node reaches the other systems with the pw
+# CLI, signed in with the ACTIVATE API key the workflow was launched with (or,
+# on a cluster connected through the ACTIVATE agent, the login node's own
+# sign-in). Like every job, it runs as the user who launched the workflow.
 
-submit-everywhere:
+hello-every-system:
   tags: [shell]                    # the shell runner: pw runs on the login node
   # "parallel: matrix:" turns this one definition into one job per entry, each
-  # with the entry's variables set. One entry per system: its name as
-  # `pw cluster ls` prints it (the part after pw://<user>/; it must be on) and
-  # the sbatch options that system requires (replace them: --account=<account>,
-  # --partition=<partition>, --qos=<qos>, ... as the system demands).
+  # with RESOURCE set to the entry's value: "hello-every-system: [<resource_1>]",
+  # "hello-every-system: [<resource_2>]". Put your resources' names here, as
+  # `pw cluster ls` prints them (the part after pw://<user>/); they must be on.
   parallel:
     matrix:
-      - RESOURCE: "<resource_1>"
-        SBATCH_OPTIONS: "--nodes=1 --time=00:10:00"
-      - RESOURCE: "<resource_2>"
-        SBATCH_OPTIONS: "--nodes=1 --time=00:10:00"
+      - RESOURCE: ["<resource_1>", "<resource_2>"]
   script:
     - export PATH="$HOME/pw:$PATH"
+    - echo "Running on $(hostname) as $(id -un)"
     - pw auth whoami                 # who pw is signed in as
-    - pw cluster ls | grep "$RESOURCE"
-    # Submit a batch job on the resource, wait for it, and read its output back.
-    # The outer double quotes expand $SBATCH_OPTIONS and $CI_JOB_ID here; the
-    # inner single quotes keep the job's commands for the resource.
-    - pw ssh "$RESOURCE" "sbatch --wait $SBATCH_OPTIONS --job-name=ci-$CI_JOB_ID --output=ci-$CI_JOB_ID.out --wrap='hostname; nproc; date' && cat ci-$CI_JOB_ID.out"
+    # The same two commands on the resource: pw ssh runs them there as you and
+    # brings their output back into this log. Any command works the same way,
+    # sbatch and qsub included.
+    - pw ssh "$RESOURCE" 'echo "Hello from $(hostname) as $(id -un)"'

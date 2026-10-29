@@ -27,6 +27,7 @@ hello-slurm:
   # The commands of the job, one per line, run by bash inside the SLURM job
   # on the compute node. The first one that fails fails the job.
   script:
+    - echo "Running on $(hostname) as $(id -un)"
     - echo "SLURM job $SLURM_JOB_ID on $SLURM_NODELIST with $SLURM_NTASKS tasks"
     - srun hostname | sort | uniq -c
     - nproc

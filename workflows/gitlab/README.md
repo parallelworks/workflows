@@ -61,10 +61,11 @@ its OpenSSH would otherwise refuse to create the SSH host keys).
 
 ## Signing in
 
-The first login is `root` with the password of the form, or the one the workflow
-generated into `<run directory>/.root_password` (mode 600) when the form left it empty.
-The root password only applies when the database is created; change it in GitLab
-afterwards.
+With the *Sign in with ACTIVATE* group filled, users sign in with their ACTIVATE account
+(below) and need nothing else. GitLab's `root` account is for administration: its
+password is the form's, or the one the workflow generated into
+`<run directory>/.root_password` (mode 600) when the form left it empty. The root
+password only applies when the database is created; change it in GitLab afterwards.
 
 ### Sign in with ACTIVATE
 
@@ -108,14 +109,17 @@ the button, and the accounts it created stay.
 ## CI/CD runners
 
 The workflow registers instance runners with the GitLab it started and runs them on
-the service host as your user, from `<run directory>/runner/` (configuration, builds,
-cache, `runner.log`). Their tokens are kept there too, so a later run on the same run
-directory finds its runners again.
+the service host **as the user who launched the workflow**, from
+`<run directory>/runner/` (configuration, builds, cache, `runner.log`). Every CI job
+runs as that user, on that user's cluster account and with that user's `pw` sign-in,
+whichever GitLab account pushed the commit or started the pipeline: share the GitLab
+only with people you would hand your cluster account to. The runners' tokens are kept
+in the run directory too, so a later run on the same run directory finds them again.
 
 | Runner | Executor | Jobs | What runs where |
 |---|---|---|---|
-| **shell** (tag `shell`, takes untagged jobs) | GitLab's shell executor | any | the whole job on the service host, as your user, with `pw` signed in (below) |
-| **SLURM** (tag `slurm`) | GitLab's custom executor with Jacamar CI | `tags: [slurm]` | `before_script` + `script` inside an `sbatch` job submitted as your user; sources, artifacts and `after_script` on the service host |
+| **shell** (tag `shell`, takes untagged jobs) | GitLab's shell executor | any | the whole job on the service host, with `pw` signed in (below) |
+| **SLURM** (tag `slurm`) | GitLab's custom executor with Jacamar CI | `tags: [slurm]` | `before_script` + `script` inside an `sbatch` job; sources, artifacts and `after_script` on the service host |
 
 A SLURM job passes its `sbatch` options in the `SCHEDULER_PARAMETERS` variable, the
 ones the cluster requires of every job (an account, a partition, a QoS) included (`-o`,
@@ -144,16 +148,16 @@ hello-slurm:
 
 ### Pipelines that call `pw`
 
-A job of the shell runner can drive any resource of your account with the `pw` CLI
-(`pw ssh <cluster> sbatch ...`, `pw workflows run ...`), which needs a credential that
-outlives the run: the run's own key stops working when the run completes. On a cloud
-cluster give the workflow an **ACTIVATE API key** (account settings, API keys): the
-runner hands it to every job as `PW_API_KEY`. On a cluster connected through the
-ACTIVATE agent the login node is signed in as you already and the field is not shown.
-The run's log says which credential the pipelines got, or that they got none, in which
-case a project can still set `PW_API_KEY` as a CI/CD variable of its own. Launch again
-with a new key before the old one expires. The [tutorial](tutorial/README.md)'s last
-step runs one job on several resources this way.
+A job of the shell runner can reach any resource of the launching user's account with
+the `pw` CLI (`pw ssh <cluster> <command>`, `pw workflows run ...`), which needs a
+credential that outlives the run: the run's own key stops working when the run
+completes. On a cloud cluster give the workflow an **ACTIVATE API key** (account
+settings, API keys): the runner hands it to every job as `PW_API_KEY`. On a cluster
+connected through the ACTIVATE agent the login node is signed in already and the field
+is not shown. The run's log says which credential the pipelines got, or that they got
+none, in which case a project can still set `PW_API_KEY` as a CI/CD variable of its
+own. Launch again with a new key before the old one expires. Step 3 of the
+[tutorial](tutorial/README.md) runs one job on several resources this way.
 
 ## Git from the command line
 
@@ -163,8 +167,10 @@ They go to GitLab's ports on the service host instead:
 
 - **From the cluster** (a terminal, JupyterLab or any session on it):
   `git clone http://localhost:<HTTP port>/<group>/<project>.git`. The HTTP port is the
-  one `pw endpoints run` assigned; the run's log prints it, and so does
-  `ss -ltnp | grep docker-proxy` on the host.
+  one `pw endpoints run` assigned; the run's log prints it, and `ss -ltnp` on the host
+  shows who listens on it (nginx under Singularity, docker-proxy under Docker). Both
+  runtimes bind the HTTP and SSH ports on the loopback interface of the service host
+  only.
 - **From your machine:** open a tunnel first, then clone through it:
 
   ```bash

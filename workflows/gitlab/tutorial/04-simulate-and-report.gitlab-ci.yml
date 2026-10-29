@@ -23,6 +23,7 @@ simulate:
   stage: simulate
   tags: [slurm]                    # the SLURM runner: this job becomes a batch job
   script:
+    - echo "Running on $(hostname) as $(id -un)"
     - echo "SLURM job $SLURM_JOB_ID on $SLURM_NODELIST, $SLURM_NTASKS tasks, $SAMPLES samples each"
     - mkdir -p results
     # srun starts one copy of the Python program per task of the allocation
@@ -43,6 +44,7 @@ report:
   # its artifacts: results/ is in place when the script starts.
   needs: [simulate]
   script:
+    - echo "Running on $(hostname) as $(id -un)"
     # A "|" block is one multi-line command: here a small Python program that
     # adds up the lines the tasks wrote.
     - |

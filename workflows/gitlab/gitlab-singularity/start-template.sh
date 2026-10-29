@@ -1,17 +1,21 @@
 ################################################################################
 # Interactive Session Service Starter - GitLab (Singularity)
 #
-# Purpose: Run the GitLab Linux package image from one SIF as the workflow
-#          user, no root and no Docker daemon: an Apptainer instance started
+# Purpose: Run the GitLab Linux package image as the workflow user, no root
+#          and no Docker daemon: an Apptainer/Singularity instance started
 #          with --fakeroot, whose user namespace maps the image's service
 #          accounts (git, gitlab-psql, ...) onto the user's subuid range, so
-#          the package's own init (runit) runs unchanged. Behind a pw endpoint
-#          on a pinned subdomain, with ACTIVATE as an OpenID Connect provider
-#          when the form carries an OIDC client, a license, the CI runners
-#          (shell on this host, SLURM through Jacamar CI) and the demo project.
-#          What does not depend on the runtime is in lib/start.sh (this script)
-#          and lib/launcher.sh (the launcher).
-# Runs on: Controller or compute node
+#          the package's own init (runit) runs unchanged. The image runs from
+#          a writable sandbox directory, extracted once from the SIF into the
+#          run directory: a plain directory needs neither a FUSE mount of the
+#          SIF nor an overlay for what the package writes outside its volumes,
+#          which a hardened login node may allow to no user namespace. Behind
+#          a pw endpoint on a pinned subdomain, with ACTIVATE as an OpenID
+#          Connect provider when the form carries an OIDC client, a license,
+#          the CI runners (shell on this host, SLURM through Jacamar CI) and
+#          the demo project. What does not depend on the runtime is in
+#          lib/start.sh (this script) and lib/launcher.sh (the launcher).
+# Runs on: Controller node
 # Called by: Workflow after controller setup
 #
 # Required Environment Variables:
@@ -25,12 +29,17 @@ set -o pipefail
 source "${PW_PARENT_JOB_DIR}/workflows/gitlab/lib/start.sh"
 
 container_sif="${service_parent_install_dir}/containers/gitlab.sif"
-# tmp/ is the container's /tmp, a real temporary directory (world-writable
-# and sticky: Ruby's Dir.tmpdir, used by the Rails processes running as the
-# image's accounts, accepts nothing less); the config/activate mount point
-# must exist before the config volume is bound over it
-mkdir -p "${service_rundir}/tmp" "${service_rundir}/config/activate"
-chmod 1777 "${service_rundir}/tmp"
+image_dir="${service_rundir}/image"
+work_dir="${service_rundir}/work"
+# work/ holds the container's /tmp and /var/tmp (--workdir), a real temporary
+# directory (world-writable and sticky: Ruby's Dir.tmpdir, used by the Rails
+# processes running as the image's accounts, accepts nothing less), and the
+# temporary files of singularity itself, which the host's /tmp may refuse
+# (noexec); the config/activate mount point must exist before the config
+# volume is bound over it
+mkdir -p "${work_dir}/tmp" "${service_rundir}/config/activate"
+chmod 1777 "${work_dir}/tmp"
+export APPTAINER_TMPDIR="${work_dir}/tmp" SINGULARITY_TMPDIR="${work_dir}/tmp"
 
 # Load singularity/apptainer if not already in PATH
 if ! which singularity &> /dev/null; then
@@ -55,20 +64,47 @@ unset PYTHONPATH PYTHONHOME PERL5LIB PERLLIB PERL5OPT PYTHONSTARTUP LD_LIBRARY_P
 # The package chowns its data to the image's accounts, which the user
 # namespace maps onto the user's subuid range; an NFS server sees the user's
 # own id in that request and refuses it, so the run directory must be on a
-# filesystem local to this node (the login node's home on the cloud clusters;
-# a compute node's is NFS). Both are checked on the node that runs the service
+# filesystem local to this node (the login node's home on the cloud clusters)
 case "$(stat -f -c %T "${service_rundir}" 2>/dev/null)" in
     nfs|nfs4)
-        echo "::error title=Error::${service_rundir} is on NFS on $(hostname): the GitLab image's user namespace cannot change file ownership there. Use a run directory on a local filesystem, run on the login node, or use the Docker runtime"
+        echo "::error title=Error::${service_rundir} is on NFS on $(hostname): the GitLab image's user namespace cannot change file ownership there. Use a run directory on a filesystem local to this node, or the Docker runtime"
         exit 1
         ;;
 esac
+# The image runs from a sandbox directory extracted from the SIF the
+# controller pulled, with --writable: a directory needs no FUSE mount and no
+# overlay, which a hardened node may allow to no user namespace (fusermount
+# without user_allow_other, a mount binary the namespace cannot execute),
+# and what the package writes outside its volumes (runit's supervise
+# directories, the configuration run's node files) persists like an installed
+# package's. The extraction runs with --fakeroot too, so the image's ownership
+# survives (mapped onto the subuid range). The marker names the SIF the
+# sandbox came from: a new image replaces the sandbox, and GitLab migrates
+# the data on the next start (one minor version at a time)
+sif_id="$(basename "$(readlink -f "${container_sif}")") $(stat -L -c %s "${container_sif}")"
+image_marker="${service_rundir}/.image-source"
+if [ -d "${image_dir}" ] && [ "$(cat "${image_marker}" 2>/dev/null)" != "${sif_id}" ]; then
+    echo "::notice::Removing ${image_dir}, extracted from $(cat "${image_marker}" 2>/dev/null || echo 'an unknown or interrupted image'); ${sif_id%% *} replaces it"
+    rm -f "${image_marker}"
+    # Its files belong to the mapped ids, so the user namespace removes them
+    if ! singularity exec --fakeroot --bind "${service_rundir}" "${container_sif}" rm -rf "${image_dir}"; then
+        echo "::error title=Error::Could not remove ${image_dir} (above)"
+        exit 1
+    fi
+fi
+if ! [ -d "${image_dir}" ]; then
+    echo "::notice::Extracting ${container_sif} into ${image_dir} (about a minute, once per run directory)"
+    if ! singularity build --fakeroot --sandbox "${image_dir}" "${container_sif}"; then
+        echo "::error title=Error::Could not extract ${container_sif} with --fakeroot on $(hostname): the GitLab image needs user namespaces and a subuid/subgid range for $(id -un) (an administrator adds one with 'apptainer config fakeroot --add $(id -un)')"
+        exit 1
+    fi
+    echo "${sif_id}" > "${image_marker}"
+fi
 # The user namespace must map the image's accounts: a --fakeroot that falls
 # back to a single mapped id (no subuid range for the user) cannot run it
-uid_range=$(singularity exec --fakeroot --writable-tmpfs "${container_sif}" \
-    awk 'NR > 1 { print $3 }' /proc/self/uid_map 2>/dev/null | sort -n | tail -n 1)
+uid_range=$(singularity exec --fakeroot "${image_dir}" awk 'NR > 1 { print $3 }' /proc/self/uid_map 2>/dev/null | sort -n | tail -n 1)
 if [ -z "${uid_range}" ]; then
-    echo "::error title=Error::Apptainer could not run ${container_sif} with --fakeroot on $(hostname): the GitLab image needs user namespaces, a mountable SIF (squashfs or FUSE) and fakeroot. Try the Docker runtime there"
+    echo "::error title=Error::Could not run ${image_dir} with --fakeroot on $(hostname): the GitLab image needs user namespaces and fakeroot. Try the Docker runtime there"
     exit 1
 fi
 if [ "${uid_range}" -lt 65536 ]; then
@@ -77,7 +113,7 @@ if [ "${uid_range}" -lt 65536 ]; then
 fi
 echo "::notice::fakeroot maps ${uid_range} user ids on $(hostname)"
 
-export container_sif
+export image_dir work_dir
 export instance_name="gitlab_${PW_RUN_SLUG}"
 
 # The instance outlives the endpoint's process tree: cancel.sh stops the
@@ -131,8 +167,7 @@ gitlab_write_omnibus_config "${PORT}" \
     "sidekiq['metrics_enabled'] = false" \
     "sidekiq['health_checks_enabled'] = false" \
     "gitlab_kas['enable'] = false"
-singularity exec "${container_sif}" cat /assets/sshd_config \
-    | sed "s/^Port 22$/Port ${service_ssh_port}\nListenAddress 127.0.0.1/" > "${run_dir}/sshd_config"
+sed "s/^Port 22$/Port ${service_ssh_port}\nListenAddress 127.0.0.1/" "${image_dir}/assets/sshd_config" > "${run_dir}/sshd_config"
 
 # The configuration goes in as a host variable with the APPTAINERENV_ /
 # SINGULARITYENV_ prefix: it reaches the container with --cleanenv and stays
@@ -156,18 +191,19 @@ gitlab_logs() {
     tail -n 80 "${run_dir}/gitlab.log"
 }
 
-# The image's volumes are bound from the run directory; the snippet directory
-# and the sshd configuration (whose port is fixed in the image) from this job
+# The image's volumes are bound from the run directory (every mount point
+# exists in the image: --writable creates none), the snippet directory and
+# the sshd configuration (whose port is fixed in the image) from this job
 singularity instance stop -F "${instance_name}" 2>/dev/null || true
-if ! singularity instance start --fakeroot --writable-tmpfs --contain --cleanenv \
+if ! singularity instance start --fakeroot --writable --contain --cleanenv \
         --uts --hostname "${host}" \
+        --workdir "${work_dir}" \
         --bind "${service_rundir}/config:/etc/gitlab" \
         --bind "${service_rundir}/logs:/var/log/gitlab" \
         --bind "${service_rundir}/data:/var/opt/gitlab" \
-        --bind "${service_rundir}/tmp:/tmp" \
         --bind "${run_dir}/activate:/etc/gitlab/activate:ro" \
         --bind "${run_dir}/sshd_config:/assets/sshd_config:ro" \
-        "${container_sif}" "${instance_name}"; then
+        "${image_dir}" "${instance_name}"; then
     fail "Could not start the GitLab instance ${instance_name} (above)"
 fi
 singularity exec --cleanenv --pwd / instance://"${instance_name}" /assets/init-container > "${run_dir}/gitlab.log" 2>&1 &

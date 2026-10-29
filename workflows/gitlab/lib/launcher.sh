@@ -10,7 +10,7 @@
 #          command in the container), gitlab_alive (is the container running)
 #          and gitlab_logs (print the tail of its log) for its runtime, starts
 #          the container and calls gitlab_wait_ready, then gitlab_setup.
-# Runs on: Controller or compute node, under pw endpoints run (PORT,
+# Runs on: Controller node, under pw endpoints run (PORT,
 #          PW_ENDPOINT_HOST, PW_ENDPOINT_PATH, PW_ENDPOINT_URL exported)
 #
 # Required Environment Variables (exported by lib/start.sh):

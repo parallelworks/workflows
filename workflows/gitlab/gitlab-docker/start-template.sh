@@ -7,7 +7,7 @@
 #          CI runners (shell on this host, SLURM through Jacamar CI) and start
 #          them, and create the demo project. What does not depend on Docker is
 #          in lib/start.sh (this script) and lib/launcher.sh (the launcher).
-# Runs on: Controller or compute node
+# Runs on: Controller node
 # Called by: Workflow after controller setup
 #
 # Required Environment Variables:

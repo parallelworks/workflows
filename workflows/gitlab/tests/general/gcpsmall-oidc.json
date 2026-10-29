@@ -16,9 +16,6 @@
     }
   },
   "resource": "pw://alvaro/gcpsmall",
-  "cluster": {
-    "scheduler": false
-  },
   "service": {
     "container_runtime": "gitlab-singularity",
     "subdomain": "gitlab-alvaro",

@@ -15,9 +15,6 @@
     }
   },
   "resource": "pw://labcluster",
-  "cluster": {
-    "scheduler": false
-  },
   "service": {
     "container_runtime": "gitlab-docker",
     "subdomain": "gitlab-alvaro",

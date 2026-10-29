@@ -12,9 +12,6 @@
     }
   },
   "resource": "pw://alvaro/gcpsmall",
-  "cluster": {
-    "scheduler": false
-  },
   "service": {
     "container_runtime": "gitlab-docker",
     "subdomain": "gitlab-alvaro-test",

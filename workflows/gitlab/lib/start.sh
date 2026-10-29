@@ -6,7 +6,7 @@
 #          runner), the pinned subdomain, the root password, the exports the
 #          launcher reads, and finish_endpoint_run for the status that
 #          pw endpoints run returns
-# Runs on: Controller or compute node
+# Runs on: Controller node
 # Called by: workflows/gitlab/<runtime>/start-template.sh (sourced)
 #
 # Required Environment Variables:

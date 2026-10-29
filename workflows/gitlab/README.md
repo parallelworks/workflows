@@ -7,12 +7,12 @@ their ACTIVATE account, and the workflow registers CI/CD runners that run pipeli
 the cluster: on the login node, and through the SLURM scheduler with
 [Jacamar CI](https://gitlab.com/ecp-ci/jacamar-ci). New to GitLab? The
 [tutorial](tutorial/README.md) takes you from the launch form to a pipeline whose jobs
-run on the compute nodes, in about 30 minutes.
+run on the compute nodes, in about 45 minutes.
 
 ```
 form ──► preprocessing ──► start script ──► GitLab answers, ──► https://<subdomain>.<sessions domain>/
          (checks, runner    (container,     runners registered,   the run completes; GitLab and its
-          tools)             runners)       demo project created  runners run until you delete the endpoint
+          tools)             runners)       demo project created  runners run until the session is deleted
 ```
 
 The first start of a run directory takes three to six minutes (GitLab configures

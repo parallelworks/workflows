@@ -4,3 +4,6 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-10-29T14:32:40Z,cold,pass,ok,a45d6d5,162207a,727fc42,cf97b41,cf97b41,gitlab,alvaro,kind-muskox,482,
 2026-10-29T14:40:52Z,warm,fail,ok,a45d6d5,162207a,727fc42,cf97b41,cf97b41,gitlab,alvaro,deciding-python,22,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"
 2026-10-29T14:42:03Z,warm,pass,ok,3172348,162207a,727fc42,8944641,8944641,gitlab,alvaro,alert-jaybird,274,
+2026-10-29T16:56:35Z,cold,pass,kept,2944da5,162207a,727fc42,7c05627,7c05627,gitlab,alvaro,current-parakeet,744,
+2026-10-29T17:13:55Z,warm,fail,ok,60eb6b4,162207a,727fc42,1053461,1053461,gitlab,alvaro,comic-katydid,21,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"
+2026-10-29T17:15:35Z,warm,pass,ok,60eb6b4,162207a,727fc42,1053461,1053461,gitlab,alvaro,tender-wildcat,257,

@@ -552,12 +552,16 @@
   request as the user's own id: verified on an HSP system's Lustre home, `Errno::EPERM
   @ apply2files` from GitLab's reconfigure, and on the cloud clusters' NFS-mounted home
   on compute nodes), and a `stat -f` type check misses half of them, so the template
-  probes with an actual `chown 998` in the run directory and, where it fails, keeps the
-  container's state in an **ext3 image** (`apptainer overlay create --sparse --size <MiB>
-  <rundir>/gitlab.img`, `instance start --overlay <img>` instead of `--writable-tmpfs`
-  and the volume binds): fuse2fs mounts the image inside the namespace, ownership lives
-  in the image, the network filesystem sees one file of the user's; needs `fuse2fs` and
-  `mkfs.ext3` on the node (both in e2fsprogs on Rocky 9 and in the cloud images);
+  probes with an actual `chown 998` in the run directory and, where it fails, keeps each
+  state directory in an **ext3 image bound in place** (`apptainer overlay create --sparse
+  --size <MiB> state/data.img`, then `--bind state/data.img:/var/opt/gitlab:image-src=
+  /upper`, one image per directory so no image is mounted twice): fuse2fs mounts them
+  inside the namespace, ownership, FIFOs and unix sockets live in the images, the network
+  filesystem sees three files of the user's; needs `fuse2fs` and `mkfs.ext3` on the node
+  (both in e2fsprogs on Rocky 9 and in the cloud images). Not `--overlay <img>` for the
+  whole rootfs: through fuse-overlayfs over fuse2fs the service directory's mtime never
+  changed, runsvdir never noticed `logrotate`, and reconfigure waited for its socket
+  forever (verified 2026-10-29); the rootfs keeps `--writable-tmpfs`;
   `APPTAINER_TMPDIR`/`SINGULARITY_TMPDIR` under the
   run directory (the build and any fallback extract there, not into `/tmp`); `--writable`
   creates no mount point, so every bind destination must exist in the image; `/tmp` comes

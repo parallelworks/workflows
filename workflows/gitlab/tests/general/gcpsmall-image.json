@@ -1,7 +1,7 @@
 {
   "_test": {
     "timeout_s": 3000,
-    "warm_marker": "${HOME}/gitlab-test-image/gitlab.img",
+    "warm_marker": "${HOME}/gitlab-test-image/state/data.img",
     "leftover_patterns": [
       "assets/init-container",
       "runsvdir -P /opt/gitlab/service",
@@ -9,7 +9,7 @@
       "pw endpoints run"
     ],
     "leftover_commands": {
-      "instances": "pgrep -fc gitlab-test-image/gitlab.img || true"
+      "instances": "pgrep -fc gitlab-test-image/state/ || true"
     }
   },
   "resource": "pw://alvaro/gcpsmall",

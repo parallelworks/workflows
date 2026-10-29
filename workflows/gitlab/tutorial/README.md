@@ -66,8 +66,11 @@ the workflow registers the runners; the run completes when GitLab's sign-in page
 answers. Open the address the run shows **in its own browser tab**: GitLab does not work
 inside the platform's embedded view.
 
-Sign in as `root`. The workflow generated the password into the run directory on the
-cluster; from your machine:
+Sign in with the **ACTIVATE** button when the workflow was launched with the *Sign in
+with ACTIVATE* client: your ACTIVATE account becomes a GitLab account on the first
+sign-in, and it can create projects, which is all the tutorial needs. Without that
+client, sign in as `root` with the password the workflow generated into the run
+directory on the cluster:
 
 ```bash
 pw ssh <resource> cat gitlab/.root_password
@@ -79,9 +82,12 @@ pw ssh <resource> cat gitlab/.root_password
    → **Create blank project**. Name it `hpc-pipeline`, leave *Initialize repository with a
    README* checked, click **Create project**.
 2. **Add the pipeline file.** Open **Code → Repository**, click the **+** above the file
-   list → **New file**, name it `.gitlab-ci.yml` and paste the whole of
-   [`01-hello-login-node.gitlab-ci.yml`](01-hello-login-node.gitlab-ci.yml). Its comments
-   explain every line: one job, `tags: [shell]`, a few commands. **Commit changes**.
+   list → **New file**, and name it exactly `.gitlab-ci.yml`: a leading dot and nothing
+   before it, the one file name GitLab looks for (the example files in this directory
+   carry a number so they can sit side by side; the copy in your project does not). Paste
+   the whole of [`01-hello-login-node.gitlab-ci.yml`](01-hello-login-node.gitlab-ci.yml).
+   Its comments explain every line: one job, `tags: [shell]`, a few commands. **Commit
+   changes**.
 3. **Watch it run.** Committing a `.gitlab-ci.yml` is all it takes: GitLab reads the file
    after every commit to the repository and starts a pipeline from it (the file itself
    can narrow that down with `rules:`, which these examples do not use). Open **Build →

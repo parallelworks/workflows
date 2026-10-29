@@ -5,7 +5,7 @@
 #          on a pinned subdomain, with ACTIVATE as an OpenID Connect provider
 #          when the form carries an OIDC client, apply a license, register the
 #          CI runners (shell on this host, SLURM through Jacamar CI) and start
-#          them, and create the demo project. What does not depend on Docker is
+#          them. What does not depend on Docker is
 #          in lib/start.sh (this script) and lib/launcher.sh (the launcher).
 # Runs on: Controller node
 # Called by: Workflow after controller setup

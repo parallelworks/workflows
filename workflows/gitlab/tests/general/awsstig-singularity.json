@@ -21,8 +21,7 @@
   },
   "runners": {
     "shell": true,
-    "slurm": true,
-    "demo_project": true
+    "slurm": true
   },
   "oidc": {}
 }

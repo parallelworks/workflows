@@ -5,8 +5,7 @@
 #          not depend on the container runtime: the public host and the lock,
 #          the nginx snippet (forwarded headers, the OIDC hop page and the
 #          readiness gate), the Linux package's configuration, the wait for the
-#          sign-in page, and the setup after the boot (license, CI runners,
-#          demo project). The launcher sources it, defines gitlab_exec (run a
+#          sign-in page, and the setup after the boot (license, CI runners). The launcher sources it, defines gitlab_exec (run a
 #          command in the container), gitlab_alive (is the container running)
 #          and gitlab_logs (print the tail of its log) for its runtime, starts
 #          the container and calls gitlab_wait_ready, then gitlab_setup.
@@ -16,8 +15,7 @@
 # Required Environment Variables (exported by lib/start.sh):
 #   - run_dir: this job's run/ directory (activate/, gitlab.env, launcher.exit)
 #   - service_rundir, service_ssh_port, root_password_file, service_license_file
-#   - runners_shell, runners_slurm, runners_scheduler_directives (optional),
-#     runners_demo_project, gitlab_runner_bin, jacamar_bin
+#   - runners_shell, runners_slurm, gitlab_runner_bin, jacamar_bin
 #   - platform_host, oidc_client_id, oidc_client_secret_file, oidc_display_name,
 #     oidc_block_new_users
 #   - runner_pw_auth (key | host | none) and GITLAB_PW_API_KEY when key
@@ -360,20 +358,6 @@ TOMLEOF
   data_dir = "${runner_root}/jacamar"
   gitlab_server = "http://127.0.0.1:${PORT}"
 TOMLEOF
-            # What the cluster requires of every batch job (the form's SLURM
-            # options) goes to sbatch with every submission; a job's own
-            # SCHEDULER_PARAMETERS come on top
-            local default_args="" arg
-            for arg in ${runners_scheduler_directives:-}; do
-                default_args="${default_args}${default_args:+, }\"${arg}\""
-            done
-            if [ -n "${default_args}" ]; then
-                cat >> "${runner_root}/jacamar.toml" <<TOMLEOF
-[batch]
-  default_args = [${default_args}]
-TOMLEOF
-                echo "Every SLURM runner job submits with:${runners_scheduler_directives:+ }${runners_scheduler_directives}"
-            fi
         fi
         # The runner outlives this run like the container does and must not die
         # with the endpoint's process tree by accident, so it gets a session of
@@ -397,66 +381,6 @@ TOMLEOF
             fail "gitlab-runner exited right after starting (log above)"
         fi
         echo "::notice::CI runners started:${runners} (log: ${runner_root}/runner.log)"
-    fi
-
-    if [ "${runners_demo_project}" = "true" ] && [ -n "${runners}" ]; then
-        api_call GET /projects/root%2Fhpc-ci-demo
-        if [ "${api_status}" = "200" ]; then
-            echo "The hpc-ci-demo project already exists"
-        else
-            api_call POST /projects --data "name=hpc-ci-demo" --data "visibility=private" \
-                --data-urlencode "description=Pipelines on the ACTIVATE cluster: a shell job on the service host and, with the SLURM runner, a job submitted to the scheduler"
-            local project_id
-            project_id=$(printf '%s' "${api_body}" | json_get id)
-            if [ "${api_status}" != "201" ] || [ -z "${project_id}" ]; then
-                echo "::warning::Could not create the hpc-ci-demo project (HTTP ${api_status}): ${api_body}"
-            else
-                # Jacamar reads the job's id token; without the default every
-                # SLURM job would have to declare it
-                local ci_yaml readme payload
-                ci_yaml="default:
-  id_tokens:
-    CI_JOB_JWT:
-      aud: \$CI_SERVER_URL
-
-stages: [test]
-
-hello-service-host:
-  stage: test
-  tags: [shell]
-  script:
-    - echo \"Running on \$(hostname) as \$(id -un)\"
-    - nproc
-    - df -h \"\$HOME\" | tail -n 1
-"
-                if [ "${runners_slurm}" = "true" ]; then
-                    ci_yaml="${ci_yaml}
-hello-slurm:
-  stage: test
-  tags: [slurm]
-  variables:
-    SCHEDULER_PARAMETERS: \"--nodes=1 --time=00:10:00\"
-  script:
-    - echo \"SLURM job \$SLURM_JOB_ID on \$SLURM_NODELIST\"
-    - hostname
-    - srun hostname
-"
-                fi
-                readme="# hpc-ci-demo
-
-Pipelines of this project run on the GitLab runners registered by the ACTIVATE workflow:
-a shell job on the service host and, when the SLURM runner is enabled, a job that Jacamar CI
-submits to the scheduler with the sbatch options in \`SCHEDULER_PARAMETERS\`.
-"
-                payload=$(python3 -c 'import json, sys; print(json.dumps({"branch": "main", "commit_message": "Add the demo pipeline", "actions": [{"action": "create", "file_path": ".gitlab-ci.yml", "content": sys.argv[1]}, {"action": "create", "file_path": "README.md", "content": sys.argv[2]}]}))' "${ci_yaml}" "${readme}")
-                api_call POST "/projects/${project_id}/repository/commits" -H "Content-Type: application/json" --data "${payload}"
-                if [ "${api_status}" = "201" ]; then
-                    echo "::notice::Created the hpc-ci-demo project; its first pipeline is running"
-                else
-                    echo "::warning::Created the hpc-ci-demo project but not its pipeline (HTTP ${api_status}): ${api_body}"
-                fi
-            fi
-        fi
     fi
 
     api_call DELETE /personal_access_tokens/self

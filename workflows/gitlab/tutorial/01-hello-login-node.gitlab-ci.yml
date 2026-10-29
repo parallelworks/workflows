@@ -1,0 +1,18 @@
+# Step 2 of the tutorial: one job, run by the shell runner on the login node.
+# GitLab reads this file, .gitlab-ci.yml at the root of the repository, and
+# starts a pipeline from it after every commit.
+
+# Everything at the top level of this file is a job, named by its key.
+hello-login-node:
+  # A job runs on a runner that carries all of its tags: "shell" is the runner
+  # the workflow registered on the login node. It runs the job as you, in
+  # your login shell, from a checkout of the repository.
+  tags: [shell]
+  # The commands of the job, one per line, run by bash. The first one that
+  # fails fails the job; their output is the job's log.
+  script:
+    - echo "Running on $(hostname) as $(id -un)"
+    - pwd                            # the checkout of the repository
+    - ls -la
+    - nproc
+    - df -h "$HOME" | tail -n 1

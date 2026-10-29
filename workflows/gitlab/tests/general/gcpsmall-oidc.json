@@ -25,9 +25,7 @@
   },
   "runners": {
     "shell": true,
-    "slurm": true,
-    "demo_project": true,
-    "scheduler_directives": "--partition=compute"
+    "slurm": true
   },
   "oidc": {
     "client_id": "pwapp_49a074ccbd91ca6bdca1d5afdc64315e"

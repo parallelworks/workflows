@@ -1,21 +1,15 @@
-# Step 6 of the tutorial: one job definition, run once per ACTIVATE resource.
+# Step 3 of the tutorial: one job definition, run once per ACTIVATE resource.
 # The shell runner on the login node drives the other systems with the pw CLI,
 # signed in with the ACTIVATE API key the workflow was launched with (or, on a
 # cluster connected through the ACTIVATE agent, the login node's own sign-in).
-
-default:
-  id_tokens:
-    CI_JOB_JWT:
-      aud: $CI_SERVER_URL          # this GitLab's address, e.g. https://gitlab-jane.activate.pw
 
 submit-everywhere:
   tags: [shell]                    # the shell runner: pw runs on the login node
   # "parallel: matrix:" turns this one definition into one job per entry, each
   # with the entry's variables set. One entry per system: its name as
   # `pw cluster ls` prints it (the part after pw://<user>/; it must be on) and
-  # the sbatch options that system wants, including what it requires of every
-  # job (--account=<account>, --partition=<partition>, ...). The workflow's
-  # "SLURM options for every CI job" only cover the SLURM runner's own cluster.
+  # the sbatch options that system requires (replace them: --account=<account>,
+  # --partition=<partition>, --qos=<qos>, ... as the system demands).
   parallel:
     matrix:
       - RESOURCE: "<resource_1>"

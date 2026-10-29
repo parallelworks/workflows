@@ -1,6 +1,4 @@
-# Step 3 of the tutorial: one job, run by the SLURM runner on a compute node.
-# GitLab reads this file, .gitlab-ci.yml at the root of the repository, and
-# starts a pipeline from it after every commit.
+# Step 4 of the tutorial: one job, run by the SLURM runner on a compute node.
 
 # "default:" holds settings every job of this file inherits.
 default:
@@ -15,10 +13,10 @@ default:
 
 # "variables:" defines values every job can read as environment variables.
 variables:
-  # The job's own sbatch options, as one string: what this job needs. What the
-  # cluster requires of every job (an account, a partition, a QoS) is not here:
-  # the workflow's "SLURM options for every CI job" adds it to every
-  # submission. -o, -e, -J and --wait are Jacamar's own and cannot be set.
+  # The sbatch options of the job, as one string. Replace them with what your
+  # cluster requires: --account=<account>, --partition=<partition>, --qos=<qos>
+  # and so on, beside the job's own --nodes, --ntasks and --time. -o, -e, -J
+  # and --wait are Jacamar's own and cannot be set.
   SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=4 --time=00:10:00"
 
 # Everything else at the top level is a job, named by its key.

@@ -198,10 +198,12 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
   the `sbatch` options (`--nodes=1 --time=00:10:00`); `-o`, `-e`, `-J` and `--wait`
   are Jacamar's. Only `before_script` + `script` run in the batch job (`sbatch
   --wait`, output tailed from `slurm-ci-<job>.out`); sources, artifacts and
-  `after_script` run on the runner's host. **Cluster-wide options** (an account, a
-  partition: what an HPC site requires of every job) belong in `[batch] default_args =
-  ["--account=x", ...]` of `jacamar.toml`, injected into every submission, so pipeline
-  files stay portable; the form's "SLURM options for every CI job" feeds it (2026-10-29).
+  `after_script` run on the runner's host. Jacamar can inject cluster-wide options
+  (`[batch] default_args = ["--account=x", ...]` in `jacamar.toml`); the workflow had a
+  form input feeding it for a day and dropped it (Alvaro, 2026-10-29): the options a
+  cluster requires go into each job's `SCHEDULER_PARAMETERS`, where the tutorial tells
+  the reader to put them. The workflow also no longer creates an example project; the
+  tutorial creates one by hand.
 - **Pipelines that call `pw` need a credential that outlives the run** (pw-auth.md): the
   form takes an ACTIVATE API key on cloud clusters (hidden for `existing`,
   `managed-cluster` and the workspace, the probe pattern), carried by the top-level

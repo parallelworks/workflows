@@ -21,9 +21,7 @@
   },
   "runners": {
     "shell": true,
-    "slurm": true,
-    "demo_project": true,
-    "scheduler_directives": "--partition=compute"
+    "slurm": true
   },
   "oidc": {}
 }

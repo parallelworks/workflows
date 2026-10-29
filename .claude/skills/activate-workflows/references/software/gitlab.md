@@ -22,10 +22,12 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
     starts take about 2.
   - **Singularity** (`gitlab-singularity/`, SIF `ghcr.io/parallelworks/gitlab:19.5.1-ee`
     built from `gitlab.def`, the image unchanged): the controller pulls the SIF once into
-    the install directory; the start template extracts it once per run directory
-    (`singularity build --fakeroot --sandbox <rundir>/image <sif>`, 45 s, a marker names the
-    SIF it came from so a new tag replaces it) and starts an Apptainer **instance** with
-    `--fakeroot --writable --contain --cleanenv --uts --hostname <host> --workdir
+    the install directory; the start template probes whether this node mounts it under
+    fakeroot with a writable layer and either runs the SIF as is (`--writable-tmpfs`) or
+    extracts it once per run directory (`singularity build --fakeroot --sandbox
+    <rundir>/image <sif>`, 45 s, a marker names the SIF it came from so a new tag replaces
+    it) and runs the directory with `--writable`; then an Apptainer **instance** with
+    `--fakeroot <that flag> --contain --cleanenv --uts --hostname <host> --workdir
     <rundir>/work`, the three volumes bound from the run directory, the snippet directory
     as `/etc/gitlab/activate` and a copy of `/assets/sshd_config` with the form's port
     (`ListenAddress 127.0.0.1`) over the image's; on a FIPS-mode host also a file holding
@@ -45,14 +47,14 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
     PostgreSQL and Redis listen on unix sockets only. `GITLAB_OMNIBUS_CONFIG` goes in as
     `APPTAINERENV_`/`SINGULARITYENV_` with `$`, backticks and backslashes escaped;
     `GITLAB_SKIP_TAIL_LOGS=true` keeps the package's logs in `logs/` instead of the job
-    output. `gitlab_exec` is `exec instance://<name>`. Why a sandbox and not the SIF with
-    `--writable-tmpfs` (the first version, which worked on gcpsmall): the STIG image of
-    awsstig (singularity-ce 4.5.1, `/tmp` noexec, fusermount3 without `user_allow_other`,
-    `mount` not executable from a user namespace, FIPS mode) could neither mount the SIF
-    nor overlay it; the sandbox needs neither and runs on both. Details and conditions:
-    pitfalls, "A root-only image runs under Apptainer as a `--fakeroot` instance, from a
-    writable sandbox" (a subuid range for the user, a local filesystem, the 1777 `/tmp`,
-    the FIPS bind, `gitlab-ctl stop` through `exec instance://` in `cancel.sh`).
+    output. `gitlab_exec` is `exec instance://<name>`. Why the sandbox fallback: the STIG
+    image of awsstig (singularity-ce 4.5.1, `/tmp` noexec, fusermount3 without
+    `user_allow_other`, `mount` not executable from a user namespace, FIPS mode) can
+    neither mount the SIF nor overlay it; gcpsmall (apptainer 1.5.5) runs the SIF as is.
+    Details and conditions: pitfalls, "A root-only image runs under Apptainer as a
+    `--fakeroot` instance; the SIF where the node mounts it, an extracted sandbox where it
+    does not" (a subuid range for the user, a local filesystem, the 1777 `/tmp`, the FIPS
+    bind, `gitlab-ctl stop` through `exec instance://` in `cancel.sh`).
   - **Login node only, both runtimes** (2026-10-29): the YAMLs have no scheduler section
     and call the submitter with `scheduler: false`. A service that outlives the run has
     no place in an allocation, and on the cloud clusters a compute node has no subuid
@@ -179,6 +181,16 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
   are Jacamar's. Only `before_script` + `script` run in the batch job (`sbatch
   --wait`, output tailed from `slurm-ci-<job>.out`); sources, artifacts and
   `after_script` run on the runner's host.
+- **Pipelines that call `pw` need a credential that outlives the run** (pw-auth.md): the
+  form takes an ACTIVATE API key on cloud clusters (hidden for `existing`,
+  `managed-cluster` and the workspace, the probe pattern), carried by the top-level
+  `env:` block as `GITLAB_PW_API_KEY`; `lib/start.sh` checks it with `PW_API_KEY=<key> pw
+  auth whoami` (a bad key fails the run), else the host's sign-in with `env -u PW_API_KEY
+  pw auth whoami`, else notes that pipelines cannot call pw; the launcher starts the
+  runner with `env PW_API_KEY=<key>` or `env -u PW_API_KEY`, outside the `set -x` trace.
+  The shell executor's jobs inherit the runner's environment (verified: PATH, PORT,
+  `PW_PLATFORM_HOST`); the runner used to inherit the run's key as well, which dies with
+  the run. Jacamar's stages do not inherit anything (next bullet).
 - **Jacamar's host-side stages run as `env -i /bin/bash --login` scripts** (its docs, and
   verified 2026-10-29): the runner's environment never reaches them, and the artifact and
   cache stages look `gitlab-runner` up by name, so a runner binary outside the login

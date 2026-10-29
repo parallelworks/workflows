@@ -1,6 +1,12 @@
 # yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
 permissions:
   - '*'
+# The run's own PW_API_KEY stops working when the run completes, so pipelines
+# that call pw run on a credential that outlives it: the key given here (the
+# env block carries it into the start script, which hands it to the runner),
+# or the host's own pw sign-in on the clusters the ACTIVATE agent connects
+env:
+  GITLAB_PW_API_KEY: ${{ inputs.runners.api_key }}
 
 jobs:
   preprocessing:
@@ -11,7 +17,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: gitlab
           sparse_checkout:
             - workflows/gitlab/${{ inputs.service.container_runtime }}
             - workflows/gitlab/lib
@@ -258,6 +264,15 @@ jobs:
             ignore: ${{ .hidden }}
             tooltip: |
               The runner uses GitLab's custom executor with Jacamar CI (ECP): the job's before_script and script run inside an sbatch job submitted as your user from the service host, after_script on the service host. A job sets SCHEDULER_PARAMETERS to the sbatch options it needs, for example "--nodes=1 --partition=debug --time=00:10:00"; -o, -e, -J and --wait are reserved by Jacamar. Jobs wait for the allocation inside GitLab's job timeout.
+          api_key:
+            type: password
+            label: ACTIVATE API key
+            description: Lets pipelines run pw as you after this run completes; without it, jobs on a cloud cluster cannot call pw.
+            optional: true
+            tooltip: |
+              A platform API key of yours (account settings, API keys). Jobs of the shell runner get it as PW_API_KEY, so a pipeline can run pw ssh, pw workflows run or any pw command on your other resources; the run's own credential stops working when the run completes. On a cluster connected through the ACTIVATE agent (existing or managed) the field is not shown: the agent keeps the login node signed in as you, and jobs use that sign-in. Launch again with a new key before this one expires; a project can also set PW_API_KEY as a CI/CD variable of its own.
+            hidden: ${{ inputs.resource.provider == 'existing' || inputs.resource.provider == 'managed-cluster' || inputs.resource.name == 'user-workspace' }}
+            ignore: ${{ .hidden }}
           demo_project:
             type: boolean
             default: true

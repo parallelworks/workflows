@@ -19,6 +19,7 @@
 #   - service_parent_install_dir: holds gitlab-runner/current and
 #     jacamar-ci/current, installed by controller.sh when needed
 #   - oidc_client_id, oidc_display_name: optional ACTIVATE OIDC client
+#   - GITLAB_PW_API_KEY: optional; the API key pipelines run pw with (env block)
 ################################################################################
 
 if [ -z "${service_rundir}" ]; then
@@ -126,6 +127,32 @@ if [ -n "${oidc_client_id}" ] && [ -z "${platform_host}" ]; then
     echo "::error title=Error::PW_PLATFORM_HOST is empty; the OIDC issuer URL cannot be built"
     exit 1
 fi
+
+# Pipelines call pw as the user after this run completes, when the run's own
+# PW_API_KEY stops working: with the key given as input (the env block carries
+# it as GITLAB_PW_API_KEY) when there is one, else with the host's own pw
+# sign-in (the clusters the ACTIVATE agent connects have one, a cloud cluster
+# has none). Decided here, before anything starts, and never traced; the
+# launcher gives the runner the credential that works, and none when neither
+# does, so jobs then cannot call pw unless a project brings its own key
+set +x
+case "${GITLAB_PW_API_KEY}" in ''|undefined) GITLAB_PW_API_KEY="" ;; esac
+if [ -n "${GITLAB_PW_API_KEY}" ]; then
+    if ! PW_API_KEY="${GITLAB_PW_API_KEY}" pw auth whoami >/dev/null 2>&1; then
+        echo "::error title=Error::The ACTIVATE API key given does not authenticate on $(hostname)"
+        exit 1
+    fi
+    runner_pw_auth=key
+    echo "::notice::Pipelines run pw with the API key given, which outlives this run"
+elif env -u PW_API_KEY pw auth whoami >/dev/null 2>&1; then
+    runner_pw_auth=host
+    echo "::notice::Pipelines run pw with the pw sign-in of $(hostname), which outlives this run"
+else
+    runner_pw_auth=none
+    echo "::notice::Pipelines cannot run pw: $(hostname) has no pw sign-in of its own and the form carried no ACTIVATE API key (a project may still set PW_API_KEY as a CI/CD variable)"
+fi
+set -x
+export runner_pw_auth
 
 # A host in FIPS mode (fips=1 on its kernel command line: STIG images) shows
 # /proc/sys/crypto/fips_enabled = 1 to the container, whose OpenSSH then wants

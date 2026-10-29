@@ -167,13 +167,15 @@ accounts (GitLab's Linux package, runit) cannot run as the user, but it can run 
 Apptainer instance under `--fakeroot` when the user has a subuid range: the namespace
 maps the image's accounts and the init runs unchanged. The SIF is then a plain
 conversion of the image (`workflows/gitlab/gitlab-singularity/gitlab.def`), pushed as
-`ghcr.io/parallelworks/gitlab:<tag>` with the file named `gitlab-<tag>.sif`, and the
-runtime extracts it once into the run directory (`build --fakeroot --sandbox`) and runs
-that directory with `--writable`: it needs no FUSE mount and no overlay, which a hardened
-login node (the STIG image) refuses to a user namespace, and the package's writes outside
-its volumes persist. The pattern, its probes, the FIPS detail and its stop sequence:
-pitfalls.md, "A root-only image runs under Apptainer as a `--fakeroot` instance, from a
-writable sandbox"; the GitLab specifics: [gitlab.md](gitlab.md).
+`ghcr.io/parallelworks/gitlab:<tag>` with the file named `gitlab-<tag>.sif`. The runtime
+follows "try the SIF, fall back to a sandbox" above with two differences: the probe is
+`exec --fakeroot --writable-tmpfs <sif> sh -c 'touch /opt/x'`, because the image needs a
+writable layer and a hardened node refuses a user namespace both the FUSE mount and the
+rootless overlay (`/bin/true` alone would pass on the extraction fallback), and the
+sandbox lives in the run directory, not under `containers/`, because it runs with
+`--writable` (no overlay to take the writes) and so belongs to one GitLab. The pattern,
+its probes, the FIPS detail and its stop sequence: pitfalls.md, "A root-only image runs
+under Apptainer as a `--fakeroot` instance"; the GitLab specifics: [gitlab.md](gitlab.md).
 
 ## Gotchas (def-file builds — verified, rag-service 2026-08)
 

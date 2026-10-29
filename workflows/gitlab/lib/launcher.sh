@@ -19,6 +19,7 @@
 #   - runners_shell, runners_slurm, runners_demo_project, gitlab_runner_bin, jacamar_bin
 #   - platform_host, oidc_client_id, oidc_client_secret_file, oidc_display_name,
 #     oidc_block_new_users
+#   - runner_pw_auth (key | host | none) and GITLAB_PW_API_KEY when key
 ################################################################################
 
 # A failure here ends pw endpoints run with the endpoint already registered,
@@ -361,10 +362,14 @@ TOMLEOF
         # with the endpoint's process tree by accident, so it gets a session of
         # its own, which cancel.sh kills by session id. Its environment is the
         # shell runner's jobs' environment: the binary's directory joins the
-        # PATH for the artifact and cache stages, and the run's API key leaves,
-        # since it dies with the run and a pipeline that calls pw brings its
-        # own (a CI variable)
-        PATH="${gitlab_runner_bin%/*}:${PATH}" setsid nohup env -u PW_API_KEY "${gitlab_runner_bin}" run \
+        # PATH for the artifact and cache stages, and the run's API key, which
+        # dies with the run, gives way to the credential lib/start.sh chose
+        # (the key the form carried, or the host's own sign-in, or none)
+        local runner_env=(env -u PW_API_KEY)
+        if [ "${runner_pw_auth}" = "key" ]; then
+            runner_env=(env "PW_API_KEY=${GITLAB_PW_API_KEY}")
+        fi
+        PATH="${gitlab_runner_bin%/*}:${PATH}" setsid nohup "${runner_env[@]}" "${gitlab_runner_bin}" run \
             --config "${runner_root}/config.toml" \
             --working-directory "${runner_root}" \
             > "${runner_root}/runner.log" 2>&1 < /dev/null &

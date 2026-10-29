@@ -529,28 +529,33 @@
   backslashes are still expanded in them: escape those three (`sed 's/[\\$`]/\\&/g'`)
   and the value arrives verbatim, double quotes included.
 - **A root-only image (its own init, services as several accounts) runs under Apptainer
-  as a `--fakeroot` instance, from a writable sandbox** (verified 2026-10-28/29, apptainer
-  1.5.5 on gcpsmall and singularity-ce 4.5.1 on the STIG image of awsstig, both without
-  setuid, `workflows/gitlab/gitlab-singularity`): `build --fakeroot --sandbox <rundir>/image
-  <sif>` once (45 s for a 1.8 GB SIF; the image's ownership survives, mapped onto the
-  subuid range), then `instance start --fakeroot --writable --contain --cleanenv --workdir
-  <rundir>/work <sandbox>` (instances always get a PID namespace; `--pid` is not a flag of
-  `instance start`), `exec --cleanenv --pwd / instance://<name> <entrypoint>` in the
-  launcher's foreground and `exec instance://<name> <admin command>` for anything the
-  setup needs inside. Why a directory and not the SIF with `--writable-tmpfs` (which works
-  on the standard cloud image): a hardened node allows a user namespace neither a FUSE
-  mount of the SIF (`fusermount3: option allow_other only allowed if 'user_allow_other' is
-  set in /etc/fuse.conf`, and a fakeroot mount needs `allow_other` for the mapped ids) nor
-  a rootless overlay (`fork/exec /usr/bin/mount: permission denied`), and its `/tmp` is
-  `noexec`, so the extraction fallback cannot even run `awk`; a plain directory needs none
-  of it, and what the package writes outside its volumes persists in it like an installed
-  package's. Rules that come with it: `APPTAINER_TMPDIR`/`SINGULARITY_TMPDIR` under the
+  as a `--fakeroot` instance; the SIF where the node mounts it, an extracted sandbox where
+  it does not** (verified 2026-10-28/29, apptainer 1.5.5 on gcpsmall and singularity-ce
+  4.5.1 on the STIG image of awsstig, both without setuid,
+  `workflows/gitlab/gitlab-singularity`): the start template probes on the node that runs
+  the service with `exec --fakeroot --writable-tmpfs <sif> sh -c 'touch /opt/x'`; a touch
+  that works means the SIF runs as is (`instance start --fakeroot --writable-tmpfs`, as
+  on gcpsmall); otherwise `build --fakeroot --sandbox <rundir>/image <sif>` once (45 s for
+  a 1.8 GB SIF; the image's ownership survives, mapped onto the subuid range) and
+  `instance start --fakeroot --writable <rundir>/image` (the singularity-sif-containers
+  pattern "try the SIF, fall back to a sandbox", with the sandbox per run directory
+  because `--writable` mutates it). Instances always get a PID namespace (`--pid` is not
+  a flag of `instance start`); `exec --cleanenv --pwd / instance://<name> <entrypoint>`
+  runs in the launcher's foreground and `exec instance://<name> <admin command>` serves
+  the setup. Why the fallback exists: a hardened node allows a user namespace neither a
+  FUSE mount of the SIF (`fusermount3: option allow_other only allowed if
+  'user_allow_other' is set in /etc/fuse.conf`, and a fakeroot mount needs `allow_other`
+  for the mapped ids) nor a rootless overlay (`fork/exec /usr/bin/mount: permission
+  denied`), and its `/tmp` is `noexec`, so singularity's own extraction fallback cannot
+  even run `awk` (the probe there takes 50 s, once per run directory). Rules that come
+  with it: `APPTAINER_TMPDIR`/`SINGULARITY_TMPDIR` under the
   run directory (the build and any fallback extract there, not into `/tmp`); `--writable`
   creates no mount point, so every bind destination must exist in the image; `/tmp` comes
   from `--workdir` (pre-create `work/tmp` as `1777`: Ruby's `Dir.tmpdir` rejected a 755
   one, "could not find a temporary directory"), not from a bind, which `--contain`'s own
   `/tmp` overrides on singularity-ce; a new SIF replaces the sandbox (a marker file names
-  the SIF it came from), removed from a `--fakeroot` exec of the SIF. Other conditions,
+  the SIF it came from), removed from a `--fakeroot` exec of the SIF; writes to the
+  image's own paths stayed under 6 MB, so `--writable-tmpfs` is enough on the SIF path. Other conditions,
   all probed in the start template: `/etc/subuid` must give the user a range (`awk 'NR > 1
   { print $3 }' /proc/self/uid_map` inside a `--fakeroot` exec, 65536 or more; the cloud
   clusters' login nodes have `<user>:<start>:131072`, their compute nodes nothing, and a

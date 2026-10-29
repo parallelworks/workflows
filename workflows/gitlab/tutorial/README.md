@@ -170,12 +170,15 @@ with the `pw` CLI, the same way you do from your laptop: `pw ssh <resource> sbat
 `pw workflows run ...`, `pw cluster ls`. A pipeline can therefore submit the same job to
 several systems at once, or start a registered workflow on one of them.
 
-1. **Give the project a credential.** `pw` on a cloud cluster is not signed in. Create
-   an API key for your account (**Account → Authentication → API keys** in ACTIVATE)
-   and store it in the project: **Settings → CI/CD → Variables → Add variable**, key
-   `PW_API_KEY`, the key as value, **Mask variable** on, **Protect variable** on (jobs
-   on the protected `main` branch see it, nothing else does). On an on-premises cluster
-   connected through the ACTIVATE agent `pw` is already signed in as you; skip this.
+1. **Give the runner a credential.** `pw` on a cloud cluster is not signed in, and the
+   credential the workflow run itself had stopped working when the run completed. Create
+   an API key for your account (**Account → Authentication → API keys** in ACTIVATE) and
+   launch the GitLab workflow again on the same run directory with it in **CI/CD runners
+   → ACTIVATE API key**: every job of the shell runner then has `PW_API_KEY` set and `pw`
+   works. On a cluster connected through the ACTIVATE agent the field is not shown: `pw`
+   there is signed in as you already. (A project can also carry a key of its own as a
+   masked, protected CI/CD variable named `PW_API_KEY`, under **Settings → CI/CD →
+   Variables**; it takes precedence.)
 2. **Add the job.** Replace `.gitlab-ci.yml` with
    [`03-every-system.gitlab-ci.yml`](03-every-system.gitlab-ci.yml) and put the names of
    two of your resources, as `pw cluster ls` prints them, in the `matrix:` list. They
@@ -202,7 +205,7 @@ artifacts land in GitLab as before.
 
 | | |
 |---|---|
-| GitLab, the runners | the cluster's login node, started by the workflow; they stay up after the run completes, until `pw endpoints delete gitlab-<run slug>` |
+| GitLab, the runners | the cluster's login node, started by the workflow; they stay up after the run completes, until the session is deleted |
 | A job's checkout on the cluster | shell runner: `~/gitlab/runner/builds/shell/<...>/<group>/<project>/`; SLURM runner: `~/gitlab/runner/jacamar/<you>/builds/<...>/<group>/<project>/`, on the shared home so the compute node sees it |
 | The batch job's output | streamed into the job's log in GitLab; the runners' own log is `~/gitlab/runner/runner.log` |
 | The job in SLURM | `squeue -u $USER` while it runs, `sacct` afterwards; its name starts with `ci-` |

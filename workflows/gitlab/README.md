@@ -18,14 +18,13 @@ form ──► preprocessing ──► start script ──► GitLab answers, �
 The first start of a run directory takes three to six minutes (GitLab configures
 itself and creates its database); later starts two to four. The run completes once the
 sign-in page answers and the runners are registered (until then the page answers 503
-to the platform's probe); the service outlives the run until
-`pw endpoints delete gitlab-<run-slug>`, which also stops the runners.
+to the platform's probe); GitLab and its runners then run until the session is deleted.
 
 ## Two ways to run it
 
 | Run container using | What runs | Needs |
 |---|---|---|
-| **Singularity** (default; the only one on activate.hpc.mil) | The official image, pulled once as a SIF (`ghcr.io/parallelworks/gitlab:19.5.1-ee`) and extracted once into the run directory, runs as an Apptainer instance started with `--fakeroot --writable`: the package's own init runs its services as the image's accounts, mapped onto your subuid range, so nothing runs as root on the host and no Docker daemon is needed | `apptainer`/`singularity` with a subuid/subgid range for your user on the login node (`grep $USER /etc/subuid`; an administrator adds one with `apptainer config fakeroot --add <user>`), a run directory on a filesystem local to that node (its home on the cloud clusters; on NFS the namespace cannot change file ownership), 1.8 GB for the SIF and 4.7 GB per run directory |
+| **Singularity** (default) | The official image as a SIF (`ghcr.io/parallelworks/gitlab:19.5.1-ee`), run as an Apptainer instance started with `--fakeroot`: the package's own init runs its services as the image's accounts, mapped onto your subuid range, so nothing runs as root on the host and no Docker daemon is needed. A login node that cannot mount the SIF with a writable layer gets it extracted once into the run directory (`image/`, 4.7 GB) and runs that directory instead | `apptainer`/`singularity` with a subuid/subgid range for your user on the login node (`grep $USER /etc/subuid`; an administrator adds one with `apptainer config fakeroot --add <user>`), a run directory on a filesystem local to that node (its home on the cloud clusters; on NFS the namespace cannot change file ownership), 1.8 GB for the SIF |
 | **Docker** | The official all-in-one image `gitlab/gitlab-ee:19.5.1-ee.0`, as root | Docker on the login node, directly or through `sudo`, 5 GB for the image |
 
 Both need about 4 GB of RAM free for GitLab (8 GB recommended) and keep everything in the
@@ -33,12 +32,12 @@ Both need about 4 GB of RAM free for GitLab (8 GB recommended) and keep everythi
 `data/` and `logs/` as root, Singularity writes those and `image/` and `work/` with the
 ids of your fakeroot range, and each runtime refuses the other's directory.
 
-Both work on a hardened login node (verified on the STIG image of `awsstig` as well as on
-the standard cloud image): the Singularity runtime runs the image from a plain directory
-and keeps its temporary files in the run directory, so it needs no FUSE mount, no
-overlay and no `/tmp` it can execute from, and on a host in FIPS mode both runtimes show
-the container `fips_enabled=0` (the image is not a FIPS build; its OpenSSH would
-otherwise refuse to create the SSH host keys).
+Both work on a hardened login node (verified on a STIG image as well as on the standard
+cloud image): where a user namespace may neither FUSE-mount the SIF nor overlay it, the
+Singularity runtime extracts the image and runs it from that directory, keeping its
+temporary files in the run directory rather than a `noexec` `/tmp`, and on a host in FIPS
+mode both runtimes show the container `fips_enabled=0` (the image is not a FIPS build;
+its OpenSSH would otherwise refuse to create the SSH host keys).
 
 ## Requirements
 
@@ -67,8 +66,8 @@ GitLab's OpenID Connect provider is in every edition, so this needs no license.
    the GitLab address the form's **Subdomain** decides:
    `https://<subdomain>.<sessions domain>/users/auth/openid_connect/callback`. With the
    default subdomain on activate.parallel.works that is
-   `https://gitlab-<user>.activate.pw/users/auth/openid_connect/callback`; on
-   activate.hpc.mil the sessions domain is `pw.hsp.mil`.
+   `https://gitlab-<user>.activate.pw/users/auth/openid_connect/callback`; another
+   platform has its own sessions domain.
 
    Turn on the *OIDC Applications* preview in your account settings, open
    Organization → Settings → Applications and add a **web** application with that
@@ -106,7 +105,7 @@ directory finds its runners again.
 
 | Runner | Executor | Jobs | What runs where |
 |---|---|---|---|
-| **shell** (tag `shell`, takes untagged jobs) | GitLab's shell executor | any | the whole job on the service host, as your user |
+| **shell** (tag `shell`, takes untagged jobs) | GitLab's shell executor | any | the whole job on the service host, as your user, with `pw` signed in (below) |
 | **SLURM** (tag `slurm`) | GitLab's custom executor with Jacamar CI | `tags: [slurm]` | `before_script` + `script` inside an `sbatch` job submitted as your user; sources, artifacts and `after_script` on the service host |
 
 A SLURM job passes its `sbatch` options in the `SCHEDULER_PARAMETERS` variable (`-o`,
@@ -136,6 +135,19 @@ hello-slurm:
 With **Create the hpc-ci-demo project** on, the first run creates the private project
 `root/hpc-ci-demo` with a pipeline of exactly these jobs, so a fresh GitLab shows a
 pipeline that ran on the cluster.
+
+### Pipelines that call `pw`
+
+A job of the shell runner can drive any resource of your account with the `pw` CLI
+(`pw ssh <cluster> sbatch ...`, `pw workflows run ...`), which needs a credential that
+outlives the run: the run's own key stops working when the run completes. On a cloud
+cluster give the workflow an **ACTIVATE API key** (account settings, API keys): the
+runner hands it to every job as `PW_API_KEY`. On a cluster connected through the
+ACTIVATE agent the login node is signed in as you already and the field is not shown.
+The run's log says which credential the pipelines got, or that they got none, in which
+case a project can still set `PW_API_KEY` as a CI/CD variable of its own. Launch again
+with a new key before the old one expires. The [tutorial](tutorial/README.md)'s last
+step runs one job on several resources this way.
 
 ## Git from the command line
 
@@ -177,29 +189,30 @@ need no license.
 
 | Field | Default | Notes |
 |---|---|---|
-| Run container using | Singularity | See above; `hsp.yaml` offers Singularity only |
-| Subdomain | `gitlab-<username>` (`gitlab` in `hsp.yaml`) | Decides the address, the clone URLs and the OIDC redirect URI. Reserve it with `pw subdomains reserve <label>` |
-| Run directory | `${HOME}/gitlab` | `config/`, `data/`, `logs/` (written by the container), `runner/` (yours), the generated secrets and, under Singularity, `image/` (the extracted image) and `work/` (its `/tmp`). One GitLab at a time, one runtime per directory |
+| Run container using | Singularity | See above |
+| Subdomain | `gitlab-<username>` | Decides the address, the clone URLs and the OIDC redirect URI. Reserve it with `pw subdomains reserve <label>` |
+| Run directory | `${HOME}/gitlab` | `config/`, `data/`, `logs/` (written by the container), `runner/` (yours), the generated secrets and, under Singularity, `work/` (the container's `/tmp`) and, where the SIF cannot be mounted, `image/` (the extracted image). One GitLab at a time, one runtime per directory |
 | GitLab image | `gitlab/gitlab-ee:19.5.1-ee.0` | Docker only. Change the tag one minor version at a time on an existing run directory (GitLab's upgrade path) |
 | Root password | empty | Applied on the first start only; empty generates one into `<run directory>/.root_password` |
 | SSH port | `2222` | Loopback port of GitLab's SSH on the service host, shown in GitLab's SSH clone URLs |
 | GitLab license | empty | See above |
 | Register a shell runner | on | |
 | Register a SLURM runner | off | Shown on SLURM clusters |
+| ACTIVATE API key | empty | Shown on cloud clusters; what pipelines run `pw` with after the run completes |
 | Create the hpc-ci-demo project | on | Created once, under root |
 | Client ID / Client secret | empty | Sign in with ACTIVATE; both or neither |
 | New users wait for approval | off | Shown with a client ID |
 
 ## Teardown
 
-`pw endpoints delete gitlab-<run-slug>` stops GitLab and the runners through the start
-script's cleanup: under Singularity a `gitlab-ctl stop` inside the instance and then the
-instance itself (`apptainer instance list` shows none left), under Docker a
-`docker rm -f`; the runner's session is killed either way. The run directory keeps
-everything. What the container wrote belongs to its accounts, so removing it is
-`sudo rm -rf` for a Docker directory and, for a Singularity one, a fakeroot shell of
-your own (the temporary directory keeps the extraction a host without FUSE falls back
-to off a `noexec` `/tmp`):
+Deleting the session (the platform's sessions page, or `pw endpoints delete <name>`)
+stops GitLab and the runners through the start script's cleanup: under Singularity a
+`gitlab-ctl stop` inside the instance and then the instance itself (`apptainer instance
+list` shows none left), under Docker a `docker rm -f`; the runner's session is killed
+either way. The run directory keeps everything. What the container wrote belongs to its
+accounts, so removing it is `sudo rm -rf` for a Docker directory and, for a Singularity
+one, a fakeroot shell of your own (the temporary directory keeps the extraction a host
+without FUSE falls back to off a `noexec` `/tmp`):
 
 ```bash
 mkdir -p ~/tmp
@@ -222,12 +235,3 @@ tools/oras/oras push ghcr.io/parallelworks/gitlab:19.5.1-ee gitlab-19.5.1-ee.sif
 
 New GitLab version: a new `From:` line in `gitlab.def`, a new `GITLAB_SIF_TAG` in
 `controller.sh`, a new tag on the registry. Keep the package public.
-
-## On activate.hpc.mil
-
-Launch `yamls/hsp.yaml` on a cloud cluster: it runs the Singularity runtime (the Docker
-option is not offered there) on the cluster's login node, which needs a subuid range for
-your user (`grep $USER /etc/subuid`), and defaults the subdomain to `gitlab`. The
-sessions domain is `pw.hsp.mil`, so the application is registered for
-`https://gitlab.pw.hsp.mil/users/auth/openid_connect/callback` by an organization admin
-of that platform, and the subdomain reserved there.

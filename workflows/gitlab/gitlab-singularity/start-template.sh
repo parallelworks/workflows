@@ -174,7 +174,9 @@ case "${state_layout}" in
         # from each image is made by the namespace's root, so it belongs to
         # an id the namespace maps: the image's own upper/ belongs to the
         # user, whose id may lie beyond the mapped range (65536 ids on some
-        # HPC systems), and root in the namespace cannot write there
+        # HPC systems), and root in the namespace cannot write there. The
+        # snippet directory's mount point is made too: a bind into an
+        # image-mounted directory finds no mount point the runtime can create
         mkdir -p "${state_dir}"
         state_image_size="${service_state_image_size:-20}"
         for spec in "config 256" "logs 4096" "data $(( state_image_size * 1024 ))"; do
@@ -184,7 +186,7 @@ case "${state_layout}" in
                     echo "::error title=Error::Could not create ${state_dir}/$1.img (above; it needs mkfs.ext3 of e2fsprogs on $(hostname))"
                     exit 1
                 fi
-                if ! "${container_cmd}" exec --fakeroot --bind "${state_dir}/$1.img:/mnt:image-src=/" "${image_ref}" mkdir -p /mnt/gitlab; then
+                if ! "${container_cmd}" exec --fakeroot --bind "${state_dir}/$1.img:/mnt:image-src=/" "${image_ref}" mkdir -p /mnt/gitlab /mnt/gitlab/activate; then
                     echo "::error title=Error::Could not mount ${state_dir}/$1.img inside the container (above; fuse2fs on $(hostname))"
                     rm -f "${state_dir}/$1.img"
                     exit 1

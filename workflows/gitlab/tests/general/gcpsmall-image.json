@@ -9,7 +9,7 @@
       "pw endpoints run"
     ],
     "leftover_commands": {
-      "instances": "pgrep -fc gitlab-test-image/state/ || true"
+      "instances": "pgrep -fc '[g]itlab-test-image/state/' || true"
     }
   },
   "resource": "pw://alvaro/gcpsmall",

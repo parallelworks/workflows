@@ -1,37 +1,50 @@
 # Step 4 of the tutorial: a two-stage pipeline. "simulate" runs on a compute
-# node through the SLURM runner and leaves its results as artifacts;
-# "report" runs on the login node (shell runner) and summarises them.
+# node through the SLURM runner and keeps its results as artifacts; "report"
+# runs on the login node through the shell runner and summarises them.
 
 default:
   id_tokens:
     CI_JOB_JWT:
-      aud: $CI_SERVER_URL
+      aud: $CI_SERVER_URL          # this GitLab's address, e.g. https://gitlab-jane.activate.pw
 
 variables:
-  SAMPLES: "2000000"          # per task; override it when you run the pipeline by hand
+  # sbatch options for the SLURM job; add --account=<account>, --partition=...
+  # as your cluster requires
+  SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=4 --time=00:10:00"
+  # A value the simulation reads. Override it when you start a pipeline by hand
+  # (Build -> Pipelines -> New pipeline -> Variables) to run another case.
+  SAMPLES: "2000000"
 
+# The order of the stages: jobs of one stage run in parallel, the next stage
+# starts when the previous one has finished.
 stages: [simulate, report]
 
 simulate:
   stage: simulate
-  tags: [slurm]
-  variables:
-    SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=4 --time=00:10:00"
+  tags: [slurm]                    # the SLURM runner: this job becomes a batch job
   script:
     - echo "SLURM job $SLURM_JOB_ID on $SLURM_NODELIST, $SLURM_NTASKS tasks, $SAMPLES samples each"
     - mkdir -p results
-    # One task per core: each estimates pi from random points and writes one line
+    # srun starts one copy of the Python program per task of the allocation
+    # (--ntasks above); each estimates pi from random points and writes one
+    # line: task id, node, samples, hits. %t in the file name is the task id.
     - srun --output=results/task-%t.txt python3 -c "import random, os; n = int(os.environ['SAMPLES']); k = sum(random.random() ** 2 + random.random() ** 2 < 1 for _ in range(n)); print(os.environ.get('SLURM_PROCID'), os.uname().nodename, n, k)"
     - cat results/task-*.txt
+  # Files to keep after the job: GitLab stores them with the job (downloadable
+  # from its page) and hands them to the jobs that need them.
   artifacts:
-    paths: [results/]
-    expire_in: 1 week
+    paths: [results/]              # what to keep, relative to the project directory
+    expire_in: 1 week              # GitLab deletes them after this; the default is 30 days
 
 report:
   stage: report
-  tags: [shell]
+  tags: [shell]                    # the shell runner: runs on the login node, no batch job
+  # Start as soon as "simulate" ends (not when the whole stage ends), and take
+  # its artifacts: results/ is in place when the script starts.
   needs: [simulate]
   script:
+    # A "|" block is one multi-line command: here a small Python program that
+    # adds up the lines the tasks wrote.
     - |
       python3 - <<'PY'
       import glob
@@ -43,4 +56,4 @@ report:
       open("results/summary.txt", "w").write(f"pi={4 * k / n:.5f} samples={n}\n")
       PY
   artifacts:
-    paths: [results/summary.txt]
+    paths: [results/summary.txt]   # only the summary is kept from this job

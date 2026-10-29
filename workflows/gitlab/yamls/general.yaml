@@ -275,9 +275,9 @@ jobs:
             ignore: ${{ .hidden }}
           demo_project:
             type: boolean
-            default: true
+            default: false
             label: Create the hpc-ci-demo project
-            description: A project with a pipeline that runs on the registered runners, created once under the root account.
+            description: An example project with a pipeline that runs on the registered runners, created once under the root account; the tutorial starts from it.
       oidc:
         type: group
         label: Sign in with ACTIVATE

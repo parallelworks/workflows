@@ -126,15 +126,16 @@ default:
 hello-slurm:
   tags: [slurm]
   variables:
-    SCHEDULER_PARAMETERS: "--nodes=1 --partition=debug --time=00:10:00"
+    SCHEDULER_PARAMETERS: "--nodes=1 --time=00:10:00"   # plus --account, --partition, ... as the cluster requires
   script:
     - echo "SLURM job $SLURM_JOB_ID on $SLURM_NODELIST"
     - srun hostname
 ```
 
-With **Create the hpc-ci-demo project** on, the first run creates the private project
+With **Create the hpc-ci-demo project** on, the run creates the private project
 `root/hpc-ci-demo` with a pipeline of exactly these jobs, so a fresh GitLab shows a
-pipeline that ran on the cluster.
+pipeline that ran on the cluster; a cluster that requires an account or a partition for
+batch jobs wants them added to that file's `SCHEDULER_PARAMETERS`.
 
 ### Pipelines that call `pw`
 
@@ -199,7 +200,7 @@ need no license.
 | Register a shell runner | on | |
 | Register a SLURM runner | off | Shown on SLURM clusters |
 | ACTIVATE API key | empty | Shown on cloud clusters; what pipelines run `pw` with after the run completes |
-| Create the hpc-ci-demo project | on | Created once, under root |
+| Create the hpc-ci-demo project | off | An example project, created once under root; the tutorial starts from it |
 | Client ID / Client secret | empty | Sign in with ACTIVATE; both or neither |
 | New users wait for approval | off | Shown with a client ID |
 

@@ -6,16 +6,23 @@
 default:
   id_tokens:
     CI_JOB_JWT:
-      aud: $CI_SERVER_URL
+      aud: $CI_SERVER_URL          # this GitLab's address, e.g. https://gitlab-jane.activate.pw
 
 submit-everywhere:
-  tags: [shell]
+  tags: [shell]                    # the shell runner: pw runs on the login node
+  # "parallel: matrix:" turns this one definition into one job per value:
+  # "submit-everywhere: [<resource_1>]", "submit-everywhere: [<resource_2>]", ...
+  # each with RESOURCE set to its value. Put your resources' names here, as
+  # `pw cluster ls` prints them (the part after pw://<user>/); they must be on.
   parallel:
     matrix:
-      - RESOURCE: [gcpsmall, awsstig]        # your resources, as `pw cluster ls` names them
+      - RESOURCE: ["<resource_1>", "<resource_2>"]
   script:
     - export PATH="$HOME/pw:$PATH"
-    - pw auth whoami
+    - pw auth whoami                 # who pw is signed in as
     - pw cluster ls | grep "$RESOURCE"
-    # Submit a batch job there, wait for it, and read its output back
+    # Submit a batch job on the resource, wait for it, and read its output back.
+    # Add the options the resource requires to sbatch: --account=<account>,
+    # --partition=<partition>, ... The outer double quotes expand $CI_JOB_ID
+    # here; the inner single quotes keep the job's commands for the resource.
     - pw ssh "$RESOURCE" "sbatch --wait --job-name=ci-$CI_JOB_ID --output=ci-$CI_JOB_ID.out --time=00:10:00 --wrap='hostname; nproc; date' && cat ci-$CI_JOB_ID.out"

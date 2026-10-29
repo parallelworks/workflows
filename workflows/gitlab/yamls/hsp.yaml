@@ -281,7 +281,7 @@ jobs:
             hidden: ${{ inputs.resource.schedulerType != 'slurm' }}
             ignore: ${{ .hidden }}
             tooltip: |
-              The runner uses GitLab's custom executor with Jacamar CI (ECP): the job's before_script and script run inside an sbatch job submitted as your user from the service host, after_script on the service host. A job sets SCHEDULER_PARAMETERS to the sbatch options it needs, for example "--nodes=1 --partition=debug --time=00:10:00"; -o, -e, -J and --wait are reserved by Jacamar. Jobs wait for the allocation inside GitLab's job timeout.
+              The runner uses GitLab's custom executor with Jacamar CI (ECP): the job's before_script and script run inside an sbatch job submitted as your user from the service host, after_script on the service host. A job sets SCHEDULER_PARAMETERS to the sbatch options it needs, for example "--nodes=1 --time=00:10:00" plus the account, partition or QoS the cluster requires; -o, -e, -J and --wait are reserved by Jacamar. Jobs wait for the allocation inside GitLab's job timeout.
           api_key:
             type: password
             label: ACTIVATE API key

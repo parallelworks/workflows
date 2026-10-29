@@ -44,17 +44,25 @@ chmod 1777 "${work_dir}/tmp"
 export APPTAINER_TMPDIR="${work_dir}/tmp" SINGULARITY_TMPDIR="${work_dir}/tmp"
 export APPTAINER_CACHEDIR="${HOME}/.singularity_cache" SINGULARITY_CACHEDIR="${HOME}/.singularity_cache"
 
-# Load singularity/apptainer if not already in PATH
-if ! which singularity &> /dev/null; then
-    if module load apptainer 2>/dev/null; then
-        echo "::notice::Loaded apptainer module"
-    elif module load singularity 2>/dev/null; then
-        echo "::notice::Loaded singularity module"
-    else
-        echo "::error title=Error::singularity/apptainer not found in PATH and could not be loaded via module"
-        exit 1
+# The runtime: apptainer first (it mounts SIFs without setuid and bundles
+# squashfuse and fuse-overlayfs), singularity otherwise, each from the PATH or
+# its environment module, and only one whose engine answers: a module can
+# ship a build that panics on this node (the kasmvnc workflow met one), so
+# the version call is the first thing asked of it
+container_cmd=""
+for rt in apptainer singularity; do
+    command -v ${rt} >/dev/null 2>&1 || module load ${rt} >/dev/null 2>&1 || true
+    if command -v ${rt} >/dev/null 2>&1 && ${rt} --version >/dev/null 2>&1; then
+        container_cmd=${rt}
+        break
     fi
+done
+if [ -z "${container_cmd}" ]; then
+    echo "::error title=Error::Neither apptainer nor singularity runs on $(hostname) (PATH or environment modules)"
+    exit 1
 fi
+echo "::notice::Container runtime: ${container_cmd} ($(${container_cmd} --version 2>/dev/null))"
+export container_cmd
 if ! [ -f "${container_sif}" ]; then
     echo "::error title=Error::Missing container image ${container_sif}"
     exit 1
@@ -82,7 +90,7 @@ if [ -d "${image_dir}" ] && [ "$(cat "${image_marker}" 2>/dev/null)" != "${sif_i
     echo "::notice::Removing ${image_dir}, extracted from $(cat "${image_marker}" 2>/dev/null || echo 'an unknown or interrupted image'); ${sif_id%% *} replaces it"
     rm -f "${image_marker}"
     # Its files belong to the mapped ids, so the user namespace removes them
-    if ! singularity exec --fakeroot --bind "${service_rundir}" "${container_sif}" rm -rf "${image_dir}"; then
+    if ! "${container_cmd}" exec --fakeroot --bind "${service_rundir}" "${container_sif}" rm -rf "${image_dir}"; then
         echo "::error title=Error::Could not remove ${image_dir} (above)"
         exit 1
     fi
@@ -93,7 +101,7 @@ if [ -d "${image_dir}" ]; then
     image_flag="--writable"
     echo "::notice::Running the image extracted into ${image_dir} (this node could not mount the SIF when it was extracted)"
 else
-    probe=$(singularity exec --fakeroot --writable-tmpfs "${container_sif}" \
+    probe=$("${container_cmd}" exec --fakeroot --writable-tmpfs "${container_sif}" \
         sh -c 'touch /opt/.activate-probe 2>/dev/null && echo writable; awk "NR > 1 { print \$3 }" /proc/self/uid_map' 2>/dev/null)
     uid_range=$(printf '%s\n' "${probe}" | grep -E '^[0-9]+$' | sort -n | tail -n 1)
     if printf '%s\n' "${probe}" | grep -qx writable; then
@@ -102,7 +110,7 @@ else
         echo "::notice::Running ${container_sif} as is (this node mounts it with a writable layer)"
     else
         echo "::notice::$(hostname) cannot mount ${container_sif} with a writable layer under fakeroot (no FUSE mount or rootless overlay for a user namespace); extracting it into ${image_dir} (about a minute, once per run directory)"
-        if ! singularity build --fakeroot --sandbox "${image_dir}" "${container_sif}"; then
+        if ! "${container_cmd}" build --fakeroot --sandbox "${image_dir}" "${container_sif}"; then
             echo "::error title=Error::Could not extract ${container_sif} with --fakeroot on $(hostname): the GitLab image needs user namespaces and a subuid/subgid range for $(id -un) (an administrator adds one with 'apptainer config fakeroot --add $(id -un)')"
             exit 1
         fi
@@ -114,7 +122,7 @@ fi
 # The user namespace must map the image's accounts: a --fakeroot that falls
 # back to a single mapped id (no subuid range for the user) cannot run it
 if [ -z "${uid_range}" ]; then
-    uid_range=$(singularity exec --fakeroot "${image_ref}" awk 'NR > 1 { print $3 }' /proc/self/uid_map 2>/dev/null | sort -n | tail -n 1)
+    uid_range=$("${container_cmd}" exec --fakeroot "${image_ref}" awk 'NR > 1 { print $3 }' /proc/self/uid_map 2>/dev/null | sort -n | tail -n 1)
 fi
 if [ -z "${uid_range}" ]; then
     echo "::error title=Error::Could not run ${image_ref} with --fakeroot on $(hostname): the GitLab image needs user namespaces and fakeroot. Try the Docker runtime there"
@@ -142,7 +150,7 @@ state_dir="${service_rundir}/state"
 if [ "${state_layout}" = "auto" ]; then
     if [ -s "${state_dir}/data.img" ]; then
         state_layout=image
-    elif singularity exec --fakeroot --bind "${service_rundir}/data:/mnt" "${image_ref}" \
+    elif "${container_cmd}" exec --fakeroot --bind "${service_rundir}/data:/mnt" "${image_ref}" \
             sh -c 'touch /mnt/.chown-probe && chown 998:998 /mnt/.chown-probe; s=$?; rm -f /mnt/.chown-probe; exit $s' >/dev/null 2>&1; then
         state_layout=directories
     else
@@ -172,11 +180,11 @@ case "${state_layout}" in
         for spec in "config 256" "logs 4096" "data $(( state_image_size * 1024 ))"; do
             set -- ${spec}
             if ! [ -s "${state_dir}/$1.img" ]; then
-                if ! singularity overlay create --sparse --size "$2" "${state_dir}/$1.img"; then
+                if ! "${container_cmd}" overlay create --sparse --size "$2" "${state_dir}/$1.img"; then
                     echo "::error title=Error::Could not create ${state_dir}/$1.img (above; it needs mkfs.ext3 of e2fsprogs on $(hostname))"
                     exit 1
                 fi
-                if ! singularity exec --fakeroot --bind "${state_dir}/$1.img:/mnt:image-src=/" "${image_ref}" mkdir -p /mnt/gitlab; then
+                if ! "${container_cmd}" exec --fakeroot --bind "${state_dir}/$1.img:/mnt:image-src=/" "${image_ref}" mkdir -p /mnt/gitlab; then
                     echo "::error title=Error::Could not mount ${state_dir}/$1.img inside the container (above; fuse2fs on $(hostname))"
                     rm -f "${state_dir}/$1.img"
                     exit 1
@@ -205,12 +213,10 @@ export instance_name="gitlab_${PW_RUN_SLUG}"
 # rest with it. The submitter runs it over ssh, in a shell that has not loaded
 # the module this script may have
 cat >> cancel.sh <<CANCELEOF
-if ! command -v singularity >/dev/null 2>&1; then
-    module load apptainer 2>/dev/null || module load singularity 2>/dev/null
-fi
-if singularity instance list 2>/dev/null | awk '{ print \$1 }' | grep -qxF "${instance_name}"; then
-    timeout 30 singularity exec --cleanenv --pwd / instance://${instance_name} gitlab-ctl stop 2>/dev/null
-    singularity instance stop -F ${instance_name} 2>/dev/null || true
+command -v ${container_cmd} >/dev/null 2>&1 || module load ${container_cmd} 2>/dev/null
+if ${container_cmd} instance list 2>/dev/null | awk '{ print \$1 }' | grep -qxF "${instance_name}"; then
+    timeout 30 ${container_cmd} exec --cleanenv --pwd / instance://${instance_name} gitlab-ctl stop 2>/dev/null
+    ${container_cmd} instance stop -F ${instance_name} 2>/dev/null || true
 fi
 CANCELEOF
 
@@ -250,7 +256,7 @@ gitlab_write_omnibus_config "${PORT}" \
     "sidekiq['metrics_enabled'] = false" \
     "sidekiq['health_checks_enabled'] = false" \
     "gitlab_kas['enable'] = false"
-singularity exec "${image_ref}" cat /assets/sshd_config \
+"${container_cmd}" exec "${image_ref}" cat /assets/sshd_config \
     | sed "s/^Port 22$/Port ${service_ssh_port}\nListenAddress 127.0.0.1/" > "${run_dir}/sshd_config"
 
 # The configuration goes in as a host variable with the APPTAINERENV_ /
@@ -266,7 +272,7 @@ set -x
 export APPTAINERENV_GITLAB_SKIP_TAIL_LOGS=true SINGULARITYENV_GITLAB_SKIP_TAIL_LOGS=true
 
 gitlab_exec() {
-    singularity exec --cleanenv --pwd / instance://"${instance_name}" "$@"
+    "${container_cmd}" exec --cleanenv --pwd / instance://"${instance_name}" "$@"
 }
 gitlab_alive() {
     kill -0 "$(cat "${run_dir}/wrapper.pid")" 2>/dev/null
@@ -286,8 +292,8 @@ fi
 # images (every mount point exists in the image: --writable creates none);
 # the snippet directory and the sshd configuration (whose port is fixed in
 # the image) come from this job
-singularity instance stop -F "${instance_name}" 2>/dev/null || true
-if ! singularity instance start --fakeroot ${image_flag} --contain --cleanenv \
+"${container_cmd}" instance stop -F "${instance_name}" 2>/dev/null || true
+if ! "${container_cmd}" instance start --fakeroot ${image_flag} --contain --cleanenv \
         --uts --hostname "${host}" \
         --workdir "${work_dir}" ${fips_bind} ${state_binds} \
         --bind "${run_dir}/activate:/etc/gitlab/activate:ro" \
@@ -295,7 +301,7 @@ if ! singularity instance start --fakeroot ${image_flag} --contain --cleanenv \
         "${image_ref}" "${instance_name}"; then
     fail "Could not start the GitLab instance ${instance_name} (above)"
 fi
-singularity exec --cleanenv --pwd / instance://"${instance_name}" /assets/init-container > "${run_dir}/gitlab.log" 2>&1 &
+"${container_cmd}" exec --cleanenv --pwd / instance://"${instance_name}" /assets/init-container > "${run_dir}/gitlab.log" 2>&1 &
 echo $! > "${run_dir}/wrapper.pid"
 
 gitlab_wait_ready

@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-10-29T14:18:42Z,cold,fail,leftover:instances,67c7b02,162207a,727fc42,d3bfb5b,d3bfb5b,gitlab,alvaro,clever-lizard,37,"run error, expected completed: session_runner > Exit Workflow with Error (error, 0s)"

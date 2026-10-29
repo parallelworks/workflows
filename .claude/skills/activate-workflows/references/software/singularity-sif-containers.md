@@ -167,11 +167,13 @@ accounts (GitLab's Linux package, runit) cannot run as the user, but it can run 
 Apptainer instance under `--fakeroot` when the user has a subuid range: the namespace
 maps the image's accounts and the init runs unchanged. The SIF is then a plain
 conversion of the image (`workflows/gitlab/gitlab-singularity/gitlab.def`), pushed as
-`ghcr.io/parallelworks/gitlab:<tag>` with the file named `gitlab-<tag>.sif`. The
-pattern, its probes and its stop sequence: pitfalls.md, "A root-only image runs under
-Apptainer as a `--fakeroot` instance"; the GitLab specifics: [gitlab.md](gitlab.md).
-No sandbox fallback there: a node that cannot mount the SIF is also one without the
-user namespaces fakeroot needs.
+`ghcr.io/parallelworks/gitlab:<tag>` with the file named `gitlab-<tag>.sif`, and the
+runtime extracts it once into the run directory (`build --fakeroot --sandbox`) and runs
+that directory with `--writable`: it needs no FUSE mount and no overlay, which a hardened
+login node (the STIG image) refuses to a user namespace, and the package's writes outside
+its volumes persist. The pattern, its probes, the FIPS detail and its stop sequence:
+pitfalls.md, "A root-only image runs under Apptainer as a `--fakeroot` instance, from a
+writable sandbox"; the GitLab specifics: [gitlab.md](gitlab.md).
 
 ## Gotchas (def-file builds — verified, rag-service 2026-08)
 

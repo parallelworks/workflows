@@ -1,0 +1,46 @@
+# Step 4 of the tutorial: a two-stage pipeline. "simulate" runs on a compute
+# node through the SLURM runner and leaves its results as artifacts;
+# "report" runs on the login node (shell runner) and summarises them.
+
+default:
+  id_tokens:
+    CI_JOB_JWT:
+      aud: $CI_SERVER_URL
+
+variables:
+  SAMPLES: "2000000"          # per task; override it when you run the pipeline by hand
+
+stages: [simulate, report]
+
+simulate:
+  stage: simulate
+  tags: [slurm]
+  variables:
+    SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=4 --time=00:10:00"
+  script:
+    - echo "SLURM job $SLURM_JOB_ID on $SLURM_NODELIST, $SLURM_NTASKS tasks, $SAMPLES samples each"
+    - mkdir -p results
+    # One task per core: each estimates pi from random points and writes one line
+    - srun --output=results/task-%t.txt python3 -c "import random, os; n = int(os.environ['SAMPLES']); k = sum(random.random() ** 2 + random.random() ** 2 < 1 for _ in range(n)); print(os.environ.get('SLURM_PROCID'), os.uname().nodename, n, k)"
+    - cat results/task-*.txt
+  artifacts:
+    paths: [results/]
+    expire_in: 1 week
+
+report:
+  stage: report
+  tags: [shell]
+  needs: [simulate]
+  script:
+    - |
+      python3 - <<'PY'
+      import glob
+      rows = [line.split() for f in sorted(glob.glob("results/task-*.txt")) for line in open(f)]
+      n = sum(int(r[2]) for r in rows)
+      k = sum(int(r[3]) for r in rows)
+      print(f"{len(rows)} tasks on {sorted({r[1] for r in rows})}")
+      print(f"pi is about {4 * k / n:.5f} from {n:,} samples")
+      open("results/summary.txt", "w").write(f"pi={4 * k / n:.5f} samples={n}\n")
+      PY
+  artifacts:
+    paths: [results/summary.txt]

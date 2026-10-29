@@ -1,0 +1,18 @@
+# Step 3 of the tutorial: one job, run by the SLURM runner on a compute node.
+
+# Every job needs this token: Jacamar, the program behind the SLURM runner,
+# uses it to talk to GitLab on the job's behalf
+default:
+  id_tokens:
+    CI_JOB_JWT:
+      aud: $CI_SERVER_URL
+
+hello-slurm:
+  tags: [slurm]                                  # the SLURM runner, not the shell one
+  variables:
+    SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=4 --time=00:10:00"   # the sbatch options
+  script:
+    - echo "SLURM job $SLURM_JOB_ID on $SLURM_NODELIST with $SLURM_NTASKS tasks"
+    - srun hostname | sort | uniq -c
+    - nproc
+    - free -g | head -n 2

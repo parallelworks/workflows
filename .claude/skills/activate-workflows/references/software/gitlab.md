@@ -1,8 +1,8 @@
 # GitLab (Linux package image, Docker or a fakeroot Apptainer instance) behind an endpoint, with CI runners
 
-What building `workflows/gitlab` taught (2026-10-28, GitLab 19.5.1-ee, gitlab-runner
-19.5.1, Jacamar CI 0.31.0; Docker through `sudo` on a lab node and on gcpsmall, apptainer
-1.5.5 on gcpsmall). The endpoint mechanics are [../activate-platform.md](../activate-platform.md)
+What building `workflows/gitlab` taught (2026-10-28/29, GitLab 19.5.1-ee, gitlab-runner
+19.5.1, Jacamar CI 0.31.0; Docker through `sudo` on a lab node, gcpsmall and awsstig,
+apptainer 1.5.5 on gcpsmall, singularity-ce 4.5.1 on awsstig's STIG image). The endpoint mechanics are [../activate-platform.md](../activate-platform.md)
 §10, the OIDC recipe [../oidc-sign-in.md](../oidc-sign-in.md); this file is what GitLab
 adds to them. The two runtimes share `lib/` (controller checks and runner tools, the
 start template's first half, the launcher's GitLab logic); each runtime's files only
@@ -16,21 +16,28 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
   PostgreSQL, Redis and nginx; the image is 4.7 GB, the SIF 1.8 GB. Two runtimes:
   - **Docker** (`gitlab-docker/`): the `openproject-docker` pattern (`docker run -d` in a
     launcher under `pw endpoints run`, `docker logs -f & wait` as the foreground,
-    `cancel.sh` with `docker rm -f`, `flock` on the run directory). A cold start answered
-    `/users/sign_in` in about 2.5 minutes on a 20-core node; later starts take about 2.
+    `cancel.sh` with `docker rm -f`, `flock` on the run directory; on a FIPS-mode host
+    `-v <file holding 0>:/proc/sys/crypto/fips_enabled:ro`, see the Singularity bullet).
+    A cold start answered `/users/sign_in` in about 2.5 minutes on a 20-core node; later
+    starts take about 2.
   - **Singularity** (`gitlab-singularity/`, SIF `ghcr.io/parallelworks/gitlab:19.5.1-ee`
-    built from `gitlab.def`, the image unchanged): an Apptainer **instance** started with
-    `--fakeroot --writable-tmpfs --contain --cleanenv --uts --hostname <host>`, the three
-    volumes bound from the run directory plus `tmp/` (`chmod 1777`) as `/tmp`, the
-    snippet directory as `/etc/gitlab/activate` and a copy of `/assets/sshd_config` with
-    the form's port (`ListenAddress 127.0.0.1`) over the image's; then
-    `exec --cleanenv --pwd / instance://<name> /assets/init-container` (the image's
-    entrypoint; `/assets/gitlab.rb` already sets `manage_accounts['enable'] = false` and
-    `package['modify_kernel_parameters'] = false`) in the launcher's foreground. The
-    container shares the host's network, so `nginx['listen_port'] = $PORT` with
-    `nginx['listen_addresses'] = ['127.0.0.1']`, and the package's other fixed loopback
-    listeners (which Docker isolates per container) are moved or turned off so two
-    GitLabs can share a node: `puma['port']` (workhorse uses puma's unix socket),
+    built from `gitlab.def`, the image unchanged): the controller pulls the SIF once into
+    the install directory; the start template extracts it once per run directory
+    (`singularity build --fakeroot --sandbox <rundir>/image <sif>`, 45 s, a marker names the
+    SIF it came from so a new tag replaces it) and starts an Apptainer **instance** with
+    `--fakeroot --writable --contain --cleanenv --uts --hostname <host> --workdir
+    <rundir>/work`, the three volumes bound from the run directory, the snippet directory
+    as `/etc/gitlab/activate` and a copy of `/assets/sshd_config` with the form's port
+    (`ListenAddress 127.0.0.1`) over the image's; on a FIPS-mode host also a file holding
+    `0` over `/proc/sys/crypto/fips_enabled`; then `exec --cleanenv --pwd / instance://<name>
+    /assets/init-container` (the image's entrypoint; `/assets/gitlab.rb` already sets
+    `manage_accounts['enable'] = false` and `package['modify_kernel_parameters'] = false`)
+    in the launcher's foreground. `work/tmp` (`chmod 1777`) is the container's `/tmp`
+    through `--workdir` and singularity's own `TMPDIR`. The container shares the host's
+    network, so `nginx['listen_port'] = $PORT` with `nginx['listen_addresses'] =
+    ['127.0.0.1']`, and the package's other fixed loopback listeners (which Docker
+    isolates per container) are moved or turned off so two GitLabs can share a node:
+    `puma['port']` (workhorse uses puma's unix socket),
     `gitlab_workhorse['prometheus_listen_addr']` and `gitaly['configuration'] =
     { prometheus_listen_addr: ... }` to free ports, `sidekiq['metrics_enabled']`,
     `sidekiq['health_checks_enabled']`, `nginx['status']['enable']` (port 8060 on every
@@ -38,11 +45,20 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
     PostgreSQL and Redis listen on unix sockets only. `GITLAB_OMNIBUS_CONFIG` goes in as
     `APPTAINERENV_`/`SINGULARITYENV_` with `$`, backticks and backslashes escaped;
     `GITLAB_SKIP_TAIL_LOGS=true` keeps the package's logs in `logs/` instead of the job
-    output. `gitlab_exec` is `exec instance://<name>`. A cold start answered in about
-    3.5 minutes on a 16-core node (FUSE mounts: squashfuse + fuse-overlayfs, no setuid).
-    What it needs and how it stops: pitfalls, "A root-only image runs under Apptainer as a
-    `--fakeroot` instance" (a subuid range for the user, a local filesystem, the 1777
-    `/tmp`, `gitlab-ctl stop` through `exec instance://` in `cancel.sh`).
+    output. `gitlab_exec` is `exec instance://<name>`. Why a sandbox and not the SIF with
+    `--writable-tmpfs` (the first version, which worked on gcpsmall): the STIG image of
+    awsstig (singularity-ce 4.5.1, `/tmp` noexec, fusermount3 without `user_allow_other`,
+    `mount` not executable from a user namespace, FIPS mode) could neither mount the SIF
+    nor overlay it; the sandbox needs neither and runs on both. Details and conditions:
+    pitfalls, "A root-only image runs under Apptainer as a `--fakeroot` instance, from a
+    writable sandbox" (a subuid range for the user, a local filesystem, the 1777 `/tmp`,
+    the FIPS bind, `gitlab-ctl stop` through `exec instance://` in `cancel.sh`).
+  - **Login node only, both runtimes** (2026-10-29): the YAMLs have no scheduler section
+    and call the submitter with `scheduler: false`. A service that outlives the run has
+    no place in an allocation, and on the cloud clusters a compute node has no subuid
+    range and mounts home over NFS, where the namespace's `chown` is refused (the start
+    template still checks both and says so). The CI jobs are what reach the compute
+    nodes.
 - **Configuration in one env line.** `GITLAB_OMNIBUS_CONFIG` is Ruby evaluated after
   `/etc/gitlab/gitlab.rb` at every start; a docker `--env-file` takes no newlines, so
   join the statements with `; `. It must contain `external_url 'https://<host>'`,

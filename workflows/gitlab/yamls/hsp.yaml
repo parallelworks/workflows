@@ -186,6 +186,7 @@ jobs:
       resource:
         type: compute-clusters
         label: Service host
+        description: GitLab and its CI runners run on this cluster's login node.
         include-workspace: false
       service:
         type: group
@@ -208,7 +209,7 @@ jobs:
               - label: Docker
                 value: gitlab-docker
             tooltip: |
-              Singularity: one SIF (ghcr.io/parallelworks/gitlab, the official image) runs as an Apptainer instance with --fakeroot, which needs a subuid/subgid range for your user on the service host (an administrator adds one with 'apptainer config fakeroot --add <user>'); no root or Docker needed, and the run directory stays yours. Docker: the official image (needs Docker, directly or through sudo); its run directory is written as root. A run directory belongs to one runtime.
+              Singularity: the official image (ghcr.io/parallelworks/gitlab, one SIF), extracted into the run directory and run as an Apptainer instance with --fakeroot, which needs a subuid/subgid range for your user on the login node (an administrator adds one with 'apptainer config fakeroot --add <user>'); no root or Docker needed. Docker: the official image (needs Docker, directly or through sudo); its run directory is written as root. A run directory belongs to one runtime.
           subdomain:
             label: Subdomain
             description: Label of the URL, https://<label>.<sessions domain>, the same on every run; empty uses gitlab-<your username>.
@@ -223,7 +224,7 @@ jobs:
             type: string
             default: ${HOME}/gitlab
             tooltip: |
-              Holds config/ (gitlab.rb, secrets), data/ (repositories, PostgreSQL, uploads), logs/ and runner/ (the CI runners' configuration and builds). Singularity writes config/, data/ and logs/ with the ids of your fakeroot range (remove them with 'apptainer exec --fakeroot ... rm -rf', or as root); Docker writes them as root (sudo rm -rf). One GitLab per run directory at a time; the first start of a run directory takes several minutes (database setup).
+              Holds config/ (gitlab.rb, secrets), data/ (repositories, PostgreSQL, uploads), logs/ and runner/ (the CI runners' configuration and builds); under Singularity also image/ (the GitLab image, extracted once, 4.7 GB) and work/ (its /tmp). Singularity writes them with the ids of your fakeroot range (remove them with 'apptainer exec --fakeroot ... rm -rf', or as root); Docker writes config/, data/ and logs/ as root (sudo rm -rf). One GitLab per run directory at a time; the first start of a run directory takes several minutes (database setup).
           image:
             label: GitLab image
             description: Docker only; keep the major version of an existing run directory. gitlab/gitlab-ce is the open-source Community Edition, which takes no license.

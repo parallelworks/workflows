@@ -1,0 +1,19 @@
+Run evolved-bluebird: faulted (1m52s)
+
+Error annotations:
+
+  Error: The GitLab container exited during start-up (log above)
+    in session_runner > stream_output → Stream Output
+  Error: The GitLab launcher failed with status 1 (its messages are above)
+    in session_runner > stream_output → Stream Output
+  Error: Endpoint gitlab-evolved-bluebird is no longer listed
+    in wait_for_endpoint > wait_for_endpoint → Check endpoint health
+
+Failed jobs/steps:
+
+  wait_for_endpoint > Check endpoint health (error, 0s)
+    Error: Endpoint gitlab-evolved-bluebird is no longer listed
+    No endpoints found.
+    ✗ Error: Endpoint gitlab-evolved-bluebird is no longer listed
+
+Summary: 1 job(s) failed, 1 step(s) failed

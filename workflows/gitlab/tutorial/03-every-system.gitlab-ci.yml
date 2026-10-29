@@ -1,0 +1,22 @@
+# Step 6 of the tutorial: one job definition, run once per ACTIVATE resource.
+# The shell runner on the login node drives the other systems with the pw CLI,
+# signed in with the PW_API_KEY variable of the project (Settings -> CI/CD ->
+# Variables, masked). Jobs on an existing (on-premises) cluster need no key:
+# pw is signed in there already.
+
+default:
+  id_tokens:
+    CI_JOB_JWT:
+      aud: $CI_SERVER_URL
+
+submit-everywhere:
+  tags: [shell]
+  parallel:
+    matrix:
+      - RESOURCE: [gcpsmall, awsstig]        # your resources, as `pw cluster ls` names them
+  script:
+    - export PATH="$HOME/pw:$PATH"
+    - pw auth whoami
+    - pw cluster ls | grep "$RESOURCE"
+    # Submit a batch job there, wait for it, and read its output back
+    - pw ssh "$RESOURCE" "sbatch --wait --job-name=ci-$CI_JOB_ID --output=ci-$CI_JOB_ID.out --time=00:10:00 --wrap='hostname; nproc; date' && cat ci-$CI_JOB_ID.out"

@@ -552,20 +552,23 @@
   request as the user's own id: verified on an HSP system's Lustre home, `Errno::EPERM
   @ apply2files` from GitLab's reconfigure, and on the cloud clusters' NFS-mounted home
   on compute nodes), and a `stat -f` type check misses half of them, so the template
-  probes with an actual `chown 998` in the run directory and, where it fails, keeps each
-  state directory in an **ext3 image bound in place** (`apptainer overlay create --sparse
-  --size <MiB> state/data.img`, a `mkdir /mnt/gitlab` through `--bind img:/mnt:image-src=/`
-  so the bound directory belongs to the namespace's root, then `--bind
-  state/data.img:/var/opt/gitlab:image-src=/gitlab`, one image per directory so no image
-  is mounted twice; the image's own `upper/` belongs to the user, whose uid can lie
-  beyond the mapped range, 65536 ids on barfoot, and root in the namespace then cannot
-  write there, "Permission denied"): fuse2fs mounts them
-  inside the namespace, ownership, FIFOs and unix sockets live in the images, the network
-  filesystem sees three files of the user's; needs `fuse2fs` and `mkfs.ext3` on the node
-  (both in e2fsprogs on Rocky 9 and in the cloud images). Not `--overlay <img>` for the
-  whole rootfs: through fuse-overlayfs over fuse2fs the service directory's mtime never
-  changed, runsvdir never noticed `logrotate`, and reconfigure waited for its socket
-  forever (verified 2026-10-29); the rootfs keeps `--writable-tmpfs`;
+  probes with an actual `chown 998` in the run directory and, where it fails, puts the
+  container's whole writable layer in an **ext3 overlay image** (`apptainer overlay create
+  --sparse --size <MiB> <rundir>/gitlab.img`, `instance start --overlay <img>` instead of
+  `--writable-tmpfs`, no volume binds; `config/`, `data/`, `logs/` live inside): fuse2fs
+  mounts the image inside the namespace and fuse-overlayfs sits on top, so the kernel
+  does the permission checks; needs `fuse2fs` and `mkfs.ext3` (e2fsprogs; both in the
+  cloud images and on barfoot). Two traps on the way (verified 2026-10-29): **image
+  binds** (`--bind img:/var/opt/gitlab:image-src=/dir`) go through fuse2fs alone, which
+  checks permissions itself and refuses to write into a file just created with mode 0500
+  or 0444 and to unlink it, exactly what gitaly's unpacked binaries and git's loose
+  objects are (gitaly crash-looped, projects 500); and through the overlay image
+  **runsvdir never saw the services** the configuration run added (the service
+  directory's mtime did not propagate through two FUSE layers), so
+  `/opt/gitlab/service` is bound from a host directory (`<rundir>/work/service`).
+  `--fusemount host:fuse2fs` cannot replace the image driver: that fuse2fs is a libfuse2
+  program, takes no `/dev/fd/N` mount point and hangs. The first boot through the image
+  takes about twice as long;
   `APPTAINER_TMPDIR`/`SINGULARITY_TMPDIR` under the
   run directory (the build and any fallback extract there, not into `/tmp`); `--writable`
   creates no mount point, so every bind destination must exist in the image; `/tmp` comes

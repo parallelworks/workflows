@@ -11,7 +11,7 @@
 #          login nodes) gets the image extracted once into the run directory
 #          and run from that directory; a run directory on a network
 #          filesystem, which refuses the container's ownership changes, keeps
-#          GitLab's state in ext3 images instead. Behind a pw endpoint on a pinned
+#          GitLab's state in an ext3 image instead. Behind a pw endpoint on a pinned
 #          subdomain, with ACTIVATE as an OpenID Connect provider when the form
 #          carries an OIDC client, a license, the CI runners (shell on this
 #          host, SLURM through Jacamar CI) and the demo project. What does not
@@ -139,23 +139,26 @@ echo "::notice::fakeroot maps ${uid_range} user ids on $(hostname)"
 # subuid range; a network filesystem (NFS, Lustre, GPFS: the home of an HPC
 # system) gets that request as the user's own id and refuses it, while a
 # local disk takes it. Probed with a chown in the run directory: where it
-# works the three directories are bound as volumes; where it does not, each
-# of the three becomes an ext3 image under state/, mounted by fuse2fs inside
-# the instance (an image bind), so ownership lives inside the images and the
-# network filesystem only sees three files of the user's. The root filesystem
-# keeps its tmpfs overlay either way: runit's service directory must report
-# changes at once, which it does not through a FUSE-mounted overlay image
+# works the three directories are bound as volumes; where it does not, the
+# whole writable layer of the container becomes one ext3 image in the run
+# directory (gitlab.img, the instance's --overlay), so ownership lives inside
+# the image and the network filesystem only sees one file of the user's. Not
+# three image binds: those go through fuse2fs alone, which checks permissions
+# itself and refuses to write into a file just created read-only (gitaly's
+# binaries, git's objects); through the overlay the kernel checks. Runit's
+# service directory is bound from the host, since through the overlay it did
+# not report new services and the configuration run waited for them forever
 state_layout="${service_state_layout:-auto}"
-state_dir="${service_rundir}/state"
+state_image="${service_rundir}/gitlab.img"
 if [ "${state_layout}" = "auto" ]; then
-    if [ -s "${state_dir}/data.img" ]; then
+    if [ -s "${state_image}" ]; then
         state_layout=image
     elif "${container_cmd}" exec --fakeroot --bind "${service_rundir}/data:/mnt" "${image_ref}" \
             sh -c 'touch /mnt/.chown-probe && chown 998:998 /mnt/.chown-probe; s=$?; rm -f /mnt/.chown-probe; exit $s' >/dev/null 2>&1; then
         state_layout=directories
     else
         state_layout=image
-        echo "::notice::The filesystem of ${service_rundir} does not let the container change file ownership (a network filesystem): GitLab's state goes into ext3 images under ${state_dir} instead of config/, data/ and logs/"
+        echo "::notice::The filesystem of ${service_rundir} does not let the container change file ownership (a network filesystem): GitLab's state goes into ${state_image} (an ext3 image) instead of config/, data/ and logs/"
     fi
 fi
 state_binds=""
@@ -166,35 +169,23 @@ case "${state_layout}" in
             exit 1
         fi
         if ! command -v fuse2fs >/dev/null 2>&1; then
-            echo "::error title=Error::Keeping GitLab's state in ext3 images needs fuse2fs (e2fsprogs) on $(hostname); install it, or use a run directory on a local filesystem"
+            echo "::error title=Error::Keeping GitLab's state in an ext3 image needs fuse2fs (e2fsprogs) on $(hostname); install it, or use a run directory on a local filesystem"
             exit 1
         fi
-        # data.img takes the form's size (repositories, database, uploads);
-        # the sparse files only hold what is written. The directory bound
-        # from each image is made by the namespace's root, so it belongs to
-        # an id the namespace maps: the image's own upper/ belongs to the
-        # user, whose id may lie beyond the mapped range (65536 ids on some
-        # HPC systems), and root in the namespace cannot write there. The
-        # snippet directory's mount point is made too: a bind into an
-        # image-mounted directory finds no mount point the runtime can create
-        mkdir -p "${state_dir}"
-        state_image_size="${service_state_image_size:-20}"
-        for spec in "config 256" "logs 4096" "data $(( state_image_size * 1024 ))"; do
-            set -- ${spec}
-            if ! [ -s "${state_dir}/$1.img" ]; then
-                if ! "${container_cmd}" overlay create --sparse --size "$2" "${state_dir}/$1.img"; then
-                    echo "::error title=Error::Could not create ${state_dir}/$1.img (above; it needs mkfs.ext3 of e2fsprogs on $(hostname))"
-                    exit 1
-                fi
-                if ! "${container_cmd}" exec --fakeroot --bind "${state_dir}/$1.img:/mnt:image-src=/" "${image_ref}" mkdir -p /mnt/gitlab /mnt/gitlab/activate; then
-                    echo "::error title=Error::Could not mount ${state_dir}/$1.img inside the container (above; fuse2fs on $(hostname))"
-                    rm -f "${state_dir}/$1.img"
-                    exit 1
-                fi
-                echo "::notice::Created ${state_dir}/$1.img ($2 MiB, sparse; grow it with resize2fs while GitLab is stopped)"
+        if [ -d "${service_rundir}/state" ]; then
+            echo "::warning::${service_rundir}/state holds the images of an earlier layout that no longer runs; they are not used (remove the directory to free the space)"
+        fi
+        if ! [ -s "${state_image}" ]; then
+            state_image_size="${service_state_image_size:-20}"
+            if ! "${container_cmd}" overlay create --sparse --size "$(( state_image_size * 1024 ))" "${state_image}"; then
+                echo "::error title=Error::Could not create ${state_image} (above; it needs mkfs.ext3 of e2fsprogs on $(hostname))"
+                exit 1
             fi
-        done
-        state_binds="--bind ${state_dir}/config.img:/etc/gitlab:image-src=/gitlab --bind ${state_dir}/logs.img:/var/log/gitlab:image-src=/gitlab --bind ${state_dir}/data.img:/var/opt/gitlab:image-src=/gitlab"
+            echo "::notice::Created ${state_image}: ${state_image_size} GB, sparse (grow it with resize2fs while GitLab is stopped)"
+        fi
+        mkdir -p "${work_dir}/service"
+        image_flag="--overlay ${state_image}"
+        state_binds="--bind ${work_dir}/service:/opt/gitlab/service"
         ;;
     directories)
         state_binds="--bind ${service_rundir}/config:/etc/gitlab --bind ${service_rundir}/logs:/var/log/gitlab --bind ${service_rundir}/data:/var/opt/gitlab"
@@ -290,10 +281,10 @@ if [ -n "${fips_enabled_file}" ]; then
     fips_bind="--bind ${fips_enabled_file}:/proc/sys/crypto/fips_enabled"
 fi
 
-# The image's volumes are bound from the run directory's directories or ext3
-# images (every mount point exists in the image: --writable creates none);
-# the snippet directory and the sshd configuration (whose port is fixed in
-# the image) come from this job
+# The image's volumes are bound from the run directory in the directories
+# layout (every mount point exists in the image: --writable creates none) and
+# live inside the overlay image otherwise; the snippet directory and the sshd
+# configuration (whose port is fixed in the image) come from this job
 "${container_cmd}" instance stop -F "${instance_name}" 2>/dev/null || true
 if ! "${container_cmd}" instance start --fakeroot ${image_flag} --contain --cleanenv \
         --uts --hostname "${host}" \

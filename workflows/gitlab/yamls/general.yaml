@@ -209,7 +209,7 @@ jobs:
             type: string
             default: ${HOME}/gitlab
             tooltip: |
-              Holds config/ (gitlab.rb, secrets), data/ (repositories, PostgreSQL, uploads), logs/ and runner/ (the CI runners' configuration and builds); under Singularity also work/ (the container's /tmp) and, on a login node that cannot mount the SIF, image/ (the GitLab image, extracted once, 4.7 GB). On a network filesystem (the home of an HPC system), where the container cannot change file ownership, Singularity keeps config/, data/ and logs/ inside ext3 images under state/ (sparse; data.img 20 GB) instead. Singularity writes its files with the ids of your fakeroot range (remove them with 'apptainer exec --fakeroot ... rm -rf', or as root; the images are plain files of yours); Docker writes config/, data/ and logs/ as root (sudo rm -rf). One GitLab per run directory at a time; the first start of a run directory takes several minutes (database setup).
+              Holds config/ (gitlab.rb, secrets), data/ (repositories, PostgreSQL, uploads), logs/ and runner/ (the CI runners' configuration and builds); under Singularity also work/ (the container's /tmp) and, on a login node that cannot mount the SIF, image/ (the GitLab image, extracted once, 4.7 GB). On a network filesystem (the home of an HPC system), where the container cannot change file ownership, Singularity keeps config/, data/ and logs/ inside gitlab.img, a sparse 20 GB ext3 image, instead. Singularity writes its files with the ids of your fakeroot range (remove them with 'apptainer exec --fakeroot ... rm -rf', or as root; gitlab.img is a plain file of yours); Docker writes config/, data/ and logs/ as root (sudo rm -rf). One GitLab per run directory at a time; the first start of a run directory takes several minutes (database setup).
           image:
             label: GitLab image
             description: Docker only; keep the major version of an existing run directory. gitlab/gitlab-ce is the open-source Community Edition, which takes no license.
@@ -229,7 +229,7 @@ jobs:
                 value: auto
               - label: Directories config/, data/ and logs/ (local filesystem)
                 value: directories
-              - label: ext3 images under state/ (network filesystem)
+              - label: An ext3 image, gitlab.img (network filesystem)
                 value: image
           state_image_size:
             type: number
@@ -237,7 +237,7 @@ jobs:
             default: 20
             min: 2
             step: 1
-            label: Size of state/data.img in GB
+            label: Size of gitlab.img in GB
           root_password:
             label: Root password
             description: Initial password of the root account, 8 characters or more, applied on the first start of a run directory only; empty generates one, saved to <run directory>/.root_password.

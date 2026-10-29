@@ -58,12 +58,14 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
   - **State on a network filesystem = an ext3 image** (2026-10-29, after the first HSP
     launch on barfoot's Lustre home failed with `Errno::EPERM @ apply2files
     /var/opt/gitlab/.gitconfig`): the template probes a `chown 998` in `data/` through
-    the container; on failure three sparse ext3 images under `state/` (`apptainer
-    overlay create`; `config.img`, `logs.img`, `data.img`) are bound in place of the
-    three directories (`--bind state/data.img:/var/opt/gitlab:image-src=/gitlab`, a root-made directory inside each image), the
-    rootfs keeps `--writable-tmpfs` (a single `--overlay` image broke runit: pitfalls),
-    the host-side files (runner/, .root_password, markers) stay as they are, and
-    `lib/start.sh` treats an existing `state/data.img` as "database exists". Hidden inputs
+    the container; on failure one sparse ext3 image, `gitlab.img` (`apptainer overlay
+    create`), becomes the instance's `--overlay` in place of `--writable-tmpfs` and the
+    three volume binds, with `/opt/gitlab/service` bound from `work/service` on the host
+    (why not image binds, and why that bind: pitfalls), the host-side files (runner/,
+    .root_password, markers) stay as they are, and
+    `lib/start.sh` treats an existing `gitlab.img` as "database exists". Verified by hand
+    on gcpsmall: sign-in page after ~10 min, gitaly stable, project created (201), README
+    read (200). Hidden inputs
     `service.state_layout` (auto|directories|image) and `service.state_image_size` (GB)
     force it for tests (`tests/general/gcpsmall-image.json`).
   - **Runtime selection as in kasmvnc** (2026-10-29): apptainer first, then singularity,

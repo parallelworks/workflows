@@ -25,7 +25,7 @@ to the platform's probe); GitLab and its runners then run until the session is d
 
 | Run container using | What runs | Needs |
 |---|---|---|
-| **Singularity** (default) | The official image as a SIF (`ghcr.io/parallelworks/gitlab:19.5.1-ee`), run as an Apptainer instance started with `--fakeroot`: the package's own init runs its services as the image's accounts, mapped onto your subuid range, so nothing runs as root on the host and no Docker daemon is needed. A login node that cannot mount the SIF with a writable layer gets it extracted once into the run directory (`image/`, 4.7 GB) and runs that directory instead | `apptainer`/`singularity` with a subuid/subgid range for your user on the login node (`grep $USER /etc/subuid`; an administrator adds one with `apptainer config fakeroot --add <user>`), 1.8 GB for the SIF, and on a run directory whose filesystem refuses the container's ownership changes (NFS, Lustre, GPFS: the home of an HPC system) `fuse2fs` and `mkfs.ext3` (e2fsprogs), since GitLab's state then lives in ext3 images there |
+| **Singularity** (default) | The official image as a SIF (`ghcr.io/parallelworks/gitlab:19.5.1-ee`), run as an Apptainer instance started with `--fakeroot`: the package's own init runs its services as the image's accounts, mapped onto your subuid range, so nothing runs as root on the host and no Docker daemon is needed. A login node that cannot mount the SIF with a writable layer gets it extracted once into the run directory (`image/`, 4.7 GB) and runs that directory instead | `apptainer`/`singularity` with a subuid/subgid range for your user on the login node (`grep $USER /etc/subuid`; an administrator adds one with `apptainer config fakeroot --add <user>`), 1.8 GB for the SIF, and on a run directory whose filesystem refuses the container's ownership changes (NFS, Lustre, GPFS: the home of an HPC system) `fuse2fs` and `mkfs.ext3` (e2fsprogs), since GitLab's state then lives in an ext3 image there |
 | **Docker** | The official all-in-one image `gitlab/gitlab-ee:19.5.1-ee.0`, as root | Docker on the login node, directly or through `sudo`, 5 GB for the image |
 
 Both need about 4 GB of RAM free for GitLab (8 GB recommended) and keep everything in the
@@ -34,11 +34,12 @@ Both need about 4 GB of RAM free for GitLab (8 GB recommended) and keep everythi
 ids of your fakeroot range, and each runtime refuses the other's directory. Under
 Singularity the start script first checks that the run directory's filesystem lets the
 container change file ownership (a local disk does; a network filesystem such as the
-home of an HPC system does not): where it does not, `config/`, `data/` and `logs/` live
-inside sparse ext3 images under `state/` (`data.img` 20 GB, `logs.img` 4 GB,
-`config.img` 256 MB) that the instance mounts with fuse2fs, and the network filesystem
-only ever sees those three files of yours. The run's log says which layout it chose;
-`resize2fs state/data.img <size>` grows an image while GitLab is stopped.
+home of an HPC system does not): where it does not, the container's whole writable layer,
+`config/`, `data/` and `logs/` included, lives inside `gitlab.img`, a sparse 20 GB ext3
+image in the run directory that the instance mounts as its overlay, and the network
+filesystem only ever sees that one file of yours. The run's log says which layout it
+chose; `resize2fs gitlab.img <size>` grows the image while GitLab is stopped. GitLab's
+first start takes about twice as long through the image.
 
 Both work on a hardened login node (verified on a STIG image as well as on the standard
 cloud image): where a user namespace may neither FUSE-mount the SIF nor overlay it, the
@@ -196,7 +197,7 @@ need no license.
 |---|---|---|
 | Run container using | Singularity | See above |
 | Subdomain | `gitlab-<username>` | Decides the address, the clone URLs and the OIDC redirect URI. Reserve it with `pw subdomains reserve <label>` |
-| Run directory | `${HOME}/gitlab` | `config/`, `data/`, `logs/` (written by the container; inside `state/*.img` on a network filesystem), `runner/` (yours), the generated secrets and, under Singularity, `work/` (the container's `/tmp`) and, where the SIF cannot be mounted, `image/` (the extracted image). One GitLab at a time, one runtime per directory |
+| Run directory | `${HOME}/gitlab` | `config/`, `data/`, `logs/` (written by the container; inside `gitlab.img` on a network filesystem), `runner/` (yours), the generated secrets and, under Singularity, `work/` (the container's `/tmp`) and, where the SIF cannot be mounted, `image/` (the extracted image). One GitLab at a time, one runtime per directory |
 | GitLab image | `gitlab/gitlab-ee:19.5.1-ee.0` | Docker only. Change the tag one minor version at a time on an existing run directory (GitLab's upgrade path) |
 | Root password | empty | Applied on the first start only; empty generates one into `<run directory>/.root_password` |
 | SSH port | `2222` | Loopback port of GitLab's SSH on the service host, shown in GitLab's SSH clone URLs |
@@ -222,7 +223,7 @@ without FUSE falls back to off a `noexec` `/tmp`):
 mkdir -p ~/tmp
 APPTAINER_TMPDIR=~/tmp SINGULARITY_TMPDIR=~/tmp apptainer exec --fakeroot -B "$HOME/gitlab" \
     ~/pw/software/containers/gitlab.sif rm -rf "$HOME/gitlab"/{config,data,logs,image,work}
-rm -rf "$HOME/gitlab/state"          # the state images of a network-filesystem run directory are plain files of yours
+rm -f "$HOME/gitlab/gitlab.img"      # the state image of a network-filesystem run directory is a plain file of yours
 ```
 
 A new image version (a new `GITLAB_SIF_TAG`) replaces `image/` on the next start by

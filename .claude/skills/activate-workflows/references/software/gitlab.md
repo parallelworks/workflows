@@ -55,6 +55,16 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
     `--fakeroot` instance; the SIF where the node mounts it, an extracted sandbox where it
     does not" (a subuid range for the user, a local filesystem, the 1777 `/tmp`, the FIPS
     bind, `gitlab-ctl stop` through `exec instance://` in `cancel.sh`).
+  - **State on a network filesystem = an ext3 image** (2026-10-29, after the first HSP
+    launch on barfoot's Lustre home failed with `Errno::EPERM @ apply2files
+    /var/opt/gitlab/.gitconfig`): the template probes a `chown 998` in `data/` through
+    the container; on failure `gitlab.img` (sparse ext3, `apptainer overlay create`) in
+    the run directory becomes the instance's `--overlay`, replacing `--writable-tmpfs`
+    and the three volume binds; `config/`, `data/` and `logs/` then live inside it, the
+    host-side files (runner/, .root_password, markers) stay as they are, and
+    `lib/start.sh` treats an existing image as "database exists". Hidden inputs
+    `service.state_layout` (auto|directories|image) and `service.state_image_size` (GB)
+    force it for tests (`tests/general/gcpsmall-image.json`).
   - **Login node only, both runtimes** (2026-10-29): the YAMLs have no scheduler section
     and call the submitter with `scheduler: false`. A service that outlives the run has
     no place in an allocation, and on the cloud clusters a compute node has no subuid

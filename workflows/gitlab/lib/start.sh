@@ -103,8 +103,13 @@ pw_endpoints_args="${pw_endpoints_args} --subdomain ${service_subdomain}"
 # start of a run directory; it is kept beside the data so a later run can
 # tell the user where it is
 root_password_file="${service_rundir}/.root_password"
+# The database is in data/ or, under Singularity on a network filesystem,
+# inside the gitlab.img state image
+has_database() {
+    [ -d "${service_rundir}/data/postgresql/data" ] || [ -s "${service_rundir}/gitlab.img" ]
+}
 if [ -s "${service_root_password_file}" ]; then
-    if [ -d "${service_rundir}/data/postgresql/data" ]; then
+    if has_database; then
         echo "::warning::${service_rundir} already holds a database: the root password of the form is ignored; change it in GitLab (root's profile -> Password)"
     else
         (
@@ -112,7 +117,7 @@ if [ -s "${service_root_password_file}" ]; then
             tr -d '\n' < "${service_root_password_file}" > "${root_password_file}"
         )
     fi
-elif [ ! -s "${root_password_file}" ] && [ ! -d "${service_rundir}/data/postgresql/data" ]; then
+elif [ ! -s "${root_password_file}" ] && ! has_database; then
     (
         umask 077
         openssl rand -base64 18 | tr -d '/+=' | cut -c1-20 > "${root_password_file}"

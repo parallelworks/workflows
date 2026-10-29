@@ -9,7 +9,9 @@
 #          where the node mounts it with a writable layer; a node that cannot
 #          (no FUSE mount or rootless overlay for a user namespace: hardened
 #          login nodes) gets the image extracted once into the run directory
-#          and run from that directory. Behind a pw endpoint on a pinned
+#          and run from that directory; a run directory on a network
+#          filesystem, which refuses the container's ownership changes, keeps
+#          GitLab's state in an ext3 image instead. Behind a pw endpoint on a pinned
 #          subdomain, with ACTIVATE as an OpenID Connect provider when the form
 #          carries an OIDC client, a license, the CI runners (shell on this
 #          host, SLURM through Jacamar CI) and the demo project. What does not
@@ -62,16 +64,6 @@ fi
 # the container; the image's own environment is all it needs
 unset PYTHONPATH PYTHONHOME PERL5LIB PERLLIB PERL5OPT PYTHONSTARTUP LD_LIBRARY_PATH
 
-# The package chowns its data to the image's accounts, which the user
-# namespace maps onto the user's subuid range; an NFS server sees the user's
-# own id in that request and refuses it, so the run directory must be on a
-# filesystem local to this node (the login node's home on the cloud clusters)
-case "$(stat -f -c %T "${service_rundir}" 2>/dev/null)" in
-    nfs|nfs4)
-        echo "::error title=Error::${service_rundir} is on NFS on $(hostname): the GitLab image's user namespace cannot change file ownership there. Use a run directory on a filesystem local to this node, or the Docker runtime"
-        exit 1
-        ;;
-esac
 # The SIF runs as is where this node mounts it under --fakeroot with a
 # writable layer (--writable-tmpfs: the package writes outside its volumes,
 # runit's supervise directories and the configuration run's node files).
@@ -134,7 +126,62 @@ if [ "${uid_range}" -lt 65536 ]; then
 fi
 echo "::notice::fakeroot maps ${uid_range} user ids on $(hostname)"
 
-export image_ref image_flag work_dir
+# Where GitLab's state (config/, data/, logs/) lives. The package chowns its
+# files to the image's accounts, which the user namespace maps onto the
+# subuid range; a network filesystem (NFS, Lustre, GPFS: the home of an HPC
+# system) gets that request as the user's own id and refuses it, while a
+# local disk takes it. Probed with a chown in the run directory: where it
+# works the three directories are bound as volumes; where it does not, the
+# state goes into an ext3 image in the run directory, mounted by fuse2fs as
+# the instance's persistent overlay, so ownership lives inside the image and
+# the network filesystem only sees one file of the user's
+state_layout="${service_state_layout:-auto}"
+state_image="${service_rundir}/gitlab.img"
+if [ "${state_layout}" = "auto" ]; then
+    if [ -s "${state_image}" ]; then
+        state_layout=image
+    elif singularity exec --fakeroot --bind "${service_rundir}/data:/mnt" "${image_ref}" \
+            sh -c 'touch /mnt/.chown-probe && chown 998:998 /mnt/.chown-probe; s=$?; rm -f /mnt/.chown-probe; exit $s' >/dev/null 2>&1; then
+        state_layout=directories
+    else
+        state_layout=image
+        echo "::notice::The filesystem of ${service_rundir} does not let the container change file ownership (a network filesystem): GitLab's state goes into ${state_image} (an ext3 image) instead of config/, data/ and logs/"
+    fi
+fi
+state_binds=""
+case "${state_layout}" in
+    image)
+        if [ "${image_flag}" = "--writable" ]; then
+            echo "::error title=Error::$(hostname) can neither mount ${container_sif} nor change file ownership in ${service_rundir}: an extracted image needs a run directory on a local filesystem. Choose one there"
+            exit 1
+        fi
+        for tool in fuse2fs mkfs.ext3; do
+            if ! command -v ${tool} >/dev/null 2>&1; then
+                echo "::error title=Error::Keeping GitLab's state in an ext3 image needs ${tool} (e2fsprogs) on $(hostname); install it, or use a run directory on a local filesystem"
+                exit 1
+            fi
+        done
+        if ! [ -s "${state_image}" ]; then
+            state_image_size="${service_state_image_size:-20}"
+            if ! singularity overlay create --sparse --size "$(( state_image_size * 1024 ))" "${state_image}"; then
+                echo "::error title=Error::Could not create ${state_image} (above)"
+                exit 1
+            fi
+            echo "::notice::Created ${state_image}: ${state_image_size} GB, sparse (grow it with resize2fs while GitLab is stopped)"
+        fi
+        image_flag="--overlay ${state_image}"
+        ;;
+    directories)
+        state_binds="--bind ${service_rundir}/config:/etc/gitlab --bind ${service_rundir}/logs:/var/log/gitlab --bind ${service_rundir}/data:/var/opt/gitlab"
+        ;;
+    *)
+        echo "::error title=Error::Unknown state layout '${state_layout}' (auto, directories or image)"
+        exit 1
+        ;;
+esac
+echo "::notice::GitLab's state layout: ${state_layout}"
+
+export image_ref image_flag work_dir state_layout state_binds
 export instance_name="gitlab_${PW_RUN_SLUG}"
 
 # The instance outlives the endpoint's process tree: cancel.sh stops the
@@ -220,16 +267,14 @@ if [ -n "${fips_enabled_file}" ]; then
     fips_bind="--bind ${fips_enabled_file}:/proc/sys/crypto/fips_enabled"
 fi
 
-# The image's volumes are bound from the run directory (every mount point
-# exists in the image: --writable creates none), the snippet directory and
-# the sshd configuration (whose port is fixed in the image) from this job
+# The image's volumes are bound from the run directory in the directories
+# layout (every mount point exists in the image: --writable creates none) and
+# live inside the overlay image otherwise; the snippet directory and the sshd
+# configuration (whose port is fixed in the image) come from this job
 singularity instance stop -F "${instance_name}" 2>/dev/null || true
 if ! singularity instance start --fakeroot ${image_flag} --contain --cleanenv \
         --uts --hostname "${host}" \
-        --workdir "${work_dir}" ${fips_bind} \
-        --bind "${service_rundir}/config:/etc/gitlab" \
-        --bind "${service_rundir}/logs:/var/log/gitlab" \
-        --bind "${service_rundir}/data:/var/opt/gitlab" \
+        --workdir "${work_dir}" ${fips_bind} ${state_binds} \
         --bind "${run_dir}/activate:/etc/gitlab/activate:ro" \
         --bind "${run_dir}/sshd_config:/assets/sshd_config:ro" \
         "${image_ref}" "${instance_name}"; then

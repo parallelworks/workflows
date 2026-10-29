@@ -548,7 +548,17 @@
   for the mapped ids) nor a rootless overlay (`fork/exec /usr/bin/mount: permission
   denied`), and its `/tmp` is `noexec`, so singularity's own extraction fallback cannot
   even run `awk` (the probe there takes 50 s, once per run directory). Rules that come
-  with it: `APPTAINER_TMPDIR`/`SINGULARITY_TMPDIR` under the
+  with it: **a network filesystem refuses the mapped ids' chown** (the server gets the
+  request as the user's own id: verified on an HSP system's Lustre home, `Errno::EPERM
+  @ apply2files` from GitLab's reconfigure, and on the cloud clusters' NFS-mounted home
+  on compute nodes), and a `stat -f` type check misses half of them, so the template
+  probes with an actual `chown 998` in the run directory and, where it fails, keeps the
+  container's state in an **ext3 image** (`apptainer overlay create --sparse --size <MiB>
+  <rundir>/gitlab.img`, `instance start --overlay <img>` instead of `--writable-tmpfs`
+  and the volume binds): fuse2fs mounts the image inside the namespace, ownership lives
+  in the image, the network filesystem sees one file of the user's; needs `fuse2fs` and
+  `mkfs.ext3` on the node (both in e2fsprogs on Rocky 9 and in the cloud images);
+  `APPTAINER_TMPDIR`/`SINGULARITY_TMPDIR` under the
   run directory (the build and any fallback extract there, not into `/tmp`); `--writable`
   creates no mount point, so every bind destination must exist in the image; `/tmp` comes
   from `--workdir` (pre-create `work/tmp` as `1777`: Ruby's `Dir.tmpdir` rejected a 755

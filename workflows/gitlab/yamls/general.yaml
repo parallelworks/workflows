@@ -17,7 +17,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: gitlab
           sparse_checkout:
             - workflows/gitlab/${{ inputs.service.container_runtime }}
             - workflows/gitlab/lib

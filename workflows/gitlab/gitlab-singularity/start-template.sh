@@ -177,7 +177,15 @@ case "${state_layout}" in
         fi
         if ! [ -s "${state_image}" ]; then
             state_image_size="${service_state_image_size:-20}"
-            if ! "${container_cmd}" overlay create --sparse --size "$(( state_image_size * 1024 ))" "${state_image}"; then
+            # Apptainer refuses (1.3) an overlay whose upper/ belongs to the
+            # user under --fakeroot ("upper is not writable"); created with
+            # --fakeroot, upper/ and work/ belong to root inside the image.
+            # SingularityCE's overlay create has no such flag
+            overlay_create_flags="--sparse"
+            if "${container_cmd}" overlay create --help 2>/dev/null | grep -q -- '--fakeroot'; then
+                overlay_create_flags="--fakeroot --sparse"
+            fi
+            if ! "${container_cmd}" overlay create ${overlay_create_flags} --size "$(( state_image_size * 1024 ))" "${state_image}"; then
                 echo "::error title=Error::Could not create ${state_image} (above; it needs mkfs.ext3 of e2fsprogs on $(hostname))"
                 exit 1
             fi
@@ -197,7 +205,7 @@ case "${state_layout}" in
 esac
 echo "::notice::GitLab's state layout: ${state_layout}"
 
-export image_ref image_flag work_dir state_layout state_binds
+export image_ref image_flag work_dir state_layout state_binds state_image
 export instance_name="gitlab_${PW_RUN_SLUG}"
 
 # The instance outlives the endpoint's process tree: cancel.sh stops the
@@ -292,6 +300,9 @@ if ! "${container_cmd}" instance start --fakeroot ${image_flag} --contain --clea
         --bind "${run_dir}/activate:/etc/gitlab/activate:ro" \
         --bind "${run_dir}/sshd_config:/assets/sshd_config:ro" \
         "${image_ref}" "${instance_name}"; then
+    if [ "${state_layout}" = "image" ]; then
+        fail "Could not start the GitLab instance ${instance_name} (above). An ${state_image} made by an earlier version of this workflow (before its overlay was created with --fakeroot) cannot be mounted here: if GitLab never served from it, remove it and launch again"
+    fi
     fail "Could not start the GitLab instance ${instance_name} (above)"
 fi
 "${container_cmd}" exec --cleanenv --pwd / instance://"${instance_name}" /assets/init-container > "${run_dir}/gitlab.log" 2>&1 &

@@ -187,7 +187,7 @@ jobs:
           connected through the ACTIVATE agent (existing or managed) the field is
           not shown: the agent keeps the resource signed in as you, and the
           dashboards authenticate with that sign-in.
-        hidden: ${{ inputs.resource.provider == 'existing' || inputs.resource.provider == 'managed-cluster' || inputs.resource.name == 'user-workspace' }}
+        hidden: ${{ inputs.resource.provider == 'existing' || inputs.resource.provider == 'managed-cluster' || inputs.resource.id == 'user-workspace' }}
         ignore: ${{ .hidden }}
       tests:
         type: group

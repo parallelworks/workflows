@@ -77,7 +77,7 @@ workflow, via `${{ inputs.<name>.* }}`):
 | `id` | `685193ec1bba202cb3341fb7` | |
 | `ip` | `34.132.29.251` | login-node IP; **empty for workspace** → step runs locally |
 | `name` | `<cluster>` | |
-| `type` / `provider` | `google-slurm` | `existing` for a cluster the ACTIVATE agent connects, `managed-cluster` for a managed one, `<cloud>-slurm` for a cloud cluster; both fields carry it in form expressions (`pw cluster ls -o json` fills only `type`). The workspace matches neither: test `name == 'user-workspace'` (or `ip == ''`) |
+| `type` / `provider` | `google-slurm` | `existing` for a cluster the ACTIVATE agent connects, `managed-cluster` for a managed one, `<cloud>-slurm` for a cloud cluster; both fields carry it in form expressions (`pw cluster ls -o json` fills only `type`). The workspace matches neither, and in the form it carries only `id` and `uri`: test `id == 'user-workspace'` (`name`, `provider` and `ip` are empty there until the run resolves it) |
 | `schedulerType` | `slurm` / `pbs` / `''` | `''` when no scheduler (e.g. `existing`, workspace) |
 | `namespace`, `user` | `<user>` | |
 
@@ -114,7 +114,12 @@ pw workflows run my-session -i '{"resource":"<cluster>","scheduler":false}'
 **The workspace as a resource:** `include-workspace: true` on a `compute-clusters`
 input makes the user workspace selectable. Pass `"workspace"` (aliases:
 `user-workspace`). It resolves to `id=user-workspace`, `type=computeResource`,
-**empty `ip`** → SSH steps run locally on the workspace node.
+**empty `ip`** → SSH steps run locally on the workspace node. In the launch form
+(`hidden:`, `ignore:`) the selected workspace is an object with only `id` and `uri`,
+so a form condition tests `inputs.resource.id == 'user-workspace'`; a cluster carries
+its full object there. To see the object a form input holds, add a temporary
+`string` input with `default: ${{ toJSON(inputs.resource) }}` and
+`prefillDefault: true`: the form shows it filled in.
 
 ---
 
@@ -254,7 +259,7 @@ must know before submitting, `step: 1` on counts, the walltime format): AGENTS.m
   (`${{ 1 + 1 }}` is 2, `${{ 1+1 }}` the string `1+1`; only `!` goes unspaced) and never
   throws: a malformed expression renders as some string, so check rendered values in
   `step.out`. `==` is loose (`1 == true`), `===` strict; `??` gives a fallback; `get`
-  indexes lists and maps.
+  indexes lists and maps; `toJSON` serializes a value (the form-debugging aid in §2).
 - `${VAR}` / `$VAR` — ordinary shell, evaluated at runtime on the node. Only expands
   inside something a shell actually runs: `run:`, `cleanup:`, or a `with:` value that
   ends up in the subworkflow's `run:`.

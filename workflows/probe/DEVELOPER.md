@@ -233,7 +233,8 @@ and after completion). The user workspace and a cluster the ACTIVATE agent conne
 node has no user context, and secret user variables are not readable from a run. The
 dashboards outlive their run, so `general.yaml` runs them on a credential that does. The
 `api_key` input is hidden and ignored on those hosts (`inputs.resource.provider` is
-`existing` or `managed-cluster`, or `inputs.resource.name` is `user-workspace`) and
+`existing` or `managed-cluster`, or `inputs.resource.id` is `user-workspace`: in the
+form the workspace object carries only `id` and `uri`) and
 required on a cloud cluster; it travels in the top-level `env` block as `PROBE_API_KEY`,
 which reaches every step, including the script that `script_submitter` launches
 (`PW_API_KEY` itself cannot be overridden: the platform injects the run's token).

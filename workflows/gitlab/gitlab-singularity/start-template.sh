@@ -175,16 +175,29 @@ case "${state_layout}" in
         if [ -d "${service_rundir}/state" ]; then
             echo "::warning::${service_rundir}/state holds the images of an earlier layout that no longer runs; they are not used (remove the directory to free the space)"
         fi
+        # Apptainer refuses (1.3) an overlay whose upper/ belongs to the user
+        # under --fakeroot ("upper is not writable"); created with --fakeroot,
+        # upper/ and work/ belong to root inside the image. SingularityCE's
+        # overlay create has no such flag
+        overlay_create_flags="--sparse"
+        if "${container_cmd}" overlay create --help 2>/dev/null | grep -q -- '--fakeroot'; then
+            overlay_create_flags="--fakeroot --sparse"
+        fi
+        # Apptainer 1.3 records no deletion in an overlay image: a file of the
+        # GitLab image removed through it stays (1.5 records it), and GitLab's
+        # first configuration replaces files of the image
+        probe_image="${work_dir}/tmp/delete-probe.img"
+        rm -f "${probe_image}"
+        if ! "${container_cmd}" overlay create ${overlay_create_flags} --size 64 "${probe_image}" >/dev/null 2>&1 \
+                || ! "${container_cmd}" exec --fakeroot --overlay "${probe_image}" "${image_ref}" \
+                    sh -c 'rm -f /RELEASE; ! test -e /RELEASE' >/dev/null 2>&1; then
+            rm -f "${probe_image}"
+            echo "::error title=Error::$(${container_cmd} --version) on $(hostname) cannot delete a file of the GitLab image through an overlay image, which GitLab needs when its state lives in one (a run directory on a network filesystem). Use a run directory on a local disk of this login node, for example /var/tmp/$(id -un)/gitlab, or ask the administrators for a newer Apptainer (1.5 works)"
+            exit 1
+        fi
+        rm -f "${probe_image}"
         if ! [ -s "${state_image}" ]; then
             state_image_size="${service_state_image_size:-20}"
-            # Apptainer refuses (1.3) an overlay whose upper/ belongs to the
-            # user under --fakeroot ("upper is not writable"); created with
-            # --fakeroot, upper/ and work/ belong to root inside the image.
-            # SingularityCE's overlay create has no such flag
-            overlay_create_flags="--sparse"
-            if "${container_cmd}" overlay create --help 2>/dev/null | grep -q -- '--fakeroot'; then
-                overlay_create_flags="--fakeroot --sparse"
-            fi
             if ! "${container_cmd}" overlay create ${overlay_create_flags} --size "$(( state_image_size * 1024 ))" "${state_image}"; then
                 echo "::error title=Error::Could not create ${state_image} (above; it needs mkfs.ext3 of e2fsprogs on $(hostname))"
                 exit 1

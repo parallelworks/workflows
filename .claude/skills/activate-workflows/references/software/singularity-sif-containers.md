@@ -191,7 +191,9 @@ GitLab specifics (ports, configuration, stop command) are in [gitlab.md](gitlab.
   half of them. Works: bind the state directories. Fails: one ext3 **overlay image**
   (`overlay create --fakeroot --sparse --size <MiB> <rundir>/x.img`: without `--fakeroot`
   `upper/` belongs to the user and Apptainer 1.3 refuses it under `--fakeroot`;
-  SingularityCE has no such flag; `instance start --overlay` in
+  SingularityCE has no such flag. Apptainer 1.3 also records no whiteout there, so a
+  file of the image deleted through it stays; 1.5 works, so probe a delete and send
+  older runtimes to a local-disk run directory; `instance start --overlay` in
   place of `--writable-tmpfs` and the binds; fuse2fs below fuse-overlayfs, the kernel
   checks permissions; needs `fuse2fs` and `mkfs.ext3` of e2fsprogs) with the init's
   service directory bound from the host (through the overlay `runsvdir` never saw the

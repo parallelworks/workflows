@@ -556,6 +556,8 @@
   - `could not find a temporary directory` from Ruby: the container's `/tmp` is not `1777`.
   - `setup of overlay upper dir failed: .../upper is not writable` with `Try appending
     ':ro'`: the overlay image was created without `overlay create --fakeroot`.
+  - `Errno::EEXIST: File exists` replacing a file of the image (`ln -sf`), or `rm` that
+    succeeds while the file stays: Apptainer 1.3 records no whiteout in an overlay image.
 - **The session proxy rewrites every redirect to another host onto the session's own
   host** (verified 2026-10-20): an OIDC/OAuth sign-in or RP-initiated logout never reaches
   the identity provider. Intercept external 3xx in your own proxy and answer a hop page:

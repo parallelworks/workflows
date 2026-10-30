@@ -36,8 +36,11 @@ two layouts the run directory got: `config/`, `data/` and `logs/` as directories
 filesystem lets the container change file ownership (a local disk), or all of them inside
 `gitlab.img`, a sparse 20 GB ext3 image, where it does not (a network filesystem such as
 the home of an HPC system; `resize2fs gitlab.img <size>` grows it while GitLab is stopped,
-and the first start takes about twice as long). Hardened login nodes (a STIG image, FIPS
-mode, no FUSE mount of the SIF) are handled the same way, with notices in the run's log.
+and the first start takes about twice as long). The image needs Apptainer 1.5: with an
+older one the run stops and asks for a run directory on a local disk of the login node,
+such as `/var/tmp/<user>/gitlab`, which works with any version but stays on that node.
+Hardened login nodes (a STIG image, FIPS mode, no FUSE mount of the SIF) are handled the
+same way, with notices in the run's log.
 
 ## Requirements
 

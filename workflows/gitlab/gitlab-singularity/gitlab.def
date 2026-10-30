@@ -1,0 +1,25 @@
+Bootstrap: docker
+From: gitlab/gitlab-ee:19.5.1-ee.0
+
+# The official GitLab Linux package image (Enterprise Edition: the Free tier
+# without a license, Premium or Ultimate with one), unchanged. The start
+# template runs its entrypoint as an Apptainer instance with --fakeroot, whose
+# user namespace maps the image's service accounts, and binds the three
+# volumes (/etc/gitlab, /var/opt/gitlab, /var/log/gitlab) from the run
+# directory; the ports, the sshd configuration and the nginx snippet come from
+# the launcher, so a new GitLab version is a new From line and a new tag.
+
+%labels
+    org.opencontainers.image.source https://github.com/parallelworks/workflows
+    activate.workflow gitlab
+
+%help
+    GitLab 19.5.1-ee for workflows/gitlab (gitlab-singularity). Started by the
+    workflow's launcher, not by hand:
+      apptainer instance start --fakeroot --writable-tmpfs --contain --cleanenv \
+          --bind <rundir>/config:/etc/gitlab --bind <rundir>/logs:/var/log/gitlab \
+          --bind <rundir>/data:/var/opt/gitlab --bind <rundir>/tmp:/tmp \
+          --bind <job>/run/activate:/etc/gitlab/activate:ro \
+          --bind <job>/run/sshd_config:/assets/sshd_config:ro gitlab.sif gitlab_<run>
+      apptainer exec --cleanenv instance://gitlab_<run> /assets/init-container
+    with GITLAB_OMNIBUS_CONFIG in the environment (APPTAINERENV_GITLAB_OMNIBUS_CONFIG).

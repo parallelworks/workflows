@@ -1,0 +1,344 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+# The run's own PW_API_KEY stops working when the run completes, so pipelines
+# that call pw run on a credential that outlives it: the key given here (the
+# env block carries it into the start script, which hands it to the runner),
+# or the host's own pw sign-in on the clusters the ACTIVATE agent connects
+env:
+  GITLAB_PW_API_KEY: ${{ inputs.runners.api_key }}
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: gitlab
+          sparse_checkout:
+            - workflows/gitlab/${{ inputs.service.container_runtime }}
+            - workflows/gitlab/lib
+            - tools/oras
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW environment variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Secrets and the multi-line license go into their own mode-600 files
+          umask 077
+          cat <<'EOF' > root-password.txt
+          ${{ inputs.service.root_password }}
+          EOF
+          cat <<'EOF' > oidc-client-secret.txt
+          ${{ inputs.oidc.client_secret }}
+          EOF
+          cat <<'EOF' > license.gitlab-license
+          ${{ inputs.service.license }}
+          EOF
+          for f in root-password.txt oidc-client-secret.txt license.gitlab-license; do
+            tr -d '\r' < "$f" | sed '/^[[:space:]]*$/d; /^undefined$/d' > "$f.tmp"
+            mv "$f.tmp" "$f"
+          done
+          umask 022
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_rundir="${{ inputs.service.rundir }}"
+          service_subdomain="${{ inputs.service.subdomain }}"
+          service_image="${{ inputs.service.image }}"
+          service_ssh_port="${{ inputs.service.ssh_port }}"
+          service_state_layout="${{ inputs.service.state_layout }}"
+          service_state_image_size="${{ inputs.service.state_image_size }}"
+          service_root_password_file="${PW_PARENT_JOB_DIR}/root-password.txt"
+          service_license_file="${PW_PARENT_JOB_DIR}/license.gitlab-license"
+          runners_shell="${{ inputs.runners.shell }}"
+          runners_slurm="${{ inputs.runners.slurm }}"
+          oidc_client_id="${{ inputs.oidc.client_id }}"
+          oidc_client_secret_file="${PW_PARENT_JOB_DIR}/oidc-client-secret.txt"
+          oidc_block_new_users="${{ inputs.oidc.block_new_users }}"
+          oidc_display_name="${{ inputs.oidc.display_name }}"
+          pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG}"
+          EOF
+          # Remove empty and undefined variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh
+          # Add export to all lines
+          sed -i 's/^/export /' inputs.sh
+          # session_runner v1.4 computed the shared HSP install dir; v5 calls
+          # script_submitter directly, so replicate that step here.
+          source /etc/profile
+          if [ -z "${PROJECTS_HOME}" ]; then
+            echo "::warning title=Install Directory::PROJECTS_HOME is empty - falling back to ${HOME}/pw"
+            hsp_install_dir="${HOME}/pw"
+          else
+            hsp_install_dir="${PROJECTS_HOME}/hsp"
+          fi
+          if [ ! -d "${hsp_install_dir}" ]; then
+            if ! mkdir -p "${hsp_install_dir}"; then
+              echo "::error title=Install Directory::Failed to create ${hsp_install_dir} - permission denied"
+              exit 1
+            fi
+            if ! chmod g+rwx,o+rx "${hsp_install_dir}"; then
+              echo "::error title=Install Directory::Failed to set permissions on ${hsp_install_dir} - permission denied"
+              exit 1
+            fi
+          fi
+          echo "::notice title=Install Directory::Using Install Directory: ${hsp_install_dir}"
+          echo "export service_parent_install_dir=${hsp_install_dir}" >> inputs.sh
+      - name: Controller Preprocessing
+        run: |
+          set -x
+          # This script prepares the target host and always runs in the controller node
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/gitlab/${{ inputs.service.container_runtime }}/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+          cat workflows/gitlab/${{ inputs.service.container_runtime }}/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  session_runner:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/hsp.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          # GitLab always runs where preprocessing did: a service that outlives the
+          # run cannot live in a scheduler allocation, and the Singularity runtime
+          # needs the login node's subuid range and local filesystem (the cloud
+          # clusters' compute nodes mount home over NFS and have no range)
+          scheduler: false
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: false
+          pbs:
+            is_enabled: false
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::Session runner failed before the endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ inputs.service.name }}-${PW_RUN_SLUG}
+          host: ${{ inputs.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          path: /users/sign_in
+          healthy: '2*'
+          budget: 1800
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Service host
+        description: GitLab and its CI runners run on this cluster's login node.
+        include-workspace: false
+      service:
+        type: group
+        label: GitLab settings
+        collapsed: true
+        items:
+          name:
+            type: string
+            hidden: true
+            default: gitlab
+          container_runtime:
+            type: dropdown
+            label: Run container using
+            description: Singularity runs the GitLab image as your user in a user namespace (fakeroot); Docker runs it as root.
+            default: gitlab-singularity
+            hidden: true
+            options:
+              - label: Singularity
+                value: gitlab-singularity
+              - label: Docker
+                value: gitlab-docker
+            tooltip: |
+              Singularity: the official image (ghcr.io/parallelworks/gitlab, one SIF), extracted into the run directory and run as an Apptainer instance with --fakeroot, which needs a subuid/subgid range for your user on the login node (an administrator adds one with 'apptainer config fakeroot --add <user>'); no root or Docker needed. Docker: the official image (needs Docker, directly or through sudo); its run directory is written as root. A run directory belongs to one runtime.
+          subdomain:
+            label: Subdomain
+            description: Label of the URL, https://<label>.<sessions domain>, the same on every run; empty uses gitlab-<your username>.
+            type: string
+            default: gitlab
+            optional: true
+            tooltip: |
+              GitLab builds its clone URLs and the Sign in with ACTIVATE redirect URI from this address, so it is pinned instead of taking a random subdomain. Lowercase letters, digits and dashes; reserve it with 'pw subdomains reserve <label>' so nobody else takes it. Two GitLabs of yours (two clusters) need two labels.
+          rundir:
+            label: Run directory
+            description: Keeps the repositories, database and settings; reuse it to keep them, delete it to start over. A run directory belongs to one runtime.
+            type: string
+            default: ${HOME}/gitlab
+            tooltip: |
+              Holds config/ (gitlab.rb, secrets), data/ (repositories, PostgreSQL, uploads), logs/ and runner/ (the CI runners' configuration and builds); under Singularity also work/ (the container's /tmp) and, on a login node that cannot mount the SIF, image/ (the GitLab image, extracted once, 4.7 GB). On a network filesystem (the home of an HPC system), where the container cannot change file ownership, Singularity keeps config/, data/ and logs/ inside gitlab.img, a sparse 20 GB ext3 image, instead. Singularity writes its files with the ids of your fakeroot range (remove them with 'apptainer exec --fakeroot ... rm -rf', or as root; gitlab.img is a plain file of yours); Docker writes config/, data/ and logs/ as root (sudo rm -rf). One GitLab per run directory at a time; the first start of a run directory takes several minutes (database setup).
+          image:
+            label: GitLab image
+            description: Docker only; keep the major version of an existing run directory. gitlab/gitlab-ce is the open-source Community Edition, which takes no license.
+            type: string
+            default: gitlab/gitlab-ee:19.5.1-ee.0
+            hidden: ${{ inputs.service.container_runtime == 'gitlab-singularity' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              The official all-in-one Linux package image (Puma, Sidekiq, Gitaly, PostgreSQL, Redis, nginx). gitlab/gitlab-ee runs the Free tier without a license and takes a Premium or Ultimate license; gitlab/gitlab-ce is the MIT-licensed edition. GitLab upgrades one minor version at a time (see its upgrade path), so change the tag in steps. The Singularity runtime uses the prebuilt ghcr.io/parallelworks/gitlab image instead.
+          state_layout:
+            type: dropdown
+            hidden: true
+            default: auto
+            label: Where GitLab keeps its state (Singularity)
+            options:
+              - label: Decide from the run directory's filesystem
+                value: auto
+              - label: Directories config/, data/ and logs/ (local filesystem)
+                value: directories
+              - label: An ext3 image, gitlab.img (network filesystem)
+                value: image
+          state_image_size:
+            type: number
+            hidden: true
+            default: 20
+            min: 2
+            step: 1
+            label: Size of gitlab.img in GB
+          root_password:
+            label: Root password
+            description: Initial password of the root account, 8 characters or more, applied on the first start of a run directory only; empty generates one, saved to <run directory>/.root_password.
+            type: password
+            optional: true
+          ssh_port:
+            label: SSH port
+            description: Loopback port of GitLab's SSH on the service host; reach it from your machine with 'pw forward -L <port>:localhost:<port> <cluster>'.
+            type: number
+            default: 2222
+            min: 1024
+            max: 65535
+            step: 1
+            tooltip: |
+              The platform endpoint only serves HTTPS pages, and the platform's sign-in stands in front of it, so git clone, push and pull from your machine go through a pw forward tunnel to this port (SSH) or to the HTTP port the run logs print; from the cluster itself use http://localhost:<HTTP port>. GitLab's SSH clone URLs show this port.
+          license:
+            label: GitLab license
+            description: Contents of a .gitlab-license file (Premium, Ultimate or a trial), applied once; empty runs the Free tier, which includes Sign in with ACTIVATE and the CI/CD runners.
+            type: editor
+            optional: true
+            tooltip: |
+              Paste the whole license key (the long base64 block). It needs the gitlab-ee image; the Community Edition takes no license. GitLab remembers it in the run directory, so later runs may leave this empty; a new key replaces the current one. Add or change a license later under Admin -> Settings -> General -> Add License.
+      runners:
+        type: group
+        label: CI/CD runners
+        description: Runners registered with this GitLab that run pipelines on the service host as your user; the runners' configuration lives in the run directory and is reused.
+        collapsed: true
+        items:
+          shell:
+            type: boolean
+            default: true
+            label: Register a shell runner
+            description: Runs CI jobs directly on the service host (shell executor); it takes untagged jobs.
+          slurm:
+            type: boolean
+            default: false
+            label: Register a SLURM runner
+            description: Submits each CI job to the cluster's scheduler with Jacamar CI; jobs select it with the tag slurm and pass sbatch options in the SCHEDULER_PARAMETERS variable.
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' }}
+            ignore: ${{ .hidden }}
+            tooltip: |
+              The runner uses GitLab's custom executor with Jacamar CI (ECP): the job's before_script and script run inside an sbatch job submitted as your user from the service host, after_script on the service host. A job sets SCHEDULER_PARAMETERS to the sbatch options it needs, for example "--nodes=1 --time=00:10:00" plus the account, partition or QoS the cluster requires; -o, -e, -J and --wait are reserved by Jacamar. Jobs wait for the allocation inside GitLab's job timeout.
+          api_key:
+            type: password
+            label: ACTIVATE API key
+            description: Lets pipelines run pw as you after this run completes; without it, jobs on a cloud cluster cannot call pw.
+            optional: true
+            tooltip: |
+              A platform API key of yours (account settings, API keys). Jobs of the shell runner get it as PW_API_KEY, so a pipeline can run pw ssh, pw workflows run or any pw command on your other resources; the run's own credential stops working when the run completes. On a cluster connected through the ACTIVATE agent (existing or managed) the field is not shown: the agent keeps the login node signed in as you, and jobs use that sign-in. Launch again with a new key before this one expires; a project can also set PW_API_KEY as a CI/CD variable of its own.
+            hidden: ${{ inputs.resource.provider == 'existing' || inputs.resource.provider == 'managed-cluster' || inputs.resource.name == 'user-workspace' }}
+            ignore: ${{ .hidden }}
+      oidc:
+        type: group
+        label: Sign in with ACTIVATE
+        description: Lets users sign in to GitLab with their ACTIVATE account; a client ID reveals the secret and the approval fields. Leave it empty for GitLab's own accounts only.
+        collapsed: true
+        items:
+          client_id:
+            label: Client ID
+            description: The pwapp_ ID of the application an organization admin registered for this GitLab URL; empty means no ACTIVATE sign-in is configured.
+            type: string
+            optional: true
+            tooltip: |
+              Organization -> Settings -> Applications (behind the OIDC Applications preview): kind web, consent none, scopes openid profile email, redirect URI https://<subdomain>.<sessions domain>/users/auth/openid_connect/callback, post-logout redirect URI https://<subdomain>.<sessions domain>/. The redirect URI is matched exactly, so it must carry the subdomain this run pins. The provider is part of GitLab's configuration, so a later run without a client ID removes the button.
+          client_secret:
+            label: Client secret
+            description: Required with a client ID; shown once when the secret is created, an organization admin can reveal it again on the application's page.
+            type: password
+            optional: true
+            hidden: ${{ inputs.oidc.client_id == '' }}
+            ignore: ${{ .hidden }}
+          block_new_users:
+            label: New users wait for approval
+            description: An account created by a first ACTIVATE sign-in stays blocked until an administrator approves it under Admin -> Users; off lets every ACTIVATE user in.
+            type: boolean
+            default: false
+            hidden: ${{ inputs.oidc.client_id == '' }}
+            ignore: ${{ .hidden }}
+          display_name:
+            type: string
+            hidden: true
+            default: ACTIVATE

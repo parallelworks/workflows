@@ -1,0 +1,23 @@
+# Step 3 of the tutorial: one job definition, run once per ACTIVATE resource.
+# The shell runner on the login node reaches the other systems with the pw
+# CLI, signed in with the ACTIVATE API key the workflow was launched with (or,
+# on a cluster connected through the ACTIVATE agent, the login node's own
+# sign-in). Like every job, it runs as the user who launched the workflow.
+
+hello-every-system:
+  tags: [shell]                    # the shell runner: pw runs on the login node
+  # "parallel: matrix:" turns this one definition into one job per entry, each
+  # with RESOURCE set to the entry's value: "hello-every-system: [<resource_1>]",
+  # "hello-every-system: [<resource_2>]". Put your resources' names here, as
+  # `pw cluster ls` prints them (the part after pw://<user>/); they must be on.
+  parallel:
+    matrix:
+      - RESOURCE: ["<resource_1>", "<resource_2>"]
+  script:
+    - export PATH="$HOME/pw:$PATH"
+    - echo "Running on $(hostname) as $(id -un)"
+    - pw auth whoami                 # who pw is signed in as
+    # The same two commands on the resource: pw ssh runs them there as you and
+    # brings their output back into this log. Any command works the same way,
+    # sbatch and qsub included.
+    - pw ssh "$RESOURCE" 'echo "Hello from $(hostname) as $(id -un)"'

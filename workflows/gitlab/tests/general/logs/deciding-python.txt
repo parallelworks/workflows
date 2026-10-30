@@ -1,0 +1,18 @@
+Run deciding-python: error (15s)
+
+Error annotations:
+
+  Error: /home/alvaro/gitlab-test-image is in use by another GitLab run; choose another run directory or stop that one first
+    in session_runner > stream_output → Stream Output
+  Error: The GitLab launcher failed with status 75 (its messages are above)
+    in session_runner > stream_output → Stream Output
+  Error: Session runner failed before the endpoint came online
+    in session_runner → Exit Workflow with Error
+
+Failed jobs/steps:
+
+  session_runner > Exit Workflow with Error (error, 0s)
+    Error: Session runner failed before the endpoint came online
+    ✗ Error: Session runner failed before the endpoint came online
+
+Summary: 1 job(s) failed, 1 step(s) failed

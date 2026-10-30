@@ -1,0 +1,30 @@
+{
+  "_test": {
+    "timeout_s": 3000,
+    "warm_marker": "${HOME}/gitlab-dev/data/postgresql/data",
+    "leftover_patterns": [
+      "docker logs -f gitlab_",
+      "gitlab-runner run",
+      "pw endpoints run"
+    ],
+    "leftover_commands": {
+      "containers": "sudo -n docker ps -aq --filter label=activate.rundir=$HOME/gitlab-dev | wc -l"
+    },
+    "secrets": {
+      "oidc.client_secret": "GITLAB_TEST_OIDC_CLIENT_SECRET"
+    }
+  },
+  "resource": "pw://labcluster",
+  "service": {
+    "container_runtime": "gitlab-docker",
+    "subdomain": "gitlab-alvaro",
+    "rundir": "${HOME}/gitlab-dev"
+  },
+  "runners": {
+    "shell": true,
+    "slurm": false
+  },
+  "oidc": {
+    "client_id": "pwapp_49a074ccbd91ca6bdca1d5afdc64315e"
+  }
+}

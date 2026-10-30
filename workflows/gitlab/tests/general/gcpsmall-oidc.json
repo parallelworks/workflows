@@ -1,0 +1,33 @@
+{
+  "_test": {
+    "timeout_s": 3000,
+    "warm_marker": "${HOME}/gitlab-demo/data/postgresql/data",
+    "leftover_patterns": [
+      "assets/init-container",
+      "runsvdir -P /opt/gitlab/service",
+      "gitlab-runner run",
+      "pw endpoints run"
+    ],
+    "leftover_commands": {
+      "instances": "grep -l $HOME/gitlab-demo/data /proc/[0-9]*/mountinfo 2>/dev/null | wc -l"
+    },
+    "secrets": {
+      "oidc.client_secret": "GITLAB_TEST_OIDC_CLIENT_SECRET",
+      "runners.api_key": "GITLAB_TEST_PW_API_KEY"
+    }
+  },
+  "resource": "pw://alvaro/gcpsmall",
+  "service": {
+    "container_runtime": "gitlab-singularity",
+    "subdomain": "gitlab-alvaro",
+    "rundir": "${HOME}/gitlab-demo",
+    "ssh_port": 2222
+  },
+  "runners": {
+    "shell": true,
+    "slurm": true
+  },
+  "oidc": {
+    "client_id": "pwapp_49a074ccbd91ca6bdca1d5afdc64315e"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "_test": {
+    "timeout_s": 3000,
+    "warm_marker": "${HOME}/gitlab-test/data/postgresql/data",
+    "leftover_patterns": [
+      "docker logs -f gitlab_",
+      "gitlab-runner run",
+      "pw endpoints run"
+    ],
+    "leftover_commands": {
+      "containers": "sudo -n docker ps -aq --filter label=activate.rundir=$HOME/gitlab-test | wc -l"
+    }
+  },
+  "resource": "pw://labcluster",
+  "service": {
+    "container_runtime": "gitlab-docker",
+    "subdomain": "gitlab-alvaro-test",
+    "rundir": "${HOME}/gitlab-test",
+    "ssh_port": 2223
+  },
+  "runners": {
+    "shell": true,
+    "slurm": false
+  },
+  "oidc": {}
+}

@@ -160,6 +160,63 @@ A10G GPU):
   singularity-ce, and leaves sibling endpoints' trees untouched (verified with
   two ollama endpoints on one node).
 
+## An image that needs root: a `--fakeroot` instance (verified 2026-10, `workflows/gitlab/gitlab-singularity`)
+
+An official image whose init `chown`s and `setuid`s to several accounts cannot run as the
+user, but runs unchanged as an Apptainer **instance** under `--fakeroot`: the user
+namespace maps the image's accounts onto the user's subuid range. The SIF is a plain
+conversion of the image (`gitlab.def`: `Bootstrap: docker`, nothing added), delivered as
+above. What the start template decides, on the node that runs the service, and why; the
+GitLab specifics (ports, configuration, stop command) are in [gitlab.md](gitlab.md):
+
+- **Runtime**: `apptainer` first, then `singularity`, from the PATH or its module, taken
+  only when `--version` answers (a module can ship an engine that panics on the node);
+  the chosen name goes into every invocation, `cancel.sh` included (the kasmvnc pattern).
+- **Range probe**: `exec --fakeroot <image> awk 'NR > 1 { print $3 }' /proc/self/uid_map`
+  must print 65536 or more, or `chown` to the image's accounts fails. Login nodes of the
+  cloud clusters have a range, their compute nodes none; a hardened system may map
+  exactly 65536, so a user id above that owns nothing the namespace's root can write to.
+- **Image probe**: `exec --fakeroot --writable-tmpfs <sif> sh -c 'touch /opt/x'` (the
+  image needs a writable layer; `/bin/true` alone passes on the extraction fallback). It
+  works: `instance start --fakeroot --writable-tmpfs <sif>`. It fails (a hardened node:
+  `fusermount3` without `user_allow_other`, no rootless overlay, `noexec` `/tmp`):
+  `build --fakeroot --sandbox <rundir>/image <sif>` once (ownership kept) and
+  `instance start --fakeroot --writable <rundir>/image`, one sandbox per run directory
+  since `--writable` mutates it, on a local disk only (a sandbox on a parallel filesystem
+  returns truncated reads). A marker names the SIF the sandbox came from.
+  `APPTAINER_TMPDIR`/`SINGULARITY_TMPDIR` go under the run directory.
+- **State probe**: an actual `chown` in the run directory through the container. A
+  network filesystem (NFS, Lustre, GPFS: the home of most HPC systems) refuses the mapped
+  id's chown, since its server sees the user's own id, and a `stat -f` type check misses
+  half of them. Works: bind the state directories. Fails: one ext3 **overlay image**
+  (`overlay create --sparse --size <MiB> <rundir>/x.img`, `instance start --overlay` in
+  place of `--writable-tmpfs` and the binds; fuse2fs below fuse-overlayfs, the kernel
+  checks permissions; needs `fuse2fs` and `mkfs.ext3` of e2fsprogs) with the init's
+  service directory bound from the host (through the overlay `runsvdir` never saw the
+  services the configuration added and the boot hung). Not **image binds**
+  (`--bind x.img:/path:image-src=/dir`): fuse2fs alone checks permissions itself and
+  refuses to write into a file just created read-only (0500 or 0444: unpacked binaries,
+  git objects) and to unlink it. Not `--fusemount host:fuse2fs`: that fuse2fs is a
+  libfuse2 program, takes no `/dev/fd` mount point and hangs. A first boot through the
+  image takes about twice as long.
+- **Instance flags**: `--contain --cleanenv --uts --hostname <host> --workdir
+  <rundir>/work`, with `work/tmp` pre-created `1777` (Ruby's `Dir.tmpdir` rejects less; a
+  `/tmp` bind is overridden by `--contain`'s own on singularity-ce). `--writable` creates
+  no mount point, so every bind destination must exist in the image, inside an image too
+  (a `mkdir` through a bind of its root). A host in FIPS mode shows the container
+  `/proc/sys/crypto/fips_enabled` = 1, which breaks an Ubuntu image's OpenSSH (`PRNG is
+  not seeded`): `--bind <file holding 0>:/proc/sys/crypto/fips_enabled` (Docker: `-v
+  <file>:/proc/sys/crypto/fips_enabled:ro`).
+- **Run and stop**: `exec --cleanenv --pwd / instance://<name> <entrypoint>` in the
+  launcher's foreground, `exec instance://<name> <command>` for the setup; instances
+  always get a PID namespace (`--pid` is not a flag of `instance start`). A `TERM` to the
+  host-side `exec` never reaches the script inside, so `cancel.sh` runs the image's own
+  stop command through `exec instance://` and then `instance stop -F`.
+- **Cleanup and tests**: what the container writes belongs to mapped ids, so a run
+  directory is removed from a `--fakeroot` exec; a leftover check counts processes whose
+  mount namespace still binds the run directory (`grep -l <rundir> /proc/[0-9]*/mountinfo`),
+  since `ps -u $USER` misses them.
+
 ## Gotchas (def-file builds — verified, rag-service 2026-08)
 
 - **Upgrade pip first in `%post`** when bootstrapping from `python:3.9-slim`: its

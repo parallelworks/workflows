@@ -474,6 +474,15 @@
   completed run with a dead endpoint. Find a free loopback port, start the service on it,
   check it, then `pw endpoints run --port <port> -- <foreground command>` (`docker compose
   logs -f` for a container that is already up); `app/start-template.sh` there.
+- **Setup that must run after the service answers gates the probed route** (verified
+  2026-10-28, `workflows/gitlab`): the first test's teardown came 1 s after the run
+  completed, while the launcher was still registering the CI runners behind the
+  already-answering sign-in page; a failure there would have left a completed run whose
+  cleanup then removed the service. When the setup needs the live service (its API), make
+  the route `wait_for_endpoint` probes answer `503` until a marker file exists (nginx:
+  `if (!-f <marker>) { return 503; }`, with a header the launcher's own probe sends to
+  bypass it), touch the marker last, and keep `exit 1` for every setup failure: the run
+  then completes on the whole setup and fails loud otherwise.
 - **Endpoint names must be lowercase `[a-z0-9-]`** (undocumented; one uppercase letter
   fails the launch). `<service>-${PW_RUN_SLUG}` is safe; a name typed into a form is not:
   fold it before it reaches `pw endpoints`, and make the wait step look for the same
@@ -514,7 +523,7 @@
   shell function either: build the common `singularity exec` options as an array and
   pass plain commands.
 - **A desktop app's helper re-groups itself and outlives a crashed parent** (verified
-  2026-10-28, gcpsmall, runs thankful-rodent, more-mustang, regular-cub): RStudio's
+  2026-10-28, three runs on a cloud cluster): RStudio's
   `rsession` moved to its own process group, so neither a kill of the startup command's
   pid nor `kill -- -pgid` reached it; it stayed in the session, so the command runs under
   `setsid` and `cancel.sh` kills by session (`pkill -TERM -s $pid`, `-KILL` after a grace
@@ -528,6 +537,23 @@
   container even with `--cleanenv` and stay out of `ps`, but `$…`, backticks and
   backslashes are still expanded in them: escape those three (`sed 's/[\\$`]/\\&/g'`)
   and the value arrives verbatim, double quotes included.
+- **A root-only image (its own init, services as several accounts) runs as a
+  `--fakeroot` Apptainer instance** (verified 2026-10, `workflows/gitlab/gitlab-singularity`):
+  the whole pattern, runtime selection, the three probes (id range, image, state), the
+  sandbox and overlay-image fallbacks, the instance flags and the stop sequence, is one
+  section of [software/singularity-sif-containers.md](software/singularity-sif-containers.md),
+  "An image that needs root". Its symptoms, for grepping:
+  - `chown: Operation not permitted` / Ruby `Errno::EPERM @ apply2files` from inside the
+    container: the bound directory is on a network filesystem; the state goes into an
+    ext3 overlay image.
+  - `Permission denied` writing into or unlinking a file the container just created
+    read-only (gitaly's unpacked binaries, git's objects): an image bind through fuse2fs
+    alone; use the overlay image.
+  - An init that waits forever for a service it just configured (runit's `supervise/ok`):
+    the service directory sits in a FUSE overlay; bind it from the host.
+  - `ssh-keygen: PRNG is not seeded` in the entrypoint: the host runs in FIPS mode; bind a
+    `0` over `/proc/sys/crypto/fips_enabled`.
+  - `could not find a temporary directory` from Ruby: the container's `/tmp` is not `1777`.
 - **The session proxy rewrites every redirect to another host onto the session's own
   host** (verified 2026-10-20): an OIDC/OAuth sign-in or RP-initiated logout never reaches
   the identity provider. Intercept external 3xx in your own proxy and answer a hop page:
@@ -536,6 +562,15 @@
   `workflows/openproject`) needs an app registered for its exact URL, a pinned subdomain
   and a proxy of its own in front; the recipe, the claims and how far curl can test the
   flow are in [oidc-sign-in.md](oidc-sign-in.md).
+- **A command-line client cannot authenticate to the served app through the endpoint**
+  (verified 2026-10-28, `workflows/gitlab`): the proxy wants the platform's login or a
+  bearer key and strips `Authorization` before the app sees it, so `git clone
+  https://<endpoint>/...` (and any client that sends its own `Authorization`) reaches the
+  app anonymous at best. Publish the app's port on the node's loopback too and send
+  clients there: `localhost:<port>` from the cluster, `pw forward -L` from a laptop; a
+  helper on the node that must call the app's API (a CI runner, Jacamar's JWKS fetch)
+  gets the loopback URL as well, never `CI_SERVER_URL`
+  ([software/gitlab.md](software/gitlab.md)).
 - **`pw agent open-port` is a TOCTOU trap for slow-starting services:** the port
   sits unbound while the service boots (a SIF conversion takes ~1 min), and busy
   siblings on the node (MATLAB's dynamic services) steal it from the ephemeral
@@ -729,6 +764,18 @@
   `workflows/dakota-openfoam`, run vocal-magpie). Build the argument before the heredoc
   with `printf -v arg -- '--link %q' "Pareto front=${url}"` and write `${arg}`.
 
+- **`sudo` closes inherited file descriptors, so a `flock` held on fd 9 is dropped at
+  `exec sudo docker logs -f`** (found in review, 2026-10-28, `workflows/gitlab`; the same
+  construct is in `workflows/openproject/openproject-docker/start-template.sh`): once
+  the launcher execs into the foreground log, the run directory's lock is free and a
+  second run on the same directory starts a second container on the same data. Keep the
+  shell that took the lock alive for the service's life (`docker logs -f … & wait $!`,
+  then fail), or hold the lock in a child that is not `sudo`.
+- **`$!` after `cd dir && setsid cmd ... &` is a subshell, not `cmd`** (2026-10-28, a
+  hand-restarted GitLab runner survived its `cancel.sh`): bash backgrounds the whole
+  `&&` list as a subshell, so the recorded pid is the subshell's and the session id to
+  kill (`pkill -s`) is `cmd`'s own pid, one fork later. Background `setsid cmd &` on its
+  own (then `setsid` needs no fork and `$!` is `cmd`, the session leader), `cd` before it.
 - **bash 5.1 reads a bare `case` inside `$( )` as the keyword** and fails the whole script
   at parse time with `unexpected EOF while looking for matching` (gcptest, bash 5.1.8,
   2026-10-16: `echo "$(list_times case)"` broke a test driver; `case/log.x` as a path is

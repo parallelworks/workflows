@@ -1,0 +1,34 @@
+# Step 4 of the tutorial: one job, run by the SLURM runner on a compute node.
+
+# "default:" holds settings every job of this file inherits.
+default:
+  # A short-lived token GitLab mints for each job. Jacamar, the program behind
+  # the SLURM runner, presents it to GitLab when it fetches the job's sources,
+  # so every job that runs on that runner needs it.
+  id_tokens:
+    CI_JOB_JWT:
+      # The token's audience is this GitLab's address, for example
+      # https://gitlab-jane.activate.pw; $CI_SERVER_URL expands to it.
+      aud: $CI_SERVER_URL
+
+# "variables:" defines values every job can read as environment variables.
+variables:
+  # The sbatch options of the job, as one string. Replace them with what your
+  # cluster requires: --account=<account>, --partition=<partition>, --qos=<qos>
+  # and so on, beside the job's own --nodes, --ntasks and --time. -o, -e, -J
+  # and --wait are Jacamar's own and cannot be set.
+  SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=4 --time=00:10:00"
+
+# Everything else at the top level is a job, named by its key.
+hello-slurm:
+  # A job runs on a runner that carries all of its tags: "slurm" is the SLURM
+  # runner the workflow registered; "shell" would be the login-node runner.
+  tags: [slurm]
+  # The commands of the job, one per line, run by bash inside the SLURM job
+  # on the compute node. The first one that fails fails the job.
+  script:
+    - echo "Running on $(hostname) as $(id -un)"
+    - echo "SLURM job $SLURM_JOB_ID on $SLURM_NODELIST with $SLURM_NTASKS tasks"
+    - srun hostname | sort | uniq -c
+    - nproc
+    - free -g | head -n 2

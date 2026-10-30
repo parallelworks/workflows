@@ -66,7 +66,9 @@ its own, `PW_API_KEY=<key> pw auth whoami` whether a given key works;
 ## A key the user hands the workflow
 
 A `password` input, carried under another name in the top-level `env:` block and read
-from the runtime env (`workflows/probe/yamls/general.yaml`, `PROBE_API_KEY`). Show it
+from the runtime env (`workflows/probe/yamls/general.yaml`, `PROBE_API_KEY`;
+`workflows/gitlab`, `GITLAB_PW_API_KEY`, handed to the CI runner so pipelines can call
+`pw` after the run). Show it
 only where the host has no sign-in of its own: hide and ignore it for `existing`,
 `managed-cluster` and the workspace (the resource fields,
 [activate-platform.md](activate-platform.md) §2), and before anything is submitted

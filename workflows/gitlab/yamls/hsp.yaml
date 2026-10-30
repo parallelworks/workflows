@@ -195,6 +195,10 @@ jobs:
         label: Service host
         description: GitLab and its CI runners run on this cluster's login node.
         include-workspace: false
+        provider:
+          - aws-slurm
+          - google-slurm
+          - azure-slurm
       service:
         type: group
         label: GitLab settings

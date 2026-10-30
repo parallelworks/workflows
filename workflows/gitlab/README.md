@@ -30,23 +30,14 @@ to the platform's probe); GitLab and its runners then run until the session is d
 
 Both need about 4 GB of RAM free for GitLab (8 GB recommended) and keep everything in the
 **Run directory**. A run directory belongs to one runtime: Docker writes its `config/`,
-`data/` and `logs/` as root, Singularity writes those and `image/` and `work/` with the
-ids of your fakeroot range, and each runtime refuses the other's directory. Under
-Singularity the start script first checks that the run directory's filesystem lets the
-container change file ownership (a local disk does; a network filesystem such as the
-home of an HPC system does not): where it does not, the container's whole writable layer,
-`config/`, `data/` and `logs/` included, lives inside `gitlab.img`, a sparse 20 GB ext3
-image in the run directory that the instance mounts as its overlay, and the network
-filesystem only ever sees that one file of yours. The run's log says which layout it
-chose; `resize2fs gitlab.img <size>` grows the image while GitLab is stopped. GitLab's
-first start takes about twice as long through the image.
-
-Both work on a hardened login node (verified on a STIG image as well as on the standard
-cloud image): where a user namespace may neither FUSE-mount the SIF nor overlay it, the
-Singularity runtime extracts the image and runs it from that directory, keeping its
-temporary files in the run directory rather than a `noexec` `/tmp`, and on a host in FIPS
-mode both runtimes show the container `fips_enabled=0` (the image is not a FIPS build;
-its OpenSSH would otherwise refuse to create the SSH host keys).
+`data/` and `logs/` as root, Singularity writes with the ids of your fakeroot range, and
+each runtime refuses the other's directory. Under Singularity the run's log says which of
+two layouts the run directory got: `config/`, `data/` and `logs/` as directories where its
+filesystem lets the container change file ownership (a local disk), or all of them inside
+`gitlab.img`, a sparse 20 GB ext3 image, where it does not (a network filesystem such as
+the home of an HPC system; `resize2fs gitlab.img <size>` grows it while GitLab is stopped,
+and the first start takes about twice as long). Hardened login nodes (a STIG image, FIPS
+mode, no FUSE mount of the SIF) are handled the same way, with notices in the run's log.
 
 ## Requirements
 

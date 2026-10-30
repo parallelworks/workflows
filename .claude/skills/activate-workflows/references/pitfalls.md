@@ -514,7 +514,7 @@
   shell function either: build the common `singularity exec` options as an array and
   pass plain commands.
 - **A desktop app's helper re-groups itself and outlives a crashed parent** (verified
-  2026-10-28, gcpsmall, runs thankful-rodent, more-mustang, regular-cub): RStudio's
+  2026-10-28, three runs on a cloud cluster): RStudio's
   `rsession` moved to its own process group, so neither a kill of the startup command's
   pid nor `kill -- -pgid` reached it; it stayed in the session, so the command runs under
   `setsid` and `cancel.sh` kills by session (`pkill -TERM -s $pid`, `-KILL` after a grace
@@ -528,76 +528,23 @@
   container even with `--cleanenv` and stay out of `ps`, but `$…`, backticks and
   backslashes are still expanded in them: escape those three (`sed 's/[\\$`]/\\&/g'`)
   and the value arrives verbatim, double quotes included.
-- **A root-only image (its own init, services as several accounts) runs under Apptainer
-  as a `--fakeroot` instance; the SIF where the node mounts it, an extracted sandbox where
-  it does not** (verified 2026-10-28/29, apptainer 1.5.5 on gcpsmall and singularity-ce
-  4.5.1 on the STIG image of awsstig, both without setuid,
-  `workflows/gitlab/gitlab-singularity`): the start template probes on the node that runs
-  the service with `exec --fakeroot --writable-tmpfs <sif> sh -c 'touch /opt/x'`; a touch
-  that works means the SIF runs as is (`instance start --fakeroot --writable-tmpfs`, as
-  on gcpsmall); otherwise `build --fakeroot --sandbox <rundir>/image <sif>` once (45 s for
-  a 1.8 GB SIF; the image's ownership survives, mapped onto the subuid range) and
-  `instance start --fakeroot --writable <rundir>/image` (the singularity-sif-containers
-  pattern "try the SIF, fall back to a sandbox", with the sandbox per run directory
-  because `--writable` mutates it). Instances always get a PID namespace (`--pid` is not
-  a flag of `instance start`); `exec --cleanenv --pwd / instance://<name> <entrypoint>`
-  runs in the launcher's foreground and `exec instance://<name> <admin command>` serves
-  the setup. Why the fallback exists: a hardened node allows a user namespace neither a
-  FUSE mount of the SIF (`fusermount3: option allow_other only allowed if
-  'user_allow_other' is set in /etc/fuse.conf`, and a fakeroot mount needs `allow_other`
-  for the mapped ids) nor a rootless overlay (`fork/exec /usr/bin/mount: permission
-  denied`), and its `/tmp` is `noexec`, so singularity's own extraction fallback cannot
-  even run `awk` (the probe there takes 50 s, once per run directory). Rules that come
-  with it: **a network filesystem refuses the mapped ids' chown** (the server gets the
-  request as the user's own id: verified on an HSP system's Lustre home, `Errno::EPERM
-  @ apply2files` from GitLab's reconfigure, and on the cloud clusters' NFS-mounted home
-  on compute nodes), and a `stat -f` type check misses half of them, so the template
-  probes with an actual `chown 998` in the run directory and, where it fails, puts the
-  container's whole writable layer in an **ext3 overlay image** (`apptainer overlay create
-  --sparse --size <MiB> <rundir>/gitlab.img`, `instance start --overlay <img>` instead of
-  `--writable-tmpfs`, no volume binds; `config/`, `data/`, `logs/` live inside): fuse2fs
-  mounts the image inside the namespace and fuse-overlayfs sits on top, so the kernel
-  does the permission checks; needs `fuse2fs` and `mkfs.ext3` (e2fsprogs; both in the
-  cloud images and on barfoot). Two traps on the way (verified 2026-10-29): **image
-  binds** (`--bind img:/var/opt/gitlab:image-src=/dir`) go through fuse2fs alone, which
-  checks permissions itself and refuses to write into a file just created with mode 0500
-  or 0444 and to unlink it, exactly what gitaly's unpacked binaries and git's loose
-  objects are (gitaly crash-looped, projects 500); and through the overlay image
-  **runsvdir never saw the services** the configuration run added (the service
-  directory's mtime did not propagate through two FUSE layers), so
-  `/opt/gitlab/service` is bound from a host directory (`<rundir>/work/service`).
-  `--fusemount host:fuse2fs` cannot replace the image driver: that fuse2fs is a libfuse2
-  program, takes no `/dev/fd/N` mount point and hangs. The first boot through the image
-  takes about twice as long;
-  `APPTAINER_TMPDIR`/`SINGULARITY_TMPDIR` under the
-  run directory (the build and any fallback extract there, not into `/tmp`); `--writable`
-  creates no mount point, so every bind destination must exist in the image; `/tmp` comes
-  from `--workdir` (pre-create `work/tmp` as `1777`: Ruby's `Dir.tmpdir` rejected a 755
-  one, "could not find a temporary directory"), not from a bind, which `--contain`'s own
-  `/tmp` overrides on singularity-ce; a new SIF replaces the sandbox (a marker file names
-  the SIF it came from), removed from a `--fakeroot` exec of the SIF; writes to the
-  image's own paths stayed under 6 MB, so `--writable-tmpfs` is enough on the SIF path. Other conditions,
-  all probed in the start template: `/etc/subuid` must give the user a range (`awk 'NR > 1
-  { print $3 }' /proc/self/uid_map` inside a `--fakeroot` exec, 65536 or more; the cloud
-  clusters' login nodes have `<user>:<start>:131072`, their compute nodes nothing, and a
-  fakeroot without a range maps one id and every `chown` fails); the bound data
-  directories must be on a local filesystem (the chown of a mapped id reaches an NFS
-  server as the user's own id and is refused; compute nodes mount home over NFS). **A host
-  in FIPS mode** (`fips=1`, `/proc/sys/crypto/fips_enabled` = 1: the STIG image) breaks the
-  Ubuntu image's OpenSSH, which reads that file and wants a FIPS provider the image lacks
-  (`ssh-keygen`: "PRNG is not seeded", the entrypoint died creating the SSH host keys);
-  `--bind <file containing 0>:/proc/sys/crypto/fips_enabled` works (binds over proc files
-  are allowed; Docker takes the same as `-v <file>:/proc/sys/crypto/fips_enabled:ro`,
-  and needs it just the same) and the image, not a FIPS build anyway, runs. A `TERM` to the host-side
-  `exec` process ends it in a second without reaching the script inside (the entrypoint's
-  own `trap TERM` never ran), so a graceful stop is an explicit `exec instance://<name>
-  <stop command>` in `cancel.sh` before `instance stop -F`, whose PID namespace kills the
-  rest. Files the container writes belong to mapped ids on the host (`166533` for the
-  image's `git` with a range starting at 165536), so a run directory is removed from a
-  `--fakeroot` shell, not with `rm` alone; a test's leftover check counts processes whose
-  mount namespace still binds the run directory (`grep -l <rundir>/data
-  /proc/[0-9]*/mountinfo | wc -l`), since `ps -u $USER` misses the processes running as
-  mapped ids.
+- **A root-only image (its own init, services as several accounts) runs as a
+  `--fakeroot` Apptainer instance** (verified 2026-10, `workflows/gitlab/gitlab-singularity`):
+  the whole pattern, runtime selection, the three probes (id range, image, state), the
+  sandbox and overlay-image fallbacks, the instance flags and the stop sequence, is one
+  section of [software/singularity-sif-containers.md](software/singularity-sif-containers.md),
+  "An image that needs root". Its symptoms, for grepping:
+  - `chown: Operation not permitted` / Ruby `Errno::EPERM @ apply2files` from inside the
+    container: the bound directory is on a network filesystem; the state goes into an
+    ext3 overlay image.
+  - `Permission denied` writing into or unlinking a file the container just created
+    read-only (gitaly's unpacked binaries, git's objects): an image bind through fuse2fs
+    alone; use the overlay image.
+  - An init that waits forever for a service it just configured (runit's `supervise/ok`):
+    the service directory sits in a FUSE overlay; bind it from the host.
+  - `ssh-keygen: PRNG is not seeded` in the entrypoint: the host runs in FIPS mode; bind a
+    `0` over `/proc/sys/crypto/fips_enabled`.
+  - `could not find a temporary directory` from Ruby: the container's `/tmp` is not `1777`.
 - **The session proxy rewrites every redirect to another host onto the session's own
   host** (verified 2026-10-20): an OIDC/OAuth sign-in or RP-initiated logout never reaches
   the identity provider. Intercept external 3xx in your own proxy and answer a hop page:

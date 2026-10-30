@@ -32,6 +32,7 @@ file):
 | [references/design-parameters.md](references/design-parameters.md) | A driver (`doe`, `dakota`) and a runner (`openfoam-naca`) exchange designs: the `params.in` / `results.out` contract. |
 | [references/oidc-sign-in.md](references/oidc-sign-in.md) | The served app signs users in with their ACTIVATE account (OIDC): registering the app, pinning the subdomain, what the session proxy does to the sign-in and the proxy to put in front, testing without a browser. |
 | [references/session-to-endpoint-upgrade.md](references/session-to-endpoint-upgrade.md) | Converting an older session-tunnel workflow to the endpoint pattern. |
+| [references/software/singularity-sif-containers.md](references/software/singularity-sif-containers.md) | The workflow runs a container under Singularity/Apptainer: delivering the SIF, the probes on the node that runs the service, the fallbacks (sandbox, `--fakeroot` instance, overlay image), what hardened and network-filesystem nodes refuse. Read before writing a `*-singularity` runtime, and again before changing how one starts its container. |
 | [references/software/](references/software/) | One piece of software (OpenFOAM, Dakota, ParaView, conda, Singularity/SIF, MPI benchmarks, dask-jobqueue, PhysicsNeMo, PostgreSQL, ...): one file per tool. |
 | [references/app-ui.md](references/app-ui.md) | The workflow serves a page it draws itself (a dashboard, a viewer, a small form): the platform's look from the foundation repo's theme contract (`@parallelworks/ui`): the tokens and fonts to vendor, the component recipes, the icons, the React path, how to verify. |
 
@@ -116,7 +117,9 @@ Write and test the core program (server, simulation, script) there until it runs
 standalone from a clean shell with no manual setup. No YAML yet.
 
 - A web service binds the port it is given (an argument or `$PORT`) on `0.0.0.0` and
-  serves everything its page needs. Prefer the standard library and preinstalled tools,
+  serves everything its page needs. A service that runs in a container follows the
+  Singularity reference's probe-and-fallback pattern: SIF, sandbox or overlay image is
+  decided by its probes on the target node, never from memory. Prefer the standard library and preinstalled tools,
   so the controller script has nothing to install. A page the workflow draws itself
   takes the platform's look from the start: the tokens and fonts to vendor, the
   component recipes and the icons are in [references/app-ui.md](references/app-ui.md).

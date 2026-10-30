@@ -243,6 +243,9 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
 - Pull ghcr/ORAS artifacts through `tools/oras/libs.sh:oras_pull_file` (it retries —
   ghcr intermittently rate-limits anonymous pulls) and keep the packages **public**;
   verify anonymous access before shipping.
+- A Singularity runtime follows
+  `.claude/skills/activate-workflows/references/software/singularity-sif-containers.md`:
+  the SIF first, probes on the node that runs the service, the documented fallbacks.
 - `set -o pipefail` and `set -x` so the trace in `run.<JOBID>.out` shows every command;
   fail loud on a missing path or a bad input rather than carrying on.
 

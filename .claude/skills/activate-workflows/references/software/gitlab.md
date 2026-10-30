@@ -1,8 +1,9 @@
 # GitLab (Linux package image, Docker or a fakeroot Apptainer instance) behind an endpoint, with CI runners
 
 What building `workflows/gitlab` taught (2026-10-28/29, GitLab 19.5.1-ee, gitlab-runner
-19.5.1, Jacamar CI 0.31.0; Docker through `sudo` on a lab node, gcpsmall and awsstig,
-apptainer 1.5.5 on gcpsmall, singularity-ce 4.5.1 on awsstig's STIG image). The endpoint mechanics are [../activate-platform.md](../activate-platform.md)
+19.5.1, Jacamar CI 0.31.0; Docker through `sudo` on a lab node and two cloud clusters,
+apptainer 1.5.5 on a standard cloud image, singularity-ce 4.5.1 on a STIG-hardened one,
+apptainer 1.5.3 on an HPCMP system with a Lustre home). The endpoint mechanics are [../activate-platform.md](../activate-platform.md)
 §10, the OIDC recipe [../oidc-sign-in.md](../oidc-sign-in.md); this file is what GitLab
 adds to them. The two runtimes share `lib/` (controller checks and runner tools, the
 start template's first half, the launcher's GitLab logic); each runtime's files only
@@ -21,60 +22,30 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
     A cold start answered `/users/sign_in` in about 2.5 minutes on a 20-core node; later
     starts take about 2.
   - **Singularity** (`gitlab-singularity/`, SIF `ghcr.io/parallelworks/gitlab:19.5.1-ee`
-    built from `gitlab.def`, the image unchanged): the controller pulls the SIF once into
-    the install directory; the start template probes whether this node mounts it under
-    fakeroot with a writable layer and either runs the SIF as is (`--writable-tmpfs`) or
-    extracts it once per run directory (`singularity build --fakeroot --sandbox
-    <rundir>/image <sif>`, 45 s, a marker names the SIF it came from so a new tag replaces
-    it) and runs the directory with `--writable`; then an Apptainer **instance** with
-    `--fakeroot <that flag> --contain --cleanenv --uts --hostname <host> --workdir
-    <rundir>/work`, the three volumes bound from the run directory, the snippet directory
-    as `/etc/gitlab/activate` and a copy of `/assets/sshd_config` with the form's port
-    (`ListenAddress 127.0.0.1`) over the image's; on a FIPS-mode host also a file holding
-    `0` over `/proc/sys/crypto/fips_enabled`; then `exec --cleanenv --pwd / instance://<name>
-    /assets/init-container` (the image's entrypoint; `/assets/gitlab.rb` already sets
-    `manage_accounts['enable'] = false` and `package['modify_kernel_parameters'] = false`)
-    in the launcher's foreground. `work/tmp` (`chmod 1777`) is the container's `/tmp`
-    through `--workdir` and singularity's own `TMPDIR`. The container shares the host's
-    network, so `nginx['listen_port'] = $PORT` with `nginx['listen_addresses'] =
-    ['127.0.0.1']`, and the package's other fixed loopback listeners (which Docker
-    isolates per container) are moved or turned off so two GitLabs can share a node:
-    `puma['port']` (workhorse uses puma's unix socket),
-    `gitlab_workhorse['prometheus_listen_addr']` and `gitaly['configuration'] =
-    { prometheus_listen_addr: ... }` to free ports, `sidekiq['metrics_enabled']`,
+    built from `gitlab.def`, the image unchanged): the fakeroot-instance pattern of
+    [singularity-sif-containers.md](singularity-sif-containers.md), "An image that needs
+    root", whose probes and fallbacks this workflow is the worked example of. What is
+    GitLab's own: the entrypoint `/assets/init-container` (`/assets/gitlab.rb` already
+    sets `manage_accounts['enable'] = false` and `package['modify_kernel_parameters'] =
+    false`); a copy of `/assets/sshd_config` with the form's port and
+    `ListenAddress 127.0.0.1` bound over the image's; `GITLAB_OMNIBUS_CONFIG` passed as
+    `APPTAINERENV_`/`SINGULARITYENV_` with `$`, backticks and backslashes escaped
+    (pitfalls, "Passing secrets and values with spaces into Apptainer");
+    `GITLAB_SKIP_TAIL_LOGS=true` so the package's logs stay in `logs/`; `gitlab-ctl stop`
+    as the stop command in `cancel.sh`; and, because the container shares the host's
+    network, `nginx['listen_port'] = $PORT` with `nginx['listen_addresses'] =
+    ['127.0.0.1']` and every other fixed loopback listener of the package moved or turned
+    off so two GitLabs can share a node: `puma['port']` (workhorse uses puma's unix
+    socket), `gitlab_workhorse['prometheus_listen_addr']`, `gitaly['configuration'] =
+    { prometheus_listen_addr: ... }`, `sidekiq['metrics_enabled']`,
     `sidekiq['health_checks_enabled']`, `nginx['status']['enable']` (port 8060 on every
-    interface) and `gitlab_kas['enable']` to false; verified with `ss -ltn` on the host:
-    PostgreSQL and Redis listen on unix sockets only. `GITLAB_OMNIBUS_CONFIG` goes in as
-    `APPTAINERENV_`/`SINGULARITYENV_` with `$`, backticks and backslashes escaped;
-    `GITLAB_SKIP_TAIL_LOGS=true` keeps the package's logs in `logs/` instead of the job
-    output. `gitlab_exec` is `exec instance://<name>`. Why the sandbox fallback: the STIG
-    image of awsstig (singularity-ce 4.5.1, `/tmp` noexec, fusermount3 without
-    `user_allow_other`, `mount` not executable from a user namespace, FIPS mode) can
-    neither mount the SIF nor overlay it; gcpsmall (apptainer 1.5.5) runs the SIF as is.
-    Details and conditions: pitfalls, "A root-only image runs under Apptainer as a
-    `--fakeroot` instance; the SIF where the node mounts it, an extracted sandbox where it
-    does not" (a subuid range for the user, a local filesystem, the 1777 `/tmp`, the FIPS
-    bind, `gitlab-ctl stop` through `exec instance://` in `cancel.sh`).
-  - **State on a network filesystem = an ext3 image** (2026-10-29, after the first HSP
-    launch on barfoot's Lustre home failed with `Errno::EPERM @ apply2files
-    /var/opt/gitlab/.gitconfig`): the template probes a `chown 998` in `data/` through
-    the container; on failure one sparse ext3 image, `gitlab.img` (`apptainer overlay
-    create`), becomes the instance's `--overlay` in place of `--writable-tmpfs` and the
-    three volume binds, with `/opt/gitlab/service` bound from `work/service` on the host
-    (why not image binds, and why that bind: pitfalls), the host-side files (runner/,
-    .root_password, markers) stay as they are, and
-    `lib/start.sh` treats an existing `gitlab.img` as "database exists". Verified by hand
-    on gcpsmall: sign-in page after ~10 min, gitaly stable, project created (201), README
-    read (200). Hidden inputs
-    `service.state_layout` (auto|directories|image) and `service.state_image_size` (GB)
-    force it for tests (`tests/general/gcpsmall-image.json`).
-  - **Runtime selection as in kasmvnc** (2026-10-29): apptainer first, then singularity,
-    each from the PATH or its module, taken only when `--version` answers (a module can
-    ship a build whose engine panics on the node); the chosen name goes into every
-    invocation, `cancel.sh` included. kasmvnc's other lessons that apply here: an
-    extracted sandbox on a parallel filesystem returns truncated reads, so an image
-    that cannot be mounted on a Lustre-home node has no fallback (the template says so);
-    FIPS-Go apptainer builds and noexec tmpdirs exist in the fleet.
+    interface) and `gitlab_kas['enable']`; PostgreSQL and Redis listen on unix sockets
+    only. On a network-filesystem run directory the state lives in `gitlab.img` (hidden
+    inputs `service.state_layout` and `service.state_image_size` force or size it for
+    tests; `lib/start.sh` treats an existing image as "database exists"); the symptom
+    that found the image-bind trap was gitaly restarting every few seconds and `POST
+    /projects` answering 500. A cold start answers `/users/sign_in` in about 3.5 minutes
+    on a 16-core node from the SIF, about 10 through the overlay image.
   - **Login node only, both runtimes** (2026-10-29): the YAMLs have no scheduler section
     and call the submitter with `scheduler: false`. A service that outlives the run has
     no place in an allocation, and on the cloud clusters a compute node has no subuid
@@ -201,11 +172,11 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
   are Jacamar's. Only `before_script` + `script` run in the batch job (`sbatch
   --wait`, output tailed from `slurm-ci-<job>.out`); sources, artifacts and
   `after_script` run on the runner's host. Jacamar can inject cluster-wide options
-  (`[batch] default_args = ["--account=x", ...]` in `jacamar.toml`); the workflow had a
-  form input feeding it for a day and dropped it (Alvaro, 2026-10-29): the options a
-  cluster requires go into each job's `SCHEDULER_PARAMETERS`, where the tutorial tells
-  the reader to put them. The workflow also no longer creates an example project; the
-  tutorial creates one by hand.
+  (`[batch] default_args = ["--account=x", ...]` in `jacamar.toml`); a form input feeding
+  it was dropped on review (2026-10-29): the options a cluster requires go into each
+  job's `SCHEDULER_PARAMETERS`, where the tutorial tells the reader to put them. An
+  example project the workflow created was dropped the same day; the tutorial creates
+  one by hand.
 - **Pipelines that call `pw` need a credential that outlives the run** (pw-auth.md): the
   form takes an ACTIVATE API key on cloud clusters (hidden for `existing`,
   `managed-cluster` and the workspace, the probe pattern), carried by the top-level
@@ -228,9 +199,9 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
 - **Jacamar needs SLURM accounting.** After the batch job ends it reads the state
   with `sacct`; on a cluster without `AccountingStorageType` the job's script runs
   to the end and the CI job still fails with `unable to obtained output via sacct:
-  Slurm accounting storage is disabled` (the lab GPU box, 2026-10-28). No option
-  turns this off; the controller refuses the SLURM runner there. On gcpsmall
-  (`accounting_storage/slurmdbd`) the whole path ran through the workflow (2026-10-28):
+  Slurm accounting storage is disabled` (a lab box without slurmdbd, 2026-10-28). No
+  option turns this off; the controller refuses the SLURM runner there. On a cloud
+  cluster with `accounting_storage/slurmdbd` the whole path ran through the workflow:
   the demo pipeline's `hello-slurm` job became SLURM job `ci-4_<id>` on a compute node
   that SLURM powered on for it, Jacamar read `COMPLETED` from `sacct`, the job succeeded;
   the pipeline took about 220 s with the node boot. A test's teardown right after the run

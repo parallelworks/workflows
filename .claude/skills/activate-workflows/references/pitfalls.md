@@ -558,6 +558,29 @@
     ':ro'`: the overlay image was created without `overlay create --fakeroot`.
   - `Errno::EEXIST: File exists` replacing a file of the image (`ln -sf`), or `rm` that
     succeeds while the file stays: Apptainer 1.3 records no whiteout in an overlay image.
+- **A root-only image rebuilt to run as the user from a read-only image** (verified
+  2026-11, `workflows/gitlab/gitlab-singularity`, the sturdier successor of the bullet
+  above): accounts bound over `/etc/passwd`, the privilege drop wrapped away, the
+  install directory's writes redirected by baked symlinks, the root checks patched at
+  build time, one section of
+  [software/singularity-sif-containers.md](software/singularity-sif-containers.md),
+  "An image that needs root, rebuilt to run as the user". Its symptoms, for grepping:
+  - Chef: `Cannot create directory[<volume>] at <volume> due to insufficient permissions`
+    for a directory that exists and is writable: the `directory` resource wants a writable
+    *parent*; patch the assertion for existing directories.
+  - Rails: `"<path>" is a symlink that does not point to a valid file`: a dangling link
+    among `config/initializers`; a regular file that loads the volume's copy if present.
+  - `undefined method '[]=' for nil` from a nested key of `GITLAB_OMNIBUS_CONFIG` right
+    after a `from_file` inside the image's `gitlab.rb`: the nested call turns the DSL's
+    auto-vivify off on return; `eval File.read(...)` in place instead.
+  - `rm -rf <dir>/` exits 1 on a directory that became a symlink into the volume
+    (`gitlab-ctl`'s node cache): make it `rm -rf <dir>/*`.
+  - Apptainer `--writable` with `--home <src>:<dest>` under `/var`: `destination
+    /var/log/gitlab doesn't exist in container` for every other bind under `/var` (the
+    home mount shadows it); bind the data volume with `--bind` and set `HOME` in the
+    entrypoint. Read-only runs are not affected.
+  - `apptainer instance stop -F <name>` prints its usage text (exit 1) when no such
+    instance exists; harmless after a guard on `instance list`.
 - **The session proxy rewrites every redirect to another host onto the session's own
   host** (verified 2026-10-20): an OIDC/OAuth sign-in or RP-initiated logout never reaches
   the identity provider. Intercept external 3xx in your own proxy and answer a hop page:

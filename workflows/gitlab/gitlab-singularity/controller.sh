@@ -56,7 +56,7 @@ if [ -n "${not_owned}" ]; then
     exit 1
 fi
 if [ -s "${rundir}/gitlab.img" ]; then
-    echo "::error title=Error::${rundir}/gitlab.img holds GitLab's state as the earlier fakeroot runtime kept it on a network filesystem; this runtime keeps it in config/, data/ and logs/ and cannot read the image. Choose another run directory"
+    echo "::error title=Error::${rundir}/gitlab.img is the state image of the earlier fakeroot runtime; this one keeps GitLab's state in config/, data/ and logs/ and cannot read the image. Remove it if it holds nothing you need (rm -f ${rundir}/gitlab.img; a run that failed before GitLab ever started left an empty one), or choose another run directory"
     exit 1
 fi
 

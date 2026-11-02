@@ -278,7 +278,13 @@ run directory is the user's own (`rm -rf`). The recipe, in `gitlab.def` and `roo
 Cold start on a 16-core cloud login node: the configuration run finishes in about 4
 minutes, the sign-in page answers 200 a minute later. Verified: all services as the
 user's uid, API, project creation, HTTP push through nginx/workhorse/gitaly, SSH clone
-through gitlab-sshd, zero files in the run directory owned by another id.
+through gitlab-sshd, zero files in the run directory owned by another id. The same
+image on a cloud compute node (home over NFS, no subuid range, the image itself an
+extracted directory read over NFS) also booted, created a project and took a push, with
+nothing owned by another id; PostgreSQL, Redis, Gitaly and Puma talk over unix sockets
+in the NFS volume without trouble, but a cold start there took over 12 minutes to the
+sign-in page (size the wait budget for it, or keep the SIF and the run directory on a
+local disk where there is one).
 
 ## Gotchas (def-file builds — verified, rag-service 2026-08)
 

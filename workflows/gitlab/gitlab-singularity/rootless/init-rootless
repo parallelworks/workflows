@@ -43,10 +43,16 @@ done
 source /RELEASE
 log "GitLab ${RELEASE_PACKAGE} ${RELEASE_VERSION}, running as $(id -u):$(id -g)"
 
-# A previous instance that was killed leaves pid files and sockets behind
+# A previous instance leaves pid files and sockets behind, and the service
+# definitions' supervise/ directories (they live in the data volume here, not
+# in a container layer that a restart would renew): with a stale supervise/ok
+# fifo in place the configuration run skips its wait for runsv and runs sv
+# within the seconds before runsvdir has scanned the new service link
+# ("runsv not running"); without it, it waits as on a first start
 for x in /opt/gitlab/sv/ /var/opt/gitlab/; do
     find "${x}" -maxdepth 4 \( -type f -o -type s \) \( -name pid -o -name '*.pid' -o -name 'socket.?' \) -delete 2>/dev/null
 done
+rm -rf /opt/gitlab/sv/*/supervise /opt/gitlab/sv/*/log/supervise
 
 if old_version=$(cat /var/opt/gitlab/gitlab-rails/VERSION 2>/dev/null); then
     new_version=$(awk '/^gitlab-(ce|ee|jh)/ {print $NF}' /opt/gitlab/version-manifest.txt)

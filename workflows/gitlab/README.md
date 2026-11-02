@@ -25,7 +25,7 @@ to the platform's probe); GitLab and its runners then run until the session is d
 
 | Run container using | What runs | Needs |
 |---|---|---|
-| **Singularity** (default) | The official image rebuilt to run as **one unprivileged user** (`ghcr.io/parallelworks/gitlab:19.5.1-ee-rootless`, a SIF): an Apptainer or Singularity instance with no root, no user namespace with a subuid range and no writable layer, in which every service of the package (Puma, Sidekiq, Gitaly, PostgreSQL, Redis, nginx, GitLab's own SSH server) runs as you. A login node that cannot mount a SIF for an unprivileged user gets the image extracted once into `~/pw/software/containers/` and runs that directory | `apptainer`/`singularity` on the login node, 1.8 GB for the SIF |
+| **Singularity** (default) | The official image rebuilt to run as **one unprivileged user** (`ghcr.io/parallelworks/gitlab:19.5.1-ee-rootless`, a SIF): an Apptainer or Singularity instance that needs no root, subuid range or writable layer, in which every service of the package (Puma, Sidekiq, Gitaly, PostgreSQL, Redis, nginx, GitLab's own SSH server) runs as you. A login node that cannot mount a SIF for an unprivileged user gets the image extracted once into `~/pw/software/containers/` and runs that directory | `apptainer`/`singularity` on the login node, 1.8 GB for the SIF |
 | **Docker** | The official all-in-one image `gitlab/gitlab-ee:19.5.1-ee.0`, as root | Docker on the login node, directly or through `sudo`, 5 GB for the image |
 
 Both need about 4 GB of RAM free for GitLab (8 GB recommended) and keep everything in the
@@ -220,13 +220,12 @@ cd workflows/gitlab/gitlab-singularity
 tools/oras/oras push ghcr.io/parallelworks/gitlab:19.5.1-ee-rootless gitlab-19.5.1-ee-rootless.sif
 ```
 
-`rootless/` is what makes the package run as one unprivileged user from a read-only
-image: `post.sh` (the build step) patches the few places that insist on root
-(`gitlab-ctl reconfigure`'s root check, the `chpst -u` privilege drop of every service
-script, Chef's writable-parent check), replaces the image's OpenSSH with GitLab's own
-`gitlab-sshd`, and turns every path the package writes under `/opt/gitlab` into a
-symlink into `data/.rootless/`; `init-rootless` is the entrypoint; `passwd.in` and
-`group.in` are the account files the launcher binds, which name the running uid `git`
-and every other account of the package. New GitLab version: a new `From:` line in
-`gitlab.def`, a new `GITLAB_SIF_TAG` in `controller.sh`, a new tag on the registry;
-`post.sh` fails the build when the package moved what it patches. Keep the package public.
+`rootless/` makes the package run as one unprivileged user from a read-only image:
+`post.sh` (the build step) patches the few places that insist on root, replaces the
+image's OpenSSH with GitLab's own `gitlab-sshd` and turns every path the package writes
+under `/opt/gitlab` into a symlink into `data/.rootless/`; `init-rootless` is the
+entrypoint; `passwd.in` and `group.in` are the account files the launcher binds, naming
+the running uid `git` and every other account of the package. New GitLab version: a new
+`From:` line in `gitlab.def`, a new `GITLAB_SIF_TAG` in `controller.sh`, a new tag on
+the registry; `post.sh` fails the build when the package moved what it patches. Keep
+the package public.

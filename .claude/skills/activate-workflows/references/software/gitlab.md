@@ -1,6 +1,6 @@
 # GitLab (Linux package image, as the user under Apptainer or as root in Docker) behind an endpoint, with CI runners
 
-What building `workflows/gitlab` taught (2026-10-28/29, GitLab 19.5.1-ee, gitlab-runner
+What building `workflows/gitlab` taught (2026-10-28 to 11-02, GitLab 19.5.1-ee, gitlab-runner
 19.5.1, Jacamar CI 0.31.0; Docker through `sudo` on a lab node and two cloud clusters,
 apptainer 1.5.5 on a standard cloud image, singularity-ce 4.5.1 on a STIG-hardened one,
 apptainer 1.5.3 on an HPCMP system with a Lustre home). The endpoint mechanics are [../activate-platform.md](../activate-platform.md)
@@ -24,24 +24,19 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
   - **Singularity** (`gitlab-singularity/`, SIF `ghcr.io/parallelworks/gitlab:19.5.1-ee-rootless`
     built from `gitlab.def` + `rootless/`): the **single-user image** of
     [singularity-sif-containers.md](singularity-sif-containers.md), "An image that needs
-    root, rebuilt to run as the user", whose worked example this workflow is (2026-11).
-    Every service runs as the user, the image is read-only, the run directory is the
-    user's own on any filesystem; no subuid range, no writable layer, no ext3 image. The
-    earlier runtime (tag `19.5.1-ee`, the package image unchanged, run as a `--fakeroot`
-    instance with sandbox and overlay-image fallbacks, 2026-10) is described in that
-    file's "An image that needs root: a `--fakeroot` instance" section for what it taught.
-    What is GitLab's own: the entrypoint `/assets/init-rootless` (the image's
-    `/assets/gitlab.rb` already sets `manage_accounts['enable'] = false` and
-    `package['modify_kernel_parameters'] = false`; `rootless/gitlab.rb`, evaluated in place before
-    `GITLAB_OMNIBUS_CONFIG`, names `git` as the account of PostgreSQL, Redis, nginx and
-    the rest, and enables `gitlab_sshd`; not through `from_file`, whose return turns the
-    DSL's auto-vivify off and breaks the next nested key of the env config); `GITLAB_OMNIBUS_CONFIG` passed as
-    `APPTAINERENV_`/`SINGULARITYENV_` with `$`, backticks and backslashes escaped
-    (pitfalls, "Passing secrets and values with spaces into Apptainer");
-    `GITLAB_SKIP_TAIL_LOGS=true` so the package's logs stay in `logs/`; `gitlab-ctl stop`
-    as the stop command in `cancel.sh`; the SSH port through
-    `gitlab_sshd['listen_address'] = '127.0.0.1:<port>'` (no `sshd_config` bind); and,
-    because the container shares the host's network, `nginx['listen_port'] = $PORT` with
+    root, rebuilt to run as the user", whose worked example this workflow is. Every
+    service runs as the user from a read-only image, so the run directory can sit on any
+    filesystem and the node needs no subuid range or writable layer; the `--fakeroot`
+    runtime it replaced (tag `19.5.1-ee`, 2026-10) is kept in that file's `--fakeroot`
+    section for what it taught. What is GitLab's own: the entrypoint
+    `/assets/init-rootless`; `rootless/gitlab.rb`, evaluated in place before
+    `GITLAB_OMNIBUS_CONFIG`, names `git` as the account of every service and enables
+    `gitlab_sshd`, which takes the form's port through `gitlab_sshd['listen_address']`;
+    `GITLAB_OMNIBUS_CONFIG` passed as `APPTAINERENV_`/`SINGULARITYENV_` with `$`,
+    backticks and backslashes escaped (pitfalls, "Passing secrets and values with spaces
+    into Apptainer"); `GITLAB_SKIP_TAIL_LOGS=true` so the package's logs stay in `logs/`;
+    `gitlab-ctl stop` as the stop command in `cancel.sh`; and, because the container
+    shares the host's network, `nginx['listen_port'] = $PORT` with
     `nginx['listen_addresses'] = ['127.0.0.1']` and every other fixed loopback listener of
     the package moved or turned off so two GitLabs can share a node: `puma['port']`
     (workhorse uses puma's unix socket), `gitlab_workhorse['prometheus_listen_addr']`,
@@ -50,9 +45,8 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
     `sidekiq['health_checks_enabled']`, `nginx['status']['enable']` (port 8060 on every
     interface) and `gitlab_kas['enable']`; PostgreSQL and Redis listen on unix sockets
     only. A first start answers `/users/sign_in` about 5 minutes after the instance
-    starts on a 16-core node; the root password must pass GitLab's weak-password check
-    (a generated one does; a word-like test password made the admin seed fail and the
-    configuration run with it).
+    starts on a 16-core node. The root password must pass GitLab's weak-password check
+    (a generated one does).
   - **Login node only, both runtimes** (2026-10-29): the YAMLs have no scheduler section
     and call the submitter with `scheduler: false`. A service that outlives the run has
     no place in an allocation, and on the cloud clusters a compute node has no subuid

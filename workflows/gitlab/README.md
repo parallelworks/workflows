@@ -25,7 +25,7 @@ to the platform's probe); GitLab and its runners then run until the session is d
 
 | Run container using | What runs | Needs |
 |---|---|---|
-| **Singularity** (default) | The official image rebuilt to run as **one unprivileged user** (`ghcr.io/parallelworks/gitlab:19.5.1-ee-rootless`, a SIF): an Apptainer or Singularity instance with no root, no user namespace with a subuid range and no writable layer, in which every service of the package (Puma, Sidekiq, Gitaly, PostgreSQL, Redis, nginx, GitLab's own SSH server) runs as you. A login node that cannot mount a SIF for an unprivileged user gets the image extracted once beside the SIF and runs that directory | `apptainer`/`singularity` on the login node, 1.8 GB for the SIF |
+| **Singularity** (default) | The official image rebuilt to run as **one unprivileged user** (`ghcr.io/parallelworks/gitlab:19.5.1-ee-rootless`, a SIF): an Apptainer or Singularity instance with no root, no user namespace with a subuid range and no writable layer, in which every service of the package (Puma, Sidekiq, Gitaly, PostgreSQL, Redis, nginx, GitLab's own SSH server) runs as you. A login node that cannot mount a SIF for an unprivileged user gets the image extracted once into `~/pw/software/containers/` and runs that directory | `apptainer`/`singularity` on the login node, 1.8 GB for the SIF |
 | **Docker** | The official all-in-one image `gitlab/gitlab-ee:19.5.1-ee.0`, as root | Docker on the login node, directly or through `sudo`, 5 GB for the image |
 
 Both need about 4 GB of RAM free for GitLab (8 GB recommended) and keep everything in the

@@ -121,9 +121,7 @@ jobs:
           define_cleanup_script: true
           cleanup_script_path: ./cancel.sh
           # GitLab always runs where preprocessing did: a service that outlives the
-          # run cannot live in a scheduler allocation, and the Singularity runtime
-          # needs the login node's subuid range and local filesystem (the cloud
-          # clusters' compute nodes mount home over NFS and have no range)
+          # run cannot live in a scheduler allocation
           scheduler: false
           use_scheduler_agent: false
           submit_and_exit: false

@@ -72,8 +72,10 @@ unset PYTHONPATH PYTHONHOME PERL5LIB PERLLIB PERL5OPT PYTHONSTARTUP LD_LIBRARY_P
 # The image is read-only at run time (what the package writes goes to the run
 # directory through symlinks baked into the image), so it runs as is where
 # this node mounts a SIF for an unprivileged user, and otherwise from a
-# directory it is extracted into once, beside the SIF, shared by every run
-# directory since nothing writes to it; a marker names the SIF it came from,
+# directory it is extracted into once, under the user's own software
+# directory (a shared install directory would leave the first user's
+# extraction in the way of the next one's), shared by every run directory of
+# the user since nothing writes to it; a marker names the SIF it came from,
 # so a new image replaces it. The probe runs here, on the node that runs the
 # service
 sif_file=$(readlink -f "${container_sif}")
@@ -82,14 +84,15 @@ if "${container_cmd}" exec "${container_sif}" /bin/true >/dev/null 2>&1; then
     image_ref="${container_sif}"
     echo "::notice::Running ${container_sif} as is (this node mounts it)"
 else
-    image_dir="${sif_file%.sif}-sandbox"
+    image_dir="${HOME}/pw/software/containers/$(basename "${sif_file%.sif}")-sandbox"
     image_marker="${image_dir}.source"
+    mkdir -p "$(dirname "${image_dir}")"
     if [ -d "${image_dir}" ] && [ "$(cat "${image_marker}" 2>/dev/null)" != "${sif_id}" ]; then
         echo "::notice::Removing ${image_dir}, extracted from $(cat "${image_marker}" 2>/dev/null || echo 'an unknown or interrupted image'); ${sif_id%% *} replaces it"
         rm -rf "${image_dir}" "${image_marker}"
     fi
     if ! [ -d "${image_dir}" ]; then
-        echo "::notice::$(hostname) cannot mount ${container_sif} for an unprivileged user (no FUSE for a user namespace); extracting it into ${image_dir} (about a minute, once per install directory)"
+        echo "::notice::$(hostname) cannot mount ${container_sif} for an unprivileged user (no FUSE for a user namespace); extracting it into ${image_dir} (a few minutes, once per user)"
         if ! "${container_cmd}" build --force --sandbox "${image_dir}" "${container_sif}"; then
             rm -rf "${image_dir}"
             echo "::error title=Error::Could not extract ${container_sif} on $(hostname) (above)"

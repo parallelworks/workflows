@@ -1,4 +1,4 @@
-# GitLab (Linux package image, Docker or a fakeroot Apptainer instance) behind an endpoint, with CI runners
+# GitLab (Linux package image, as the user under Apptainer or as root in Docker) behind an endpoint, with CI runners
 
 What building `workflows/gitlab` taught (2026-10-28/29, GitLab 19.5.1-ee, gitlab-runner
 19.5.1, Jacamar CI 0.31.0; Docker through `sudo` on a lab node and two cloud clusters,

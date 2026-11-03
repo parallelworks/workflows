@@ -5,21 +5,32 @@ issues, CI/CD) on a cluster's login node, from the official image under Singular
 Docker, and serves it as a `pw` endpoint on a fixed subdomain. Users can sign in with
 their ACTIVATE account, and the workflow registers CI/CD runners that run pipelines on
 the cluster: on the login node, and through the SLURM scheduler with
-[Jacamar CI](https://gitlab.com/ecp-ci/jacamar-ci). New to GitLab? The
-[tutorial](tutorial/README.md) takes you from the launch form to pipelines that run on
-the login node, on your other ACTIVATE resources and on the compute nodes, in about 45
-minutes.
+[Jacamar CI](https://gitlab.com/ecp-ci/jacamar-ci). A CI job always runs **as the user
+whose runner takes it**, so the workflow has two modes: **Start GitLab** for the user
+who serves it, whose runners take the pipelines of a group only they own, and **Add my
+runners to a running GitLab** for every other user of that GitLab, whose own runners,
+started on the same login node as them, take the pipelines of their own projects. New
+to GitLab? The [tutorial](tutorial/README.md) takes you from the launch form to
+pipelines that run on the login node, on your other ACTIVATE resources and on the
+compute nodes, in about 45 minutes.
 
 ```
+Start GitLab (the owner)
 form ──► preprocessing ──► start script ──► GitLab answers, ──► https://<subdomain>.<sessions domain>/
-         (checks, runner    (container,     runners registered,   the run completes; GitLab and its
-          tools)             runners)       demo project created  runners run until the session is deleted
+         (checks, runner    (container,     group and runners    the run completes; GitLab and the
+          tools)             runners)       registered           runners run until the session is deleted
+
+Add my runners to a running GitLab (every other user)
+form ──► preprocessing ──► start script ──► runners registered ──► a status page of the runners; the run
+         (checks, runner    (finds the      and started            completes; the runners run until the
+          tools)             GitLab's port)                        session is deleted
 ```
 
 The first start of a run directory takes three to six minutes (GitLab configures
 itself and creates its database); later starts two to four. The run completes once the
 sign-in page answers and the runners are registered (until then the page answers 503
 to the platform's probe); GitLab and its runners then run until the session is deleted.
+Adding runners takes under a minute.
 
 ## Two ways to run it
 
@@ -95,18 +106,74 @@ the button, and the accounts it created stay.
 
 ## CI/CD runners
 
-The workflow registers instance runners with the GitLab it started and runs them on
-the service host **as the user who launched the workflow**, from
-`<run directory>/runner/` (configuration, builds, cache, `runner.log`). Every CI job
-runs as that user, on that user's cluster account and with that user's `pw` sign-in,
-whichever GitLab account pushed the commit or started the pipeline: share the GitLab
-only with people you would hand your cluster account to. The runners' tokens are kept
-in the run directory too, so a later run on the same run directory finds them again.
+A runner is a process that takes jobs from GitLab and runs them where it runs, **as the
+Linux user it runs as**: on the login node, every job of a runner started by Jane runs
+as Jane, on Jane's cluster account, with Jane's files and SLURM allocations, whichever
+GitLab account pushed the commit. The workflow therefore never shares a runner between
+users: each user's runners take jobs from that user's projects only.
+
+| Who | Launches | Runners of | Their directory |
+|---|---|---|---|
+| **The owner**, who starts GitLab | *Start GitLab* | the group **Group of the runners** names (`<username>-ci` by default): created on the first start, private, with the owner's account as Owner | `<run directory>/runner/` |
+| **Every other user** of that GitLab | *Add my runners to a running GitLab*, on the same cluster, with the GitLab's address, a personal access token of theirs and a project or group of theirs | that project or group | **Runner directory** (`${HOME}/gitlab-runner`) |
+
+Both register the same two runners, run on the service host from the user's directory
+(configuration, builds, cache, `runner.log`; readable by that user alone). Their tokens
+are kept there, so a later start on the same directory finds the runners again:
 
 | Runner | Executor | Jobs | What runs where |
 |---|---|---|---|
-| **shell** (tag `shell`, takes untagged jobs) | GitLab's shell executor | any | the whole job on the service host, with `pw` signed in (below) |
+| **shell** (tag `shell`, takes untagged jobs) | GitLab's shell executor | any | the whole job on the service host |
 | **SLURM** (tag `slurm`) | GitLab's custom executor with Jacamar CI | `tags: [slurm]` | `before_script` + `script` inside an `sbatch` job; sources, artifacts and `after_script` on the service host |
+
+### The owner's runners
+
+The owner's runners are **group runners** of a group the owner owns, so a project outside
+that group, whoever created it, cannot run a job as the owner: create your projects in
+the group (or transfer them there: the project's Settings → General → Advanced). The
+group is created on the first start; with *Sign in with ACTIVATE* configured, the
+workflow also creates the owner's GitLab account ahead of its first sign-in (username
+= ACTIVATE username, the identity that sign-in carries) and makes it the group's Owner,
+and an account that a sign-in created already is made Owner on a later start. Without
+the ACTIVATE client, `root` owns the group. Share a project in the group with the same
+care as your cluster account: a commit anyone pushes to it runs as you.
+
+### Adding your runners to someone else's GitLab
+
+A user the GitLab's session is shared with (the owner shares it from the platform's
+sessions page; it is how they open it at all) signs in with ACTIVATE, creates a project
+and, to run its pipelines, launches this workflow with **Add my runners to a running
+GitLab** on the cluster the GitLab runs on:
+
+| Field | Set it to |
+|---|---|
+| Service host | the cluster the GitLab runs on |
+| GitLab address | the address in the browser, `https://<subdomain>.<sessions domain>` |
+| GitLab personal access token | a token of your GitLab account with the `api` and `create_runner` scopes (avatar → Edit profile → Access tokens); used once, forgotten afterwards |
+| Project or group | the path of your project (`jane/hpc-pipeline`) or group (`team-a`); you must be a Maintainer of the project or an Owner of the group |
+| Register a shell runner / a SLURM runner | as the owner would |
+
+The run registers the runners as **project or group runners** of that path, starts
+them as you from the runner directory, and serves a status page (which runners, where
+the jobs run, GitLab's reachability, the runner's log) as the session; the runners run
+until that session is deleted. A later start on the same runner directory needs no
+token. Jobs of these runners run as you, with your `pw` sign-in where the login node
+has one; a pipeline that calls `pw` on a cloud cluster sets `PW_API_KEY` as a masked
+CI/CD variable of the project (below).
+
+The runners cannot reach GitLab through its public address (the platform's sign-in
+stands in front of it), so they use the loopback port GitLab listens on, which every
+user of the login node shares. The workflow asks the GitLab for that port, the uid it
+runs as and its host through the public address, which only its owner's session
+answers for, and gives the runner a forwarder of its own: every connection the runner,
+Jacamar or `git` makes is opened to that port and relayed only after `/proc/net/tcp`
+shows that the socket at the other end belongs to that uid (or to root, for a port
+Docker publishes). A process of another user that takes the port over after the
+GitLab stops is refused before a byte is sent, so no runner token, job token or job
+variable reaches it; the status page then says GitLab is not reachable, and the user
+adds the runners again once it is back (a restarted GitLab listens on a new port).
+
+### Writing the jobs
 
 A SLURM job passes its `sbatch` options in the `SCHEDULER_PARAMETERS` variable, the
 ones the cluster requires of every job (an account, a partition, a QoS) included (`-o`,
@@ -135,15 +202,14 @@ hello-slurm:
 
 ### Pipelines that call `pw`
 
-A job of the shell runner can reach any resource of the launching user's account with
-the `pw` CLI (`pw ssh <cluster> <command>`, `pw workflows run ...`), which needs a
-credential that outlives the run: the run's own key stops working when the run
-completes. On a cloud cluster give the workflow an **ACTIVATE API key** (account
-settings, API keys): the runner hands it to every job as `PW_API_KEY`. On a cluster
-connected through the ACTIVATE agent the login node is signed in already and the field
-is not shown. The run's log says which credential the pipelines got, or that they got
-none, in which case a project can still set `PW_API_KEY` as a CI/CD variable of its
-own. Launch again with a new key before the old one expires. Step 3 of the
+A job of the shell runner can reach any resource of its user's account with the `pw`
+CLI (`pw ssh <cluster> <command>`, `pw workflows run ...`), which needs a credential
+that outlives the workflow run: the run's own key stops working when the run
+completes, and the runner never carries it. On a cluster connected through the
+ACTIVATE agent the login node is signed in as the runner's user already. On a cloud
+cluster the project sets **`PW_API_KEY`** as a masked CI/CD variable (the project's
+Settings → CI/CD → Variables) holding an API key of the user (account settings, API
+keys); a variable of a group covers every project in it. Step 3 of the
 [tutorial](tutorial/README.md) runs one job on several resources this way.
 
 ## Git from the command line
@@ -188,16 +254,21 @@ need no license.
 
 | Field | Default | Notes |
 |---|---|---|
+| What to start | Start GitLab | *Add my runners to a running GitLab* hides the GitLab and sign-in settings and shows the four fields below |
 | Run container using | Singularity | See above |
 | Subdomain | `gitlab-<username>` | Decides the address, the clone URLs and the OIDC redirect URI. Reserve it with `pw subdomains reserve <label>` |
-| Run directory | `${HOME}/gitlab` | `config/`, `data/`, `logs/` (written by the container; under Singularity `data/.rootless/` also holds what the package writes into its install directory), `runner/` (yours), the generated secrets and, under Singularity, `work/` (the container's `/tmp`). One GitLab at a time, one runtime per directory |
+| Run directory | `${HOME}/gitlab` | `config/`, `data/`, `logs/` (written by the container; under Singularity `data/.rootless/` also holds what the package writes into its install directory), `runner/` (yours), the generated secrets and, under Singularity, `work/` (the container's `/tmp`). One GitLab at a time, one runtime per directory; readable by you alone |
 | GitLab image | `gitlab/gitlab-ee:19.5.1-ee.0` | Docker only. Change the tag one minor version at a time on an existing run directory (GitLab's upgrade path) |
 | Root password | empty | Applied on the first start only; empty generates one into `<run directory>/.root_password` |
 | SSH port | `2222` | Loopback port of GitLab's SSH on the service host, shown in GitLab's SSH clone URLs |
 | GitLab license | empty | See above |
+| GitLab address | | Runner mode: the GitLab's `https://...` address |
+| GitLab personal access token | empty | Runner mode: scopes `api` and `create_runner`; needed to register, not to start registered runners again |
+| Project or group | | Runner mode: the path whose pipelines the runners take |
+| Runner directory | `${HOME}/gitlab-runner` | Runner mode: the runners' tokens, configuration, builds and cache |
+| Group of the runners | `<username>-ci` | Start GitLab: the group whose projects the owner's runners serve |
 | Register a shell runner | on | |
 | Register a SLURM runner | off | Shown on SLURM clusters |
-| ACTIVATE API key | empty | Shown on cloud clusters; what pipelines run `pw` with after the run completes |
 | Client ID / Client secret | empty | Sign in with ACTIVATE; both or neither |
 | New users wait for approval | off | Shown with a client ID |
 
@@ -211,6 +282,12 @@ either way. The run directory keeps everything. Under Singularity it is all your
 the Docker container wrote belongs to root (`sudo rm -rf`). A CI job that is running in
 SLURM at teardown finishes on its own (its runner is gone, so nothing collects its
 result); `scancel` it if it should not.
+
+Deleting a session of added runners (`gitlab-runners-<run slug>`) stops that user's
+runners and their forwarder; the runner directory keeps their registration. The
+runners of other users keep running when the GitLab's session is deleted, refusing
+every connection until their user deletes their session too, or GitLab comes back on
+the same port.
 
 ## Building the Singularity image
 

@@ -96,7 +96,7 @@ sys.exit(0 if any(str(o.get("id")) == i for o in owners) else 1)
 
 runners_register() {
     # runners_register <kind> <run_untagged>
-    local kind=$1 untagged=$2 token_file="${runner_root}/tokens/${kind}.token" token id
+    local kind=$1 untagged=$2 token_file="${runner_root}/tokens/$1.token" token id
     if [ -s "${token_file}" ]; then
         api_token="" runners_api_call POST /runners/verify --data-urlencode "token@${token_file}"
         if [ "${api_status}" = "200" ]; then

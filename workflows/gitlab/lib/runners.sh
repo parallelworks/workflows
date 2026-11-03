@@ -28,6 +28,19 @@
 #     http://127.0.0.1:<port>
 ################################################################################
 
+runners_find_tool() {
+    # runners_find_tool <tool> <binary>: prints the binary lib/runner-tools.sh installed,
+    # in the platform's install directory or the user's own
+    local base
+    for base in "${service_parent_install_dir}" "${HOME}/pw/software"; do
+        if [ -x "${base}/$1/current/$2" ]; then
+            echo "${base}/$1/current/$2"
+            return 0
+        fi
+    done
+    echo "${service_parent_install_dir}/$1/current/$2"
+}
+
 runners_api_call() {
     # runners_api_call <method> <path> [curl args...]: sets api_status and api_body
     local method=$1 path=$2 out

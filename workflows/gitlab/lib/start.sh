@@ -38,8 +38,8 @@ fi
 gitlab_lib="${PW_PARENT_JOB_DIR}/workflows/gitlab/lib"
 source "${gitlab_lib}/runners.sh"
 runner_root="${service_rundir}/runner"
-gitlab_runner_bin="${service_parent_install_dir}/gitlab-runner/current/gitlab-runner"
-jacamar_bin="${service_parent_install_dir}/jacamar-ci/current/jacamar"
+gitlab_runner_bin=$(runners_find_tool gitlab-runner gitlab-runner)
+jacamar_bin=$(runners_find_tool jacamar-ci jacamar)
 if [ "${runners_shell}" = "true" ] || [ "${runners_slurm}" = "true" ]; then
     if ! [ -x "${gitlab_runner_bin}" ]; then
         echo "::error title=Error::gitlab-runner is not installed at ${gitlab_runner_bin} (the controller installs it)"

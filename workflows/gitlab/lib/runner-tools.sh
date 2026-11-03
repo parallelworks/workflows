@@ -25,8 +25,40 @@ if [ -z "${service_parent_install_dir}" ]; then
     service_parent_install_dir=${HOME}/pw/software
 fi
 
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 6) else 1)' 2>/dev/null; then
+    echo "::error title=Error::python3 3.6 or newer is needed on $(hostname) (found: $(python3 --version 2>&1 || echo none))"
+    exit 1
+fi
+
+# The install directory may be shared by every user of the platform (the HSP
+# project directory): a tool another user installed there is used as it is,
+# readable and executable by everyone (the umask of a hardened node would
+# make it the installer's alone), and a user who can write neither the tool
+# nor the directory installs into their own software directory. The start
+# scripts look in both places (runners_find_tool in lib/runners.sh)
+tool_install_dir() {
+    # tool_install_dir <tool> <version> <binary>: prints the base directory to install into
+    local shared="${service_parent_install_dir}/$1"
+    if [ -x "${shared}/$2/$3" ] && "${shared}/$2/$3" --version >/dev/null 2>&1; then
+        echo "${service_parent_install_dir}"
+    elif mkdir -p "${shared}" 2>/dev/null && [ -w "${shared}" ]; then
+        echo "${service_parent_install_dir}"
+    else
+        echo "::warning::${shared} is not writable; installing $1 into ${HOME}/pw/software instead" >&2
+        echo "${HOME}/pw/software"
+    fi
+}
+tool_publish() {
+    # tool_publish <base> <tool> <version>: a current symlink, and the install readable by everyone
+    chmod a+rX "$1/$2" "$1/$2/$3" "$1/$2/$3"/* 2>/dev/null || true
+    if [ -w "$1/$2" ]; then
+        ln -sfn "$3" "$1/$2/current"
+    fi
+}
+
 if [ "${runners_shell}" = "true" ] || [ "${runners_slurm}" = "true" ]; then
-    runner_dir="${service_parent_install_dir}/gitlab-runner/${GITLAB_RUNNER_VERSION}"
+    runner_base=$(tool_install_dir gitlab-runner "${GITLAB_RUNNER_VERSION}" gitlab-runner)
+    runner_dir="${runner_base}/gitlab-runner/${GITLAB_RUNNER_VERSION}"
     runner_bin="${runner_dir}/gitlab-runner"
     if ! [ -x "${runner_bin}" ] || ! "${runner_bin}" --version >/dev/null 2>&1; then
         echo "Installing gitlab-runner ${GITLAB_RUNNER_VERSION} into ${runner_dir}"
@@ -45,7 +77,7 @@ if [ "${runners_shell}" = "true" ] || [ "${runners_slurm}" = "true" ]; then
         mv "${runner_bin}.tmp" "${runner_bin}"
     fi
     "${runner_bin}" --version | head -n 1
-    ln -sfn "${GITLAB_RUNNER_VERSION}" "${service_parent_install_dir}/gitlab-runner/current"
+    tool_publish "${runner_base}" gitlab-runner "${GITLAB_RUNNER_VERSION}"
 fi
 
 if [ "${runners_slurm}" = "true" ]; then
@@ -64,7 +96,8 @@ if [ "${runners_slurm}" = "true" ]; then
             exit 1
             ;;
     esac
-    jacamar_dir="${service_parent_install_dir}/jacamar-ci/${JACAMAR_VERSION}"
+    jacamar_base=$(tool_install_dir jacamar-ci "${JACAMAR_VERSION}" jacamar)
+    jacamar_dir="${jacamar_base}/jacamar-ci/${JACAMAR_VERSION}"
     jacamar_bin="${jacamar_dir}/jacamar"
     if ! [ -x "${jacamar_bin}" ] || ! "${jacamar_bin}" --version >/dev/null 2>&1; then
         echo "Installing Jacamar CI ${JACAMAR_VERSION} into ${jacamar_dir}"
@@ -84,5 +117,5 @@ if [ "${runners_slurm}" = "true" ]; then
         chmod +x "${jacamar_bin}"
     fi
     "${jacamar_bin}" --version | head -n 1
-    ln -sfn "${JACAMAR_VERSION}" "${service_parent_install_dir}/jacamar-ci/current"
+    tool_publish "${jacamar_base}" jacamar-ci "${JACAMAR_VERSION}"
 fi

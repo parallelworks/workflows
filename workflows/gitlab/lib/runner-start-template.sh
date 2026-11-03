@@ -47,8 +47,8 @@ if [ -z "${service_parent_install_dir}" ]; then
 fi
 export runner_root
 runner_root=$(realpath -m "${runners_rundir}")
-export gitlab_runner_bin="${service_parent_install_dir}/gitlab-runner/current/gitlab-runner"
-export jacamar_bin="${service_parent_install_dir}/jacamar-ci/current/jacamar"
+export gitlab_runner_bin=$(runners_find_tool gitlab-runner gitlab-runner)
+export jacamar_bin=$(runners_find_tool jacamar-ci jacamar)
 if ! [ -x "${gitlab_runner_bin}" ]; then
     echo "::error title=Error::gitlab-runner is not installed at ${gitlab_runner_bin} (the controller installs it)"
     exit 1
@@ -233,21 +233,27 @@ if ! runners_setup; then
 fi
 
 # What the status page shows
-python3 - "${run_dir}/status.json" <<PYEOF
-import json, sys, time
+GITLAB_URL="${gitlab_url}" GITLAB_HOST="${gitlab_host}" GITLAB_PORT="${gitlab_port}" GITLAB_UID="${gitlab_uid}" \
+    FORWARD_PORT="${forward_port}" RUNNER_USER="$(id -un)" RUNNER_HOST="$(hostname)" RUNNER_SCOPE="${runner_scope}" \
+    RUNNER_PATH="${runners_path}" RUNNER_ROOT="${runner_root}" RUN_DIR="${run_dir}" RUN_SLUG="${PW_RUN_SLUG}" \
+    RUNNERS_SHELL="${runners_shell}" RUNNERS_SLURM="${runners_slurm}" \
+    python3 - "${run_dir}/status.json" <<'STATUSEOF'
+import json, os, sys, time
+e = os.environ
 runners = []
-if "${runners_shell}" == "true":
+if e["RUNNERS_SHELL"] == "true":
     runners.append({"kind": "shell", "executor": "shell", "tags": ["shell"], "untagged": True})
-if "${runners_slurm}" == "true":
+if e["RUNNERS_SLURM"] == "true":
     runners.append({"kind": "slurm", "executor": "custom (Jacamar CI, sbatch)", "tags": ["slurm"], "untagged": False})
-json.dump({
-    "gitlab_url": "${gitlab_url}", "gitlab_host": "${gitlab_host}", "gitlab_port": ${gitlab_port},
-    "gitlab_uid": ${gitlab_uid}, "forward_port": ${forward_port},
-    "user": "$(id -un)", "host": "$(hostname)", "scope": "${runner_scope}", "path": "${runners_path}",
-    "runner_root": "${runner_root}", "run_dir": "${run_dir}", "runners": runners,
-    "run_slug": "${PW_RUN_SLUG}", "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-}, open(sys.argv[1], "w"))
-PYEOF
+with open(sys.argv[1], "w") as f:
+    json.dump({
+        "gitlab_url": e["GITLAB_URL"], "gitlab_host": e["GITLAB_HOST"], "gitlab_port": int(e["GITLAB_PORT"]),
+        "gitlab_uid": int(e["GITLAB_UID"]), "forward_port": int(e["FORWARD_PORT"]),
+        "user": e["RUNNER_USER"], "host": e["RUNNER_HOST"], "scope": e["RUNNER_SCOPE"], "path": e["RUNNER_PATH"],
+        "runner_root": e["RUNNER_ROOT"], "run_dir": e["RUN_DIR"], "runners": runners,
+        "run_slug": e["RUN_SLUG"], "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }, f)
+STATUSEOF
 
 echo "::notice::Pipelines of ${runner_scope:-the registered scope} ${runners_path} now run on $(hostname) as $(id -un); a job that calls pw needs PW_API_KEY as a CI/CD variable of the project"
 echo "::group::Serving the runner status page"

@@ -65,12 +65,6 @@ jobs:
           oidc_block_new_users="${{ inputs.oidc.block_new_users }}"
           oidc_display_name="${{ inputs.oidc.display_name }}"
           EOF
-          # The endpoint: GitLab itself, or the status page of the runners added to one
-          if [ "${{ inputs.mode }}" = "runner" ]; then
-            echo 'pw_endpoints_args="--name gitlab-runners-${PW_RUN_SLUG}"' >> inputs.sh
-          else
-            echo 'pw_endpoints_args="--name ${{ inputs.service.name }}-${PW_RUN_SLUG}"' >> inputs.sh
-          fi
           # Remove empty and undefined variables
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
           sed -i '/=""/d' inputs.sh
@@ -98,51 +92,9 @@ jobs:
           echo "::notice title=Install Directory::Using Install Directory: ${hsp_install_dir}"
           echo "export service_parent_install_dir=${hsp_install_dir}" >> inputs.sh
       - name: Controller Preprocessing
-        run: |
-          set -x
-          # This script prepares the target host and always runs in the controller node
-          cp inputs.sh controller-${PW_JOB_ID}.sh
-          if [ "${{ inputs.mode }}" = "runner" ]; then
-            cat workflows/gitlab/lib/runner-controller.sh >> controller-${PW_JOB_ID}.sh
-          else
-            cat workflows/gitlab/${{ inputs.service.container_runtime }}/controller.sh >> controller-${PW_JOB_ID}.sh
-          fi
-          bash controller-${PW_JOB_ID}.sh
+        run: mode="${{ inputs.mode }}" container_runtime="${{ inputs.service.container_runtime }}" bash workflows/gitlab/lib/preprocess.sh controller
       - name: Create Service Script
-        run: |
-          rm -f HOSTNAME SESSION_PORT job.ended job.started
-          # This script starts the service
-          cp inputs.sh start-service-${PW_JOB_ID}.sh
-
-          # Write code common to all services
-          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
-
-          cleanup() {
-              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
-              echo "::notice::Cleaning up..."
-              if [ -f cancel.sh ]; then
-                  mv cancel.sh cancel.sh.submitted
-                  echo "echo Cleanup script was already executed" > cancel.sh
-                  bash cancel.sh.submitted
-              fi
-              kill -- -$$
-          }
-
-          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
-
-          echo "::notice::Starting service"
-          EOF
-          if [ "${{ inputs.mode }}" = "runner" ]; then
-            cat workflows/gitlab/lib/runner-start-template.sh >> ./start-service-${PW_JOB_ID}.sh
-            echo "ENDPOINT_NAME=gitlab-runners-${PW_RUN_SLUG}" | tee -a $OUTPUTS
-            echo "HEALTH_PATH=/" | tee -a $OUTPUTS
-          else
-            cat workflows/gitlab/${{ inputs.service.container_runtime }}/start-template.sh >> ./start-service-${PW_JOB_ID}.sh
-            echo "ENDPOINT_NAME=${{ inputs.service.name }}-${PW_RUN_SLUG}" | tee -a $OUTPUTS
-            echo "HEALTH_PATH=/users/sign_in" | tee -a $OUTPUTS
-          fi
-          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
-          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+        run: mode="${{ inputs.mode }}" container_runtime="${{ inputs.service.container_runtime }}" service_name="${{ inputs.service.name }}" bash workflows/gitlab/lib/preprocess.sh service-script
 
   session_runner:
     needs:
@@ -309,13 +261,13 @@ jobs:
               The GitLab's session must be shared with you (its owner shares it from the platform's sessions page) and its run must have completed. The runners reach the GitLab on the login node's loopback port, which the workflow asks the GitLab for through this address; they cannot work from another cluster.
           token:
             label: GitLab personal access token
-            description: A token of your GitLab account with the api and create_runner scopes, used once to register the runners; a later start of the same runner directory finds them without it.
+            description: A token of your GitLab account with the api and create_runner scopes, used to register the runners; give it a short expiry, since the platform keeps form values in the run's record. A later start of the same runner directory needs none.
             type: password
             optional: true
             hidden: ${{ inputs.mode != 'runner' }}
             ignore: ${{ .hidden }}
             tooltip: |
-              In GitLab, your avatar -> Edit profile -> Access tokens, scopes api and create_runner. The token looks the project or group up and creates the runners, then is forgotten; the runners' own tokens stay in the runner directory, and a runner whose stored token no longer works is registered again with a new token given here.
+              In GitLab, your avatar -> Edit profile -> Access tokens, scopes api and create_runner, an expiry of a day. The token looks the project or group up and creates the runners; the runners' own tokens stay in the runner directory, and a runner whose stored token no longer works is registered again with a new token given here.
           path:
             label: Project or group
             description: Path of the GitLab project (jane/hpc-pipeline) or group (team-a) whose pipelines run on these runners; you must be a Maintainer of the project or an Owner of the group.

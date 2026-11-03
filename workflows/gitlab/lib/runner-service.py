@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The runner mode's two helpers, standard library only (Python 3.6+).
+"""The runner mode's two helpers, standard library only (Python 3.6 or newer).
 
     runner-service.py listener-uid <port>
         prints the uid of the process listening on 127.0.0.1:<port> (or
@@ -31,7 +31,8 @@ import socket
 import subprocess
 import sys
 import time
-from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+from socketserver import ThreadingMixIn
 
 LOOPBACK = {"0100007F", "00000000"}
 
@@ -136,12 +137,12 @@ class Forwarder:
                 except (ConnectionError, OSError):
                     pass
 
-    async def serve(self):
-        server = await asyncio.start_server(self.handle, "127.0.0.1", self.port)
+    def serve(self):
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(asyncio.start_server(self.handle, "127.0.0.1", self.port))
         self.log("forwarding 127.0.0.1:%d to 127.0.0.1:%d (uid %s)"
                  % (self.port, self.gitlab_port, sorted(self.allowed)))
-        async with server:
-            await server.serve_forever()
+        loop.run_forever()
 
 
 # -------------------------------------------------------------- status page
@@ -196,7 +197,8 @@ class Status:
         jobs = []
         try:
             out = subprocess.run(["squeue", "-h", "-u", state["user"], "-o", "%i %j %T %M"],
-                                 capture_output=True, text=True, timeout=10).stdout
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                 universal_newlines=True, timeout=10).stdout
             jobs = [line.split(None, 3) for line in out.splitlines() if line.startswith("ci-") or " ci-" in line]
         except (OSError, subprocess.SubprocessError):
             pass
@@ -334,6 +336,10 @@ class Status:
         }
 
 
+class Server(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+
 class Handler(SimpleHTTPRequestHandler):
     status = None
     extensions_map = dict(SimpleHTTPRequestHandler.extensions_map,
@@ -372,7 +378,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command")
     p = sub.add_parser("listener-uid")
     p.add_argument("port", type=int)
     p = sub.add_parser("forward")
@@ -385,17 +391,19 @@ def main():
     p.add_argument("--state", required=True)
     p.add_argument("--web", required=True)
     args = parser.parse_args()
+    if not args.command:
+        parser.error("a command is required")
 
     if args.command == "listener-uid":
         uid = listener_uid(args.port)
         print("" if uid is None else uid)
     elif args.command == "forward":
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-        asyncio.run(Forwarder(args.port, args.gitlab_port, args.gitlab_uid, args.log).serve())
+        Forwarder(args.port, args.gitlab_port, args.gitlab_uid, args.log).serve()
     elif args.command == "status":
         Handler.status = Status(os.path.abspath(args.state))
         os.chdir(args.web)
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+        server = Server(("127.0.0.1", args.port), Handler)
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
         server.serve_forever()
 

@@ -254,8 +254,9 @@ jobs:
         items:
           gitlab_url:
             label: GitLab address
-            description: The https://... address of the GitLab in your browser, started on this cluster with this workflow and shared with you.
+            description: The https://... address of the GitLab in your browser, started on this cluster with this workflow and shared with you; the default is where this workflow serves it unless its owner chose another subdomain.
             type: string
+            default: https://gitlab.pw.hsp.mil
             hidden: ${{ inputs.mode != 'runner' }}
             ignore: ${{ .hidden }}
             tooltip: |

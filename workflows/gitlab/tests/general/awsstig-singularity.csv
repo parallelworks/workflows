@@ -8,3 +8,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-11-03T17:03:11Z,warm,pass,kept,3e2d74e,162207a,727fc42,be305f7,be305f7,gitlab,alvaro,amused-rabbit,241,
 2026-11-03T17:22:12Z,warm,pass,ok,3e2d74e,162207a,727fc42,be305f7,be305f7,gitlab,alvaro,careful-lioness,242,
 2026-11-03T17:41:11Z,warm,fail,kept,92e43f1,162207a,727fc42,b056678-dirty,2469a44,gitlab,alvaro,funky-frog,37,"run error, expected completed: preprocessing > Controller Preprocessing (error, 0s)"
+2026-11-03T17:43:53Z,warm,pass,kept,de3742d,162207a,727fc42,1e39dd1,1e39dd1,gitlab,alvaro,usable-leech,257,

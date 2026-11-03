@@ -11,7 +11,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: gitlab
           sparse_checkout:
             - workflows/gitlab/lib
             - workflows/gitlab/gitlab-singularity

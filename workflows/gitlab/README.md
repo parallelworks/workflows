@@ -162,7 +162,7 @@ sessions page) and an account on the cluster it runs on. Then:
    | Service host | the cluster GitLab runs on |
    | GitLab address | the address in your browser, `https://<subdomain>.<sessions domain>` |
    | GitLab personal access token | the token from step 2 |
-   | Project or group | the path of your project (`jane/hpc-pipeline`) or group (`team-a`); you must be a Maintainer of the project or an Owner of the group |
+   | Project or group | the full path of your project, namespace included (`jane/hpc-pipeline`, not `hpc-pipeline`), or of your group (`team-a`): everything after the GitLab address in the browser. You must be a Maintainer of the project or an Owner of the group |
    | Register a shell runner / a SLURM runner | as you need |
 
 The run registers the runners for that project or group, starts them as you and serves
@@ -278,7 +278,7 @@ ACTIVATE and the runners need no license.
 | GitLab license | empty | See above |
 | GitLab address | | Runner mode: the GitLab's `https://...` address. On activate.hpc.mil it defaults to `https://gitlab.pw.hsp.mil` |
 | GitLab personal access token | empty | Runner mode: scopes `api` and `create_runner`. Needed to register the runners, not to start registered ones again |
-| Project or group | | Runner mode: the path whose pipelines the runners take |
+| Project or group | | Runner mode: the full path, namespace included, of the project or group whose pipelines the runners take |
 | Runner directory | `${HOME}/gitlab-runner` | Runner mode: the runners' tokens, configuration, builds and cache |
 | Group of the runners | `<username>-ci` | Start GitLab: the group whose projects the owner's runners serve |
 | Register a shell runner | on | |

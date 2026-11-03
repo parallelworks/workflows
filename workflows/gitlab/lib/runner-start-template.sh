@@ -215,7 +215,7 @@ if [ -n "${api_token}" ]; then
             runner_type=group_type
             runner_scope="group"
         else
-            echo "::error title=Error::${runners_path} is neither a project nor a group that ${gitlab_user} can see on ${gitlab_url} (HTTP ${api_status})"
+            echo "::error title=Error::${runners_path} is neither a project nor a group that ${gitlab_user} can see on ${gitlab_url} (HTTP ${api_status}): give the full path, namespace included (jane/hpc-pipeline, not hpc-pipeline), as it follows the GitLab address in the browser"
             exit 1
         fi
     fi

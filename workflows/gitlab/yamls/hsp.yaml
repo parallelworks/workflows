@@ -272,12 +272,12 @@ jobs:
               In GitLab, your avatar -> Edit profile -> Access tokens, scopes api and create_runner, an expiry of a day. The token looks the project or group up and creates the runners; the runners' own tokens stay in the runner directory, and a runner whose stored token no longer works is registered again with a new token given here.
           path:
             label: Project or group
-            description: Path of the GitLab project (jane/hpc-pipeline) or group (team-a) whose pipelines run on these runners; you must be a Maintainer of the project or an Owner of the group.
+            description: Full path of the GitLab project, namespace included (jane/hpc-pipeline, not hpc-pipeline), or of the group (team-a), whose pipelines run on these runners; you must be a Maintainer of the project or an Owner of the group.
             type: string
             hidden: ${{ inputs.mode != 'runner' }}
             ignore: ${{ .hidden }}
             tooltip: |
-              The path is the part of the project's or group's address after the GitLab's. The runners are registered as runners of that project or group only (project or group runners), so no other project can run a job as you; share the project with care, since a commit anyone pushes to it runs as you.
+              The path is everything after the GitLab address in your browser with the project or group open: <username or group>/<project> for a project, <group> for a group. A project name on its own is not found. The runners are registered as runners of that project or group only (project or group runners), so no other project can run a job as you; share the project with care, since a commit anyone pushes to it runs as you.
           rundir:
             label: Runner directory
             description: Keeps the runners' registration, configuration, checkouts and cache; reuse it to keep them, delete it to register anew.

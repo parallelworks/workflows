@@ -269,7 +269,7 @@ jobs:
             hidden: ${{ inputs.mode != 'runner' }}
             ignore: ${{ .hidden }}
             tooltip: |
-              In GitLab, your avatar -> Edit profile -> Access tokens, scopes api and create_runner, an expiry of a day. The token looks the project or group up and creates the runners; the runners' own tokens stay in the runner directory, and a runner whose stored token no longer works is registered again with a new token given here.
+              In GitLab, your avatar -> Edit profile -> Access tokens -> Add new token: a Legacy token (not a fine-grained one), scopes api and create_runner, an expiry of a day; GitLab shows it once. The token looks the project or group up and creates the runners; the runners' own tokens stay in the runner directory, and a runner whose stored token no longer works is registered again with a new token given here.
           path:
             label: Project or group
             description: Full path of the GitLab project, namespace included (jane/hpc-pipeline, not hpc-pipeline), or of the group (team-a), whose pipelines run on these runners; you must be a Maintainer of the project or an Owner of the group.

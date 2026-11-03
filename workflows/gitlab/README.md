@@ -152,9 +152,10 @@ You need the GitLab's session shared with you (the owner does that from the plat
 sessions page) and an account on the cluster it runs on. Then:
 
 1. Sign in with ACTIVATE and create a project.
-2. Create a personal access token with the `api` and `create_runner` scopes (avatar →
-   Edit profile → Access tokens). Give it a short expiry: the platform keeps form
-   values in the run's record.
+2. Create a personal access token: avatar → Edit profile → Access tokens → Add new
+   token, pick **Legacy token** (not a fine-grained one), tick the `api` and
+   `create_runner` scopes and set the expiry to a day. GitLab shows the token once;
+   copy it. Keep the expiry short: the platform keeps form values in the run's record.
 3. Launch this workflow with **Add my runners to a running GitLab** on the same cluster:
 
    | Field | Value |

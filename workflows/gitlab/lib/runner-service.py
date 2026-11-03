@@ -393,8 +393,8 @@ def main():
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
         asyncio.run(Forwarder(args.port, args.gitlab_port, args.gitlab_uid, args.log).serve())
     elif args.command == "status":
+        Handler.status = Status(os.path.abspath(args.state))
         os.chdir(args.web)
-        Handler.status = Status(args.state)
         server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
         server.serve_forever()

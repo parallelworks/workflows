@@ -149,7 +149,7 @@ GitLab** on the cluster the GitLab runs on:
 |---|---|
 | Service host | the cluster the GitLab runs on |
 | GitLab address | the address in the browser, `https://<subdomain>.<sessions domain>` |
-| GitLab personal access token | a token of your GitLab account with the `api` and `create_runner` scopes (avatar → Edit profile → Access tokens); used once, forgotten afterwards |
+| GitLab personal access token | a token of your GitLab account with the `api` and `create_runner` scopes (avatar → Edit profile → Access tokens), with a short expiry: the platform keeps form values in the run's record |
 | Project or group | the path of your project (`jane/hpc-pipeline`) or group (`team-a`); you must be a Maintainer of the project or an Owner of the group |
 | Register a shell runner / a SLURM runner | as the owner would |
 

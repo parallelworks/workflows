@@ -114,8 +114,13 @@ if [ -z "${PW_API_KEY}" ]; then
     echo "::error title=Error::PW_API_KEY is not set; ${gitlab_url} cannot be asked where it listens"
     exit 1
 fi
+(
+    umask 077
+    echo "Authorization: Bearer ${PW_API_KEY}" > "${run_dir}/host-headers"
+)
 resp=$(curl -s -w '\n%{http_code}' --max-time 30 ${connect_to:+--connect-to "${connect_to}"} \
-    -H "Authorization: Bearer ${PW_API_KEY}" "${gitlab_url}/-/activate/host")
+    -H "@${run_dir}/host-headers" "${gitlab_url}/-/activate/host")
+rm -f "${run_dir}/host-headers"
 set -x
 host_status=${resp##*$'\n'}
 host_body=${resp%$'\n'*}
@@ -136,7 +141,7 @@ if [ -z "${gitlab_port}" ] || [ -z "${gitlab_uid}" ]; then
     exit 1
 fi
 if [ "${gitlab_node}" != "$(hostname)" ]; then
-    echo "::error title=Error::${gitlab_url} runs on ${gitlab_node:-an unknown host}, not on $(hostname): add the runners from the cluster it runs on"
+    echo "::error title=Error::${gitlab_url} runs on the login node ${gitlab_node:-(unknown)}, not on $(hostname): the runners reach it on that node's loopback, so add them from a run that lands there"
     exit 1
 fi
 echo "::notice::${gitlab_url} listens on 127.0.0.1:${gitlab_port} of $(hostname) as uid ${gitlab_uid}"

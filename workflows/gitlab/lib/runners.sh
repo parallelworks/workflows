@@ -41,13 +41,21 @@ runners_find_tool() {
     echo "${service_parent_install_dir}/$1/current/$2"
 }
 
+# The token goes to curl in a file of this job (curl's -H @file), never on its
+# command line, which every user of the login node can read in ps
 runners_api_call() {
     # runners_api_call <method> <path> [curl args...]: sets api_status and api_body
-    local method=$1 path=$2 out
+    local method=$1 path=$2 out headers="${run_dir}/api-headers"
     shift 2
-    out=$(curl -s -w '\n%{http_code}' -X "${method}" \
-        ${api_token:+-H "PRIVATE-TOKEN: ${api_token}"} ${api_host:+-H "Host: ${api_host}"} \
-        "$@" "${api_base}${path}")
+    (
+        umask 077
+        {
+            if [ -n "${api_token}" ]; then echo "PRIVATE-TOKEN: ${api_token}"; fi
+            if [ -n "${api_host}" ]; then echo "Host: ${api_host}"; fi
+        } > "${headers}"
+    )
+    out=$(curl -s -w '\n%{http_code}' -X "${method}" -H "@${headers}" "$@" "${api_base}${path}")
+    rm -f "${headers}"
     api_status=${out##*$'\n'}
     api_body=${out%$'\n'*}
 }

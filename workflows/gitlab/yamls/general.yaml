@@ -161,6 +161,7 @@ jobs:
         label: GitLab settings
         collapsed: true
         hidden: ${{ inputs.mode == 'runner' }}
+        ignore: ${{ .hidden }}
         items:
           name:
             type: string

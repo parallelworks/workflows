@@ -277,28 +277,56 @@ artifacts of SLURM jobs stay on the cluster.
 
 ## Git from the command line
 
-The endpoint serves GitLab behind the platform's sign-in, which `git` cannot pass, so
-clones and pushes do not go through `https://<subdomain>.<sessions domain>`. They use
-GitLab's ports on the service host instead:
+The address in your browser sits behind the platform's sign-in, which `git` cannot
+pass, so `git` does not use `https://<subdomain>.<sessions domain>`. It talks to the
+ports GitLab listens on inside the cluster, reached from your machine through a tunnel.
+An ACTIVATE account has no GitLab password, so `git` signs in with an SSH key (no
+password ever asked) or with a personal access token in place of a password.
 
-- **From the cluster** (a terminal, JupyterLab or any session on it):
-  `git clone http://localhost:<HTTP port>/<group>/<project>.git`. The HTTP port is the
-  one `pw endpoints run` assigned; the run's log prints it, and `ss -ltnp` on the host
-  shows who listens on it (nginx under Singularity, docker-proxy under Docker). Both
-  runtimes bind the HTTP and SSH ports on the loopback interface of the service host
-  only.
-- **From your machine:** open a tunnel first, then clone through it:
+**With an SSH key.** Once, register your key: print it with `cat ~/.ssh/id_ed25519.pub`
+(`ssh-keygen -t ed25519` creates one), then in GitLab avatar → **Edit profile** →
+**SSH Keys** → **Add new key**, paste it, **Add key**. Then, every time:
 
-  ```bash
-  pw forward -L 2222:localhost:2222 <cluster>      # the form's SSH port
-  git clone ssh://git@localhost:2222/<group>/<project>.git
-  ```
+1. In a terminal of its own, open the tunnel and leave it running (Ctrl-C closes it;
+   `git` then answers "Connection refused"):
 
-  Add your public key to GitLab first (Profile → SSH Keys). The HTTP port works the same
-  way with your GitLab password or a personal access token.
+   ```bash
+   pw forward -L 2222:localhost:2222 <cluster>      # the form's SSH port, fixed
+   ```
 
-The runners talk to GitLab over the host's loopback as well, so pipelines need no
-tunnel.
+2. In a second terminal, work as with any repository:
+
+   ```bash
+   git clone ssh://git@localhost:2222/<group>/<project>.git
+   cd <project>
+   echo "a change" >> README.md
+   git commit -am "Edit the README"
+   git push
+   ```
+
+   The first clone asks whether to trust the host's fingerprint; answer yes. Every push
+   starts a pipeline, as any commit does.
+
+**With a personal access token.** Create one under avatar → **Edit profile** →
+**Access tokens** → **Add new token**: a Legacy token with the `write_repository`
+scope. Open the tunnel to GitLab's HTTP port instead, the one the run's log prints
+(it changes when GitLab restarts), and clone over HTTP; `git` asks for your username
+and, as the password, the token:
+
+```bash
+pw forward -L 8080:localhost:<HTTP port> <cluster>
+git clone http://localhost:8080/<group>/<project>.git
+```
+
+The password prompt shows nothing while you paste. "Access denied" means the token did
+not arrive intact; `git config --global credential.helper osxkeychain` (macOS) stores
+it after one good paste.
+
+**From the cluster itself** (a terminal, JupyterLab or any session on it) there is no
+tunnel: `git clone http://localhost:<HTTP port>/<group>/<project>.git` with the token,
+or `ssh://git@localhost:<SSH port>/...` with a key of the cluster account. Both
+runtimes bind the two ports on the login node's loopback only. The runners talk to
+GitLab over that loopback as well, so pipelines need no tunnel.
 
 ## License
 

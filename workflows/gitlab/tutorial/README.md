@@ -103,7 +103,9 @@ in the form or the one the workflow generated into the run directory (`pw ssh
 The first line of output, `Running on <login node> as <user>`, names you, the user who
 launched the workflow, whoever committed: that is who every job of your runners runs
 as. The job ran in a fresh checkout of the repository under
-`~/gitlab/runner/builds/shell/`. Change a line, commit, and it runs again.
+`~/gitlab/runner/builds/shell/`. Change a line, commit, and it runs again. The web
+editor is enough for the tutorial; to clone the project to your laptop and push from
+there, see *Git from the command line* in the workflow's [README](../README.md).
 
 ## Step 3: the same runner reaches every system, with `pw`
 
@@ -274,6 +276,9 @@ A job's wall time counts against GitLab's job timeout too (one hour by default, 
   and `srun ./my_mpi_program` in the script.
 - **Keep results:** `artifacts:` for files GitLab should keep and show; a copy to a
   project directory on the cluster in the script for large data.
+- **Git from your laptop:** clone, edit and push with `git` through a tunnel to the
+  cluster, with an SSH key or a token: *Git from the command line* in the workflow's
+  [README](../README.md).
 - **Other users:** someone you share the GitLab's session with can sign in and create
   projects but has no runners until they launch the workflow on the same cluster with
   **Add my runners to a running GitLab** (the README's *Adding your runners to someone

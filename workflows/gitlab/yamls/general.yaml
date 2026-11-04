@@ -184,6 +184,7 @@ jobs:
             description: Label of the URL, https://<label>.<sessions domain>, the same on every run; empty uses gitlab-<your username>.
             type: string
             optional: true
+            default: gitlab
             tooltip: |
               GitLab builds its clone URLs and the Sign in with ACTIVATE redirect URI from this address, so it is pinned instead of taking a random subdomain. Lowercase letters, digits and dashes; reserve it with 'pw subdomains reserve <label>' so nobody else takes it. Two GitLabs of yours (two clusters) need two labels.
           rundir:
@@ -236,8 +237,9 @@ jobs:
         items:
           gitlab_url:
             label: GitLab address
-            description: The https://... address of the GitLab in your browser, started on this cluster with this workflow and shared with you.
+            description: The https://... address of the GitLab in your browser, started on this cluster with this workflow and shared with you; the default is where this workflow serves it unless its owner chose another subdomain.
             type: string
+            default: https://gitlab.activate.pw
             hidden: ${{ inputs.mode != 'runner' }}
             ignore: ${{ .hidden }}
             tooltip: |

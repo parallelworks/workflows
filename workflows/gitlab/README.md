@@ -7,17 +7,23 @@ ACTIVATE account. Pipelines run on the cluster through GitLab runners: on the lo
 node, or on the compute nodes through SLURM with
 [Jacamar CI](https://gitlab.com/ecp-ci/jacamar-ci).
 
-A CI job runs as the Linux user whose runner picked it up, so the workflow has two
-modes:
+One user, the **owner**, starts GitLab and shares its session with the others from the
+platform's sessions page. The owner's run also registers runners, so the owner's
+projects run pipelines from the start. The other users can sign in, create projects
+and push to them, but they have no runners: a CI job runs as the Linux user whose
+runner took it, so the owner's runners serve the owner's projects only. To run
+pipelines, each of them launches this workflow once more, on the same cluster, in its
+second mode. The two modes:
 
-- **Start GitLab**, for the user who serves it. Starts GitLab and registers runners for
-  a group that only this user owns.
-- **Add my runners to a running GitLab**, for every other user of that GitLab. Starts
-  runners on the same login node, as that user, for their own projects.
+- **Start GitLab**: the owner. Starts GitLab and registers runners for a group that
+  only the owner owns.
+- **Add my runners to a running GitLab**: every other user. Registers runners of their
+  own on the same login node, for their own projects, so their jobs run as them.
 
 New to GitLab? The [tutorial](tutorial/README.md) takes you from the launch form to
-pipelines on the login node, on your other ACTIVATE resources and on the compute
-nodes, in about 45 minutes.
+pipelines on the login node and on the compute nodes, and shows how a job uses the
+`pw` client to run on any system connected to your ACTIVATE account, in about 45
+minutes.
 
 ```
 Start GitLab (the owner)
@@ -52,17 +58,6 @@ can live on any filesystem (local disk, NFS, Lustre, GPFS) and `rm -rf` removes 
 Hardened login nodes (a STIG image, FIPS mode, no FUSE mount of the SIF) work too, with
 notices in the run's log.
 
-## Requirements
-
-- GitLab runs on the cluster's **login node**, never in a scheduler job, because the
-  service outlives the run. Only CI jobs reach the compute nodes, through the SLURM
-  runner.
-- One of the two runtimes above on the login node.
-- A platform with session subdomains (GitLab serves at the root of its address).
-- For the SLURM runner: `sbatch`, `squeue`, `scancel` and `sacct` on the service host,
-  with SLURM accounting enabled. Jacamar reads each job's final state from `sacct`, so
-  the controller refuses the runner on a cluster without `AccountingStorageType`.
-
 ## Signing in
 
 With the *Sign in with ACTIVATE* group filled in, users sign in with their ACTIVATE
@@ -80,8 +75,8 @@ GitLab's OpenID Connect provider is in every edition, so this needs no license.
    from the GitLab address the form's **Subdomain** sets:
    `https://<subdomain>.<sessions domain>/users/auth/openid_connect/callback`. With the
    default subdomain on activate.parallel.works that is
-   `https://gitlab-<user>.activate.pw/users/auth/openid_connect/callback`; other
-   platforms have their own sessions domain.
+   `https://gitlab.activate.pw/users/auth/openid_connect/callback`; different
+   platforms have different sessions domains.
 
    Turn on the *OIDC Applications* preview in your account settings, open
    Organization → Settings → Applications and add a **web** application with that
@@ -171,34 +166,94 @@ a status page as its session: which runners are up, where jobs run, whether GitL
 reachable, the runner log. The runners keep running until you delete that session. A
 later start on the same runner directory needs no token.
 
-Your jobs run as you. On a login node with a `pw` sign-in of its own they can call `pw`
-directly; on a cloud cluster set `PW_API_KEY` as a masked CI/CD variable (below).
+Your jobs run as you (*Writing the jobs*, below).
 
-**How the runners reach GitLab.** The public address sits behind the platform's
-sign-in, which runners cannot pass, so they connect to the loopback port GitLab listens
-on. Every user of the login node shares that port, so the workflow checks who is on the
-other end. It asks GitLab for its port, uid and host through the public address, which
-only the owner's session answers for, and starts a small forwarder of its own. Every
-connection from the runner, Jacamar or `git` goes through that forwarder, which checks
-in `/proc/net/tcp` that the listening socket belongs to GitLab's uid (or to root, for a
-port Docker publishes) before relaying a byte. If another user's process takes the
-port over after GitLab stops, the connection is refused and no runner token, job token
-or job variable reaches it. The status page then shows GitLab as unreachable; add the
-runners again once it is back (a restarted GitLab listens on a new port).
+### How the runners reach GitLab
+
+GitLab's public address sits behind the platform's sign-in, which a runner cannot
+pass, so the runners use the port GitLab listens on, on the login node's loopback.
+Every user of the node shares that port, and the workflow makes sure the process at
+the other end is GitLab:
+
+1. It asks GitLab for its port and the uid it runs as, through the public address.
+   Only a GitLab this workflow started answers, and only for a user its session is
+   shared with.
+2. It starts a forwarder of its own, which the runner, Jacamar and `git` connect to.
+   Before relaying a connection, the forwarder checks that the socket on GitLab's port
+   still belongs to that uid (or to root, for a port Docker publishes).
+
+```mermaid
+flowchart LR
+    runner["Your runners and git<br/>(run as you)"] --> fwd["Your forwarder<br/>checks the uid on GitLab's port"]
+    fwd --> gitlab["GitLab<br/>127.0.0.1:port, the owner's uid"]
+    runner -. "port and uid, once,<br/>through the public address" .-> pub["https://&lt;subdomain&gt;.&lt;sessions domain&gt;<br/>platform sign-in"]
+    pub --> gitlab
+```
+
+If GitLab stops and another process takes the port, the forwarder refuses the
+connection, and no runner token, job token or job variable reaches it. The status
+page then shows GitLab as unreachable. A restarted GitLab listens on a new port, so
+launch *Add my runners* again once it is back.
+
+### Working on a project together
+
+A project's pipelines run on the runners registered for it, as the user who started
+them. If Alice owns the project and Bob can push to it, a commit of Bob's runs as
+Alice, with whatever Bob put in `.gitlab-ci.yml`. To work together without that:
+
+- Bob forks the project into his own namespace, adds his runners to the fork (*Add my
+  runners*, with the fork's path) and works there. His pipelines run as him.
+- Bob opens a merge request to Alice's project. Its pipeline runs in the fork, as Bob.
+  Alice reviews the changes, `.gitlab-ci.yml` included, and merges. The pipeline on the
+  merged branch runs as Alice, on code she approved.
+- Alice protects the branch (Settings → Repository → Protected branches: Maintainers
+  merge, no one pushes) and marks her runners protected (edit the runner under the
+  group's Build → Runners, or the project's Settings → CI/CD → Runners, and tick
+  **Protected**). They then only take jobs from protected branches, so a branch pushed
+  straight into the project runs nothing as her.
+
+Anyone can edit the pipelines this way; a change runs as the owner only once the owner
+merges it.
 
 ### Writing the jobs
 
-A SLURM job passes its `sbatch` options in the `SCHEDULER_PARAMETERS` variable,
-including whatever the cluster requires of every job (account, partition, QoS). Leave
-out `-o`, `-e`, `-J` and `--wait`: Jacamar sets those. Each job also needs the
-`CI_JOB_JWT` id token that Jacamar reads; a `default:` block gives it to every job in
-the project. Set a wall time, because GitLab's job timeout keeps counting while the
-job waits in the queue.
+GitLab starts a pipeline after every commit to a repository that holds a
+`.gitlab-ci.yml`. To start them only by hand (Build → Pipelines → New pipeline) or on a
+schedule (Build → Pipeline schedules), add a `workflow` block at the top of the file;
+`when: manual` on a single job does the same for that job:
 
-Jacamar runs the stages that stay on the login node (sources, artifacts, cache) in a
-login shell with a clean environment. The workflow links `gitlab-runner` into `~/bin`
-so the login profile finds it. If your profile does not put `~/bin` on the PATH, the
-run's log warns you, and artifacts of SLURM jobs stay on the cluster.
+```yaml
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "schedule"'
+```
+
+**Shell runner.** The job runs on the login node as you, with your files, modules and
+cluster account, and takes untagged jobs. With the `pw` client it reaches any system
+connected to your ACTIVATE account (`pw ssh <resource> <command>`,
+`pw workflows run ...`), which step 3 of the [tutorial](tutorial/README.md) does. That
+needs a credential that outlives the workflow run: the run's own key stops working
+when the run completes, and the runner never gets it. On a cluster connected through
+the ACTIVATE agent the login node is signed in as you already. On a cloud cluster, set
+**`PW_API_KEY`** as a masked CI/CD variable (Settings → CI/CD → Variables) holding one
+of your API keys (account settings → API keys); a group variable covers every project
+in the group.
+
+```yaml
+hello-every-system:
+  script:
+    - pw ssh my-cluster 'echo "Hello from $(hostname) as $(id -un)"'
+```
+
+**SLURM runner.** A job tagged `slurm` runs its `before_script` and `script` inside an
+`sbatch` job on the compute nodes, through Jacamar CI; sources, artifacts and
+`after_script` stay on the login node. The job passes its `sbatch` options in
+`SCHEDULER_PARAMETERS`, including whatever the cluster requires of every job (account,
+partition, QoS); leave out `-o`, `-e`, `-J` and `--wait`, which Jacamar sets. Each job
+needs the `CI_JOB_JWT` id token that Jacamar reads; a `default:` block gives it to
+every job. Set a wall time, because GitLab's job timeout keeps counting while the job
+waits in the queue. The runner needs SLURM accounting on the cluster (Jacamar reads
+the job's final state from `sacct`); the workflow refuses it otherwise.
 
 ```yaml
 default:
@@ -215,17 +270,10 @@ hello-slurm:
     - srun hostname
 ```
 
-### Pipelines that call `pw`
-
-A job on the shell runner can reach any resource in its user's account with the `pw`
-CLI (`pw ssh <cluster> <command>`, `pw workflows run ...`). That needs a credential
-that outlives the workflow run: the run's own key stops working when the run
-completes, and the runner never gets it. On a cluster connected through the ACTIVATE
-agent, the login node is already signed in as the runner's user. On a cloud cluster,
-set **`PW_API_KEY`** as a masked CI/CD variable (the project's Settings → CI/CD →
-Variables) holding one of your API keys (account settings → API keys). A group
-variable covers every project in the group. Step 3 of the
-[tutorial](tutorial/README.md) runs one job on several resources this way.
+Jacamar runs the stages that stay on the login node in a login shell with a clean
+environment. The workflow links `gitlab-runner` into `~/bin` so the login profile finds
+it; if your profile does not put `~/bin` on the PATH, the run's log warns you, and
+artifacts of SLURM jobs stay on the cluster.
 
 ## Git from the command line
 

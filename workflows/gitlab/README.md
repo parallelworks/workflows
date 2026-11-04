@@ -272,7 +272,7 @@ ACTIVATE and the runners need no license.
 | What to start | Start GitLab | *Add my runners to a running GitLab* hides the GitLab and sign-in settings and shows the four runner fields below |
 | Run container using | Singularity | See above |
 | Subdomain | `gitlab-<username>` | Decides the address, the clone URLs and the OIDC redirect URI. Reserve it with `pw subdomains reserve <label>` |
-| Run directory | `${HOME}/gitlab` | `config/`, `data/`, `logs/` (written by the container; under Singularity `data/.rootless/` also holds what the package writes into its install directory), `runner/` (yours), the generated secrets and, under Singularity, `work/` (the container's `/tmp`). One GitLab at a time, one runtime per directory; readable by you alone |
+| Run directory | `${HOME}/gitlab` | On a cloud cluster, a path on a persistent disk keeps it across restarts (above). `config/`, `data/`, `logs/` (written by the container; under Singularity `data/.rootless/` also holds what the package writes into its install directory), `runner/` (yours), the generated secrets and, under Singularity, `work/` (the container's `/tmp`). One GitLab at a time, one runtime per directory; readable by you alone |
 | GitLab image | `gitlab/gitlab-ee:19.5.1-ee.0` | Docker only. Change the tag one minor version at a time on an existing run directory (GitLab's upgrade path) |
 | Root password | empty | Applied on the first start only; empty generates one into `<run directory>/.root_password` |
 | SSH port | `2222` | Loopback port of GitLab's SSH on the service host, shown in GitLab's SSH clone URLs |
@@ -286,6 +286,22 @@ ACTIVATE and the runners need no license.
 | Register a SLURM runner | off | Shown on SLURM clusters |
 | Client ID / Client secret | empty | Sign in with ACTIVATE; both or neither |
 | New users wait for approval | off | Shown with a client ID |
+
+## Keeping the data across cluster restarts
+
+On a cloud cluster, attach a persistent disk to the cluster (in the cluster's
+definition, or with `pw cluster attach-storage --cluster-uri pw://<user>/<cluster>
+--storage-uri pw://<user>/<storage> --mount-point /gitlab`) and point **Run directory**
+at a path on it, such as `/gitlab/gitlab`. Under Singularity everything in the run
+directory is yours, so any mount point you can write to works. Nothing else has to
+survive: the image and the runner tools cached under `~/pw/software` are downloaded
+again when they are gone.
+
+After the cluster comes back, GitLab is down and its session shows `stopped` in the
+sessions list. Delete that session (`pw endpoints delete <name>`; the workflow refuses
+to start while it holds the subdomain), then launch again with the same run directory.
+Projects, pipelines, artifacts, accounts and the runners' registration are back in two
+to four minutes.
 
 ## Teardown
 

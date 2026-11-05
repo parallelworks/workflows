@@ -39,12 +39,12 @@ Five words GitLab uses:
 | **runner** | a program that takes jobs from GitLab and runs them somewhere; a job picks its runner with **tags** |
 | **`.gitlab-ci.yml`** | the file at the root of the repository that defines the jobs |
 
-Step 1 registers both runners and step 2 creates the project they serve; the later
-steps reuse it. The runners take jobs only from projects in your group `<username>-ci`
-and run every job as you, whoever committed (the README's *CI/CD runners* says why, and
-how other users get runners of their own). A project created anywhere else has no
-runners and its jobs stay *pending*; move it into the group (Settings → General →
-Advanced → Transfer project).
+Step 2 creates the project and the later steps reuse it; all of them need it to have
+runners. If you launched the workflow, step 1 registered yours: they serve the
+projects of your group `<username>-ci` and run every job as you, whoever committed
+(the README's *CI/CD runners* says why). On a GitLab someone else launched, skip
+step 1; if your project has no runners (its jobs stay *pending*), add your own by
+following the README's *Adding your runners to someone else's GitLab*.
 
 Throughout, `<resource>` stands for the cluster you launch GitLab on, as `pw cluster ls`
 names it. Where an example shows `sbatch` options (steps 4 and 5), replace them with what
@@ -78,9 +78,11 @@ in the form or the one the workflow generated into the run directory (`pw ssh
 ## Step 2: a first job on the login node
 
 1. **Create a project.** Click **+** at the top of the sidebar → **New project/repository**
-   → **Create blank project**. Name it `hpc-pipeline`, pick your group `<username>-ci`
-   as its namespace under *Project URL* (your runners only take jobs from projects in
-   it), leave *Initialize repository with a README* checked, click **Create project**.
+   → **Create blank project**. Name it `hpc-pipeline` and pick its namespace under
+   *Project URL*: your runners' group `<username>-ci` if you launched the workflow, any
+   namespace of yours otherwise (you add your runners to it afterwards, the intro
+   above). Leave *Initialize repository with a README* checked, click
+   **Create project**.
 2. **Add the pipeline file.** Open **Code → Repository**, click the **+** above the file
    list → **New file**, and name it exactly `.gitlab-ci.yml`: a leading dot and nothing
    before it, the one file name GitLab looks for (the example files in this directory
@@ -271,7 +273,7 @@ A job's wall time counts against GitLab's job timeout too (one hour by default, 
 | `sbatch: error: ...` in the log | an option the cluster rejects, or one it requires is missing (account, partition, QoS) | Try the same `sbatch` options by hand on the cluster, then put them in `SCHEDULER_PARAMETERS` (or `SBATCH_OPTIONS` in step 3) |
 | A green SLURM job, but its artifacts never reach GitLab | Jacamar uploads them from the login node in a clean login shell, which must find `gitlab-runner`; the workflow links it into `~/bin`, and your login profile leaves `~/bin` off the PATH | The run's log warns about it; make your profile put `~/bin` on the PATH |
 | `pw: ... no context configured` or `Authentication has expired` in a step 3 job | the runner has no credential | Set `PW_API_KEY` as a masked CI/CD variable of the project (step 3) |
-| The job stays *pending* in a project outside `<username>-ci` | your runners only serve that group | Create the project in the group, or move it there (Settings → General → Advanced → Transfer project) |
+| The job stays *pending* in a project your runners do not serve | runners only take jobs from the project or group they were registered for | Move it into your runners' group (Settings → General → Advanced → Transfer project), or add runners for it (the README's *Adding your runners to someone else's GitLab*) |
 | A job does something you did not expect it to be allowed to | it runs as you, the runners' owner, whoever pushed the commit | Let only people you would hand your cluster account to push to the group's projects; others run their own runners (the README's *Working on a project together*) |
 | The job runs for an hour and fails with a timeout | the node took too long or the script hangs | Shorter `--time`, a higher job timeout, check `squeue` |
 | `Running with gitlab-runner ...` then nothing for minutes | SLURM is booting or waiting for a node | `squeue -u $USER` on the cluster shows the job's state and reason |

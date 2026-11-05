@@ -45,8 +45,7 @@ You need two things; the workflow's [README](../README.md) covers both:
 
 - **A GitLab served by this workflow.** Its owner launched it and shares it from the
   platform's sessions page. Open it **in its own browser tab** (it does not work
-  inside the platform's embedded view) and sign in: the **ACTIVATE** button, or `root`
-  with the password from the form or from `pw ssh <resource> cat gitlab/.root_password`.
+  inside the platform's embedded view) and sign in with the **ACTIVATE** button.
 - **Your own runners on it**, shell and SLURM, since every job runs as the user whose
   runner takes it. Launching the workflow with **Register a shell runner** and
   **Register a SLURM runner** on registered both, serving your group `<username>-ci`.

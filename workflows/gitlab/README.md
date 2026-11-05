@@ -174,7 +174,9 @@ session shared with you (the owner does that from the platform's sessions page).
 The run registers the runners for that project or group, starts them as you and serves
 a status page as its session: which runners are up, where jobs run, whether GitLab is
 reachable, the runner log. The runners keep running until you delete that session. A
-later start on the same runner directory needs no token.
+later start on the same runner directory needs no token (keep the directory on a
+persistent disk where home does not survive a restart: *Keeping the data across
+cluster restarts*).
 
 Your jobs run as you and are written like the owner's: steps 1 to 5 of the
 [tutorial](tutorial/README.md) apply to your runners unchanged.
@@ -301,6 +303,14 @@ at a path on it, such as `/gitlab/gitlab`. Under Singularity everything in the r
 directory is yours, so any mount point you can write to works. Nothing else has to
 survive: the image and the runner tools cached under `~/pw/software` are downloaded
 again when they are gone.
+
+The same advice applies to runners added with *Add my runners to a running GitLab*:
+their **Runner directory** defaults to `${HOME}/gitlab-runner`, and a re-created
+cluster can come back with a fresh home. That loses the runners' tokens: the next
+launch needs a new personal access token and registers new runners, and the old ones
+sit offline in the project's runner list until deleted there. A runner directory on
+the persistent disk, such as `/gitlab/runner-<username>`, relaunches with no token.
+The owner's runners need nothing: their files live in the run directory.
 
 After the cluster comes back, GitLab is down and its session shows `stopped` in the
 sessions list. Delete that session (`pw endpoints delete <name>`; the workflow refuses

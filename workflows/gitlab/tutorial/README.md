@@ -97,13 +97,10 @@ CLI the way you do from your laptop: `pw cluster ls`, `pw ssh <resource> <comman
 ACTIVATE account, or start a registered workflow on one of them.
 
 1. **The credential.** `pw` needs to be signed in on the login node after the workflow
-   run has completed, when the run's own credential has stopped working. On a cloud
-   cluster, give the project one of your API keys: **Settings → CI/CD → Variables → Add
-   variable**, key `PW_API_KEY`, value an API key of yours (**Account → Authentication →
-   API keys** in ACTIVATE), *Masked* ticked; every job of the shell runner gets it. On a
-   cluster connected through the ACTIVATE agent, `pw` on the login node is signed in as
-   you already and the variable is not needed. (A variable on the group `<username>-ci`
-   serves every project in it.)
+   run has completed, when the run's own credential has stopped working. Give the
+   project one of your API keys: **Settings → CI/CD → Variables → Add variable**, key
+   `PW_API_KEY`, value an API key of yours (**Account → Authentication → API keys** in
+   ACTIVATE), *Masked* ticked; every job of the shell runner gets it.
 2. **Add the job.** Open **Build → Pipeline editor**, which shows `.gitlab-ci.yml` and
    checks it as you type, replace its contents with
    [`02-every-system.gitlab-ci.yml`](02-every-system.gitlab-ci.yml) and put the names of

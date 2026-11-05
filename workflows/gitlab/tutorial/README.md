@@ -64,8 +64,8 @@ every job.
    → **Create blank project**. Name it `hpc-pipeline` and pick its namespace under
    *Project URL*: your runners' group `<username>-ci` if you launched the workflow, any
    namespace of yours otherwise (you register your runners for it next, *Before you
-   start*). Leave *Initialize repository with a README* checked, click
-   **Create project**.
+   start*, with **Project or group** set to its full path, `<namespace>/hpc-pipeline`).
+   Leave *Initialize repository with a README* checked, click **Create project**.
 2. **Add the pipeline file.** Open **Code → Repository**, click the **+** above the file
    list → **New file**, and name it exactly `.gitlab-ci.yml`: a leading dot and nothing
    before it, the one file name GitLab looks for (the example files in this directory

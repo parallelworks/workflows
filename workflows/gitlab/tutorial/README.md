@@ -185,7 +185,9 @@ A job reaches the scheduler with `tags: [slurm]`; its `sbatch` options go in
 3. The commands and their output, exactly as they ran on the compute node:
    `Running on <node> as <user>`, `SLURM job <id> on <node>`, then the node names
    `srun hostname` printed.
-4. `Slurm job ci-...: state: COMPLETED`: Jacamar asked SLURM how the batch job ended.
+4. `Slurm job ci-...: state: COMPLETED`: Jacamar asked SLURM's accounting (`sacct`)
+   how the batch job ended. This is why the runner needs accounting on the cluster;
+   the workflow refuses to register it where accounting is off.
 5. `Job succeeded`: GitLab marks the job green.
 
 **The same job, seen from the cluster.** The batch job was an ordinary one, submitted as
@@ -242,6 +244,16 @@ many cases.
 - **By hand:** **Build → Pipelines → New pipeline**, optionally with variables, as in
   step 5.
 
+Commits can also stop starting pipelines: a `workflow` block at the top of
+`.gitlab-ci.yml` limits them to the schedule and the **New pipeline** button, and
+`when: manual` on a single job holds just that job for a click:
+
+```yaml
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "schedule"'
+```
+
 A job's wall time counts against GitLab's job timeout too (one hour by default, under
 **Settings → CI/CD → General pipelines**), queue time included.
 
@@ -261,6 +273,7 @@ A job's wall time counts against GitLab's job timeout too (one hour by default, 
 | The job stays *pending*; "This job is stuck because of one of the following problems" | no runner has its tag | Check `tags:`; relaunch the workflow with **Register a SLURM runner** on |
 | `No id_token found on CI_JOB_JWT variable` | the `default: id_tokens:` block is missing | Copy it from the examples |
 | `sbatch: error: ...` in the log | an option the cluster rejects, or one it requires is missing (account, partition, QoS) | Try the same `sbatch` options by hand on the cluster, then put them in `SCHEDULER_PARAMETERS` (or `SBATCH_OPTIONS` in step 3) |
+| A green SLURM job, but its artifacts never reach GitLab | Jacamar uploads them from the login node in a clean login shell, which must find `gitlab-runner`; the workflow links it into `~/bin`, and your login profile leaves `~/bin` off the PATH | The run's log warns about it; make your profile put `~/bin` on the PATH |
 | `pw: ... no context configured` or `Authentication has expired` in a step 3 job | the runner has no credential | Set `PW_API_KEY` as a masked CI/CD variable of the project (step 3) |
 | The job stays *pending* in a project outside `<username>-ci` | your runners only serve that group | Create the project in the group, or move it there (Settings → General → Advanced → Transfer project) |
 | A job does something you did not expect it to be allowed to | it runs as you, the runners' owner, whoever pushed the commit | Let only people you would hand your cluster account to push to the group's projects; others run their own runners (the README's *Working on a project together*) |

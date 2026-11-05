@@ -130,6 +130,10 @@ directory reuses the registration:
 | **shell** (tag `shell`, takes untagged jobs) | GitLab's shell executor | any | the whole job on the service host |
 | **SLURM** (tag `slurm`) | GitLab's custom executor with Jacamar CI | `tags: [slurm]` | `before_script` + `script` inside an `sbatch` job; sources, artifacts and `after_script` on the service host |
 
+How to write the jobs — the shell runner with the `pw` client, the SLURM runner's
+`SCHEDULER_PARAMETERS` and id token, artifacts, schedules, when pipelines start — is
+steps 2 to 6 of the [tutorial](tutorial/README.md).
+
 ### The owner's runners
 
 The owner's runners are **group runners** of the group named in **Group of the
@@ -172,7 +176,8 @@ a status page as its session: which runners are up, where jobs run, whether GitL
 reachable, the runner log. The runners keep running until you delete that session. A
 later start on the same runner directory needs no token.
 
-Your jobs run as you (*Writing the jobs*, below).
+Your jobs run as you and are written like the owner's: steps 2 to 6 of the
+[tutorial](tutorial/README.md) apply to your runners unchanged.
 
 ### How the runners reach GitLab
 
@@ -220,66 +225,6 @@ Alice, with whatever Bob put in `.gitlab-ci.yml`. To work together without that:
 
 Anyone can edit the pipelines this way; a change runs as the owner only once the owner
 merges it.
-
-### Writing the jobs
-
-GitLab starts a pipeline after every commit to a repository that holds a
-`.gitlab-ci.yml`. To start them only by hand (Build → Pipelines → New pipeline) or on a
-schedule (Build → Pipeline schedules), add a `workflow` block at the top of the file;
-`when: manual` on a single job does the same for that job:
-
-```yaml
-workflow:
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "schedule"'
-```
-
-**Shell runner.** The job runs on the login node as you, with your files, modules and
-cluster account, and takes untagged jobs. With the `pw` client it reaches any system
-connected to your ACTIVATE account (`pw ssh <resource> <command>`,
-`pw workflows run ...`), which step 3 of the [tutorial](tutorial/README.md) does. That
-needs a credential that outlives the workflow run: the run's own key stops working
-when the run completes, and the runner never gets it. On a cluster connected through
-the ACTIVATE agent the login node is signed in as you already. On a cloud cluster, set
-**`PW_API_KEY`** as a masked CI/CD variable (Settings → CI/CD → Variables) holding one
-of your API keys (account settings → API keys); a group variable covers every project
-in the group.
-
-```yaml
-hello-every-system:
-  script:
-    - pw ssh my-cluster 'echo "Hello from $(hostname) as $(id -un)"'
-```
-
-**SLURM runner.** A job tagged `slurm` runs its `before_script` and `script` inside an
-`sbatch` job on the compute nodes, through Jacamar CI; sources, artifacts and
-`after_script` stay on the login node. The job passes its `sbatch` options in
-`SCHEDULER_PARAMETERS`, including whatever the cluster requires of every job (account,
-partition, QoS); leave out `-o`, `-e`, `-J` and `--wait`, which Jacamar sets. Each job
-needs the `CI_JOB_JWT` id token that Jacamar reads; a `default:` block gives it to
-every job. Set a wall time, because GitLab's job timeout keeps counting while the job
-waits in the queue. The runner needs SLURM accounting on the cluster (Jacamar reads
-the job's final state from `sacct`); the workflow refuses it otherwise.
-
-```yaml
-default:
-  id_tokens:
-    CI_JOB_JWT:
-      aud: $CI_SERVER_URL
-
-hello-slurm:
-  tags: [slurm]
-  variables:
-    SCHEDULER_PARAMETERS: "--nodes=1 --time=00:10:00"   # plus --account=..., --partition=... as the cluster requires
-  script:
-    - echo "SLURM job $SLURM_JOB_ID on $SLURM_NODELIST"
-    - srun hostname
-```
-
-Jacamar runs the stages that stay on the login node in a login shell with a clean
-environment. The workflow links `gitlab-runner` into `~/bin` so the login profile finds
-it; if your profile does not put `~/bin` on the PATH, the run's log warns you, and
-artifacts of SLURM jobs stay on the cluster.
 
 ## Git from the command line
 

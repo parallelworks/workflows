@@ -129,9 +129,7 @@ artifacts land in GitLab as before.
 ## Step 3: a job on a compute node, through the SLURM runner
 
 The SLURM runner submits to one system only: the SLURM cluster GitLab itself runs on,
-where it was registered. There it is a shorter way than step 2's `pw ssh`, turning the
-job into a batch job itself; every other system is still reached with `pw ssh`.
-Replace `.gitlab-ci.yml` with
+where it was registered. Replace `.gitlab-ci.yml` with
 [`03-hello-slurm.gitlab-ci.yml`](03-hello-slurm.gitlab-ci.yml) in the pipeline editor,
 put the `sbatch` options your cluster requires into `SCHEDULER_PARAMETERS`, and commit.
 Three things in the file are new:
@@ -226,9 +224,9 @@ many cases.
 - **By hand:** **Build → Pipelines → New pipeline**, optionally with variables, as in
   step 4.
 
-Commits can also stop starting pipelines: a `workflow` block at the top of
-`.gitlab-ci.yml` limits them to the schedule and the **New pipeline** button, and
-`when: manual` on a single job holds just that job for a click:
+A `workflow` block at the top of `.gitlab-ci.yml` stops commits from starting
+pipelines, leaving the schedule and the **New pipeline** button; `when: manual` on a
+single job holds just that job for a click:
 
 ```yaml
 workflow:

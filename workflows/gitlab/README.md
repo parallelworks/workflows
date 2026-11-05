@@ -7,18 +7,20 @@ ACTIVATE account. Pipelines run on the cluster through GitLab runners: on the lo
 node, or on the compute nodes through SLURM with
 [Jacamar CI](https://gitlab.com/ecp-ci/jacamar-ci).
 
-One user, the **owner**, starts GitLab and shares its session with the others from the
-platform's sessions page. The owner's run also registers runners, so the owner's
-projects run pipelines from the start. The other users can sign in, create projects
-and push to them, but they have no runners: a CI job runs as the Linux user whose
-runner took it, so the owner's runners serve the owner's projects only. To run
-pipelines, each of them launches this workflow once more, on the same cluster, in its
-second mode. The two modes:
+The workflow has two modes:
 
-- **Start GitLab**: the owner. Starts GitLab and registers runners for a group that
-  only the owner owns.
-- **Add my runners to a running GitLab**: every other user. Registers runners of their
-  own on the same login node, for their own projects, so their jobs run as them.
+- **Start GitLab** starts GitLab and registers runners for a GitLab group of the user
+  who launched it, **Group of the runners** in the form, `<username>-ci` by default.
+  Every project in that group runs its pipelines on them.
+- **Add my runners to a running GitLab** registers runners of the user who launched it
+  with a GitLab already running on the same cluster, for one project or group of
+  theirs.
+
+A CI job runs as the Linux user whose runner took it, so a runner is never shared
+between users. One user, the **owner**, runs *Start GitLab* and shares its session
+with the others from the platform's sessions page. They can sign in, create projects
+and push to them, but they have no runners: those who need pipelines run the workflow
+again, on the same cluster, in *Add my runners* mode.
 
 New to GitLab? The [tutorial](tutorial/README.md) takes you from the launch form to
 pipelines on the login node and on the compute nodes, and shows how a job uses the
@@ -116,7 +118,7 @@ take jobs from that user's own projects.
 | Who | Mode | The runners serve | Runner files |
 |---|---|---|---|
 | **The owner**, who starts GitLab | *Start GitLab* | the group named in **Group of the runners** (`<username>-ci` by default) | `<run directory>/runner/` |
-| **Every other user** of that GitLab | *Add my runners to a running GitLab* | a project or group of theirs | **Runner directory** (`${HOME}/gitlab-runner`) |
+| **Every other user** of that GitLab, and the owner for a project outside the group | *Add my runners to a running GitLab* | a project or group of theirs | **Runner directory** (`${HOME}/gitlab-runner`) |
 
 Both modes register the same two runners. They run on the service host out of the
 user's runner files (configuration, builds, cache, `runner.log`), which only that user
@@ -130,9 +132,13 @@ directory reuses the registration:
 
 ### The owner's runners
 
-The owner's runners are **group runners**: they only take jobs from projects in the
-group, so no project elsewhere in GitLab can run as the owner. Create your projects in
-the group, or move them there (the project's Settings → General → Advanced).
+The owner's runners are **group runners** of the group named in **Group of the
+runners**: they take jobs from every project in that group, new ones included, and
+from no project elsewhere in GitLab, so nothing outside the group can run as the
+owner. Create your projects in the group. A project of yours outside it, in your
+personal namespace (`<username>/<project>`) or in another group, has no runners until
+you move it into the group (Settings → General → Advanced → Transfer project) or
+launch *Add my runners to a running GitLab* for it, as any other user does.
 
 The group is created on the first start, private. With *Sign in with ACTIVATE*
 configured, the workflow makes the owner's GitLab account the group's Owner, creating
@@ -143,8 +149,8 @@ projects as carefully as your cluster account.
 
 ### Adding your runners to someone else's GitLab
 
-You need the GitLab's session shared with you (the owner does that from the platform's
-sessions page) and an account on the cluster it runs on. Then:
+You need an account on the cluster GitLab runs on and, unless the GitLab is yours, its
+session shared with you (the owner does that from the platform's sessions page). Then:
 
 1. Sign in with ACTIVATE and create a project.
 2. Create a personal access token: avatar → Edit profile → Access tokens → Add new

@@ -307,38 +307,3 @@ sessions list. Delete that session (`pw endpoints delete <name>`; the workflow r
 to start while it holds the subdomain), then launch again with the same run directory.
 Projects, pipelines, artifacts, accounts and the runners' registration are back in two
 to four minutes.
-
-## Teardown
-
-Delete the session from the platform's sessions page or with
-`pw endpoints delete <name>`. The start script's cleanup stops GitLab: under
-Singularity a `gitlab-ctl stop` inside the instance, then the instance itself
-(`apptainer instance list` shows none left); under Docker a `docker rm -f`. The runner
-session is killed either way. The run directory keeps everything. Under Singularity it
-is all yours (`rm -rf`); what the Docker container wrote belongs to root
-(`sudo rm -rf`). A SLURM CI job still running at teardown finishes on its own, but
-nothing collects its result since its runner is gone; `scancel` it if it should not
-finish.
-
-Deleting a runner session (`gitlab-runners-<run slug>`) stops that user's runners and
-forwarder; the runner directory keeps the registration. Other users' runners keep
-running after GitLab's session is deleted. They refuse every connection until their
-user deletes their session too, or GitLab comes back on the same port.
-
-## Building the Singularity image
-
-```bash
-cd workflows/gitlab/gitlab-singularity
-./build-container.sh        # the official gitlab/gitlab-ee image plus rootless/ (gitlab.def)
-tools/oras/oras push ghcr.io/parallelworks/gitlab:19.5.1-ee-rootless gitlab-19.5.1-ee-rootless.sif
-```
-
-`rootless/` makes the package run as one unprivileged user from a read-only image.
-`post.sh` (the build step) patches the few places that insist on root, replaces the
-image's OpenSSH with GitLab's own `gitlab-sshd` and turns every path the package writes
-under `/opt/gitlab` into a symlink into `data/.rootless/`. `init-rootless` is the
-entrypoint. `passwd.in` and `group.in` are the account files the launcher binds, naming
-the running uid `git` and every other account of the package. For a new GitLab
-version: a new `From:` line in `gitlab.def`, a new `GITLAB_SIF_TAG` in `controller.sh`,
-a new tag on the registry. `post.sh` fails the build when the package moved what it
-patches. Keep the package public.

@@ -75,8 +75,9 @@ every job.
    Its comments explain every line: one job, `tags: [shell]`, a few commands. **Commit
    changes**.
 3. **Watch it run.** Committing a `.gitlab-ci.yml` is all it takes: GitLab reads the file
-   after every commit to the repository and starts a pipeline from it (the file itself
-   can narrow that down with `rules:`, which these examples do not use). Open **Build →
+   after every commit to the repository and starts a pipeline from it — the default for
+   any repository that holds the file; step 5 shows how to limit it to a schedule or a
+   click. Open **Build →
    Pipelines**: one pipeline, started by your commit. Click its status badge, then the
    job `hello-login-node`. The log shows the runner taking the job
    (`Running with gitlab-runner ...`), the repository being fetched, your commands with
@@ -127,8 +128,10 @@ artifacts land in GitLab as before.
 
 ## Step 3: a job on a compute node, through the SLURM runner
 
-For the cluster GitLab runs on there is a shorter way than `pw ssh`: the SLURM runner
-turns a job into a batch job itself. Replace `.gitlab-ci.yml` with
+The SLURM runner submits to one system only: the SLURM cluster GitLab itself runs on,
+where it was registered. There it is a shorter way than step 2's `pw ssh`, turning the
+job into a batch job itself; every other system is still reached with `pw ssh`.
+Replace `.gitlab-ci.yml` with
 [`03-hello-slurm.gitlab-ci.yml`](03-hello-slurm.gitlab-ci.yml) in the pipeline editor,
 put the `sbatch` options your cluster requires into `SCHEDULER_PARAMETERS`, and commit.
 Three things in the file are new:

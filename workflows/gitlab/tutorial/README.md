@@ -39,16 +39,12 @@ Five words GitLab uses:
 | **runner** | a program that takes jobs from GitLab and runs them somewhere; a job picks its runner with **tags** |
 | **`.gitlab-ci.yml`** | the file at the root of the repository that defines the jobs |
 
-The workflow registers two runners with your GitLab: a **shell** runner (tag `shell`)
-that runs jobs on the login node, and a **SLURM** runner (tag `slurm`) that submits each
-job with `sbatch`, through [Jacamar CI](https://gitlab.com/ecp-ci/jacamar-ci). **Both run
-every job as you**, the user who launched the workflow, on your cluster account, with
-your `pw` sign-in, whoever committed. They only take jobs from projects in a group of
-yours, `<username>-ci`, so nobody else's project can run as you; a user you share the
-GitLab with adds runners of their own, which run as them (the README's *Adding your
-runners to someone else's GitLab*). Every example below prints the host and the user it
-runs as so you can see it. The tutorial uses the runners in this order: the shell runner
-alone, the shell runner with `pw`, then the SLURM runner.
+Step 1 registers both runners and step 2 creates the project they serve; the later
+steps reuse it. The runners take jobs only from projects in your group `<username>-ci`
+and run every job as you, whoever committed (the README's *CI/CD runners* says why, and
+how other users get runners of their own). A project created anywhere else has no
+runners and its jobs stay *pending*; move it into the group (Settings → General →
+Advanced → Transfer project).
 
 Throughout, `<resource>` stands for the cluster you launch GitLab on, as `pw cluster ls`
 names it. Where an example shows `sbatch` options (steps 4 and 5), replace them with what

@@ -22,9 +22,9 @@ with the others from the platform's sessions page. They can sign in, create proj
 and push to them, but they have no runners: those who need pipelines run the workflow
 again, on the same cluster, in *Add my runners* mode.
 
-New to GitLab? The [tutorial](tutorial/README.md) takes you from the launch form to
+New to GitLab? The [tutorial](tutorial/README.md) takes you from a new project to
 pipelines on the login node and on the compute nodes, and shows how a job uses the
-`pw` client to run on any system connected to your ACTIVATE account, in about 45
+`pw` client to run on any system connected to your ACTIVATE account, in about 30
 minutes.
 
 ```
@@ -132,7 +132,7 @@ directory reuses the registration:
 
 How to write the jobs — the shell runner with the `pw` client, the SLURM runner's
 `SCHEDULER_PARAMETERS` and id token, artifacts, schedules, when pipelines start — is
-steps 2 to 6 of the [tutorial](tutorial/README.md).
+steps 1 to 5 of the [tutorial](tutorial/README.md).
 
 ### The owner's runners
 
@@ -176,7 +176,7 @@ a status page as its session: which runners are up, where jobs run, whether GitL
 reachable, the runner log. The runners keep running until you delete that session. A
 later start on the same runner directory needs no token.
 
-Your jobs run as you and are written like the owner's: steps 2 to 6 of the
+Your jobs run as you and are written like the owner's: steps 1 to 5 of the
 [tutorial](tutorial/README.md) apply to your runners unchanged.
 
 ### How the runners reach GitLab

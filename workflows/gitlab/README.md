@@ -292,28 +292,6 @@ applies it once and remembers it in the run directory (`.license-*` markers). La
 runs may leave the field empty; a different key replaces the current one. Sign in with
 ACTIVATE and the runners need no license.
 
-## Form
-
-| Field | Default | Notes |
-|---|---|---|
-| What to start | Start GitLab | *Add my runners to a running GitLab* hides the GitLab and sign-in settings and shows the four runner fields below |
-| Run container using | Singularity | See above |
-| Subdomain | `gitlab` | Decides the address, the clone URLs and the OIDC redirect URI. Reserve it with `pw subdomains reserve <label>` |
-| Run directory | `${HOME}/gitlab` | On a cloud cluster, a path on a persistent disk keeps it across restarts (above). `config/`, `data/`, `logs/` (written by the container; under Singularity `data/.rootless/` also holds what the package writes into its install directory), `runner/` (yours), the generated secrets and, under Singularity, `work/` (the container's `/tmp`). One GitLab at a time, one runtime per directory; readable by you alone |
-| GitLab image | `gitlab/gitlab-ee:19.5.1-ee.0` | Docker only. Change the tag one minor version at a time on an existing run directory (GitLab's upgrade path) |
-| Root password | empty | Applied on the first start only; empty generates one into `<run directory>/.root_password` |
-| SSH port | `2222` | Loopback port of GitLab's SSH on the service host, shown in GitLab's SSH clone URLs |
-| GitLab license | empty | See above |
-| GitLab address | `https://gitlab.activate.pw` | Runner mode: the GitLab's `https://...` address. The default is where the default subdomain serves it (`https://gitlab.pw.hsp.mil` on activate.hpc.mil) |
-| GitLab personal access token | empty | Runner mode: scopes `api` and `create_runner`. Needed to register the runners, not to start registered ones again |
-| Project or group | | Runner mode: the full path, namespace included, of the project or group whose pipelines the runners take |
-| Runner directory | `${HOME}/gitlab-runner` | Runner mode: the runners' tokens, configuration, builds and cache |
-| Group of the runners | `<username>-ci` | Start GitLab: the group whose projects the owner's runners serve |
-| Register a shell runner | on | |
-| Register a SLURM runner | off | Shown on SLURM clusters |
-| Client ID / Client secret | empty | Sign in with ACTIVATE; both or neither |
-| New users wait for approval | off | Shown with a client ID |
-
 ## Keeping the data across cluster restarts
 
 On a cloud cluster, attach a persistent disk to the cluster (in the cluster's

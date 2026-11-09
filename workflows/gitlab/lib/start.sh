@@ -19,7 +19,8 @@
 #   - runners_group: optional; the path of the group that owns the runners
 #   - service_parent_install_dir: holds gitlab-runner/current and
 #     jacamar-ci/current, installed by controller.sh when needed
-#   - oidc_client_id, oidc_display_name: optional ACTIVATE OIDC client
+#   - oidc_client_id, oidc_display_name: optional ACTIVATE OIDC client (the
+#     user's account variable GITLAB_CLIENT_ID)
 ################################################################################
 
 if [ -z "${service_rundir}" ]; then
@@ -91,6 +92,15 @@ if [ -n "${in_use}" ]; then
     exit 1
 fi
 pw_endpoints_args="${pw_endpoints_args} --subdomain ${service_subdomain}"
+
+# The platform's embedded session view is an iframe on another site, where the
+# browser withholds the platform cookie and Sign in with ACTIVATE cannot
+# complete, so the session opens in a browser tab of its own (pw 7.136 and later)
+if pw endpoints run --help 2>&1 | grep -q -- '--new-tab'; then
+    pw_endpoints_args="${pw_endpoints_args} --new-tab"
+else
+    echo "::warning::This pw client ($(pw version 2>/dev/null | head -n 1)) has no --new-tab flag: open GitLab in a tab of its own, Sign in with ACTIVATE does not complete inside the platform's embedded session view"
+fi
 
 # The root password only applies when the database is created, on the first
 # start of a run directory; it is kept beside the data so a later run can

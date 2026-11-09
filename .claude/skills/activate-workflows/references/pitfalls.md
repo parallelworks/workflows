@@ -140,6 +140,12 @@
   object a form input holds, add a temporary `string` input with
   `default: ${{ toJSON(inputs.resource) }}` and `prefillDefault: true`: the form
   shows it filled in.
+- **A secret user variable renders empty in `${{ var.NAME }}`** unless the workflow
+  declares it under the top-level `needs.userVariables`; a public variable renders
+  without the declaration, and an unset or undeclared one renders empty instead of
+  failing the run, so the script checks the value and names the variable
+  (`workflows/gitlab/lib/controller.sh`; verified 2026-11-09 on
+  activate.parallel.works, reference §3).
 
 ## Jobs, outputs, matrix and retries
 
@@ -647,6 +653,11 @@
 - **Prove the risky/novel mechanism on real infra early**, before the full workflow
   is wired. For a distributed piece (e.g. cross-node `pw ssh` calls), stage the
   script on the target node and exercise it directly, then wrap it in YAML.
+- **A sign-in through the platform never completes in the embedded session view** (an
+  iframe on another site; `/authorize` answers `login_required`): pass `--new-tab` to
+  `pw endpoints run` (pw 7.136.0 and later) so the session opens in a tab of its own,
+  after probing `pw endpoints run --help` for the flag, which an older client rejects
+  (`workflows/gitlab/lib/start.sh`; verified 2026-11-09, [oidc-sign-in.md](oidc-sign-in.md)).
 
 - **A page on the vendored theme shows one mode only, or none, without `color-scheme`**
   (verified 2026-10-19, PROBE): `theme.css` pairs each token's modes with `light-dark()`,

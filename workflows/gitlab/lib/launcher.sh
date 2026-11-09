@@ -351,7 +351,7 @@ gitlab_setup() {
 
     echo "::notice::Sign in as root with the password in ${root_password_file} (first start) or the one you set in GitLab"
     if [ -n "${oidc_client_id}" ]; then
-        echo "::notice::Sign in with ${oidc_display_name} from GitLab's own tab (${public_url}users/sign_in): redirect URI ${public_url}users/auth/openid_connect/callback"
+        echo "::notice::Sign in with ${oidc_display_name} at ${public_url}users/sign_in (the session opens in a tab of its own); the application's redirect URI must be ${public_url}users/auth/openid_connect/callback"
     fi
     echo "::notice::Git over HTTP from this host: http://127.0.0.1:${PORT}/<group>/<project>.git; from your machine: pw forward -L ${PORT}:localhost:${PORT} <cluster> (or -L ${service_ssh_port}:localhost:${service_ssh_port} for SSH)"
     echo "::notice::Another user of this GitLab runs their own pipelines by launching this workflow in its runner mode on this cluster with ${public_url} as the GitLab address"

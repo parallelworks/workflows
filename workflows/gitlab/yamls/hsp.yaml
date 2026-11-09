@@ -2,6 +2,16 @@
 permissions:
   - '*'
 
+# The OIDC client of Sign in with ACTIVATE comes from the launching user's account
+# variables (Account -> Variables), not from the form: a secret variable renders
+# empty in ${{ var.NAME }} unless it is declared here
+needs:
+  userVariables:
+    GITLAB_CLIENT_ID:
+      hint: Client ID of the ACTIVATE application an organization admin registered for this GitLab's address; it turns on Sign in with ACTIVATE
+    GITLAB_CLIENT_SECRET:
+      hint: Client secret of that application
+
 jobs:
   preprocessing:
     ssh:
@@ -30,7 +40,7 @@ jobs:
           ${{ inputs.service.root_password }}
           EOF
           cat <<'EOF' > oidc-client-secret.txt
-          ${{ inputs.oidc.client_secret }}
+          ${{ var.GITLAB_CLIENT_SECRET }}
           EOF
           cat <<'EOF' > license.gitlab-license
           ${{ inputs.service.license }}
@@ -60,7 +70,7 @@ jobs:
           runners_path="${{ inputs.runners.path }}"
           runners_rundir="${{ inputs.runners.rundir }}"
           runners_token_file="${PW_PARENT_JOB_DIR}/runner-token.txt"
-          oidc_client_id="${{ inputs.oidc.client_id }}"
+          oidc_client_id="${{ var.GITLAB_CLIENT_ID }}"
           oidc_client_secret_file="${PW_PARENT_JOB_DIR}/oidc-client-secret.txt"
           oidc_block_new_users="${{ inputs.oidc.block_new_users }}"
           oidc_display_name="${{ inputs.oidc.display_name }}"
@@ -313,32 +323,16 @@ jobs:
       oidc:
         type: group
         label: Sign in with ACTIVATE
-        description: Lets users sign in to GitLab with their ACTIVATE account; a client ID reveals the secret and the approval fields. Leave it empty for GitLab's own accounts only.
+        description: Users sign in to GitLab with their ACTIVATE account when your account variables GITLAB_CLIENT_ID and GITLAB_CLIENT_SECRET (Account -> Variables) hold the application an organization admin registered for this GitLab's address; without them GitLab has its own accounts only.
         collapsed: true
         hidden: ${{ inputs.mode == 'runner' }}
         ignore: ${{ .hidden }}
         items:
-          client_id:
-            label: Client ID
-            description: The pwapp_ ID of the application an organization admin registered for this GitLab URL; empty means no ACTIVATE sign-in is configured.
-            type: string
-            optional: true
-            tooltip: |
-              Organization -> Settings -> Applications (behind the OIDC Applications preview): kind web, consent none, scopes openid profile email, redirect URI https://<subdomain>.<sessions domain>/users/auth/openid_connect/callback, post-logout redirect URI https://<subdomain>.<sessions domain>/. The redirect URI is matched exactly, so it must carry the subdomain this run pins. The provider is part of GitLab's configuration, so a later run without a client ID removes the button.
-          client_secret:
-            label: Client secret
-            description: Required with a client ID; shown once when the secret is created, an organization admin can reveal it again on the application's page.
-            type: password
-            optional: true
-            hidden: ${{ inputs.oidc.client_id == '' }}
-            ignore: ${{ .hidden }}
           block_new_users:
             label: New users wait for approval
             description: An account created by a first ACTIVATE sign-in stays blocked until an administrator approves it under Admin -> Users; off lets every ACTIVATE user in.
             type: boolean
             default: false
-            hidden: ${{ inputs.oidc.client_id == '' }}
-            ignore: ${{ .hidden }}
           display_name:
             type: string
             hidden: true

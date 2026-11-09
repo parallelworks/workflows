@@ -62,28 +62,29 @@ notices in the run's log.
 
 ## Signing in
 
-With the *Sign in with ACTIVATE* group filled in, users sign in with their ACTIVATE
-account (below) and need nothing else. GitLab's `root` account is for administration.
-Its password is the one in the form, or the one the workflow generated into
-`<run directory>/.root_password` (mode 600) when the form left it empty. The root
+With the two account variables of *Sign in with ACTIVATE* (below) set, users sign in
+with their ACTIVATE account and need nothing else. GitLab's `root` account is for
+administration. Its password is the one in the form, or the one the workflow generated
+into `<run directory>/.root_password` (mode 600) when the form left it empty. The root
 password is applied only when the database is created; change it in GitLab afterwards.
 
 ### Sign in with ACTIVATE
 
-GitLab's OpenID Connect provider is in every edition, so this needs no license.
+GitLab's OpenID Connect provider is in every edition, so this needs no license. The
+workflow reads the application's client ID and secret from two **variables of your
+ACTIVATE account**; the form has no field for them.
 
-1. **Pick the address, then register an application for it** (an organization admin
-   does this once). An application is registered for one exact redirect URI, built
-   from the GitLab address the form's **Subdomain** sets:
-   `https://<subdomain>.<sessions domain>/users/auth/openid_connect/callback`. With the
-   default subdomain on activate.parallel.works that is
-   `https://gitlab.activate.pw/users/auth/openid_connect/callback`; different
-   platforms have different sessions domains.
-
-   Turn on the *OIDC Applications* preview in your account settings, open
-   Organization → Settings → Applications and add a **web** application with that
-   redirect URI. You get the client ID at once and the client secret when you create
-   one (shown a single time; an admin can reveal it again). The same through the API:
+1. **An organization admin registers the GitLab address as an application**, once per
+   address, and shares the client ID and the client secret with you. The application is
+   registered for one exact redirect URI, built from the address the form's
+   **Subdomain** sets: `https://<subdomain>.<sessions domain>/users/auth/openid_connect/callback`
+   (`https://gitlab.activate.pw/users/auth/openid_connect/callback` with the default
+   subdomain on activate.parallel.works; other platforms have other sessions domains).
+   In Organization → Settings → Applications (behind the *OIDC Applications* preview
+   of the account settings): a **web** application, consent none, scopes
+   `openid profile email`, that redirect URI, and `https://<subdomain>.<sessions domain>/`
+   as the post-logout redirect URI. The client secret is shown once when it is created;
+   an admin can reveal it again. The same through the API:
 
    ```bash
    pw api -X POST organizations/<org>/oidc/apps --input - <<'EOF'
@@ -96,16 +97,22 @@ GitLab's OpenID Connect provider is in every edition, so this needs no license.
    ```
 
    Reserve the subdomain too, so nobody else takes it: `pw subdomains reserve <label>`.
-2. **Launch** with the client ID and the client secret in the *Sign in with ACTIVATE*
-   group. GitLab's login page gets an **ACTIVATE** button. The first sign-in creates
-   the GitLab account (username = ACTIVATE username, email from the account). With
-   **New users wait for approval** on, the account stays blocked until an administrator
-   approves it under Admin → Users.
-3. Open GitLab **in its own tab** (`https://<subdomain>.<sessions domain>/`). The
-   sign-in does not complete inside the platform's embedded session view.
+2. **Save the two values under Account → Variables**: `GITLAB_CLIENT_ID` with the
+   client ID and `GITLAB_CLIENT_SECRET` with the client secret, the **Secret** toggle on
+   for the latter. From a terminal: `pw variables --public -k GITLAB_CLIENT_ID --value
+   pwapp_...` and `pw variables -k GITLAB_CLIENT_SECRET` (it prompts for the value and
+   stores it as a secret). The workflow declares the variables it reads, so the platform
+   asks you to grant it the secret on your first launch (`--trust` from the CLI).
+3. **Launch.** GitLab's login page gets an **ACTIVATE** button and the session opens in
+   a browser tab of its own, where the sign-in completes (it cannot inside the
+   platform's embedded session view). The first sign-in creates the GitLab account
+   (username = ACTIVATE username, email from the account). With **New users wait for
+   approval** on, the account stays blocked until an administrator approves it under
+   Admin → Users.
 
-The provider is part of GitLab's configuration. A later run without a client ID
-removes the button; the accounts it created stay.
+The provider is part of GitLab's configuration: a later run by a user without the two
+variables removes the button, and the accounts it created stay. A run with only one of
+them stops in preprocessing and says which is missing.
 
 ## CI/CD runners
 

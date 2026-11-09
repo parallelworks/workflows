@@ -16,7 +16,8 @@
 #   - service_root_password_file: optional; the root password the form carries
 #   - runners_shell / runners_slurm: which CI runners to register
 #   - runners_group: optional; the path of the group that owns the runners
-#   - oidc_client_id / oidc_client_secret_file: both set, or neither
+#   - oidc_client_id / oidc_client_secret_file: both set, or neither (the
+#     user's account variables GITLAB_CLIENT_ID and GITLAB_CLIENT_SECRET)
 ################################################################################
 
 if [ -z "${service_rundir}" ]; then
@@ -38,11 +39,11 @@ if [ -s "${service_root_password_file}" ]; then
 fi
 
 if [ -n "${oidc_client_id}" ] && ! [ -s "${oidc_client_secret_file}" ]; then
-    echo "::error title=Error::Sign in with ACTIVATE needs the client secret of application ${oidc_client_id}"
+    echo "::error title=Error::Sign in with ACTIVATE needs the client secret of application ${oidc_client_id}: save it under Account -> Variables as the secret variable GITLAB_CLIENT_SECRET and let this workflow read it"
     exit 1
 fi
 if [ -z "${oidc_client_id}" ] && [ -s "${oidc_client_secret_file}" ]; then
-    echo "::error title=Error::Sign in with ACTIVATE needs the client ID that goes with the client secret"
+    echo "::error title=Error::Sign in with ACTIVATE needs the client ID that goes with GITLAB_CLIENT_SECRET: save it under Account -> Variables as GITLAB_CLIENT_ID"
     exit 1
 fi
 

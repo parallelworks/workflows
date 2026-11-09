@@ -12,7 +12,8 @@
 #          mount a SIF for an unprivileged user (no FUSE: hardened login
 #          nodes) runs the image extracted once into the install directory.
 #          Behind a pw endpoint on a pinned subdomain, with ACTIVATE as an
-#          OpenID Connect provider when the form carries an OIDC client, a
+#          OpenID Connect provider when the user's account variables name an
+#          OIDC client, a
 #          license, the CI runners (shell on this host, SLURM through Jacamar
 #          CI). What does not depend on the runtime is in lib/start.sh (this
 #          script) and lib/launcher.sh (the launcher).

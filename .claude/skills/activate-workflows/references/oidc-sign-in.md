@@ -48,9 +48,10 @@ wrapped command receives) are in [activate-platform.md](activate-platform.md) §
   them under Account → Variables (`pw variables -k NAME`, secret by default;
   `--public` for the ID) and the YAML reads `${{ var.NAME }}`. A **secret** variable
   renders empty unless the workflow declares it under the top-level
-  `needs.userVariables` (`NAME: {hint: why}`, or a plain list), which is also what the
-  platform asks the user to grant on the first launch (`pw workflows run --trust`
-  grants without prompting); a public one renders without the declaration. An unset
+  `needs.userVariables` (`NAME: {hint: why}`, or a plain list); a repository-hosted
+  run then asks the user to grant the secret ones, hint shown, and `pw workflows run
+  --trust` approves without prompting (a local file runs without asking); a public one
+  renders without the declaration and is never asked for. An unset
   or ungranted variable renders empty and the run goes on, so the controller checks
   the pair itself and names the variable that is missing (`workflows/gitlab`,
   verified 2026-11-09).

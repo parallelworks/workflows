@@ -101,8 +101,8 @@ ACTIVATE account**; the form has no field for them.
    client ID and `GITLAB_CLIENT_SECRET` with the client secret, the **Secret** toggle on
    for the latter. From a terminal: `pw variables --public -k GITLAB_CLIENT_ID --value
    pwapp_...` and `pw variables -k GITLAB_CLIENT_SECRET` (it prompts for the value and
-   stores it as a secret). The workflow declares the two variables it reads, so the
-   platform asks you to grant it access to them on your first launch.
+   stores it as a secret). The workflow declares the variables it reads, so the platform
+   asks you to grant it the secret on your first launch (`--trust` from the CLI).
 3. **Launch.** GitLab's login page gets an **ACTIVATE** button and the session opens in
    a browser tab of its own, where the sign-in completes (it cannot inside the
    platform's embedded session view). The first sign-in creates the GitLab account

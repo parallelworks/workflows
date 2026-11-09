@@ -140,7 +140,7 @@ Top of file (enables editor autocomplete; harmless at runtime):
 | `configurations` | named sets of saved inputs (`configurations.<name>.inputs.<input>: value`), loadable with `pw workflows run --saved-inputs <name>` |
 | `timeout` | workflow-level timeout (`30m`, `2h`, `1d`); also per job and per step, and every level applies |
 | `needs.organizationVariables` | org variables the workflow refuses to run without |
-| `needs.userVariables` | the user's own variables (`pw variables`, Account → Variables) the workflow reads as `${{ var.NAME }}`: a list, or `NAME: {hint: why}`. A **secret** variable renders empty unless declared here (a public one renders anyway); an unset or ungranted one renders empty and the run proceeds, so the script checks the value. Granted on the first run (`--trust` on the CLI; `pw workflows permissions ls\|revoke` reviews them). Verified 2026-11-09, [oidc-sign-in.md](oidc-sign-in.md) |
+| `needs.userVariables` | the user's own variables (`pw variables`, Account → Variables) the workflow reads as `${{ var.NAME }}`: a list, or `NAME: {hint: why}`. A **secret** variable renders empty unless declared here (a public one renders anyway); an unset or ungranted one renders empty and the run proceeds, so the script checks the value. A repository-hosted run asks the user to grant the secret ones, hint shown (`--trust` on the CLI approves; a local file never asks; `pw workflows permissions ls\|revoke` reviews the grants). Verified 2026-11-09, [oidc-sign-in.md](oidc-sign-in.md) |
 
 ### `jobs.<name>`
 ```yaml
@@ -849,7 +849,9 @@ all verified on live runs:
   the platform's embedded view: for an app that signs in through the platform
   ([oidc-sign-in.md](oidc-sign-in.md)) or otherwise cannot run inside the iframe. Probe
   `pw endpoints run --help` for the flag before passing it, since an older client
-  rejects unknown flags (`workflows/gitlab/lib/start.sh`, verified 2026-11-09).
+  rejects unknown flags (`workflows/gitlab/lib/start.sh`). `pw endpoints list` has no
+  JSON output; the session record, `openInNewTab` included, is `pw api sessions`
+  (verified 2026-11-09).
 - **The other tokens:** `{host}`, the endpoint's public hostname (exported as
   `PW_ENDPOINT_HOST`; give it to an app with an allowed-hosts check), and `{path}`, the
   base path (exported as `PW_ENDPOINT_PATH`: `/` on a subdomain endpoint,

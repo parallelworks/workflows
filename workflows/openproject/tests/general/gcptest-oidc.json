@@ -10,7 +10,6 @@
       "pw endpoints run"
     ],
     "secrets": {
-      "oidc.client_secret": "OPENPROJECT_TEST_OIDC_CLIENT_SECRET",
       "oidc.enterprise_token": "OPENPROJECT_TEST_ENTERPRISE_TOKEN"
     }
   },
@@ -23,7 +22,5 @@
     "subdomain": "openproject-alvaro-sif",
     "rundir": "${HOME}/openproject-sif-test"
   },
-  "oidc": {
-    "client_id": "pwapp_254b29d69085165ecabd10ceeab31a88"
-  }
+  "oidc": {}
 }

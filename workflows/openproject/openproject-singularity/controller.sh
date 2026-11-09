@@ -11,7 +11,8 @@ set -o pipefail
 # Required Environment Variables:
 #   - service_parent_install_dir: where containers/openproject.sif lives
 #   - service_rundir: holds pgdata/, assets/ and the generated secrets
-#   - oidc_client_id / oidc_client_secret: both set, or neither
+#   - oidc_client_id / oidc_client_secret: both set, or neither (the user's
+#     account variables OPENPROJECT_CLIENT_ID and OPENPROJECT_CLIENT_SECRET)
 ################################################################################
 
 source tools/oras/libs.sh
@@ -59,16 +60,17 @@ fi
 
 if [ -n "${oidc_client_id}" ]; then
     if [ -z "${oidc_client_secret}" ]; then
-        echo "::error title=Error::Sign in with ACTIVATE needs the client secret of application ${oidc_client_id}"
+        echo "::error title=Error::Sign in with ACTIVATE needs the client secret of application ${oidc_client_id}: save it under Account -> Variables as the secret variable OPENPROJECT_CLIENT_SECRET and let this workflow read it"
         exit 1
     fi
+    # OpenProject hides every single sign-on provider until an Enterprise
+    # token is active, so a missing one is not a reason to refuse the start
     if ! [ -s "${service_enterprise_token_file}" ] && ! ls "${rundir}"/.enterprise-token-* >/dev/null 2>&1; then
-        echo "::error title=Error::Sign in with ACTIVATE needs an OpenProject Enterprise token: ${rundir} holds none yet and the form's token is empty"
-        exit 1
+        echo "::warning::Sign in with ACTIVATE is configured from your account variables, but ${rundir} holds no OpenProject Enterprise token and the form's token is empty: OpenProject hides the button until a token is imported (the form) or a trial is requested inside OpenProject"
     fi
 fi
 if [ -z "${oidc_client_id}" ] && [ -n "${oidc_client_secret}" ]; then
-    echo "::error title=Error::Sign in with ACTIVATE needs the client ID that goes with the client secret"
+    echo "::error title=Error::Sign in with ACTIVATE needs the client ID that goes with OPENPROJECT_CLIENT_SECRET: save it under Account -> Variables as OPENPROJECT_CLIENT_ID"
     exit 1
 fi
 

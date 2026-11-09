@@ -3,7 +3,8 @@
 #
 # Purpose: Start the GitLab all-in-one container in Docker behind a pw endpoint
 #          on a pinned subdomain, with ACTIVATE as an OpenID Connect provider
-#          when the form carries an OIDC client, apply a license, register the
+#          when the user's account variables name an OIDC client, apply a
+#          license, register the
 #          CI runners (shell on this host, SLURM through Jacamar CI) and start
 #          them. What does not depend on Docker is
 #          in lib/start.sh (this script) and lib/launcher.sh (the launcher).

@@ -37,10 +37,23 @@ wrapped command receives) are in [activate-platform.md](activate-platform.md) §
      (`proxy_intercept_errors on; error_page 301 302 303 307 308 = @hop;`) and answers
      a 200 page with `<meta http-equiv="refresh" content="0;url=$upstream_http_location">`
      (re-add `$upstream_http_set_cookie`; re-issue same-host redirects unchanged).
-  A third one has no workaround: the platform's embedded session view
+  A third one is fixed by a flag, not a proxy: the platform's embedded session view
   (`/sessions/<user>/<name>`) is an iframe on another site, the browser withholds the
-  platform cookie from it and `/authorize` answers `login_required`; users sign in from
-  the app's own tab. All three are in `detected-platform-bugs.txt` (repo root).
+  platform cookie from it and `/authorize` answers `login_required`, so pass
+  `--new-tab` to `pw endpoints run` (pw 7.136.0 and later) and the session opens in a
+  browser tab of its own. Probe `pw endpoints run --help` for the flag first and warn
+  on an older client, which rejects unknown flags (`workflows/gitlab/lib/start.sh`,
+  verified 2026-11-09).
+- **The client ID and secret are account variables, not form inputs.** The user saves
+  them under Account → Variables (`pw variables -k NAME`, secret by default;
+  `--public` for the ID) and the YAML reads `${{ var.NAME }}`. A **secret** variable
+  renders empty unless the workflow declares it under the top-level
+  `needs.userVariables` (`NAME: {hint: why}`, or a plain list), which is also what the
+  platform asks the user to grant on the first launch (`pw workflows run --trust`
+  grants without prompting); a public one renders without the declaration. An unset
+  or ungranted variable renders empty and the run goes on, so the controller checks
+  the pair itself and names the variable that is missing (`workflows/gitlab`,
+  verified 2026-11-09).
 - **What the proxy gives every app:** `Authorization` and the platform cookie are
   stripped; `X-Pw-User` (the visitor's username) and `X-Pw-User-Token` are added, enough
   for an app that trusts headers, without OIDC.

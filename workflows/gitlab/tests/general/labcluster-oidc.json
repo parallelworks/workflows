@@ -9,9 +9,6 @@
     ],
     "leftover_commands": {
       "containers": "sudo -n docker ps -aq --filter label=activate.rundir=$HOME/gitlab-dev | wc -l"
-    },
-    "secrets": {
-      "oidc.client_secret": "GITLAB_TEST_OIDC_CLIENT_SECRET"
     }
   },
   "resource": "pw://labcluster",
@@ -24,7 +21,5 @@
     "shell": true,
     "slurm": false
   },
-  "oidc": {
-    "client_id": "pwapp_49a074ccbd91ca6bdca1d5afdc64315e"
-  }
+  "oidc": {}
 }

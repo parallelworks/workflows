@@ -10,9 +10,6 @@
     ],
     "leftover_commands": {
       "instances": "grep -l $HOME/gitlab-demo/data /proc/[0-9]*/mountinfo 2>/dev/null | wc -l"
-    },
-    "secrets": {
-      "oidc.client_secret": "GITLAB_TEST_OIDC_CLIENT_SECRET"
     }
   },
   "resource": "pw://alvaro/gcpsmall",
@@ -26,7 +23,5 @@
     "shell": true,
     "slurm": true
   },
-  "oidc": {
-    "client_id": "pwapp_49a074ccbd91ca6bdca1d5afdc64315e"
-  }
+  "oidc": {}
 }

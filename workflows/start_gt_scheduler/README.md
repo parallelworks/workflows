@@ -71,7 +71,9 @@ tunnel from the controller back to the workspace (the `usercontainer` host entry
 the controller's `~/.ssh/config`), which the scheduler's balance queries use too.
 The workspace must already be able to `ssh` to the license server; the key the
 controller uses for the hop back stays authorized in the workspace between runs.
-The license server's address, user and ports are hidden inputs of the workflow.
+The license server's address, user and ports are not on the form: the workflow takes
+them from the organization's variables, which an organization admin sets (a launch
+is refused, naming the variable, while one is missing), or from hidden inputs.
 
 ## Form options
 

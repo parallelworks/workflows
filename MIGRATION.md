@@ -1869,6 +1869,22 @@ only the new behaviour was run.
    that gave up after one failed connection and a refused run that stopped the other's
    scheduler, are the two items above; most of its smaller findings are in too.
 
+**Organization variables (2026-11-10, after the merge).** `gtproduction-dev` and
+`gtproduction-production` no longer hold their license server and their organization as
+hidden inputs: `Create Inputs` reads them from the variables of the `gammatechnologies`
+organization, and the scripts find them in `inputs.sh` under the names they had.
+
+| `inputs.sh` | `gtproduction-dev` | `gtproduction-production` |
+|---|---|---|
+| `gt_license_user`, `_ip`, `_hostname`, `_port`, `_vendor_port` | `org.dev_license_<same>` | `org.prod_license_<same>` |
+| `customer_org_id`, `customer_org_name` | `org.customer_org_id`, `org.customer_org_name` | the same |
+
+Both YAMLs list theirs under `needs.organizationVariables`, so a launch without one is
+refused and names it. The eight `gtcustomers` YAMLs keep their hidden inputs: their
+organization, `hostedbygt`, has one license server per customer and no such variables.
+In the two `gtproduction` YAMLs a launch can no longer pass another license server with
+`-i`, and the tests' leftover checks still name the development ports as literals.
+
 **Registrations to re-point** (not done here): `devgtscheduler` and `prodgtscheduler` of
 the `gtproduction` account pin `start_scheduler@cloud-v3`, `yamls/gtproduction/dev.yaml`
 and `production.yaml` → `workflows/start_gt_scheduler/yamls/gtproduction-dev.yaml` and

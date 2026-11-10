@@ -5,7 +5,8 @@
 #          Docker daemon: PostgreSQL 17, the seeder, puma, the good_job worker
 #          and nginx (which sets X-Forwarded-Proto for the app) behind a pw
 #          endpoint on a pinned subdomain, with ACTIVATE seeded as an OpenID
-#          Connect provider when the form carries an OIDC client
+#          Connect provider when the user's account variables name an OIDC
+#          client
 # Runs on: Controller or compute node
 # Called by: Workflow after controller setup
 #
@@ -15,7 +16,8 @@
 #   - service_rundir: pgdata/, assets/, tmp/, log/, files/, run/, nginx/, secrets
 #   - service_subdomain: subdomain label of the URL (default openproject-<PW_USER>)
 #   - service_enterprise_token_file: optional; an OpenProject Enterprise token to import
-#   - oidc_client_id, oidc_client_secret, oidc_display_name: optional ACTIVATE OIDC client
+#   - oidc_client_id, oidc_client_secret, oidc_display_name: optional ACTIVATE
+#     OIDC client (the user's account variables OPENPROJECT_CLIENT_ID/_SECRET)
 ################################################################################
 
 set -x
@@ -130,6 +132,15 @@ if ! printf '%s' "${pw_endpoints_args}" | grep -q -- '--no-subdomain'; then
         exit 1
     fi
     pw_endpoints_args="${pw_endpoints_args} --subdomain ${service_subdomain}"
+fi
+
+# The platform's embedded session view is an iframe on another site, where the
+# browser withholds the platform cookie and Sign in with ACTIVATE cannot
+# complete, so the session opens in a browser tab of its own (pw 7.136 and later)
+if pw endpoints run --help 2>&1 | grep -q -- '--new-tab'; then
+    pw_endpoints_args="${pw_endpoints_args} --new-tab"
+else
+    echo "::warning::This pw client ($(pw version 2>/dev/null | head -n 1)) has no --new-tab flag: open OpenProject in a tab of its own, Sign in with ACTIVATE does not complete inside the platform's embedded session view"
 fi
 
 # Rails refuses a default or weak SECRET_KEY_BASE and sessions and encrypted

@@ -36,22 +36,22 @@ starts under one.
 Single sign-on (OIDC) is an **Enterprise edition** feature: OpenProject hides every
 sign-on provider unless it holds an Enterprise token. A 14-day free trial is
 available at <https://www.openproject.org/enterprise-edition/> under **Get a free
-on-premises trial license**. With a token, this is how to connect it to ACTIVATE:
+on-premises trial license**. The workflow reads the application's client ID and secret
+from two **variables of your ACTIVATE account**; the form has no field for them.
 
-1. **Pick the address, then register an application for it** (organization admin,
-   once). An application is registered for one exact redirect URI, and that URI is
-   built from the OpenProject address, which the form's **Subdomain** decides:
-   `https://<subdomain>.<sessions domain>/auth/activate/callback`. With the default
-   subdomain on activate.parallel.works, that is
-   `https://openproject-<user>.activate.pw/auth/activate/callback`. Launching with
-   another subdomain later means registering (or updating) the application for the
-   new address, or the sign-in stops at a redirect URI error.
-
-   Turn on the *OIDC Applications* preview in your account settings, open
-   Organization → Settings → Applications and add a **web** application with that
-   redirect URI. You get the client ID at once and the client secret when you create
-   one (shown a single time; an admin can reveal it again). The platform docs do not
-   describe this page yet. The same through the API:
+1. **An organization admin registers the OpenProject address as an application**, once
+   per address, and shares the client ID and the client secret with you. The
+   application is registered for one exact redirect URI, built from the address the
+   form's **Subdomain** decides: `https://<subdomain>.<sessions domain>/auth/activate/callback`
+   (`https://openproject-<user>.activate.pw/auth/activate/callback` with the default
+   subdomain on activate.parallel.works). Launching with another subdomain later means
+   registering (or updating) the application for the new address, or the sign-in stops
+   at a redirect URI error. In Organization → Settings → Applications (behind the
+   *OIDC Applications* preview of the account settings): a **web** application, consent
+   none, scopes `openid profile email`, that redirect URI, and
+   `https://<subdomain>.<sessions domain>/` as the post-logout redirect URI. The client
+   secret is shown once when it is created; an admin can reveal it again. The same
+   through the API:
 
    ```bash
    pw api -X POST organizations/<org>/oidc/apps --input - <<'EOF'
@@ -63,18 +63,30 @@ on-premises trial license**. With a token, this is how to connect it to ACTIVATE
    pw api -X POST organizations/<org>/oidc/apps/<clientId>/secrets
    ```
 
-2. **Launch** with the client ID, the client secret and the Enterprise token in the
-   *Sign in with ACTIVATE* group. The token is imported once per run directory.
-3. **Sign in** with the ACTIVATE button on the login page. A first sign-in creates the
+2. **Save the two values under Account → Variables**: `OPENPROJECT_CLIENT_ID` with the
+   client ID and `OPENPROJECT_CLIENT_SECRET` with the client secret, the **Secret**
+   toggle on for the latter. From a terminal: `pw variables --public -k
+   OPENPROJECT_CLIENT_ID --value pwapp_...` and `pw variables -k OPENPROJECT_CLIENT_SECRET`
+   (it prompts for the value and stores it as a secret). The workflow declares the
+   variables it reads, so the platform asks you to grant it the secret on your first
+   launch (`--trust` from the CLI).
+3. **Launch** with the Enterprise token in the *Sign in with ACTIVATE* group. The token
+   is imported once per run directory. Without one OpenProject still starts, with a
+   warning in the run's log, and hides the button until a token is active.
+4. **Sign in** with the ACTIVATE button on the login page. A first sign-in creates the
    OpenProject account (login = ACTIVATE username) and asks for the last name once.
 
 Two things to know:
 
-- Open OpenProject in its own tab (`https://<subdomain>.<sessions domain>/`). Inside
-  the platform's embedded session view the sign-in cannot complete.
+- The session opens in a browser tab of its own, where the sign-in completes; inside
+  the platform's embedded session view it cannot.
 - Use the Singularity runtime for it. The platform proxy rewrites the redirect to the
   sign-in page; the Singularity runtime's nginx works around that, the Docker runtime
   cannot yet.
+
+The provider is written into OpenProject's database on every start and stays there: a
+later run by a user without the two variables keeps the stored one (remove it under
+Administration → Authentication → OpenID providers).
 
 ## Form
 
@@ -84,9 +96,7 @@ Two things to know:
 | Subdomain | `openproject-<username>` | Decides the address, and with it the redirect URI the application must be registered for. Reserve it with `pw subdomains reserve <label>` |
 | Run directory | `${HOME}/openproject` | Database, attachments, logs. One run at a time |
 | OpenProject image | `openproject/openproject:17` | Docker only. Keep the major version of an existing run directory |
-| Client ID | empty | Empty = OpenProject accounts only. A provider stays in the database once configured; remove it under Administration → Authentication |
-| Client secret | | Required with a client ID |
-| OpenProject Enterprise token | | Required with a client ID until the run directory holds one; bound to the subdomain, has an expiry date |
+| OpenProject Enterprise token | empty | Imported once per run directory; without an active token OpenProject hides Sign in with ACTIVATE. Bound to the subdomain, has an expiry date |
 
 ## Building the Singularity image
 

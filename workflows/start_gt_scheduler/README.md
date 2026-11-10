@@ -71,34 +71,18 @@ tunnel from the controller back to the workspace (the `usercontainer` host entry
 the controller's `~/.ssh/config`), which the scheduler's balance queries use too.
 The workspace must already be able to `ssh` to the license server; the key the
 controller uses for the hop back stays authorized in the workspace between runs.
+The license server's address, user and ports are hidden inputs of the workflow.
 
-## Variants
-
-One YAML per license server; its address, ports and organization are hidden inputs.
-The jobs and every script are the same in all of them.
-
-| Variant | For | GT versions |
-|---|---|---|
-| `gtproduction-dev` | the development license server | v2024 to v2026 |
-| `gtproduction-production` | the production license server | v2024 to v2026 |
-| `gtcustomers-americanbattery`, `-isuzu` | hosted customers | v2023 to v2026 |
-| `gtcustomers-martintechnologies` | hosted customer | v2022 to v2026 |
-| `gtcustomers-echogen` | hosted customer | v2020 to v2024 |
-| `gtcustomers-sanden`, `-serma`, `-shell`, `-wisk` | hosted customers | v2024 to v2026 |
-
-`gtproduction-dev` alone has **Max parallel cores per solver**; `gtcustomers-sanden`
-has a minimum core demand of 2 by default, which keeps one executor node running.
-
-## The form
+## Form options
 
 - **Service host**: the cluster. The scheduler runs on its controller node.
 - **GT version**: must be installed under `/software/gtsuite` there.
 - **Advanced GT inputs**: the job summary service, the parallel solver and, where
-  the variant has it, the cores a parallel solver may use.
+  the form offers it, the cores a parallel solver may use.
 - **Advanced PW inputs**: the sensing cycle in seconds, and the minimum and maximum
   core demand the loop serves.
 
-## The jobs
+## How it works
 
 All four run in the user workspace and reach the controller over `ssh`: the
 workspace is the one host the license server admits, and the one signed in to the
@@ -148,25 +132,8 @@ stays so.
   `GTDistributed.scheduler.max-licenses.<product>` and
   `GTDistributed.scheduler.validation.permitted-licenses`.
 
-## What the cluster needs
+## Requirements
 
 A SLURM cloud cluster with the two disks above, `sudo` without a password, and
 `screen`, `netstat`, `curl`, `jq`, `rsync` and `python3`; partition names of at most
 eight characters. The run checks all but the last before it starts anything.
-
-## Tests
-
-`tests/gtproduction-dev/` holds the recorded tests, run with
-`python3 tools/tests/run-workflow-test.py` on the development cluster: `dev` starts
-the scheduler, waits for `wait_for_scheduler` and cancels the run, checking that
-nothing is left on the controller; `dev-min-cores` does the same with a minimum core
-demand, so that an executor job is in the queue when the cancel comes (it starts one
-compute node); `dev-gt-not-installed` asks for a GT version the cluster does not hold
-and expects the run to end in error at preprocessing. The runner only sees the
-controller: the workspace and the license server are checked by hand.
-
-The other variants point at production license servers and are not run from here.
-They share every job and script with the tested one; what only they take is the
-form without a license hostname (the `gtcustomers` variants, run once against the
-development license server from a copy with its address) and, for GT before v2024,
-`get_core_demand.py` and the older properties files, which no test here starts.

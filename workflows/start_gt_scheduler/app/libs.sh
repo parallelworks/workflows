@@ -1,6 +1,7 @@
 # Sourced by the scripts that run in the user workspace, from the run's directory.
 
-app_dir="${PW_PARENT_JOB_DIR%/}/workflows/start_gt_scheduler/app"
+run_dir="${PWD}"
+app_dir="${run_dir}/workflows/start_gt_scheduler/app"
 
 # ControlPath=none: the workspace's ssh_config shares connections, and a forward
 # requested through a shared master would outlive the process this run tracks
@@ -29,7 +30,7 @@ usercontainer_state() {
 # The tunnel this run opens is found by the log file on its command line, which only
 # this run's has: a pid file would miss one cancelled between its start and the write.
 # A tunnel that was already there and working is used as it is and left alone.
-reverse_tunnel_log="${PW_PARENT_JOB_DIR%/}/reverse-tunnel.out"
+reverse_tunnel_log="${run_dir}/reverse-tunnel.out"
 
 reverse_tunnel_running() {
     pgrep -u "$(id -u)" -f -- "-E ${reverse_tunnel_log}" > /dev/null

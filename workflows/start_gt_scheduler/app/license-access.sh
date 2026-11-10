@@ -60,6 +60,8 @@ install() {
 }
 
 remove() {
+    local confirmed=false
+    [ -f license-access.ready ] && confirmed=true
     rm -f license-access.ready
     if ! [ -f remove_ssh_key.sh ]; then
         echo "The controller's key was never installed: nothing to remove"
@@ -77,9 +79,12 @@ remove() {
         echo "WARNING: Failed to remove the public key from the license server (attempt ${attempt}/3). Retrying in 15s..."
         sleep 15
     done
-    if [ "${removed}" != "true" ]; then
+    if [ "${removed}" != "true" ] && [ "${confirmed}" == "true" ]; then
         echo "::error title=Error::Unable to remove the public key of ${controller} from the license server ${license_server}: remove it from ~/.ssh/authorized_keys there by hand"
         exit 1
+    elif [ "${removed}" != "true" ]; then
+        # An install whose connection dropped can have added the key without saying so
+        echo "::warning::The public key of ${controller} was not confirmed installed on the license server ${license_server}, which could not be reached to make sure: check ~/.ssh/authorized_keys there"
     fi
 }
 

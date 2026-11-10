@@ -63,7 +63,6 @@ for kind in sched exec; do
 done
 
 # The same place the platform gives a run on a cluster: ~/pw/jobs/<run>
-run_dir=${PW_PARENT_JOB_DIR%/}
 if [[ "${run_dir}" == */runs/* ]]; then
     run_name=${run_dir#*/runs/}
 else

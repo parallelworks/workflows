@@ -1869,21 +1869,36 @@ only the new behaviour was run.
    that gave up after one failed connection and a refused run that stopped the other's
    scheduler, are the two items above; most of its smaller findings are in too.
 
-**Organization variables (2026-11-10, after the merge).** `gtproduction-dev` and
-`gtproduction-production` no longer hold their license server and their organization as
-hidden inputs: `Create Inputs` reads them from the variables of the `gammatechnologies`
-organization, and the scripts find them in `inputs.sh` under the names they had.
+**Organization variables (2026-11-10, after the merge).** Six YAMLs no longer hold
+their license server and their organization as hidden inputs: `Create Inputs` reads them
+from the variables of the organization that launches the run, and the scripts find them
+in `inputs.sh` under the names they had.
 
-| `inputs.sh` | `gtproduction-dev` | `gtproduction-production` |
-|---|---|---|
-| `gt_license_user`, `_ip`, `_hostname`, `_port`, `_vendor_port` | `org.dev_license_<same>` | `org.prod_license_<same>` |
-| `customer_org_id`, `customer_org_name` | `org.customer_org_id`, `org.customer_org_name` | the same |
+| `inputs.sh` | Organization variable |
+|---|---|
+| `gt_license_user`, `_ip`, `_port`, `_vendor_port` | `org.<prefix>_license_<same>` |
+| `gt_license_hostname` (the two `gtproduction` YAMLs) | `org.<prefix>_license_hostname` |
+| `customer_org_id`, `customer_org_name` | `org.customer_org_id`, `org.customer_org_name` |
 
-Both YAMLs list theirs under `needs.organizationVariables`, so a launch without one is
-refused and names it. The eight `gtcustomers` YAMLs keep their hidden inputs: their
-organization, `hostedbygt`, has one license server per customer and no such variables.
-In the two `gtproduction` YAMLs a launch can no longer pass another license server with
-`-i`, and the tests' leftover checks still name the development ports as literals.
+The prefix is `dev` and `prod` for `gtproduction-dev` and `gtproduction-production`
+(organization `gammatechnologies`), and the customer's name for `gtcustomers-isuzu`,
+`-martintechnologies`, `-shell` and `-wisk` (organization `hostedbygt`). Each YAML lists
+its variables under `needs.organizationVariables`, so a launch without one is refused
+and names it. `gtcustomers-americanbattery`, `-echogen`, `-sanden` and `-serma` keep
+their hidden inputs: `hostedbygt` has no license variables for them. In the six YAMLs a
+launch can no longer pass another license server with `-i`, and the tests' leftover
+checks still name the development ports as literals.
+
+Checked as `gtproduction` on `cloud.parallel.works`: the twelve `gammatechnologies`
+variables rendered, in a step, the values the two YAMLs held; a launch and a dry-run
+needing an unset variable were refused by name; `gtproduction-dev`'s `Create Inputs`
+wrote the same seven lines to `inputs.sh` as the run of the hidden inputs
+(`precious-penguin` against `wired-whale`). The three recorded tests did not get past
+the cluster check, because the registered `devgtscheduler-00029` was serving on `dev`
+(rows `dear-buffalo`, `precious-penguin`, `comic-lizard`: refused, the other run
+untouched), so no run of these YAMLs has started a scheduler yet. The `hostedbygt`
+variables were not read: only their names were compared with the YAMLs', and the four
+customer YAMLs dry-run once the declaration is taken out.
 
 **Registrations to re-point** (not done here): `devgtscheduler` and `prodgtscheduler` of
 the `gtproduction` account pin `start_scheduler@cloud-v3`, `yamls/gtproduction/dev.yaml`

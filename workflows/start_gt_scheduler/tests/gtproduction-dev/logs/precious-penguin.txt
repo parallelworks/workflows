@@ -1,0 +1,64 @@
+Run precious-penguin: error (3s)
+Reason: executorExitedEarly
+
+Error annotations:
+
+  Error: A GT scheduler is already running on dev (screen session gt-scheduler on gtproduction@3.146.97.125). A cluster runs one at a time: cancel that run first
+    in preprocessing → Check the Cluster
+
+Failed jobs/steps:
+
+  preprocessing > Check the Cluster (error, 0s)
+    Error: A GT scheduler is already running on dev (screen session gt-scheduler on gtproduction@3.146.97.125). A cluster runs one at a time: cancel that run first
+        "shouldPlatformProxy": true,
+        "status": "active",
+        "tags": [
+          ""
+        ],
+        "type": "existing",
+        "updateFailed": false,
+        "uri": "pw://gtproduction/devlicenseserver",
+        "user": "gtproduction"
+      }
+    ]'
+    ++ python3 /tmp/runs/precious-penguin/workflows/start_gt_scheduler/app/utils/cluster_address.py 66cd9a183095875410c74764
+    + listed='active gtproduction@3.146.97.125'
+    + '[' -n 'active gtproduction@3.146.97.125' ']'
+    + '[' -z 'active gtproduction@3.146.97.125' ']'
+    + read -r cluster_status controller
+    + '[' active '!=' active ']'
+    + '[' -n gtproduction@3.146.97.125 ']'
+    + waited=0
+    + controller_ssh true
+    + ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes -o ControlMaster=no -o ControlPath=none -o ConnectTimeout=10 gtproduction@3.146.97.125 true
+    ++ controller_script /tmp/runs/precious-penguin/workflows/start_gt_scheduler/app/controller/preflight.sh v2026
+    ++ local script=/tmp/runs/precious-penguin/workflows/start_gt_scheduler/app/controller/preflight.sh attempt status=255
+    ++ shift
+    ++ for attempt in 1 2 3 4 5
+    ++ controller_ssh 'bash -s -- v2026'
+    ++ ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes -o ControlMaster=no -o ControlPath=none -o ConnectTimeout=10 gtproduction@3.146.97.125 'bash -s -- v2026'
+    ++ status=0
+    ++ '[' 0 -ne 255 ']'
+    ++ return 0
+    + report='home=/home/gtproduction
+    private_ip=10.2.0.40
+    scheduler_running=true
+    gt_installed=true
+    missing='
+    ++ field home
+    ++ sed -n 's/^home=//p'
+    + controller_home=/home/gtproduction
+    ++ field private_ip
+    ++ sed -n 's/^private_ip=//p'
+    + controller_private_ip=10.2.0.40
+    + '[' -n /home/gtproduction ']'
+    + '[' -n 10.2.0.40 ']'
+    ++ field scheduler_running
+    ++ sed -n 's/^scheduler_running=//p'
+    + '[' true == true ']'
+    + fail 'A GT scheduler is already running on dev (screen session gt-scheduler on gtproduction@3.146.97.125). A cluster runs one at a time: cancel that run first'
+    + echo '::error title=Error::A GT scheduler is already running on dev (screen session gt-scheduler on gtproduction@3.146.97.125). A cluster runs one at a time: cancel that run first'
+    ✗ Error: A GT scheduler is already running on dev (screen session gt-scheduler on gtproduction@3.146.97.125). A cluster runs one at a time: cancel that run first
+    + exit 1
+
+Summary: 1 job(s) failed, 1 step(s) failed

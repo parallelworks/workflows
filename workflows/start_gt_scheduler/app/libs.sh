@@ -26,19 +26,24 @@ usercontainer_state() {
     fi
 }
 
-start_reverse_tunnel() {
-    setsid ssh ${SSH_OPTIONS} -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -o ServerAliveCountMax=5 \
-        -N -T -R "localhost:${usercontainer_port}:localhost:22" "${controller}" > reverse-tunnel.out 2>&1 < /dev/null &
-    echo $! > reverse-tunnel.pid
+# The tunnel this run opens is found by the log file on its command line, which only
+# this run's has: a pid file would miss one cancelled between its start and the write.
+# A tunnel that was already there and working is used as it is and left alone.
+reverse_tunnel_log="${PW_PARENT_JOB_DIR%/}/reverse-tunnel.out"
+
+reverse_tunnel_running() {
+    pgrep -u "$(id -u)" -f -- "-E ${reverse_tunnel_log}" > /dev/null
 }
 
-# Only a tunnel this run opened has a pid file: one that was already there and
-# working is used as it is and left alone at the end
+start_reverse_tunnel() {
+    setsid ssh ${SSH_OPTIONS} -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -o ServerAliveCountMax=5 \
+        -N -T -E "${reverse_tunnel_log}" -R "localhost:${usercontainer_port}:localhost:22" "${controller}" \
+        > /dev/null 2>&1 < /dev/null &
+}
+
 stop_reverse_tunnel() {
-    if [ -f reverse-tunnel.pid ]; then
-        kill "$(cat reverse-tunnel.pid)" 2> /dev/null
-        rm -f reverse-tunnel.pid
-    fi
+    pkill -u "$(id -u)" -f -- "-E ${reverse_tunnel_log}"
+    return 0
 }
 
 # Opens the tunnel only when none is there. One whose process is alive is never
@@ -49,7 +54,7 @@ ensure_usercontainer() {
     state=$(usercontainer_state)
     [ "${state}" == "up" ] && return 0
     [ "${state}" == "down" ] || return 1
-    if [ -f reverse-tunnel.pid ] && kill -0 "$(cat reverse-tunnel.pid)" 2> /dev/null; then
+    if reverse_tunnel_running; then
         return 1
     fi
     start_reverse_tunnel

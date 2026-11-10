@@ -15,7 +15,10 @@ The lane is picked from the inputs:
     cluster lane   resource (or cluster.resource, the emed forms) names a compute resource, or the user
                    workspace ("workspace"). Pass = the run completes and an endpoint named
                    *-<run-slug> is listed. Teardown = `pw endpoints delete`; leftovers are
-                   checked over `pw ssh`.
+                   checked over `pw ssh`. A workflow whose run stays open while it serves
+                   names the job that proves it works in _test.ready_job: pass = that job
+                   completes with the run still running, teardown = `pw workflows runs
+                   cancel` first.
     k8s lane       resource is an object with type "kubernetes" (hybrid *_k8s.yaml; the
                    runner fills in its id and uri from `pw kube ls`) or the inputs carry
                    k8s.cluster (standalone k8s.yaml). Pass = the run is still running when
@@ -51,6 +54,11 @@ The optional "_test" object is stripped before launch:
                        default "completed")
     endpoint_name      the exact endpoint name, for a workflow that keeps a fixed one instead of
                        *-<run-slug> (both lanes; e.g. hpc_status's hpc-status)
+    ready_job          the job whose completion is the verdict, for a workflow whose run stays
+                       open while it serves and is torn down by cancelling it
+                       (start_gt_scheduler's wait_for_scheduler): pass = it completes while the
+                       run is still running; the run is cancelled before the leftover checks
+                       (cluster lane)
     secrets            {"<input path>": "<ENVIRONMENT VARIABLE>"}: each variable's value goes into
                        that input (dotted path, e.g. api_key or service.token) at launch, so a
                        password input never sits in the test file; the test is skipped when a
@@ -95,7 +103,7 @@ COLUMNS = ["date", "phase", "result", "cleanup", "workflow_tree", "submitter_tre
 COMPUTE_RESOURCES_RE = re.compile(r"^\s*type:\s*compute-resources\s*$", re.M)
 WORKSPACE = {"workspace", "user-workspace"}
 DEFAULTS = {"timeout_s": 1800, "endpoint": True, "warm_marker": "", "setup": "", "resource": "",
-            "scheduler": None, "expect": "completed", "endpoint_name": "", "secrets": {},
+            "scheduler": None, "expect": "completed", "endpoint_name": "", "secrets": {}, "ready_job": "",
             "leftover_patterns": ["pw endpoints"], "leftover_commands": {},
             "leftover_kinds": ["deployments", "services", "pods", "persistentvolumeclaims", "secrets"]}
 
@@ -147,6 +155,9 @@ class Test:
         data = json.loads(self.path.read_text())
         self.meta = {**DEFAULTS, **data.pop("_test", {})}
         self.inputs = data
+        ready_job = self.meta["ready_job"]
+        if ready_job and not re.search(rf"^\s+{re.escape(ready_job)}:\s*$", self.yaml.read_text(), re.M):
+            raise SystemExit(f"{self.id}: _test.ready_job {ready_job!r} is not a job of {self.yaml.name}")
         resource = self.meta["resource"] or self.lookup("resource") or self.lookup("cluster", "resource")
         k8s_cluster = self.lookup("k8s", "cluster")
         self.k8s = (isinstance(resource, dict) and resource.get("type") == "kubernetes") or bool(k8s_cluster)
@@ -401,7 +412,10 @@ def describe(data):
     return status, jobs
 
 
-def wait(slug, timeout_s):
+def wait(slug, timeout_s, ready=None):
+    # `ready` is for a run that stays open while it serves: the verdict then comes
+    # while the run is still running, as "ready", once its jobs satisfy it. A final
+    # status always wins, so a run that ends before it is ready reports that status.
     deadline, last, data = time.time() + timeout_s, None, {}
     while time.time() < deadline:
         current = view(slug)
@@ -413,30 +427,36 @@ def wait(slug, timeout_s):
                 last = (status, jobs)
             if status in FINAL_STATUSES:
                 return status, data
+            if ready and ready(jobs):
+                return "ready", data
         time.sleep(POLL_S)
     return "timeout", data
 
 
 def wait_k8s(slug, timeout_s):
-    # The k8s run streams pod logs for as long as the service lives, so the verdict
-    # comes while the run is still running: "ready" once its wait_for_endpoint job
-    # has completed (the workflow found the endpoint and its URL answered). A final
-    # status before that means the deployment or the health check failed.
-    deadline, last, data = time.time() + timeout_s, None, {}
+    # The k8s run streams pod logs for as long as the service lives: it is ready once
+    # its wait_for_endpoint job has completed (the workflow found the endpoint and its
+    # URL answered). A final status before that means the deployment or the health
+    # check failed.
+    return wait(slug, timeout_s,
+                lambda jobs: any("wait_for_endpoint" in k and v == "completed" for k, v in jobs.items()))
+
+
+def cancel_run(slug, timeout_s=300):
+    # Cancelling is the teardown of a run that stays open while it serves: its
+    # cleanups stop what it started, so the leftover checks wait for them to end.
+    status = (view(slug) or {}).get("status", "?")
+    if status in FINAL_STATUSES:
+        return status
+    r = pw("workflows", "runs", "cancel", slug, timeout=90)
+    log(f"  runs cancel {slug}: rc={r.returncode} {(r.stdout + r.stderr).strip()[:120]}")
+    deadline = time.time() + timeout_s
     while time.time() < deadline:
-        current = view(slug)
-        if current is not None:
-            data = current
-            status, jobs = describe(data)
-            if (status, jobs) != last:
-                log(f"  run {slug}: {status} {jobs}")
-                last = (status, jobs)
-            if status in FINAL_STATUSES:
-                return status, data
-            if any("wait_for_endpoint" in k and v == "completed" for k, v in jobs.items()):
-                return "ready", data
+        status = (view(slug) or {}).get("status", "?")
+        if status in FINAL_STATUSES:
+            break
         time.sleep(POLL_S)
-    return "timeout", data
+    return status
 
 
 def ours(token, slug, fixed):
@@ -611,19 +631,27 @@ def run_test(test, args, user):
                 summary, detail = errors(slug)
                 row["result"], row["error"] = "fail", f"run {status} before the endpoint came online: {summary}"
         else:
-            status, _ = wait(slug, test.meta["timeout_s"])
+            ready_job = test.meta["ready_job"]
+            status, _ = wait(slug, test.meta["timeout_s"],
+                             (lambda jobs: jobs.get(ready_job) == "completed") if ready_job else None)
+            # a run that is ready while still running has reached what a completed one has
+            reached = "completed" if status == "ready" else status
             if status == "timeout":
                 pw("workflows", "runs", "cancel", slug)
                 row["result"], row["error"] = "fail", f"timeout after {test.meta['timeout_s']}s; run canceled"
-            elif status != test.meta["expect"] and not (test.meta["expect"] == "error" and status == "faulted"):
-                summary, detail = errors(slug) if status != "completed" else ("run completed", "")
+            elif ready_job and status == "completed":
+                row["result"], row["error"] = "fail", f"run completed; it was expected to keep running after {ready_job}"
+            elif reached != test.meta["expect"] and not (test.meta["expect"] == "error" and reached == "faulted"):
+                summary, detail = errors(slug) if reached != "completed" else (
+                    f"{ready_job} completed" if status == "ready" else "run completed", "")
                 row["result"], row["error"] = "fail", f"run {status}, expected {test.meta['expect']}: {summary}"
             elif test.meta["expect"] != "completed":
                 row["result"] = "pass"
-                log(f"  run {status} as expected: {errors(slug)[0]}")
+                log(f"  run {reached} as expected: {errors(slug)[0]}")
             elif not test.meta["endpoint"]:
                 row["result"] = "pass"
-                log("  run completed; no endpoint expected")
+                log(f"  {ready_job} completed with the run still running; no endpoint expected" if ready_job
+                    else "  run completed; no endpoint expected")
             else:
                 endpoint_name, url = endpoint(slug, fixed=test.meta["endpoint_name"])
                 if not endpoint_name:
@@ -638,8 +666,14 @@ def run_test(test, args, user):
     row["duration_s"] = int(time.time() - started)
     if args.keep:
         row["cleanup"] = "kept"
+    elif slug and test.k8s:
+        row["cleanup"] = teardown_k8s(test, slug)
     elif slug:
-        row["cleanup"] = teardown_k8s(test, slug) if test.k8s else teardown(test, slug, endpoint_name, preexisting)
+        left = cancel_run(slug) if test.meta["ready_job"] else "completed"
+        row["cleanup"] = teardown(test, slug, endpoint_name, preexisting)
+        if left not in FINAL_STATUSES:
+            others = row["cleanup"][len("leftover:"):] if row["cleanup"].startswith("leftover:") else ""
+            row["cleanup"] = "leftover:" + "+".join(filter(None, [f"run:{left}", others]))
     if row["result"] != "pass" and slug:
         test.logs.mkdir(exist_ok=True)
         text = detail or errors(slug)[1]

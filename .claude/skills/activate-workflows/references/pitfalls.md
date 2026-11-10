@@ -10,7 +10,7 @@
 > [activate-platform.md](activate-platform.md). Lessons about one piece of software
 > (OpenFOAM, Dakota, ParaView, conda environments, Singularity/SIF images, MPI benchmarks,
 > dask-jobqueue, PhysicsNeMo, PostgreSQL, Pydio Cells, File Browser, Design Explorer, Grafana +
-> Prometheus) live
+> Prometheus, the GT-SUITE scheduler) live
 > in [software/](software/), one file per tool — grep both when a symptom is unclear.
 >
 > Sections: validation · inputs and expressions · jobs, outputs, matrix and retries ·
@@ -140,6 +140,9 @@
   object a form input holds, add a temporary `string` input with
   `default: ${{ toJSON(inputs.resource) }}` and `prefillDefault: true`: the form
   shows it filled in.
+- **A `dropdown` takes a value outside its `options` from `-i`** (verified 2026-11-10):
+  the dry-run and the run both accept it. A failure-path test can send a choice the
+  form does not offer, and a script cannot assume a dropdown holds one of its options.
 - **A secret user variable renders empty in `${{ var.NAME }}`** unless the workflow
   declares it under the top-level `needs.userVariables`; a public variable renders
   without the declaration, and an unset or undeclared one renders empty instead of
@@ -242,6 +245,13 @@
   `cancel.sh` that scancels the recorded job ids — on cancel the submitter killed the
   process group and `cancel.sh` scancelled the running 10-node job (clever-blowfish).
   Handler jobs with `if: ${{ !success() }}` remain the hook for the *error* path.
+- **A step's own `cleanup:` runs after a user cancel and after `early-cancel`**
+  (verified 2026-11-10 on workspace jobs that each hold one long step open; the log
+  lists it as `POST <step name>`), unlike the job-level list and the handler jobs of
+  the entry above. It also runs when the cancel comes in the step's first second, so
+  it has to work from nothing. A process the step started with `setsid` survives the
+  cancel: the cleanup finds it by its command line, not by a pid file the step may
+  not have got to write.
 - **A subworkflow's own `if: ${{ !success() }}` handler runs when the top-level run is
   canceled** (verified 2026-10-08 as `!completed`, run included-corgi): canceling a
   doe-openfoam run while its nested `workflows/design-explorer` call had started its
@@ -299,6 +309,15 @@
 - **`workspace` resolves with empty `ip`** → its SSH steps run on the workspace node
   (a *different* host than a cluster login node). Match your debugging location to
   the resource you chose.
+- **A workspace job's directory (`/tmp/runs/<run>/`) held nothing after a workspace
+  restart** (verified 2026-11-10); its step logs go to `~/pw/jobs/<run>/logs/`. The
+  platform writes an `inputs.json` and an `inputs.sh` of its own there from the form,
+  which a preprocessing that writes `inputs.sh` replaces.
+- **The workspace's `ssh` is configured by the platform** (verified 2026-11-10):
+  `~/.ssh/pw_config` gives every cluster its key and user and sets a `ControlPath` for
+  every host. So `ssh <cluster ip>` from a workspace step needs neither, and a script
+  that must own its connection (a tunnel it will have to kill) passes
+  `-o ControlMaster=no -o ControlPath=none`.
 - **A workspace job can stay `canceling` after `parallelworks/cancel-jobs`** (seen
   once, 2026-10-28): of two runner jobs released a second apart by their wait jobs, one
   reached `canceled` and the other stayed `canceling`, its wait job's last step never
@@ -674,6 +693,10 @@
   `~/.config/pw/credentials` expires hourly and is refreshed only by a `pw` command: run
   one before reading it, or pass a real API key; a `pw auth whoami` before
   `pw endpoints run` fails the run with the reason.
+- **`PW_API_KEY` signs the CLI in, but `pw context current` still names the saved
+  context** (verified 2026-11-10, CLI v7.129.0), which is where the test runner reads
+  the user. To test as another account, sign in to a credentials directory of its own
+  and export it for the runner: `PW_CREDENTIALS_DIR=<dir> pw auth --with-api-key < key.txt`.
 - **A `pw` call inside the run gets `401 Unauthorized`:** the workflow (or the parent
   of the subworkflow making the call) lacks `permissions: ['*']`.
 - **`pw workflows run` with a relative YAML path:** CLIs before v7.105 parsed it as a git

@@ -340,6 +340,10 @@ paths): validate that statically.
     `_test.endpoint: false`, pass = the run completes
   - a failure path (a deliberate `exit 1`, an input the form forbids):
     `_test.expect: error`; test one per workflow, the success path never exercises it
+  - a run that stays open while it serves on a cluster (`start_gt_scheduler`):
+    `_test.ready_job` names the job that proves it works; pass = that job completes
+    while the run is still `running`, and the runner cancels the run before its
+    leftover checks
   - Kubernetes: pass = the `wait_for_endpoint_k8s` job completes while the run is
     still `running`; teardown = `pw workflows runs cancel <slug>` (tests under
     `tests/k8s/` and `tests/general_k8s/`; details in

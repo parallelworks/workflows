@@ -46,6 +46,14 @@ serves from the user workspace: it is not listed by `pw cluster ls`, so the runn
 it as active and runs the warm-marker, setup and leftover checks there with
 `pw ssh workspace`.
 
+A cluster-lane workflow whose run stays open while it serves, and is torn down by
+cancelling it, names the job that proves it works in `_test.ready_job`
+(`start_gt_scheduler`: `wait_for_scheduler`, which completes after the scheduler's
+first sensing cycle). Pass = that job completes while the run is still running;
+the runner then cancels the run, waits for it to reach a final status and makes the
+usual leftover checks, so every recorded launch also records a cancel. A run that
+ends first fails the test, unless the test expects the error.
+
 A hybrid `*_k8s.yaml` runs either lane, so it takes one test per lane: a k8s-lane test
 with the `resource` object and a cluster-lane test with a `pw://` string. On the
 cluster lane the runner expands that string into the full resource object from
@@ -79,6 +87,7 @@ Optional, stripped before launch.
 | `resource` | cluster | the resource the runner checks (warm marker, leftovers) when the form has no `resource`, e.g. librechat `general-all` with its `librechat_resource` | none |
 | `scheduler` | cluster | `true` when scheduler jobs are requested through an input the runner cannot see (`ray-cluster`'s workers), so teardown also checks `squeue` | from `cluster.scheduler` |
 | `expect` | cluster | `error` for a failure-path test: pass = the run ends in `error`, then the usual leftover checks | `completed` |
+| `ready_job` | cluster | the job whose completion is the verdict, for a workflow whose run stays open while it serves (`start_gt_scheduler`'s `wait_for_scheduler`): pass = it completes while the run is still running; teardown = `pw workflows runs cancel`, then the leftover checks once the run is final (`cleanup` reads `leftover:run:<status>` when it never gets there) | none |
 | `endpoint_name` | both | the exact endpoint name, for a workflow that keeps a fixed one (`hpc_status`'s `hpc-status`): it replaces `*-<run-slug>` in the pass check, the teardown and the leftover check | none |
 | `secrets` | both | `{"<input path>": "<ENVIRONMENT VARIABLE>"}`: the value of each variable goes into that input (dotted path, e.g. `api_key` or `service.token`) at launch, so a `password` input never sits in the test file (`probe`'s dashboards key). The test is skipped when a variable is unset; `--emit` leaves these inputs as they are in the file | none |
 
@@ -91,6 +100,9 @@ Cluster lane:
 - `pw endpoints list` shows an endpoint named `*-<run-slug>`, or `_test.endpoint_name`
   (skipped when the test sets `_test.endpoint: false`: a batch workflow passes on
   `completed` alone)
+
+With `_test.ready_job`, `completed` above reads "the named job completed and the run
+is still running", and the run is cancelled before the cleanup below.
 
 Cleanup is verified separately after `pw endpoints delete` of every endpoint ending in
 the run slug (a multi-service workflow registers several): no matching processes

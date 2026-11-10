@@ -27,7 +27,7 @@ file):
 | [references/activate-platform.md](references/activate-platform.md) | Any YAML or CLI question: schema, inputs and expressions, DAG / matrix / retries, `script_submitter`, `pw` CLI, job-dir layout, endpoints, LLM services. Numbered sections, contents at the top. |
 | [references/pitfalls.md](references/pitfalls.md) | **A run misbehaves**: grep it for the symptom text before debugging from scratch. Every surprise a real run taught, grouped by theme, dated. |
 | [references/pw-auth.md](references/pw-auth.md) | The workflow's scripts call `pw` or the platform API: where `pw` is signed in on its own, the run's key and when it dies, the credential a service uses after the run completes, a key handed through the form. |
-| [references/shapes/](references/shapes/) | The jobs after preprocessing for each workflow shape (endpoint service, batch job, callable step, composed workflow): what "done" means, the teardown, the test. Step 2 picks one. |
+| [references/shapes/](references/shapes/) | The jobs after preprocessing for each workflow shape (endpoint service, batch job, callable step, composed workflow, a run that stays open): what "done" means, the teardown, the test. Step 2 picks one. |
 | [references/k8s-workflows.md](references/k8s-workflows.md) | The target is a Kubernetes cluster: no login node, no `script_submitter`, its own dev loop, tests and debugging. |
 | [references/design-parameters.md](references/design-parameters.md) | A driver (`doe`, `dakota`) and a runner (`openfoam-naca`) exchange designs: the `params.in` / `results.out` contract. |
 | [references/oidc-sign-in.md](references/oidc-sign-in.md) | The served app signs users in with their ACTIVATE account (OIDC): registering the app, pinning the subdomain, what the session proxy does to the sign-in and the proxy to put in front, testing without a browser. |
@@ -181,6 +181,7 @@ checks:
 | **Callable step** (login node only) | its steps finish; one `general.yaml` for every platform | plain `run:` steps; a detached `pw endpoints run` with a `!success()` handler when it serves | `workflows/doe`, `workflows/design-explorer` | [shapes/composed.md](references/shapes/composed.md) |
 | **Composed** | the study or loop finishes | `uses:` of the rows above: a matrix of evaluators, retry-as-loop, a live page | `workflows/doe-openfoam`, `workflows/dakota-openfoam` | [shapes/composed.md](references/shapes/composed.md) |
 | **Kubernetes** | never: cancelling the run is the teardown | the sidecar pod jobs; no submitter, nothing checked out | `workflows/mlflow/yamls/k8s.yaml`, `workflows/openvscode/yamls/general_k8s.yaml` (hybrid) | [k8s-workflows.md](references/k8s-workflows.md) |
+| **Open run** (a service the run stays with, on a cluster) | never: cancelling the run is the teardown | jobs in the user workspace that each hold one step open over what they started, and a wait job as the evidence; no submitter | `workflows/start_gt_scheduler` | [shapes/open-run.md](references/shapes/open-run.md) |
 
 A simulation that must survive its walltime, a preempted or lost node, or a cancel is
 the resumable batch job: `workflows/openfoam-naca/yamls/general-restart.yaml` (and the

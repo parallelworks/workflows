@@ -253,7 +253,9 @@
   lists them as `POST <step name>`) and the run was `canceled` 4 to 7 s later, also when
   the cancel came in the step's first second, before it had done anything: a cleanup
   has to work from nothing. When one of the jobs failed instead, the other one's step,
-  carrying `early-cancel: any-job-failed`, was cancelled and its cleanup ran as well.
+  carrying `early-cancel: any-job-failed`, was cancelled and its cleanup ran as well;
+  a cleanup that then retried an unreachable host for 105 s ran to its end, the run
+  showing `faulted` until it did.
   The entry above is about a *job-level* `cleanup:` list and about handler jobs; the
   step's `cleanup:` is the hook for a user cancel. A process the step started with
   `setsid` survives the cancel of the step and is still there for the cleanup to stop:

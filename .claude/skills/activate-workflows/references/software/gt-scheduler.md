@@ -35,3 +35,14 @@ know before changing or debugging it.
   three failed attempts.
 - **`scancel -u` at teardown takes every SLURM job of the user on the cluster**, not
   only the executors. It is the source's behaviour and the README says so.
+- **`gt-scheduler` is a name, not an identity.** Two runs can each have had a session
+  of that name on one controller: launched a second apart (one is refused at the
+  launch lock), or a new run started within the eight minutes an old one takes to
+  notice its session died. Each run records the id `screen` gave its own session
+  (`<pid>.gt-scheduler`) and `app/controller/session.sh` answers from it, so the
+  refused or dead run stops nothing of the other's. Both cases were run: the other
+  run kept its session, its key on the license server and its SLURM queue.
+- **One reverse tunnel serves whoever is on the controller.** Port 2222 there can be
+  bound once, so a run that finds the tunnel up uses it, and loses it when the run
+  that opened it ends. Its monitor then opens its own: in the two-launches case the
+  surviving scheduler failed four of its ten balance attempts first.

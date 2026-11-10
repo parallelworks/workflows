@@ -1,0 +1,24 @@
+{
+  "_test": {
+    "timeout_s": 1200,
+    "endpoint": false,
+    "ready_job": "wait_for_scheduler",
+    "scheduler": true,
+    "leftover_patterns": [
+      "SCREEN",
+      "scheduler.sh",
+      "usercontainer",
+      "logs.out"
+    ],
+    "leftover_commands": {
+      "gtdistd": "systemctl is-active gtdistd.service | grep -c '^active$'",
+      "license-ports": "ss -tln | grep -c -E ':(27032|27812) '",
+      "reverse-tunnel": "ss -tln | grep -c ':2222 '"
+    }
+  },
+  "resource": "pw://gtproduction/dev",
+  "adv_pw": {
+    "ds_cycle": 15,
+    "min_core_demand": 24
+  }
+}

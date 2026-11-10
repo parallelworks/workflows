@@ -1730,9 +1730,10 @@ and the registrations that point at it keep working until they are re-pointed.
 
 | Old | New |
 |---|---|
-| `resources/host/`: `executor-template.sh`, `enforce_balance_in_prop_file.py`, `get_core_demand.py`, `get_core_demand_v2024.py`, `properties_files/` | `app/controller/`, byte for byte (the properties files keep their CRLF line ends) |
+| `resources/host/`: `executor-template.sh`, `enforce_balance_in_prop_file.py`, `get_core_demand.py`, `get_core_demand_v2024.py`, `properties_files/*.properties` | `app/controller/`, byte for byte (the properties files keep their CRLF line ends) |
+| `resources/host/properties_files/README.md` | the README's "The properties files", with the parameters the scripts set today |
 | `resources/host/scheduler.sh`, `scheduler-libs.sh` | `app/controller/`: `scheduler.sh` without the line that appended to `cancel.sh` and three commented-out lines for a web app session; `scheduler-libs.sh` calls the balance and node scripts under `${workspace_app_dir}` (was `${pw_job_dir}`). Nothing else differs |
-| `resources/host/launch_scheduler.sh` (wrote `cancel.sh`, started the `screen` session) | `app/controller/launch_scheduler.sh` (starts the session once, refuses another run's) and `app/controller/cancel.sh`, the same commands in a file of its own |
+| `resources/host/launch_scheduler.sh` (wrote `cancel.sh`, started the `screen` session) | `app/controller/launch_scheduler.sh` (starts the session under a lock and records its id), `app/controller/session.sh` (whose session is on the node: this run's, another's or none) and `app/controller/cancel.sh`, a file of its own |
 | `create_license_tunnel_script.sh` (generated `license_tunnel.sh` from a heredoc and rewrote the workspace's `~/.ssh/config`) | `app/controller/license_tunnel.sh`, the same commands reading `inputs.sh` |
 | `main.sh`, `cancel.sh` | `app/main.sh`, `app/cancel.sh` |
 | the `ssh_auth` step pasted into every YAML | `app/license-access.sh install\|remove` |
@@ -1775,6 +1776,13 @@ only the new behaviour was run.
   scheduler needs, or already has a `gt-scheduler` session. The source started a second
   sensing loop beside the first, and the cancel of either run then stopped the daemon
   and cancelled every SLURM job under both.
+- **A run only watches and stops the session it started.** The launch takes a lock that
+  ends with it and records the session's id in the run's directory; the monitor, the
+  wait job, the controller's `cancel.sh` and the key's cleanup all ask `session.sh`
+  whether the session on the node is this run's. A run refused at launch, or one whose
+  scheduler died before another run started, ends in error and stops nothing of the
+  other's: not its session, its tunnels, its SLURM jobs or its key on the license
+  server. The source looked for any session named `gt-scheduler`.
 - **Evidence, and a loud failure.** `wait_for_scheduler` completes once the first
   sensing cycle ran with `gtdistd` active and fails the run if the scheduler exits
   first. When the session disappears later, the `scheduler` job ends in error after the
@@ -1789,7 +1797,17 @@ only the new behaviour was run.
   balance attempts.
 - **A cancel between the license tunnel and the launch** finds `cancel.sh`, which now
   ships with the other files; the source wrote it at launch, and wrote the line that
-  stops `gtdistd` only after the daemon had started.
+  stops `gtdistd` only after the daemon had started. It ends the sensing loop before
+  the `scancel` (the source cancelled first, so an executor being submitted could land
+  behind it), stops a license tunnel or launch script of the run still in flight, and
+  matches processes by command line (the source matched whole `ps` lines, where a pid
+  could match the license port).
+- **A teardown that cannot connect retries**, as do the set-up steps (five attempts
+  while `ssh` itself fails), and a scheduler it could not stop ends in an error naming
+  the script to run on the controller. The source tried once.
+- **A controller that does not answer is not a scheduler that is gone.** Five checks
+  without the session end the run, as in the source; ten without an answer do too,
+  with their own message. The source counted both as the same five.
 - **The license key.** One set of retries for every variant, production's (ten
   attempts, a 20 s connect timeout, 30 s apart; the development YAML had five, 10 s and
   15 s). A cancel that arrives before the controller's key was read removes nothing,
@@ -1808,7 +1826,12 @@ only the new behaviour was run.
    and then compares it with the string `'false'`: jobs with `solver.parallel-cpu > 1`
    are counted whatever **Allow parallel solver** says. Fixing it would change which
    jobs get executors, which is not a migration's call.
-2. The cancel's `scancel -u` takes every SLURM job of the user on the cluster.
+2. The cancel's `scancel -u` takes every SLURM job of the user on the cluster, and its
+   `ssh ... usercontainer` and `logs.out` matches take any such process of the user.
+3. `scheduler.sh` appends a line for the license hostname to `/etc/hosts` on every
+   start (an empty name for the `gtcustomers` variants).
+4. `utils/remove_ssh_key.sh` reports a removal it did not make when the key is the only
+   line of `authorized_keys`. A license server always holds the workspace's key too.
 
 **Judgment calls:**
 
@@ -1836,10 +1859,15 @@ only the new behaviour was run.
    took: with the platform calls stubbed, nine cases over both lanes (an endpoint
    listed or missing, a batch job, an error, the failure-path cases, the Kubernetes
    wait) gave the same result, teardown and message as `canary`'s runner.
-7. **Two launches within the same minute both pass the check.** The second is then
-   refused when it tries to start its session, and its cleanup stops the first as well:
-   both end in error with nothing left. Closing that window needs a lock that could go
-   stale and block a restart, which is the worse failure here. Not exercised.
+7. **Two launches within the same minute both pass the check**, which is why the
+   launch itself is serialized and a refused run stops nothing. The lock is a `flock`
+   held by the launch script only, so it cannot go stale and block a restart. What a
+   refused run still takes away is the reverse tunnel, if it was the one that opened
+   it: the other run's monitor opens its own within its 90 s cycle.
+8. **The workflow was reviewed against these rules before the last round of tests**
+   (the `workflow-reviewer` definition, run read-only). Its two blockers, a teardown
+   that gave up after one failed connection and a refused run that stopped the other's
+   scheduler, are the two items above; most of its smaller findings are in too.
 
 **Registrations to re-point** (not done here): `devgtscheduler` and `prodgtscheduler` of
 the `gtproduction` account pin `start_scheduler@cloud-v3`, `yamls/gtproduction/dev.yaml`
@@ -1851,8 +1879,14 @@ registrations the same way to `gtcustomers-<customer>.yaml`. The form's cluster 
 
 **Tests (2026-11-10, `cloud.parallel.works`, `pw://gtproduction/dev`, branch
 `start_scheduler`; rows in `workflows/start_gt_scheduler/tests/gtproduction-dev/*.csv`).**
-Every YAML dry-runs. Only `gtproduction-dev` was run: the others share its jobs and
-scripts and point at production license servers. After each run the controller (session,
+Every YAML dry-runs. Only `gtproduction-dev` was run, and one `gtcustomers` form
+against the development license server: the others share its jobs and scripts and
+point at production license servers. Not exercised: a GT job (the development license
+server's own license manager has been failing to start since August, `203/EXEC` on its
+start script, so nothing answers behind the tunnel's ports there), GT before v2024
+(`get_core_demand.py` and the older properties files; an older daemon was not started
+on the persistent work directory v2026 uses), a registered workflow's run directory
+(`<workflow>/<number>`), a workspace restart, and the production license servers. After each run the controller (session,
 `gtdistd`, listeners on 2222, 8979 and the license ports, SLURM queue, the user's
 processes), the workspace (processes, the controller's key in `authorized_keys`) and
 the license server (`authorized_keys`: six entries, none of the controller's) were
@@ -1868,3 +1902,9 @@ checked by hand or by the runner; the runner only sees the controller.
 | a second run on the busy cluster | `engaging-octopus`: error at preprocessing, nothing created or authorized, the first run untouched |
 | the scheduler's session killed | same first run: error after five checks (7 min 43 s) with the end of `logs.out` in the annotation; the executor job `CANCELLED`, `license_access` cancelled by `early-cancel` and its cleanup run, nothing left |
 | cancel during start-up | `fit-mayfly` (in the step's first second: no key yet, nothing on the controller), `tops-chigger` (4 s in, the reverse tunnel being opened: stopped by its command line), `valid-cod` (9 s in, the license tunnel being opened: the controller's `cancel.sh` ran). All `canceled` within 5 s, nothing left |
+| a license server that cannot be reached (`gt_license_ip: 192.0.2.10`, a reserved test address) | `informed-mosquito`: error after the ten attempts (8 min 30 s), `scheduler` and `wait_for_scheduler` cancelled by `early-cancel`; the scheduler job, which was waiting for the key with its tunnel up and its files copied, ran the controller's `cancel.sh` and closed the tunnel; nothing left |
+| the log stream killed in the workspace | `perfect-ape`: a new stream 19 s later, the next sensing cycles in the run's log |
+| the teardown with no connection to the controller (by hand, `app/cancel.sh` on a reserved test address) | five attempts over 125 s, then `could not be stopped from here (no SSH connection to it). Run <dir>/cancel.sh there`, exit 1 |
+| two launches a second apart | `informed-hippo` and `better-hamster`: one refused at the launch lock (`A gt-scheduler screen session is already running`), its `cancel.sh` and its key cleanup stood aside; the other kept its session and its key, lost the reverse tunnel the refused run had opened, failed four balance attempts, reopened both tunnels from its monitor and completed its first cycle |
+| a new run started while the old one had not noticed its scheduler died | `better-hamster`'s session killed, `summary-cub` launched 2 s later: the old run counted its own session as gone under the new one's, ended in error after its five checks and stood aside; the new run kept its session, its key and its cycles and opened a reverse tunnel of its own when the old run's went. The old run's log tail stayed on the controller: fixed after it, and checked by hand with the controller's `cancel.sh` in a mock run directory beside the live scheduler (its own tail stopped, nothing of the live run touched) |
+| a `gtcustomers` form (by hand: a copy of `gtcustomers-isuzu.yaml` with the development license server's address, ports and organization, `adv_pw.min_core_demand: 24`) | `supreme-panther`: an empty license hostname in the controller's `inputs.sh` and in the executor script, the executor's `/etc/hosts` left alone, its daemon started and the scheduler logged it connecting; cancelled with the executor job running: `CANCELLED`, nothing left |

@@ -23,6 +23,18 @@ controller's key off the license server again. No process, tunnel, SLURM job or
 license-server key outlives the run; its directory on the controller stays, for
 the logs.
 
+A run only watches, and only stops, the scheduler it started. A second run on a
+cluster that already has one fails in seconds without touching it; a run whose
+scheduler died ends in error and leaves alone a scheduler that another run started
+in the meantime. Two things the run cannot do for itself:
+
+- If the cancel cannot reach the controller, the run ends with an error naming
+  the script to run there: `~/pw/jobs/<run>/cancel.sh`.
+- If the user workspace restarts, the run ends with no cleanup at all. The
+  scheduler's loop stops by itself within minutes, but `gtdistd` keeps running on
+  the controller and the controller's key stays on the license server. Starting a
+  new run and cancelling it clears both.
+
 ## What the scheduler does
 
 Every sensing cycle the loop reads the jobs `gtdistd` holds, counts the cores
@@ -102,7 +114,8 @@ platform for the balance queries however long the run lasts.
    `app/controller/` to the controller, opens the license tunnel, starts the
    scheduler there in a `screen` session named `gt-scheduler` and streams its log.
    Every 90 s it checks the tunnels, reopening one that dropped, and the session:
-   five checks without it end the run in error. Its cleanup stops everything.
+   five checks without it end the run in error, as do ten without an answer from
+   the controller. Its cleanup stops everything this run started.
 4. **wait_for_scheduler** completes once the first sensing cycle ran with `gtdistd`
    active, and fails the run if the scheduler exits or never gets there.
 
@@ -120,17 +133,40 @@ for one launched from a file. The loop reads `inputs.sh` and `scheduler-libs.sh`
 again every cycle, so a limit edited in the controller's copy applies from the next
 one.
 
+## The properties files
+
+`app/controller/properties_files/` holds one scheduler and one executor file per GT
+version, and the scripts set these parameters in the copy they start a daemon with;
+anything else can be changed in the file, and a parameter that is commented out
+stays so.
+
+- Executor: `GTDistributed.work-dir`, `GTDistributed.license-file`,
+  `GTDistributed.client.hostname`, `GTDistributed.executor.core-count`.
+- Scheduler: `GTDistributed.work-dir`, `GTDistributed.job-summary-service-enable`,
+  `GTDistributed.scheduler.max-parallel-cores-per-solver` and its `validation` line
+  (with the parallel solver allowed), and every cycle, from the balance,
+  `GTDistributed.scheduler.max-licenses.<product>` and
+  `GTDistributed.scheduler.validation.permitted-licenses`.
+
 ## What the cluster needs
 
 A SLURM cloud cluster with the two disks above, `sudo` without a password, and
-`screen`, `netstat`, `curl`, `jq` and `python3`; partition names of at most eight
-characters.
+`screen`, `netstat`, `curl`, `jq`, `rsync` and `python3`; partition names of at most
+eight characters. The run checks all but the last before it starts anything.
 
 ## Tests
 
 `tests/gtproduction-dev/` holds the recorded tests, run with
-`python3 tools/tests/run-workflow-test.py` on the development cluster: one starts
+`python3 tools/tests/run-workflow-test.py` on the development cluster: `dev` starts
 the scheduler, waits for `wait_for_scheduler` and cancels the run, checking that
-nothing is left on the controller; one asks for a GT version the cluster does not
-hold and expects the run to end in error at preprocessing. The other variants point
-at production license servers and are not run from here.
+nothing is left on the controller; `dev-min-cores` does the same with a minimum core
+demand, so that an executor job is in the queue when the cancel comes (it starts one
+compute node); `dev-gt-not-installed` asks for a GT version the cluster does not hold
+and expects the run to end in error at preprocessing. The runner only sees the
+controller: the workspace and the license server are checked by hand.
+
+The other variants point at production license servers and are not run from here.
+They share every job and script with the tested one; what only they take is the
+form without a license hostname (the `gtcustomers` variants, run once against the
+development license server from a copy with its address) and, for GT before v2024,
+`get_core_demand.py` and the older properties files, which no test here starts.

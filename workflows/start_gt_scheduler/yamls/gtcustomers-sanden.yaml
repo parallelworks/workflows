@@ -1,0 +1,172 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: start_scheduler
+          sparse_checkout:
+            - workflows/start_gt_scheduler/app
+      - name: Create Inputs
+        run: |
+          set -x
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          cat <<'EOF' >> inputs.sh
+          resource_id="${{ inputs.resource.id }}"
+          resource_ip="${{ inputs.resource.ip }}"
+          resource_name="${{ inputs.resource.name }}"
+          resource_namespace="${{ inputs.resource.namespace }}"
+          resource_user="${{ inputs.resource.user }}"
+          resource_type="${{ inputs.resource.type }}"
+          gt_license_user="${{ inputs.gt_license_user }}"
+          gt_license_ip="${{ inputs.gt_license_ip }}"
+          gt_license_port="${{ inputs.gt_license_port }}"
+          gt_license_vendor_port="${{ inputs.gt_license_vendor_port }}"
+          customer_org_id="${{ inputs.customer_org_id }}"
+          customer_org_name="${{ inputs.customer_org_name }}"
+          gt_version="${{ inputs.gt.version }}"
+          adv_gt_sum_serv="${{ inputs.adv_gt.sum_serv }}"
+          adv_gt_allow_ps="${{ inputs.adv_gt.allow_ps }}"
+          adv_pw_ds_cycle="${{ inputs.adv_pw.ds_cycle }}"
+          adv_pw_min_core_demand="${{ inputs.adv_pw.min_core_demand }}"
+          adv_pw_max_core_demand="${{ inputs.adv_pw.max_core_demand }}"
+          EOF
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""$\|="undefined"$/d' inputs.sh
+          sed -i 's/^/export /' inputs.sh
+      - name: Check the Cluster
+        run: bash workflows/start_gt_scheduler/app/preflight.sh
+
+  license_access:
+    needs:
+      - preprocessing
+    steps:
+      - name: Authorize the Controller on the License Server
+        early-cancel: any-job-failed
+        run: bash workflows/start_gt_scheduler/app/license-access.sh install
+        cleanup: bash workflows/start_gt_scheduler/app/license-access.sh remove
+
+  scheduler:
+    needs:
+      - preprocessing
+    steps:
+      - name: Start and Monitor GT Scheduler
+        early-cancel: any-job-failed
+        run: bash workflows/start_gt_scheduler/app/main.sh
+        cleanup: bash workflows/start_gt_scheduler/app/cancel.sh
+
+  wait_for_scheduler:
+    needs:
+      - preprocessing
+    steps:
+      - name: Wait for the First Sensing Cycle
+        early-cancel: any-job-failed
+        run: bash workflows/start_gt_scheduler/app/wait-for-scheduler.sh
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Service host
+        description: The scheduler runs on this cluster's controller node until the run is cancelled. A cluster runs one GT scheduler at a time.
+        include-workspace: false
+      gt:
+        type: group
+        label: GT inputs
+        items:
+          version:
+            label: GT version
+            description: Must be installed under /software/gtsuite on the cluster.
+            type: dropdown
+            default: v2026
+            options:
+              - value: v2026
+                label: v2026
+              - value: v2025
+                label: v2025
+              - value: v2024
+                label: v2024
+      adv_gt:
+        type: group
+        label: Advanced GT inputs
+        collapsed: true
+        items:
+          sum_serv:
+            label: Activate job summary service
+            type: boolean
+            default: true
+          allow_ps:
+            label: Allow parallel solver
+            type: boolean
+            default: false
+      adv_pw:
+        type: group
+        label: Advanced PW inputs
+        collapsed: true
+        items:
+          ds_cycle:
+            label: Core demand sensing cycle duration [s]
+            description: Seconds between two readings of the core demand, after which executor nodes are started or released.
+            type: number
+            min: 15
+            max: 600
+            step: 1
+            default: 60
+          min_core_demand:
+            label: Min executor cores
+            description: The core demand is never taken below this, so that many cores keep running with no GT job queued.
+            type: number
+            min: 0
+            max: 100
+            step: 1
+            default: 2
+          max_core_demand:
+            label: Max executor cores
+            description: The core demand the scheduler serves is capped at this value.
+            type: number
+            min: 50
+            max: 1000
+            step: 1
+            default: 500
+      gt_license_user:
+        label: License server user
+        type: string
+        default: ec2-user
+        tooltip: User name on the license server
+        hidden: true
+      gt_license_ip:
+        label: License server IP
+        type: string
+        default: 63.176.9.57
+        tooltip: External IP address of the license server
+        hidden: true
+      gt_license_port:
+        label: License server port
+        type: number
+        default: 27048
+        tooltip: License port
+        hidden: true
+      gt_license_vendor_port:
+        label: License server vendor port
+        type: number
+        default: 27828
+        tooltip: License vendor port
+        hidden: true
+      customer_org_id:
+        label: ID of the organization of the customer
+        type: string
+        default: 6751b2d699b4ed9747423059
+        tooltip: https://cloud.parallel.works/api/v2/organization
+        hidden: true
+      customer_org_name:
+        label: Name of the organization of the customer
+        type: string
+        default: hostedbygt
+        hidden: true

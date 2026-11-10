@@ -9,7 +9,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: start_scheduler
+          branch: canary
           sparse_checkout:
             - workflows/start_gt_scheduler/app
       - name: Create Inputs

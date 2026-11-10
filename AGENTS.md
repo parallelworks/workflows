@@ -118,8 +118,11 @@ The rows combine: a **service plus the work that uses it** (`burst-render-demo`,
 a **batch job beside a page** (`physicsnemo`: training as a batch job, TensorBoard
 started the callable-step way; `dakota-openfoam`: the loop, with `design-explorer`
 beside it), **several services in one run** (`librechat`'s `-all` variants, `probe`:
-one submitter + wait pair per endpoint). Whatever the combination, every shape keeps
-the same invariants:
+one submitter + wait pair per endpoint), **a run that stays open while it serves** on a
+cluster (`start_gt_scheduler`: jobs in the user workspace drive the controller over
+`ssh`, a `wait_for_scheduler` job is the evidence, and cancelling the run is the
+teardown, as on Kubernetes). Whatever the combination, every shape keeps the same
+invariants:
 
 - **The run ends on evidence** — a health probe that saw the URL answer, an exit file
   the script wrote — and **fails loud without it**. `script_submitter` never forwards
@@ -340,6 +343,10 @@ paths): validate that statically.
     `_test.endpoint: false`, pass = the run completes
   - a failure path (a deliberate `exit 1`, an input the form forbids):
     `_test.expect: error`; test one per workflow, the success path never exercises it
+  - a run that stays open while it serves on a cluster (`start_gt_scheduler`):
+    `_test.ready_job` names the job that proves it works; pass = that job completes
+    while the run is still `running`, and the runner cancels the run before its
+    leftover checks
   - Kubernetes: pass = the `wait_for_endpoint_k8s` job completes while the run is
     still `running`; teardown = `pw workflows runs cancel <slug>` (tests under
     `tests/k8s/` and `tests/general_k8s/`; details in

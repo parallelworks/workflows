@@ -639,8 +639,9 @@ def run_test(test, args, user):
             elif ready_job and status == "completed":
                 row["result"], row["error"] = "fail", f"run completed; it was expected to keep running after {ready_job}"
             elif reached != test.meta["expect"] and not (test.meta["expect"] == "error" and reached == "faulted"):
-                summary, detail = errors(slug) if reached != "completed" else ("run completed", "")
-                row["result"], row["error"] = "fail", f"run {reached}, expected {test.meta['expect']}: {summary}"
+                summary, detail = errors(slug) if reached != "completed" else (
+                    f"{ready_job} completed" if status == "ready" else "run completed", "")
+                row["result"], row["error"] = "fail", f"run {status}, expected {test.meta['expect']}: {summary}"
             elif test.meta["expect"] != "completed":
                 row["result"] = "pass"
                 log(f"  run {reached} as expected: {errors(slug)[0]}")

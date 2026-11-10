@@ -76,7 +76,7 @@ jobs:
       resource:
         type: compute-clusters
         label: Service host
-        description: The scheduler runs on this cluster's controller node until the run is cancelled. A cluster runs one GT scheduler at a time.
+        description: The scheduler runs on this cluster's controller node until the run is cancelled; a cluster takes one scheduler at a time.
         include-workspace: false
       gt:
         type: group

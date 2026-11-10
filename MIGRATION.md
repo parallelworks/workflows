@@ -1714,3 +1714,157 @@ pgadmin4-upward-gnu` then killed the tree and the trap removed the container. No
 exercised: PBS, a host without `sudo` for Docker, two runs on one data directory (no lock
 is taken; pgAdmin's SQLite database tolerates two servers). The checkout points at
 `canary` for the merge.
+
+## start_gt_scheduler (2026-11-10, from parallelworks/start_scheduler)
+
+`workflows/start_gt_scheduler/` is `parallelworks/start_scheduler@cloud-v3` (c0f1186),
+the GT-SUITE distributed scheduler: `gtdistd` and a core demand sensing loop on a cloud
+SLURM cluster's controller, executor nodes started with `sbatch` for the cores the
+queued GT jobs need, and the license ports forwarded from a license server. The source
+ran from the user workspace (`main.sh` and an `ssh_auth` job there, `ssh` to the
+controller), cloned `parallelworks/workflow-utils` at run time for its resource wrapper
+and library, and kept one YAML per license server with the same step bodies pasted into
+each. Here it is one workflow directory on this repository's layout. **The mechanism
+is the source's, and so is where the jobs run**; `start_scheduler` itself is untouched,
+and the registrations that point at it keep working until they are re-pointed.
+
+| Old | New |
+|---|---|
+| `resources/host/`: `executor-template.sh`, `enforce_balance_in_prop_file.py`, `get_core_demand.py`, `get_core_demand_v2024.py`, `properties_files/` | `app/controller/`, byte for byte (the properties files keep their CRLF line ends) |
+| `resources/host/scheduler.sh`, `scheduler-libs.sh` | `app/controller/`: `scheduler.sh` without the line that appended to `cancel.sh` and three commented-out lines for a web app session; `scheduler-libs.sh` calls the balance and node scripts under `${workspace_app_dir}` (was `${pw_job_dir}`). Nothing else differs |
+| `resources/host/launch_scheduler.sh` (wrote `cancel.sh`, started the `screen` session) | `app/controller/launch_scheduler.sh` (starts the session once, refuses another run's) and `app/controller/cancel.sh`, the same commands in a file of its own |
+| `create_license_tunnel_script.sh` (generated `license_tunnel.sh` from a heredoc and rewrote the workspace's `~/.ssh/config`) | `app/controller/license_tunnel.sh`, the same commands reading `inputs.sh` |
+| `main.sh`, `cancel.sh` | `app/main.sh`, `app/cancel.sh` |
+| the `ssh_auth` step pasted into every YAML | `app/license-access.sh install\|remove` |
+| `utils/`: `get_balance.py`, `get_node_info.py`, `pw_api.py`, `add_ssh_key.sh`, `remove_ssh_key.sh` | `app/utils/`, byte for byte |
+| `workflow-utils` (cloned at run time): `input_form_resource_wrapper.py`, `workflow-libs.sh`, `create_ssh_keys.sh`, `create_ssh_config.sh` | the part the scheduler used: `app/preflight.sh` with `app/utils/cluster_address.py` (the controller's address from `pw cluster ls`, its home and private address), `app/libs.sh` with `app/controller/usercontainer.sh` (the key, the host entry and the reverse tunnel back to the workspace), and the `rsync` in `main.sh` |
+| `utils/write_inputs_sh.py` and the `inputs.json` each YAML wrote for the wrapper | the `Create Inputs` step writes `inputs.sh`, as everywhere here |
+| `yamls/gtproduction/{dev,production}.yaml`, `yamls/gtcustomers/<customer>.yaml` | `yamls/gtproduction-{dev,production}.yaml`, `yamls/gtcustomers-<customer>.yaml` |
+| `gt_logo.png` | `thumbnails/gt-scheduler.png` |
+| `README.md` | rewritten around the same sections |
+
+**Left behind**, in `start_scheduler`:
+
+- `yamls/gtprod.yaml`: a copy of the development configuration (that license server's
+  address and ports, GT v2020 to v2024) without the `customer_org_name` input. The
+  balance query has needed the organization's name since 2026-10-27 and the platform
+  answers `422 Organization is required` without it, so a scheduler started from this
+  file stops after its ten balance attempts. Neither registration of the `gtproduction`
+  account points at it (`devgtscheduler` and `prodgtscheduler` use the two under
+  `yamls/gtproduction/`).
+- `workflow.yaml`, `workflow.xml`, `xmls/`: earlier forms of the same workflow.
+- `service.json`, `utils/notify.sh`: the session and notification of a web app view
+  that only commented-out lines still referred to.
+- `resources/host/test.sh`, `lmstatparse.pl`: referenced by nothing.
+  `resources/host/balance.json`: a placeholder the loop overwrote before its first read.
+
+**The variants.** The ten YAMLs were generated from the source's and compared with them
+input by input: every default, option list and limit is the source's, and the job graph
+is the same text in all ten but for the two lines of `Create Inputs` that map an input
+only some forms have (`gt_license_hostname`, `adv_gt.max_parallel_cores_per_solver`).
+The form changes are: the cluster is the top-level `resource` (was
+`pwrl_host.resource`), the unused hidden `pwrl_host.nports` is gone, labels are in
+sentence case, the three sentences that were tooltips of the core inputs are
+descriptions, and the number inputs have `step: 1`. Every other input keeps its key.
+
+**Behaviour, source → here.** What the source did in each case is read from its code;
+only the new behaviour was run.
+
+- **A check before anything is touched.** `preprocessing` fails the run in seconds when
+  the cluster is not running or reachable, lacks the chosen GT version or a tool the
+  scheduler needs, or already has a `gt-scheduler` session. The source started a second
+  sensing loop beside the first, and the cancel of either run then stopped the daemon
+  and cancelled every SLURM job under both.
+- **Evidence, and a loud failure.** `wait_for_scheduler` completes once the first
+  sensing cycle ran with `gtdistd` active and fails the run if the scheduler exits
+  first. When the session disappears later, the `scheduler` job ends in error after the
+  source's five checks. The source ran its cancel script at that point and ended the
+  step with that script's status, usually 0: the `ssh_auth` job then kept the run open
+  with nothing behind it and the key on the license server.
+- **The tunnels are watched.** The reverse tunnel from the controller to the workspace
+  is opened by `main.sh` as a process it tracks, closed when the run ends if this run
+  opened it (the source left it for the next run), and reopened by the 90 s loop if it
+  drops, before the license tunnel that rides through it. The source reopened the
+  license tunnel only, so a dropped reverse tunnel ended the scheduler after its ten
+  balance attempts.
+- **A cancel between the license tunnel and the launch** finds `cancel.sh`, which now
+  ships with the other files; the source wrote it at launch, and wrote the line that
+  stops `gtdistd` only after the daemon had started.
+- **The license key.** One set of retries for every variant, production's (ten
+  attempts, a 20 s connect timeout, 30 s apart; the development YAML had five, 10 s and
+  15 s). A cancel that arrives before the controller's key was read removes nothing,
+  where the source sent the unfilled template to the license server three times.
+- **The workspace's `~/.ssh/config` is not rewritten.** Each `ssh` carries the options
+  the source put there for every host, plus `ControlMaster=no ControlPath=none`: the
+  platform's `ssh_config` shares connections in the workspace.
+- **The scheduler's directory on the controller** is `~/pw/jobs/<run>/` (was
+  `~/pw/jobs/<workflow>/<number>/host/`).
+- **The step log** has the trace of the set-up, then only the scheduler's own log and
+  the monitor's messages; the controller's public keys are printed as fingerprints.
+
+**Found, not changed:**
+
+1. `get_core_demand*.py` declares `--allow_ps` with `type=bool`, so any value is true,
+   and then compares it with the string `'false'`: jobs with `solver.parallel-cpu > 1`
+   are counted whatever **Allow parallel solver** says. Fixing it would change which
+   jobs get executors, which is not a migration's call.
+2. The cancel's `scancel -u` takes every SLURM job of the user on the cluster.
+
+**Judgment calls:**
+
+1. **The jobs stay in the user workspace**, against the rule that preprocessing runs on
+   the resource's login node. The license server's firewall admits the workspace and
+   not the controller (port 22 from the controller is filtered, measured), so the key is
+   installed from there and the tunnel jumps through it; and the balance queries need a
+   `pw` sign-in that lasts as long as the scheduler does, which the workspace has and a
+   cloud controller does not.
+2. **No `script_submitter`.** The scheduler runs in a `screen` session started over
+   `ssh` and is watched by short `ssh` calls every 90 s, as in the source: a run lasts
+   weeks (the last one 313 h) and nothing then depends on one connection staying up. The
+   `sbatch` calls are the application's own, like `cwl-mpi-hello-world`'s.
+3. **One YAML per license server**, named `<account>-<cluster>` after the source's
+   directories rather than after a platform: a registration needs its license server as
+   hidden defaults. The step bodies are in `app/`, so the YAMLs hold the form and four
+   one-line steps.
+4. **The inputs keep their keys** (`gt_license_*`, `adv_gt`, `adv_pw`), not the
+   `service`-style groups: saved inputs keep working, and the variables the controller
+   scripts read keep their names, which leaves those scripts unedited.
+5. **`get_core_demand_v2024.py` keeps its name**: it is keyed by the GT release whose
+   job log it reads, like the properties files, not by a generation of the script.
+6. **The test runner gained `_test.ready_job`** (`tools/tests/README.md`): a run that
+   never completes had no lane on a cluster. Tests without the key take the path they
+   took: with the platform calls stubbed, nine cases over both lanes (an endpoint
+   listed or missing, a batch job, an error, the failure-path cases, the Kubernetes
+   wait) gave the same result, teardown and message as `canary`'s runner.
+7. **Two launches within the same minute both pass the check.** The second is then
+   refused when it tries to start its session, and its cleanup stops the first as well:
+   both end in error with nothing left. Closing that window needs a lock that could go
+   stale and block a restart, which is the worse failure here. Not exercised.
+
+**Registrations to re-point** (not done here): `devgtscheduler` and `prodgtscheduler` of
+the `gtproduction` account pin `start_scheduler@cloud-v3`, `yamls/gtproduction/dev.yaml`
+and `production.yaml` → `workflows/start_gt_scheduler/yamls/gtproduction-dev.yaml` and
+`gtproduction-production.yaml` in `parallelworks/workflows@canary`, thumbnail
+`workflows/start_gt_scheduler/thumbnails/gt-scheduler.png`; the hosted customers'
+registrations the same way to `gtcustomers-<customer>.yaml`. The form's cluster input is
+`resource` now, so inputs saved with `pwrl_host.resource` need the cluster picked again.
+
+**Tests (2026-11-10, `cloud.parallel.works`, `pw://gtproduction/dev`, branch
+`start_scheduler`; rows in `workflows/start_gt_scheduler/tests/gtproduction-dev/*.csv`).**
+Every YAML dry-runs. Only `gtproduction-dev` was run: the others share its jobs and
+scripts and point at production license servers. After each run the controller (session,
+`gtdistd`, listeners on 2222, 8979 and the license ports, SLURM queue, the user's
+processes), the workspace (processes, the controller's key in `authorized_keys`) and
+the license server (`authorized_keys`: six entries, none of the controller's) were
+checked by hand or by the runner; the runner only sees the controller.
+
+| Test | Result |
+|---|---|
+| `dev` (15 s sensing cycle; start, `wait_for_scheduler`, cancel) | PASS `honest-kit` (67 s, `cleanup=ok`); by hand before it, `saving-wallaby`: first sensing cycle 37 s after the launch, `balance.json` equal to the one the source's last run left that morning, cancelled to `canceled` in 7 s with nothing left anywhere |
+| `dev-gt-not-installed` (`gt.version: v2019`, `_test.expect: error`) | PASS `peaceful-fox` (21 s): `GT v2019 is not installed on dev`, the other three jobs never started |
+| executors (by hand, `adv_pw.min_core_demand: 24`) | `saving-bluegill`: the loop submitted `31-exec24zc-1`, every placeholder of the executor script filled and the executor properties equal to the source run's; the node booted in 4 min, the executor's `gtdistd` started and the scheduler logged it connecting 3 s later |
+| a license tunnel killed on the controller | same run: both ports listening again 28 s later, at the monitor's next check |
+| the reverse tunnel killed in the workspace | same run: the scheduler failed three of its ten balance attempts, then the monitor had reopened the reverse tunnel and the license tunnel (about 80 s) and the cycles went on |
+| a second run on the busy cluster | `engaging-octopus`: error at preprocessing, nothing created or authorized, the first run untouched |
+| the scheduler's session killed | same first run: error after five checks (7 min 43 s) with the end of `logs.out` in the annotation; the executor job `CANCELLED`, `license_access` cancelled by `early-cancel` and its cleanup run, nothing left |
+| cancel during start-up | `fit-mayfly` (in the step's first second: no key yet, nothing on the controller), `tops-chigger` (4 s in, the reverse tunnel being opened: stopped by its command line), `valid-cod` (9 s in, the license tunnel being opened: the controller's `cancel.sh` ran). All `canceled` within 5 s, nothing left |

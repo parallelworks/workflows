@@ -81,6 +81,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [rag-service](workflows/rag-service/) | RAG search/index service | general |
 | [rag-vllm](workflows/rag-vllm/) | vLLM inference server + optional RAG stack | general, hsp, noaa |
 | [ray-cluster](workflows/ray-cluster/) | Multi-site Ray cluster: head and live dashboard on one resource, SLURM/PBS/SSH workers on any others | general, hsp, noaa, general_add_worker, hsp_add_worker, noaa_add_worker |
+| [start_gt_scheduler](workflows/start_gt_scheduler/) | GT-SUITE distributed scheduler on an elastic SLURM cluster: the GT daemon on the controller, executor nodes started for the cores the queued GT jobs need, licenses through a tunnel to the license server. The run stays open while the scheduler serves and cancelling it is the teardown (no endpoint) | gtproduction-{dev, production}, gtcustomers-{americanbattery, echogen, isuzu, martintechnologies, sanden, serma, shell, wisk}: one per license server |
 | [streamlit](workflows/streamlit/) | Streamlit apps (Singularity) | general, hsp |
 | [vncserver](workflows/vncserver/) | Host desktop (KasmVNC, no container) | emed, emed_{rstudio, matlab, firefox, fsl, schrodinger, vmd} |
 | [webshell](workflows/webshell/) | Web terminal (ttyd) | general, noaa |

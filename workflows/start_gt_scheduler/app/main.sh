@@ -15,6 +15,8 @@ fail() {
     exit 1
 }
 
+# Untraced while it handles the key, which would fill the log
+{ set +x; } 2> /dev/null
 setup=$(controller_ssh "bash -s -- ${PW_USER}" < "${app_dir}/controller/usercontainer.sh") \
     || fail "Could not prepare the connection from ${controller} back to the user workspace"
 usercontainer_port=$(sed -n 's/^USERCONTAINER_PORT=//p' <<< "${setup}")
@@ -23,7 +25,13 @@ usercontainer_key=$(sed -n 's/^USERCONTAINER_KEY=//p' <<< "${setup}")
     || fail "Could not read the usercontainer port and key of ${controller}"
 mkdir -p ~/.ssh
 touch ~/.ssh/authorized_keys
-grep -qxF "${usercontainer_key}" ~/.ssh/authorized_keys || echo "${usercontainer_key}" >> ~/.ssh/authorized_keys
+if grep -qxF "${usercontainer_key}" ~/.ssh/authorized_keys; then
+    echo "The usercontainer key of ${controller} is already authorized in this workspace"
+else
+    echo "${usercontainer_key}" >> ~/.ssh/authorized_keys
+    echo "Authorized the usercontainer key of ${controller} in this workspace"
+fi
+set -x
 ensure_usercontainer \
     || fail "${controller} cannot reach the user workspace through port ${usercontainer_port}: $(cat reverse-tunnel.out 2> /dev/null)"
 

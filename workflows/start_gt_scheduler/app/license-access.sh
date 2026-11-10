@@ -15,6 +15,9 @@ license_server="${gt_license_user}@${gt_license_ip}"
 license_ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=20"
 
 install() {
+    # Untraced while it handles the key, which would fill the log
+    { set +x; } 2> /dev/null
+
     # The controller's key may not exist yet right after the cluster starts
     local public_key="" attempt
     for attempt in 1 2 3 4 5; do
@@ -27,11 +30,13 @@ install() {
         echo "::error title=Error::Unable to read the public key of ${controller}"
         exit 1
     fi
+    echo "Public key of ${controller}: $(ssh-keygen -lf /dev/stdin <<< "${public_key}")"
 
     local escaped_key
     escaped_key=$(printf '%s' "${public_key}" | sed 's/[&|\\]/\\&/g')
     sed "s|__PUBLIC_KEY__|${escaped_key}|g" "${app_dir}/utils/add_ssh_key.sh" > add_ssh_key.sh
     sed "s|__PUBLIC_KEY__|${escaped_key}|g" "${app_dir}/utils/remove_ssh_key.sh" > remove_ssh_key.sh
+    set -x
 
     bash add_ssh_key.sh
 

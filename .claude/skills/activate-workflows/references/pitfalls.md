@@ -140,10 +140,9 @@
   object a form input holds, add a temporary `string` input with
   `default: ${{ toJSON(inputs.resource) }}` and `prefillDefault: true`: the form
   shows it filled in.
-- **A `dropdown` takes a value outside its `options` from `-i`** (verified 2026-11-10,
-  `workflows/start_gt_scheduler`, run peaceful-fox): the dry-run validates it and the run
-  renders it. A failure-path test can therefore send a choice the form does not offer
-  (`gt.version: v2019`), and a script cannot assume a dropdown holds one of its options.
+- **A `dropdown` takes a value outside its `options` from `-i`** (verified 2026-11-10):
+  the dry-run and the run both accept it. A failure-path test can send a choice the
+  form does not offer, and a script cannot assume a dropdown holds one of its options.
 - **A secret user variable renders empty in `${{ var.NAME }}`** unless the workflow
   declares it under the top-level `needs.userVariables`; a public variable renders
   without the declaration, and an unset or undeclared one renders empty instead of
@@ -246,21 +245,13 @@
   `cancel.sh` that scancels the recorded job ids — on cancel the submitter killed the
   process group and `cancel.sh` scancelled the running 10-node job (clever-blowfish).
   Handler jobs with `if: ${{ !success() }}` remain the hook for the *error* path.
-- **A step's own `cleanup:` runs after a user cancel and after `early-cancel`, in
-  workspace jobs too** (verified 2026-11-10, `workflows/start_gt_scheduler`, five cancels
-  and one failed job). `pw workflows runs cancel` on a run whose two jobs each hold one
-  long step open (a `sleep inf`, a monitor loop) ran both steps' `cleanup:` (the log
-  lists them as `POST <step name>`) and the run was `canceled` 4 to 7 s later, also when
-  the cancel came in the step's first second, before it had done anything: a cleanup
-  has to work from nothing. When one of the jobs failed instead, the other one's step,
-  carrying `early-cancel: any-job-failed`, was cancelled and its cleanup ran as well;
-  a cleanup that then retried an unreachable host for 105 s ran to its end, the run
-  showing `faulted` until it did.
-  The entry above is about a *job-level* `cleanup:` list and about handler jobs; the
-  step's `cleanup:` is the hook for a user cancel. A process the step started with
-  `setsid` survives the cancel of the step and is still there for the cleanup to stop:
-  find it by something on its command line rather than by a pid file the step may not
-  have got to write (`app/libs.sh` there, the reverse tunnel).
+- **A step's own `cleanup:` runs after a user cancel and after `early-cancel`**
+  (verified 2026-11-10 on workspace jobs that each hold one long step open; the log
+  lists it as `POST <step name>`), unlike the job-level list and the handler jobs of
+  the entry above. It also runs when the cancel comes in the step's first second, so
+  it has to work from nothing. A process the step started with `setsid` survives the
+  cancel: the cleanup finds it by its command line, not by a pid file the step may
+  not have got to write.
 - **A subworkflow's own `if: ${{ !success() }}` handler runs when the top-level run is
   canceled** (verified 2026-10-08 as `!completed`, run included-corgi): canceling a
   doe-openfoam run while its nested `workflows/design-explorer` call had started its
@@ -318,24 +309,15 @@
 - **`workspace` resolves with empty `ip`** → its SSH steps run on the workspace node
   (a *different* host than a cluster login node). Match your debugging location to
   the resource you chose.
-- **A job without `ssh:` runs in the user workspace, in `/tmp/runs/<run>/`** (verified
-  2026-11-10 on cloud.parallel.works, workspace v7.136.0): that is `PW_PARENT_JOB_DIR`
-  there (`<workflow>/<number>` for a registered workflow), while the step logs go to
-  `~/pw/jobs/<run>/logs/`. The platform writes an `inputs.json` and an `inputs.sh` of its
-  own into it from the form (the resource object with `privateIp`, `publicIp` and
-  `status` added), which a preprocessing that writes `inputs.sh` replaces. `/tmp/runs`
-  held nothing after the workspace had restarted, so nothing a service on a cluster
-  calls back for survives one there (`workflows/start_gt_scheduler` keeps the scripts
-  its scheduler calls in that directory).
-- **The workspace's `ssh` is configured by the platform** (same day): `/etc/ssh/ssh_config`
-  includes `~/.ssh/pw_config`, which includes one `<cluster>.cluster.config` per
-  cluster with the platform's key (`/run/pw/ssh/pw_ssh_key`, new with each workspace
-  start; there is no `~/.ssh/id_rsa`), and sets `ControlPath` and `ControlPersist` for
-  every host. An `existing` cluster's entry connects through `ProxyCommand pw ssh
-  --proxy-command %h` with `ControlMaster auto`, also when the host is written as its
-  IP. So `ssh <cluster ip>` from a workspace step needs neither a key nor a user, and a
-  script that must own its connection (a tunnel it will have to kill) passes
-  `-o ControlMaster=no -o ControlPath=none` (`workflows/start_gt_scheduler/app/libs.sh`).
+- **A workspace job's directory (`/tmp/runs/<run>/`) held nothing after a workspace
+  restart** (verified 2026-11-10); its step logs go to `~/pw/jobs/<run>/logs/`. The
+  platform writes an `inputs.json` and an `inputs.sh` of its own there from the form,
+  which a preprocessing that writes `inputs.sh` replaces.
+- **The workspace's `ssh` is configured by the platform** (verified 2026-11-10):
+  `~/.ssh/pw_config` gives every cluster its key and user and sets a `ControlPath` for
+  every host. So `ssh <cluster ip>` from a workspace step needs neither, and a script
+  that must own its connection (a tunnel it will have to kill) passes
+  `-o ControlMaster=no -o ControlPath=none`.
 - **A workspace job can stay `canceling` after `parallelworks/cancel-jobs`** (seen
   once, 2026-10-28): of two runner jobs released a second apart by their wait jobs, one
   reached `canceled` and the other stayed `canceling`, its wait job's last step never
@@ -712,11 +694,9 @@
   one before reading it, or pass a real API key; a `pw auth whoami` before
   `pw endpoints run` fails the run with the reason.
 - **`PW_API_KEY` signs the CLI in, but `pw context current` still names the saved
-  context** (verified 2026-11-10, CLI v7.129.0), and the test runner reads the user and
-  the platform from it: with only the variable set, a row is stamped with another
-  account's user. To test as a second account without touching the saved contexts, sign
-  in to a credentials directory of its own (`PW_CREDENTIALS_DIR=<dir> pw auth
-  --with-api-key < key.txt`) and export `PW_CREDENTIALS_DIR` for the runner.
+  context** (verified 2026-11-10, CLI v7.129.0), which is where the test runner reads
+  the user. To test as another account, sign in to a credentials directory of its own
+  and export it for the runner: `PW_CREDENTIALS_DIR=<dir> pw auth --with-api-key < key.txt`.
 - **A `pw` call inside the run gets `401 Unauthorized`:** the workflow (or the parent
   of the subworkflow making the call) lacks `permissions: ['*']`.
 - **`pw workflows run` with a relative YAML path:** CLIs before v7.105 parsed it as a git

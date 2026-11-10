@@ -12,7 +12,6 @@ one:
 | **Callable step** (login node only) | its steps finish; one `general.yaml` for every platform | `workflows/doe`, `workflows/design-explorer` | [shapes/composed.md](.claude/skills/activate-workflows/references/shapes/composed.md) |
 | **Composed** | the study or loop finishes | `workflows/doe-openfoam`, `workflows/dakota-openfoam` | [shapes/composed.md](.claude/skills/activate-workflows/references/shapes/composed.md) |
 | **Kubernetes** | never: cancelling the run is the teardown | `workflows/mlflow/yamls/k8s.yaml` | [k8s-workflows.md](.claude/skills/activate-workflows/references/k8s-workflows.md) |
-| **Open run** (a service the run stays with, on a cluster) | never: cancelling the run is the teardown | `workflows/start_gt_scheduler` | [shapes/open-run.md](.claude/skills/activate-workflows/references/shapes/open-run.md) |
 
 This guide walks the endpoint service; §3 says where the other shapes differ. The
 rules every shape shares, and how the shapes combine, are in [AGENTS.md](AGENTS.md).

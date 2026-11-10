@@ -111,7 +111,6 @@ or tunnel logic; write a new workflow so it can be called in turn.
 | **Callable step** (login node only) | its steps finish; one `general.yaml` for every platform | plain `run:` steps; a detached `pw endpoints run` with a `!success()` handler when it serves a page | `doe`, `dakota`, `design-explorer`, `wait_for_endpoint` | `shapes/composed.md` |
 | **Composed** | the study or loop finishes | `uses:` of the rows above: a matrix of evaluators, retry-as-loop, a live page | `doe-openfoam`, `dakota-openfoam`, `openfoam-naca`'s `*-restart.yaml` | `shapes/composed.md` |
 | **Kubernetes** | never: cancelling the run is the teardown | the sidecar pod jobs; no submitter, nothing checked out | `mlflow/yamls/k8s.yaml` (k8s-only), `openvscode/yamls/general_k8s.yaml` (hybrid) | `references/k8s-workflows.md` |
-| **Open run** (a service the run stays with, on a cluster) | never: cancelling the run is the teardown | jobs in the user workspace that each hold one step open over what they started, with its `cleanup:` as the teardown, and a wait job as the evidence; no submitter | `start_gt_scheduler` | `shapes/open-run.md` |
 
 The rows combine: a **service plus the work that uses it** (`burst-render-demo`,
 `monte-carlo-pricing`, `dask-slurm`, `ray-cluster`, `app-testbed`: jobs that `need`

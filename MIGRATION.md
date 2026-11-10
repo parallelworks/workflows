@@ -1894,8 +1894,9 @@ checked by hand or by the runner; the runner only sees the controller.
 
 | Test | Result |
 |---|---|
-| `dev` (15 s sensing cycle; start, `wait_for_scheduler`, cancel) | PASS `honest-kit` (67 s, `cleanup=ok`); by hand before it, `saving-wallaby`: first sensing cycle 37 s after the launch, `balance.json` equal to the one the source's last run left that morning, cancelled to `canceled` in 7 s with nothing left anywhere |
-| `dev-gt-not-installed` (`gt.version: v2019`, `_test.expect: error`) | PASS `peaceful-fox` (21 s): `GT v2019 is not installed on dev`, the other three jobs never started |
+| `dev` (15 s sensing cycle; start, `wait_for_scheduler`, cancel) | PASS `wired-whale` on the final content (67 s, `cleanup=ok`), `honest-kit` before the review round; by hand before them, `saving-wallaby`: first sensing cycle 37 s after the launch, `balance.json` equal to the one the source's last run left that morning, cancelled to `canceled` in 7 s with nothing left anywhere |
+| `dev-gt-not-installed` (`gt.version: v2019`, `_test.expect: error`) | PASS `romantic-mackerel` (21 s), `peaceful-fox` before: `GT v2019 is not installed on dev`, the other three jobs never started |
+| `dev-min-cores` (`adv_pw.min_core_demand: 24`) | PASS `proud-condor` (67 s, `cleanup=ok`): an executor job submitted 12 s before the cancel and `CANCELLED` by it |
 | executors (by hand, `adv_pw.min_core_demand: 24`) | `saving-bluegill`: the loop submitted `31-exec24zc-1`, every placeholder of the executor script filled and the executor properties equal to the source run's; the node booted in 4 min, the executor's `gtdistd` started and the scheduler logged it connecting 3 s later |
 | a license tunnel killed on the controller | same run: both ports listening again 28 s later, at the monitor's next check |
 | the reverse tunnel killed in the workspace | same run: the scheduler failed three of its ten balance attempts, then the monitor had reopened the reverse tunnel and the license tunnel (about 80 s) and the cycles went on |

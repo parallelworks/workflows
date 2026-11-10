@@ -12,6 +12,34 @@ controller_ssh() {
     ssh ${SSH_OPTIONS} -o ConnectTimeout=10 "${controller}" "$@"
 }
 
+# The controller's sshd fetches its authorized keys from the platform, which fails for
+# a moment now and then (Permission denied): a step that must not be lost to that
+# retries while ssh itself cannot connect (255), and only then
+controller_ssh_retry() {
+    local attempt status=255
+    for attempt in 1 2 3 4 5; do
+        controller_ssh "$@"
+        status=$?
+        [ ${status} -ne 255 ] && return ${status}
+        sleep 15
+    done
+    return 255
+}
+
+# Runs a local script on the controller, with arguments. The file is opened again for
+# each attempt: a retry on the same stdin would send an empty script
+controller_script() {
+    local script=$1 attempt status=255
+    shift
+    for attempt in 1 2 3 4 5; do
+        controller_ssh "bash -s -- $*" < "${script}"
+        status=$?
+        [ ${status} -ne 255 ] && return ${status}
+        sleep 15
+    done
+    return 255
+}
+
 # up: the controller reaches this workspace through its usercontainer host entry
 # down: the controller answers but that hop does not
 # unreachable: the controller itself does not answer, which says nothing about the hop

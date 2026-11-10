@@ -17,10 +17,15 @@ fail() {
 
 # The form's resource was resolved when the run was submitted; the platform's listing
 # has the address the cluster has now and says whether it is running
-listed=$(pw cluster ls -o json 2> /dev/null | python3 "${app_dir}/utils/cluster_address.py" "${resource_id}")
+if clusters=$(pw cluster ls -o json 2> pw-cluster-ls.err); then
+    listed=$(python3 "${app_dir}/utils/cluster_address.py" "${resource_id}" <<< "${clusters}")
+    [ -n "${listed}" ] || echo "::warning::${resource_name} is not in pw cluster ls: using the address the form resolved"
+else
+    listed=""
+    echo "::warning::pw cluster ls failed ($(head -c 300 pw-cluster-ls.err)): using the address the form resolved"
+fi
 
 if [ -z "${listed}" ]; then
-    echo "::warning::${resource_name} is not in pw cluster ls: using the address the form resolved"
     [ -n "${resource_ip}" ] || fail "No address for ${resource_name}: is the cluster running?"
     controller="${resource_user}@${resource_ip}"
 else
@@ -38,7 +43,7 @@ until controller_ssh true; do
     waited=$((waited + 10))
 done
 
-report=$(controller_ssh "bash -s -- ${gt_version}" < "${app_dir}/controller/preflight.sh") \
+report=$(controller_script "${app_dir}/controller/preflight.sh" "${gt_version}") \
     || fail "Could not inspect ${controller}"
 field() {
     sed -n "s/^$1=//p" <<< "${report}"
@@ -65,8 +70,10 @@ done
 # The same place the platform gives a run on a cluster: ~/pw/jobs/<run>
 if [[ "${run_dir}" == */runs/* ]]; then
     run_name=${run_dir#*/runs/}
+elif [[ "${run_dir}" == */jobs/* ]]; then
+    run_name=${run_dir#*/jobs/}
 else
-    run_name=$(basename "$(dirname "${run_dir}")")/$(basename "${run_dir}")
+    run_name=$(basename "${run_dir}")
 fi
 
 cat > controller.env <<HERE

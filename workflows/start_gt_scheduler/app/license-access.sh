@@ -68,6 +68,13 @@ remove() {
         exit 0
     fi
 
+    # With another run's scheduler serving on the controller, the key is that run's:
+    # this one was refused, or lost its own session before the other started
+    if [ "$(controller_script "${app_dir}/controller/session.sh" "'${remote_dir}'")" == "foreign" ]; then
+        echo "::notice::Another run's GT scheduler is serving on ${controller}: the controller's key stays on the license server for it"
+        exit 0
+    fi
+
     bash remove_ssh_key.sh
 
     local removed=false attempt

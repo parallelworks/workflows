@@ -19,7 +19,7 @@ else
 fi
 
 missing=""
-for tool in screen sbatch squeue sinfo scancel netstat curl python3; do
+for tool in screen sbatch squeue sinfo scancel netstat curl python3 jq rsync; do
     command -v ${tool} > /dev/null 2>&1 || missing="${missing} ${tool}"
 done
 sudo -n true 2> /dev/null || missing="${missing} sudo-without-password"

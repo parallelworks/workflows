@@ -11,9 +11,11 @@ source workflows/start_gt_scheduler/app/libs.sh
 fail() {
     echo "::error title=Error::$1"
     echo "The end of ${remote_dir}/logs.out on ${controller}:"
-    controller_ssh "tail -n 40 ${remote_dir}/logs.out"
+    controller_ssh "tail -n 40 '${remote_dir}/logs.out'"
     exit 1
 }
+
+# Untraced: each check below prints one line of what it found instead
 
 # The scheduler job fails the run when it cannot launch, which cancels this step:
 # the limit here only keeps the wait from being open-ended
@@ -28,13 +30,13 @@ cycle=${adv_pw_ds_cycle:-60}
 budget=$((2 * cycle + 600))
 waited=0
 while true; do
-    report=$(controller_ssh "echo session=\$(screen -list | grep -c '[.]gt-scheduler'); echo daemon=\$(systemctl is-active gtdistd.service); echo cycles=\$(grep -c 'CORE SUPPLY:' ${remote_dir}/logs.out 2> /dev/null)")
-    session=$(sed -n 's/^session=//p' <<< "${report}")
+    session=$(controller_ssh "bash -s -- '${remote_dir}'" < "${app_dir}/controller/session.sh")
+    report=$(controller_ssh "echo daemon=\$(systemctl is-active gtdistd.service); echo cycles=\$(grep -c 'CORE SUPPLY:' '${remote_dir}/logs.out' 2> /dev/null)")
     daemon=$(sed -n 's/^daemon=//p' <<< "${report}")
     cycles=$(sed -n 's/^cycles=//p' <<< "${report}")
     echo "$(date) session=${session:-?} gtdistd=${daemon:-?} sensing cycles=${cycles:-?}"
 
-    if [ "${session}" == "0" ]; then
+    if [ "${session}" == "none" ] || [ "${session}" == "foreign" ]; then
         fail "The GT scheduler on ${controller} exited before its first sensing cycle"
     fi
     if [ "${daemon}" == "active" ] && [ "${cycles:-0}" -ge 1 ]; then

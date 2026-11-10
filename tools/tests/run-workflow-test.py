@@ -155,6 +155,9 @@ class Test:
         data = json.loads(self.path.read_text())
         self.meta = {**DEFAULTS, **data.pop("_test", {})}
         self.inputs = data
+        ready_job = self.meta["ready_job"]
+        if ready_job and not re.search(rf"^\s+{re.escape(ready_job)}:\s*$", self.yaml.read_text(), re.M):
+            raise SystemExit(f"{self.id}: _test.ready_job {ready_job!r} is not a job of {self.yaml.name}")
         resource = self.meta["resource"] or self.lookup("resource") or self.lookup("cluster", "resource")
         k8s_cluster = self.lookup("k8s", "cluster")
         self.k8s = (isinstance(resource, dict) and resource.get("type") == "kubernetes") or bool(k8s_cluster)

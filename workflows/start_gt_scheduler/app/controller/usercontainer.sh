@@ -11,7 +11,15 @@ if ! [ -f ~/.ssh/pw_id_rsa ]; then
     ssh-keygen -t rsa -N "" -q -f ~/.ssh/pw_id_rsa
 fi
 
-if ! grep -q '^Host usercontainer' ~/.ssh/config 2>/dev/null; then
+# The one test of what an entry is, for adding it and for reading its port
+entry_port() {
+    awk 'tolower($1) == "host" { inside = 0; for (i = 2; i <= NF; i++) if ($i == "usercontainer") inside = 1 }
+         inside && tolower($1) == "host" { found = 1 }
+         inside && tolower($1) == "port" { port = $2 }
+         END { if (found) print "port=" port }' ~/.ssh/config 2> /dev/null
+}
+
+if [ -z "$(entry_port)" ]; then
     cat >> ~/.ssh/config <<HERE
 Host usercontainer
     HostName localhost
@@ -24,6 +32,6 @@ HERE
     chmod 600 ~/.ssh/config
 fi
 
-port=$(awk 'tolower($1) == "host" {found = ($2 == "usercontainer")} found && tolower($1) == "port" {print $2; exit}' ~/.ssh/config)
-echo "USERCONTAINER_PORT=${port:-2222}"
+port=$(entry_port)
+echo "USERCONTAINER_PORT=${port#port=}"
 echo "USERCONTAINER_KEY=$(cat ~/.ssh/pw_id_rsa.pub)"

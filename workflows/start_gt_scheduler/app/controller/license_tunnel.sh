@@ -3,6 +3,7 @@
 # through it. The last command's status is the script's: non-zero when neither port
 # is listening, which is what the callers retry on.
 source "$(dirname "$0")/inputs.sh"
+set -x
 
 access_ok=false
 for attempt in 1 2 3 4 5; do
@@ -40,4 +41,4 @@ sleep 5
 
 echo
 echo "License server ports"
-netstat -tuln | grep "${gt_license_port}\|${gt_license_vendor_port}"
+netstat -tuln | grep ":${gt_license_port} \|:${gt_license_vendor_port} "

@@ -7,13 +7,25 @@ source controller.env
 source workflows/start_gt_scheduler/app/libs.sh
 set -x
 
-controller_ssh "[ -f ${remote_dir}/cancel.sh ]"
+problem=""
+controller_ssh_retry "[ -f '${remote_dir}/cancel.sh' ]"
 found=$?
 if [ ${found} -eq 0 ]; then
-    timeout 300 ssh ${SSH_OPTIONS} -o ConnectTimeout=10 "${controller}" "${remote_dir}/cancel.sh" \
-        || echo "::warning::The cancel script on ${controller} did not finish: check ${remote_dir} there"
-elif [ ${found} -eq 255 ]; then
-    echo "::warning::No SSH connection to ${controller}: the scheduler there could not be stopped from here"
+    stopped=255
+    for attempt in 1 2 3 4 5; do
+        timeout 300 ssh ${SSH_OPTIONS} -o ConnectTimeout=10 "${controller}" "'${remote_dir}/cancel.sh'"
+        stopped=$?
+        [ ${stopped} -ne 255 ] && break
+        sleep 15
+    done
+    [ ${stopped} -eq 0 ] || problem="its cancel script ended with status ${stopped}"
+elif [ ${found} -ne 1 ]; then
+    problem="no SSH connection to it"
 fi
 
 stop_reverse_tunnel
+
+if [ -n "${problem}" ]; then
+    echo "::error title=Error::The GT scheduler on ${controller} could not be stopped from here (${problem}). Run ${remote_dir}/cancel.sh there"
+    exit 1
+fi

@@ -103,11 +103,13 @@ jobs:
         collapsed: true
         items:
           sum_serv:
-            label: Activate job summary service
+            label: Enable the job summary service
+            description: Off leaves GTDistributed.job-summary-service-enable as the properties file ships it, disabled.
             type: boolean
             default: true
           allow_ps:
-            label: Allow parallel solver
+            label: Allow the parallel solver
+            description: Off keeps the scheduler's limit of one core per solver.
             type: boolean
             default: false
       adv_pw:

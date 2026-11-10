@@ -139,7 +139,7 @@ Top of file (enables editor autocomplete; harmless at runtime):
 | `'on'.execute.inputs` | the input form (note the quoted `'on'` to avoid YAML's bool) |
 | `configurations` | named sets of saved inputs (`configurations.<name>.inputs.<input>: value`), loadable with `pw workflows run --saved-inputs <name>` |
 | `timeout` | workflow-level timeout (`30m`, `2h`, `1d`); also per job and per step, and every level applies |
-| `needs.organizationVariables` | org variables the workflow refuses to run without |
+| `needs.organizationVariables` | a list of the org variables (`${{ org.NAME }}`) the workflow refuses to run without: the dry-run and the launch name the missing one. An unset one that is not listed renders empty (verified 2026-11-10) |
 | `needs.userVariables` | the user's own variables (`pw variables`, Account → Variables) the workflow reads as `${{ var.NAME }}`: a list, or `NAME: {hint: why}`. A **secret** variable renders empty unless declared here (a public one renders anyway); an unset or ungranted one renders empty and the run proceeds, so the script checks the value. A repository-hosted run asks the user to grant the secret ones, hint shown (`--trust` on the CLI approves; a local file never asks; `pw workflows permissions ls\|revoke` reviews the grants). Verified 2026-11-09, [oidc-sign-in.md](oidc-sign-in.md) |
 
 ### `jobs.<name>`

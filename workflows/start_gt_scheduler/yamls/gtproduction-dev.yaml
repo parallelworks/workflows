@@ -2,6 +2,19 @@
 permissions:
   - '*'
 
+# The license server and the organization are the organization's settings
+# (Organization -> Variables), not the form's: a launch is refused, naming the
+# variable, while one of these is not set
+needs:
+  organizationVariables:
+    - dev_license_user
+    - dev_license_ip
+    - dev_license_hostname
+    - dev_license_port
+    - dev_license_vendor_port
+    - customer_org_id
+    - customer_org_name
+
 jobs:
   preprocessing:
     steps:
@@ -24,13 +37,13 @@ jobs:
           resource_namespace="${{ inputs.resource.namespace }}"
           resource_user="${{ inputs.resource.user }}"
           resource_type="${{ inputs.resource.type }}"
-          gt_license_user="${{ inputs.gt_license_user }}"
-          gt_license_ip="${{ inputs.gt_license_ip }}"
-          gt_license_hostname="${{ inputs.gt_license_hostname }}"
-          gt_license_port="${{ inputs.gt_license_port }}"
-          gt_license_vendor_port="${{ inputs.gt_license_vendor_port }}"
-          customer_org_id="${{ inputs.customer_org_id }}"
-          customer_org_name="${{ inputs.customer_org_name }}"
+          gt_license_user="${{ org.dev_license_user }}"
+          gt_license_ip="${{ org.dev_license_ip }}"
+          gt_license_hostname="${{ org.dev_license_hostname }}"
+          gt_license_port="${{ org.dev_license_port }}"
+          gt_license_vendor_port="${{ org.dev_license_vendor_port }}"
+          customer_org_id="${{ org.customer_org_id }}"
+          customer_org_name="${{ org.customer_org_name }}"
           gt_version="${{ inputs.gt.version }}"
           adv_gt_sum_serv="${{ inputs.adv_gt.sum_serv }}"
           adv_gt_allow_ps="${{ inputs.adv_gt.allow_ps }}"
@@ -148,44 +161,3 @@ jobs:
             max: 1000
             step: 1
             default: 500
-      gt_license_user:
-        label: License server user
-        type: string
-        default: ec2-user
-        tooltip: User name on the license server
-        hidden: true
-      gt_license_ip:
-        label: License server IP
-        type: string
-        default: 3.14.18.97
-        tooltip: External IP address of the license server
-        hidden: true
-      gt_license_hostname:
-        label: License server hostname
-        type: string
-        default: gtlicenseserver-development
-        tooltip: Hostname of the license server
-        hidden: true
-      gt_license_port:
-        label: License server port
-        type: number
-        default: 27032
-        tooltip: License port
-        hidden: true
-      gt_license_vendor_port:
-        label: License server vendor port
-        type: number
-        default: 27812
-        tooltip: License vendor port
-        hidden: true
-      customer_org_id:
-        label: ID of the organization of the customer
-        type: string
-        default: 6601a2bac2750c88894592aa
-        tooltip: https://cloud.parallel.works/api/v2/organization
-        hidden: true
-      customer_org_name:
-        label: Name of the organization of the customer
-        type: string
-        default: gammatechnologies
-        hidden: true

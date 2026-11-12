@@ -24,7 +24,7 @@ flowchart LR
   (it needs the `code` command and the Remote-SSH extension). Any terminal on that
   node works too.
 - **Your systems switched on** in ACTIVATE. The examples use three: `jean` and
-  `nautilus`, two HPC systems, and `aws`, a cloud cluster. All run SLURM.
+  `nautilus`, two HPC systems, and `awssmall`, a cloud cluster. All run SLURM.
 
 Throughout, `<resource>` is the resource GitLab runs on and `<group>` your runners'
 group in GitLab, `<username>-ci` unless you changed it.
@@ -52,9 +52,9 @@ group in GitLab, `<username>-ci` unless you changed it.
 
 3. **Make it yours.** Keep one file in `tests/` per system of yours, named after its
    resource as `pw cluster ls` prints it. In it, set the command that loads MPI there
-   and the SLURM options the system requires (`<account>` in the two HPC examples). In
-   `.gitlab-ci.yml`, list the same names under `SYSTEM:` and set `GITLAB_RESOURCE` to
-   `<resource>`.
+   and the SLURM options the system requires; the account in the two HPC examples is
+   ours, put yours. In `.gitlab-ci.yml`, list the same names under `SYSTEM:` and set
+   `GITLAB_RESOURCE` to `<resource>`.
 4. **Push it as a new project.** Pushing to a path that does not exist creates the
    project, private, in your runners' group:
 
@@ -119,32 +119,31 @@ jobs:
   passed. `hsp.yaml` is the submitter of activate.hpc.mil; other platforms have their
   own next to it.
 
-**The command that loads MPI is an input**, because every system has its own:
-
-| System | Command that loads MPI |
-|---|---|
-| `jean` | `module load mpi/openmpi/4.1.5` |
-| `nautilus` | `module load mpich/gnu/3.3.2` |
-| `aws` | `module load mpi/openmpi-x86_64` |
-
-That and the scheduler options are all a test file holds. `tests/jean.json`:
+**The command that loads MPI is an input**, because it can differ per system. On these
+three the default MPI module does it, `module load mpi`; where it does not, name the
+module and its version (`module load mpi/openmpi/4.1.5`). That, the number of MPI
+processes and the scheduler options are all a test file holds. `tests/jean.json`:
 
 ```json
 {
   "mpi": {
-    "load": "module load mpi/openmpi/4.1.5",
-    "processes": 4
+    "load": "module load mpi",
+    "processes": 16
   },
   "cluster": {
     "scheduler": true,
     "slurm": {
-      "account": "<account>",
-      "qos": "normal",
-      "time": "00:10:00"
+      "account": "hpcmo49636prw",
+      "partition": "debug",
+      "qos": "normal"
     }
   }
 }
 ```
+
+`tests/nautilus.json` names another partition and QoS; `tests/awssmall.json` runs four
+processes and needs neither, nor an account. The walltime is the workflow's default,
+ten minutes.
 
 ## Step 3: change the code and release it
 
@@ -162,7 +161,7 @@ That and the scheduler options are all a test file holds. `tests/jean.json`:
    release notes, and **Create release**.
 4. **Watch the pipeline.** The release created the tag and the tag started a pipeline:
    **Build → Pipelines** shows it with three jobs, `test: [jean]`, `test: [nautilus]`
-   and `test: [aws]`, running side by side.
+   and `test: [awssmall]`, running side by side.
 
 Each job is the same few lines of `.gitlab-ci.yml`, run by the shell runner on GitLab's
 node with `SYSTEM` set to its system:
@@ -172,7 +171,7 @@ test:
   tags: [shell]
   parallel:
     matrix:
-      - SYSTEM: [jean, nautilus, aws]
+      - SYSTEM: [jean, nautilus, awssmall]
   script:
     - ...
     - |
@@ -190,9 +189,9 @@ Before a job's script runs, the runner clones the project at the released tag in
 `$CI_PROJECT_DIR`. The job starts the workflow of that checkout with the system's test
 file, follows the run's log and ends as the run ends. The cluster clones the same tag
 with the job's own token (user name `gitlab-ci-token`), which GitLab revokes when the
-job finishes, so no token is stored anywhere. Open a job and read its log top to
-bottom: the clone of `v1.1.0`, the batch script, `Submitted batch job <id>`, then the
-test on a compute node:
+job finishes, so no token is stored anywhere. Open a job, here `test: [awssmall]`, and
+read its log top to bottom: the clone of `v1.1.0`, the batch script, `Submitted batch
+job <id>`, then the test on a compute node:
 
 ```
 + mpicc -o hello hello.c

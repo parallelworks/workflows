@@ -1,16 +1,14 @@
 {
   "mpi": {
-    "load": "module load mpich/gnu/3.3.2",
-    "processes": 4
+    "load": "module load mpi",
+    "processes": 16
   },
   "cluster": {
     "scheduler": true,
     "slurm": {
-      "account": "<account>",
+      "account": "hpcmo49636prw",
       "partition": "general",
-      "qos": "debug",
-      "node_type": "standard",
-      "time": "00:10:00"
+      "qos": "debug"
     }
   }
 }

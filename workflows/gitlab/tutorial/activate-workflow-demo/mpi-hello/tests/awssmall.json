@@ -1,0 +1,9 @@
+{
+  "mpi": {
+    "load": "module load mpi",
+    "processes": 4
+  },
+  "cluster": {
+    "scheduler": true
+  }
+}

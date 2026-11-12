@@ -1,14 +1,14 @@
 {
   "mpi": {
-    "load": "module load mpi/openmpi/4.1.5",
-    "processes": 4
+    "load": "module load mpi",
+    "processes": 16
   },
   "cluster": {
     "scheduler": true,
     "slurm": {
-      "account": "<account>",
-      "qos": "normal",
-      "time": "00:10:00"
+      "account": "hpcmo49636prw",
+      "partition": "debug",
+      "qos": "normal"
     }
   }
 }

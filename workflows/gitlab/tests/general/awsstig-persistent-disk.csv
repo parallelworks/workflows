@@ -5,3 +5,4 @@ date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched
 2026-11-12T09:19:33Z,cold,pass,kept,6bae89f,162207a,555f2f1,0ee09ac,0ee09ac,gitlab,alvaro,eminent-lark,366,
 2026-11-12T10:06:27Z,warm,pass,kept,6bae89f,162207a,555f2f1,1b04db6,0ee09ac,gitlab,alvaro,distinct-titmouse,225,
 2026-11-12T13:38:15Z,warm,pass,kept,6bae89f,162207a,555f2f1,38d0b65,0ee09ac,gitlab,alvaro,wondrous-scorpion,239,
+2026-11-12T15:01:48Z,warm,pass,kept,6bae89f,162207a,555f2f1,7b056ec,0ee09ac,gitlab,alvaro,verified-oarfish,238,

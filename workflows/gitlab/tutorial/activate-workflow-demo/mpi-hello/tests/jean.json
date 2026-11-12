@@ -1,0 +1,14 @@
+{
+  "mpi": {
+    "load": "module load mpi/openmpi/4.1.5",
+    "processes": 4
+  },
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "account": "<account>",
+      "qos": "normal",
+      "time": "00:10:00"
+    }
+  }
+}

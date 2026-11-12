@@ -1,0 +1,12 @@
+{
+  "mpi": {
+    "load": "module load mpi/openmpi-x86_64",
+    "processes": 4
+  },
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "time": "00:10:00"
+    }
+  }
+}

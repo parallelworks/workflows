@@ -1,0 +1,16 @@
+{
+  "mpi": {
+    "load": "module load mpich/gnu/3.3.2",
+    "processes": 4
+  },
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "account": "<account>",
+      "partition": "general",
+      "qos": "debug",
+      "time": "00:10:00",
+      "scheduler_directives": "#SBATCH --constraint=standard"
+    }
+  }
+}

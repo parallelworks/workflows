@@ -1,0 +1,39 @@
+# A release tests the project on every system: one job per file in tests/,
+# each running workflow.yaml on its cluster and following the run to its end.
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG            # a release creates a tag; commits alone start nothing
+
+variables:
+  GITLAB_RESOURCE: aws              # the ACTIVATE resource this GitLab runs on
+
+test:
+  tags: [shell]                     # the runner on GitLab's node, where the pw CLI is
+  parallel:
+    matrix:
+      - SYSTEM: [jean, nautilus, aws]
+  script:
+    - export PATH="$HOME/pw:$PATH"
+    # GitLab's port on this node, from the address the runner cloned this checkout from
+    - GITLAB_PORT=$(git remote get-url origin | sed -E 's|.*:([0-9]+)/.*|\1|')
+    # Start the workflow of this checkout on the system the job is named after. The
+    # cluster clones the released tag with this job's token, which ends with the job
+    - |
+      RUN=$(pw workflows run "$CI_PROJECT_DIR/workflow.yaml" -o json \
+        --name "$CI_PROJECT_NAME $CI_COMMIT_TAG on $SYSTEM" \
+        -i "tests/$SYSTEM.json" \
+        --input resource="pw://$(pw auth whoami)/$SYSTEM" \
+        --input gitlab.resource="$GITLAB_RESOURCE" \
+        --input gitlab.port="$GITLAB_PORT" \
+        --input gitlab.project="$CI_PROJECT_PATH" \
+        --input gitlab.ref="$CI_COMMIT_TAG" \
+        --input gitlab.token="$CI_JOB_TOKEN" | jq -r .run.slug)
+    - echo "$RUN" > run.slug
+    # The run's log, MPI output included, until the run ends; then its verdict
+    - pw workflows runs logs -f "$RUN"
+    - test "$(pw workflows runs view "$RUN" -o json | jq -r .status)" = completed
+  after_script:
+    # A canceled job takes its run with it
+    - export PATH="$HOME/pw:$PATH"
+    - if [ "$CI_JOB_STATUS" = canceled ]; then pw workflows runs cancel "$(cat run.slug)"; fi

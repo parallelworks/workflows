@@ -17,8 +17,9 @@ test:
     - export PATH="$HOME/pw:$PATH"
     # GitLab's port on this node, from the address the runner cloned this checkout from
     - GITLAB_PORT=$(git remote get-url origin | sed -E 's|.*:([0-9]+)/.*|\1|')
-    # Start the workflow of this checkout on the system the job is named after. The
-    # cluster clones the released tag with this job's token, which ends with the job
+    # $CI_PROJECT_DIR is this job's checkout: the runner cloned the project there, at
+    # the released tag, before this script. Start its workflow on the job's system; the
+    # cluster clones the same tag with this job's token, which ends with the job
     - |
       pw workflows run "$CI_PROJECT_DIR/workflow.yaml" -o json \
         --name "$CI_PROJECT_NAME $CI_COMMIT_TAG on $SYSTEM" \

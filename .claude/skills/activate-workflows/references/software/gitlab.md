@@ -125,7 +125,10 @@ cluster each, and the workflow clones the project there.
   node itself too, so one path serves every cluster.
 - **The token is the job's own**: `gitlab-ci-token` with `$CI_JOB_TOKEN` clones the
   project while the job runs, so the job has to outlast the clone (it follows the run).
-  By hand, a deploy token with `read_repository`.
+  GitLab accepts a job token under that user name only (the GitLab user's own name is
+  refused: `CI_JOB_USER` in `lib/gitlab/auth.rb`), so the workflow writes the name in
+  the clone URL instead of taking it as an input; a personal access token is accepted
+  under it too.
 - **GitLab's port, from inside a job**: `$CI_REPOSITORY_URL` carries the public
   address even with `clone_url` set; the address the runner really cloned from is the
   checkout's remote (`git remote get-url origin`).

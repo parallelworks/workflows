@@ -97,7 +97,7 @@ jobs:
       - name: Clone the project
         uses: parallelworks/checkout
         with:
-          repo: http://${{ inputs.gitlab.user }}:${{ inputs.gitlab.token }}@127.0.0.1:${{ needs.clone.outputs.TUNNEL_PORT }}/${{ inputs.gitlab.project }}.git
+          repo: http://gitlab-ci-token:${{ inputs.gitlab.token }}@127.0.0.1:${{ needs.clone.outputs.TUNNEL_PORT }}/${{ inputs.gitlab.project }}.git
           branch: ${{ inputs.gitlab.ref }}
   test:
     steps:
@@ -186,11 +186,13 @@ test:
     - test "$(pw workflows runs view "$RUN" -o json | jq -r .status)" = completed
 ```
 
-It starts the workflow from the job's own checkout with the system's test file, follows
-the run's log and ends as the run ends. The cluster clones the released tag with the
-job's own token, which GitLab revokes when the job finishes, so no token is stored
-anywhere. Open a job and read its log top to bottom: the clone of `v1.1.0`, the batch
-script, `Submitted batch job <id>`, then the test on a compute node:
+Before a job's script runs, the runner clones the project at the released tag into
+`$CI_PROJECT_DIR`. The job starts the workflow of that checkout with the system's test
+file, follows the run's log and ends as the run ends. The cluster clones the same tag
+with the job's own token (user name `gitlab-ci-token`), which GitLab revokes when the
+job finishes, so no token is stored anywhere. Open a job and read its log top to
+bottom: the clone of `v1.1.0`, the batch script, `Submitted batch job <id>`, then the
+test on a compute node:
 
 ```
 + mpicc -o hello hello.c
@@ -208,33 +210,3 @@ The same runs are on ACTIVATE's **Runs** page, named `mpi-hello v1.1.0 on <syste
 A job waits as long as its system's queue does; a cloud cluster that powers nodes on
 when needed adds a few minutes to its first job. A test that fails turns its job red:
 fix, commit and release again. Canceling a job cancels its run and its batch job.
-
-## When a job fails
-
-| What the job log says | Why | What to do |
-|---|---|---|
-| Nothing: the job stays *pending* | the project is outside your runners' group | Push it to `<group>/mpi-hello`, or transfer it there |
-| `no context configured; use 'pw auth'`, or `Authentication has expired` | the job has no key: `PW_API_KEY` is missing or expired, or it is protected and the tag is not | Step 1.5: the variable, and `v*` under Protected tags |
-| `Cluster or instance not found` | no resource of yours has the job's `SYSTEM` name, or it is off | Name the test file and the `SYSTEM:` entry after the resource; switch it on |
-| `GitLab did not answer through the tunnel` | `GITLAB_RESOURCE` is not the resource GitLab runs on | Set it in `.gitlab-ci.yml` |
-| `sbatch: error: ...` | an option the system requires is missing or wrong | Fix `cluster.slurm` in the system's test file; `scheduler_directives` takes any other `#SBATCH` line |
-| `mpicc: command not found`, or a module error | the command that loads MPI | Fix `mpi.load` in the system's test file |
-
-## Running the workflow by hand
-
-A pipeline is not required: the same file runs from the terminal of step 1, once `pw`
-is signed in there (`pw auth`). The run needs a token that can read the repository, for
-example a deploy token (**Settings → Repository → Deploy tokens**, scope
-`read_repository`), and GitLab's HTTP port, which the log of the run that started
-GitLab prints (`Git over HTTP from this host: http://127.0.0.1:<port>/...`):
-
-```bash
-cd ~/mpi-hello
-pw workflows run "$PWD/workflow.yaml" -o text -i tests/aws.json \
-    --input resource=pw://<username>/aws \
-    --input gitlab.resource=<resource> --input gitlab.port=<port> \
-    --input gitlab.project=<group>/mpi-hello \
-    --input gitlab.user=<token user name> --input gitlab.token=<token>
-```
-
-It prints the run's slug; `pw workflows runs logs -f <slug>` follows the run.

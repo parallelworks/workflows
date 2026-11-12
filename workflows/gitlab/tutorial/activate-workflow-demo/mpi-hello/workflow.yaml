@@ -1,8 +1,7 @@
 # yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
 # Runs this project's test on a cluster: clones the project from GitLab onto the
-# cluster, loads MPI and submits test.sh through the script submitter.
-#
-#   pw workflows run "$PWD/workflow.yaml" -i tests/<system>.json --input gitlab.token=...
+# cluster, loads MPI and submits test.sh through the script submitter. The release
+# pipeline (.gitlab-ci.yml) runs it once per system, with that system's file in tests/.
 
 # The run calls pw itself (pw forward)
 permissions:
@@ -31,7 +30,7 @@ jobs:
       - name: Clone the project
         uses: parallelworks/checkout
         with:
-          repo: http://${{ inputs.gitlab.user }}:${{ inputs.gitlab.token }}@127.0.0.1:${{ needs.clone.outputs.TUNNEL_PORT }}/${{ inputs.gitlab.project }}.git
+          repo: http://gitlab-ci-token:${{ inputs.gitlab.token }}@127.0.0.1:${{ needs.clone.outputs.TUNNEL_PORT }}/${{ inputs.gitlab.project }}.git
           branch: ${{ inputs.gitlab.ref }}
 
   test:
@@ -159,12 +158,7 @@ jobs:
             type: string
             label: Branch or tag
             default: main
-          user:
-            type: string
-            label: Token user name
-            description: gitlab-ci-token for a pipeline's job token, or the user name of a deploy token.
-            default: gitlab-ci-token
           token:
             type: password
             label: Token
-            description: Read access to the repository is enough.
+            description: The job token of the pipeline that starts the run.

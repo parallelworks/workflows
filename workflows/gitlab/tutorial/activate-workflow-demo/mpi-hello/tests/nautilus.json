@@ -9,8 +9,8 @@
       "account": "<account>",
       "partition": "general",
       "qos": "debug",
-      "time": "00:10:00",
-      "scheduler_directives": "#SBATCH --constraint=standard"
+      "node_type": "standard",
+      "time": "00:10:00"
     }
   }
 }

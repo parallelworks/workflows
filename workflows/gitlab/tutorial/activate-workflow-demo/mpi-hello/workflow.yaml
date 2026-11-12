@@ -58,12 +58,13 @@ jobs:
           use_scheduler_agent: false
           submit_and_exit: false
           slurm:
-            is_enabled: ${{ inputs.cluster.scheduler }}
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
             account: ${{ inputs.cluster.slurm.account }}
             partition: ${{ inputs.cluster.slurm.partition }}
             qos: ${{ inputs.cluster.slurm.qos }}
             cpus_per_task: 1
             nodes: 1
+            node_type: ${{ inputs.cluster.slurm.node_type }}
             time: ${{ inputs.cluster.slurm.time }}
             scheduler_directives: |
               #SBATCH --ntasks=${{ inputs.mpi.processes }}
@@ -103,6 +104,8 @@ jobs:
       cluster:
         type: group
         label: Scheduler
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ .hidden }}
         items:
           scheduler:
             type: boolean
@@ -112,21 +115,73 @@ jobs:
           slurm:
             type: group
             label: SLURM directives
-            hidden: ${{ inputs.cluster.scheduler == false }}
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
             ignore: ${{ .hidden }}
             items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
               account:
-                type: string
-                label: Account
-                optional: true
+                type: slurm-accounts
+                label: SLURM account
+                resource: ${{ inputs.resource }}
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
               partition:
-                type: string
-                label: Partition
+                type: slurm-partitions
+                label: SLURM partition
+                description: Empty for the system's default partition.
+                resource: ${{ inputs.resource }}
                 optional: true
               qos:
-                type: string
+                type: slurm-qos
                 label: Quality of service (QoS)
+                resource: ${{ inputs.resource }}
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              node_type:
+                type: dropdown
+                label: Node type
+                description: The --constraint the Navy, AFRL and MHPCC systems require.
                 optional: true
+                default: ''
+                option-key: ${{ inputs.resource.ip }}
+                ignore: ${{ 'existing' != inputs.resource.provider || (inputs.resource.ip != 'blueback.navydsrc.hpc.mil' && inputs.resource.ip != 'narwhal.navydsrc.hpc.mil' && inputs.resource.ip != 'nautilus.navydsrc.hpc.mil' && inputs.resource.ip != 'raider.afrl.hpc.mil' && inputs.resource.ip != 'crux.mhpcc.hpc.mil') }}
+                hidden: ${{ .ignore }}
+                options:
+                  blueback.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  narwhal.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - smla
+                    - dmla
+                    - viz
+                    - transfer
+                  nautilus.navydsrc.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  raider.afrl.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  crux.mhpcc.hpc.mil:
+                    - AMD
+                    - Intel
               time:
                 type: string
                 label: Walltime

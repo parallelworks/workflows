@@ -81,16 +81,18 @@ workflow, via `${{ inputs.<name>.* }}`):
 | `schedulerType` | `slurm` / `pbs` / `''` | `''` when no scheduler (e.g. `existing`, workspace) |
 | `namespace`, `user` | `<user>` | |
 
-**Passing a resource via the CLI:** give the **bare name string** and the platform
-resolves the full object. Do NOT hand-build the object or hardcode `ip` (login IPs
+**Passing a resource via the CLI:** give its **`pw://` URI** (`pw://<user>/<cluster>`,
+`pw://<cluster>` for a managed cluster) and the platform resolves the full object; a
+bare name is refused (`inputs.resource is of type compute-clusters, which takes a pw://
+URI`, verified 2026-11-12). Do NOT hand-build the object or hardcode `ip` (login IPs
 change when a cluster restarts):
 ```bash
-pw workflows run my-session -i '{"resource":"<cluster>","scheduler":false}'
+pw workflows run my-session -i '{"resource":"pw://<user>/<cluster>","scheduler":false}'
 ```
 `pw cluster ls -o json` field names differ from the resolved object (`ipAddress` vs
-`ip`); rely on name resolution, not the raw cluster JSON.
+`ip`); rely on the URI's resolution, not the raw cluster JSON.
 
-> **⚠ `compute-resources` inputs do NOT hydrate from the CLI (verified).** Bare-name
+> **⚠ `compute-resources` inputs do NOT hydrate from the CLI (verified).** URI
 > resolution is a `compute-clusters` feature. A `compute-resources` input (the picker
 > that also lists kubernetes clusters, used by `*_k8s_*.yaml`) passed as `"<cluster>"`
 > or `"pw://<user>/<cluster>"` reaches the workflow as a **raw string** — `.ip`/`.type`

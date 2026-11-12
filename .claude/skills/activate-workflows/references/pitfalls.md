@@ -693,6 +693,14 @@
   `~/.config/pw/credentials` expires hourly and is refreshed only by a `pw` command: run
   one before reading it, or pass a real API key; a `pw auth whoami` before
   `pw endpoints run` fails the run with the reason.
+- **A script that launches a run and waits for it** (a CI job, a wrapper; verified
+  2026-11-12, CLI v7.138.1): `pw workflows run -o json` prints a refused launch as a
+  JSON problem on **stdout** with exit 1, so `RUN=$(pw workflows run ... | jq -r
+  .run.slug)` fails without a word; write the output to a file and `cat` it on failure.
+  `pw workflows runs logs -f <slug>` streams until the run ends and exits 0 whatever
+  the run's status: read the verdict from `pw workflows runs view <slug> -o json`
+  (`.status`). `workflows/gitlab/tutorial/activate-workflow-demo/mpi-hello/.gitlab-ci.yml`
+  is the worked example.
 - **`PW_API_KEY` signs the CLI in, but `pw context current` still names the saved
   context** (verified 2026-11-10, CLI v7.129.0), which is where the test runner reads
   the user. To test as another account, sign in to a credentials directory of its own

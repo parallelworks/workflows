@@ -111,6 +111,28 @@ start and stop the container and define `gitlab_exec`, `gitlab_alive` and `gitla
   laptop through `pw forward -L`. `gitlab_rails['gitlab_shell_ssh_port']` puts the
   SSH port into the clone URLs GitLab shows.
 
+## A pipeline that runs a workflow on other clusters (verified 2026-11-12)
+
+`tutorial/activate-workflow-demo/` is the worked example: a tag pipeline whose jobs run
+a workflow YAML of the project (`pw workflows run <checkout>/workflow.yaml`) on one
+cluster each, and the workflow clones the project there.
+
+- **The cluster clones through a tunnel**: a step starts `pw forward -L
+  127.0.0.1:<free port>:localhost:<GitLab's port> <GitLab's resource>` detached, with
+  the kill as its `cleanup:`, and `parallelworks/checkout` in the same job clones
+  `http://<user>:<token>@127.0.0.1:<free port>/<group>/<project>.git`; the port reaches
+  the checkout as `${{ needs.<this job>.outputs.<KEY> }}`. It works from the GitLab
+  node itself too, so one path serves every cluster.
+- **The token is the job's own**: `gitlab-ci-token` with `$CI_JOB_TOKEN` clones the
+  project while the job runs, so the job has to outlast the clone (it follows the run).
+  By hand, a deploy token with `read_repository`.
+- **GitLab's port, from inside a job**: `$CI_REPOSITORY_URL` carries the public
+  address even with `clone_url` set; the address the runner really cloned from is the
+  checkout's remote (`git remote get-url origin`).
+- **A protected `PW_API_KEY` variable only reaches protected refs**: a release's tag
+  gets it once `v*` is under Protected tags; otherwise the job's `pw` says `no context
+  configured`.
+
 ## Automating the first start (verified)
 
 - **A root API token without a password**: `docker exec <c> gitlab-rails runner "t =

@@ -20,7 +20,7 @@ test:
     # Start the workflow of this checkout on the system the job is named after. The
     # cluster clones the released tag with this job's token, which ends with the job
     - |
-      RUN=$(pw workflows run "$CI_PROJECT_DIR/workflow.yaml" -o json \
+      pw workflows run "$CI_PROJECT_DIR/workflow.yaml" -o json \
         --name "$CI_PROJECT_NAME $CI_COMMIT_TAG on $SYSTEM" \
         -i "tests/$SYSTEM.json" \
         --input resource="pw://$(pw auth whoami)/$SYSTEM" \
@@ -28,12 +28,12 @@ test:
         --input gitlab.port="$GITLAB_PORT" \
         --input gitlab.project="$CI_PROJECT_PATH" \
         --input gitlab.ref="$CI_COMMIT_TAG" \
-        --input gitlab.token="$CI_JOB_TOKEN" | jq -r .run.slug)
-    - echo "$RUN" > run.slug
+        --input gitlab.token="$CI_JOB_TOKEN" > run.json || { cat run.json; exit 1; }
+    - RUN=$(jq -r .run.slug run.json)
     # The run's log, MPI output included, until the run ends; then its verdict
     - pw workflows runs logs -f "$RUN"
     - test "$(pw workflows runs view "$RUN" -o json | jq -r .status)" = completed
   after_script:
     # A canceled job takes its run with it
     - export PATH="$HOME/pw:$PATH"
-    - if [ "$CI_JOB_STATUS" = canceled ]; then pw workflows runs cancel "$(cat run.slug)"; fi
+    - if [ "$CI_JOB_STATUS" = canceled ]; then pw workflows runs cancel "$(jq -r .run.slug run.json)"; fi

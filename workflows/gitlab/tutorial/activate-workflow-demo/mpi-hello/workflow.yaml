@@ -26,6 +26,7 @@ jobs:
             echo "::error::GitLab did not answer through the tunnel to ${{ inputs.gitlab.resource }}, port ${{ inputs.gitlab.port }}"
             exit 1
           fi
+          cat forward.log
         cleanup: kill "$(cat forward.pid)"
       - name: Clone the project
         uses: parallelworks/checkout

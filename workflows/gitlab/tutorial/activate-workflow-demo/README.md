@@ -18,7 +18,8 @@ flowchart LR
 
 - **A GitLab served by this workflow** with its shell runner, where you are signed in
   with ACTIVATE: the workflow's [README](../../README.md). Its section *Keeping the
-  data across cluster restarts* puts it on a persistent disk.
+  data across cluster restarts* puts it on a persistent disk. The pipeline uses `git`
+  and `jq` on that node.
 - **VS Code on the node GitLab runs on**: `pw vscode <resource>` from your machine
   (it needs the `code` command and the Remote-SSH extension). Any terminal on that
   node works too.
@@ -50,13 +51,16 @@ group in GitLab, `<username>-ci` unless you changed it.
    | `.gitlab-ci.yml` | the pipeline of a release: one job per system (step 3) |
 
 3. **Make it yours.** Keep one file in `tests/` per system of yours, named after its
-   resource as `pw cluster ls` prints it, and set in it the command that loads MPI
-   there and the SLURM options the system requires. In `.gitlab-ci.yml`, list the same
-   names under `SYSTEM:` and set `GITLAB_RESOURCE` to `<resource>`.
+   resource as `pw cluster ls` prints it. In it, set the command that loads MPI there
+   and the SLURM options the system requires (`<account>` in the two HPC examples). In
+   `.gitlab-ci.yml`, list the same names under `SYSTEM:` and set `GITLAB_RESOURCE` to
+   `<resource>`.
 4. **Push it as a new project.** Pushing to a path that does not exist creates the
    project, private, in your runners' group:
 
    ```bash
+   git config --global user.name "<your name>"
+   git config --global user.email "<the email of your GitLab account>"
    git init -b main
    git add .
    git commit -m "MPI hello world, its test and the workflow that runs it"
@@ -64,8 +68,7 @@ group in GitLab, `<username>-ci` unless you changed it.
    git push -u origin main
    ```
 
-   `2222` is the SSH port of the workflow's form. If `git commit` asks who you are, tell
-   it with `git config --global user.name` and `user.email`.
+   `2222` is the SSH port of the workflow's form.
 5. **Protect the release tags and hand the pipeline a key**, both in the project's
    settings in GitLab:
    - **Settings → Repository → Protected tags**: protect `v*`, created by Maintainers.
@@ -78,8 +81,8 @@ The push started no pipeline: `.gitlab-ci.yml` only runs for tags.
 ## Step 2: the workflow
 
 Open `workflow.yaml` in VS Code. It is an ordinary ACTIVATE workflow, run from the file
-(`pw workflows run <path>`), not registered on the platform, so it is versioned with the
-code it runs. Its two jobs run on the cluster's login node:
+(`pw workflows run <path>`) instead of being registered on the platform, so it is
+versioned with the code it runs. Its two jobs run on the cluster's login node:
 
 ```yaml
 jobs:
@@ -116,8 +119,15 @@ jobs:
   passed. `hsp.yaml` is the submitter of activate.hpc.mil; other platforms have their
   own next to it.
 
-**The command that loads MPI is an input**, because every system has its own. That and
-the scheduler options are all a test file holds, for example `tests/jean.json`:
+**The command that loads MPI is an input**, because every system has its own:
+
+| System | Command that loads MPI |
+|---|---|
+| `jean` | `module load mpi/openmpi/4.1.5` |
+| `nautilus` | `module load mpich/gnu/3.3.2` |
+| `aws` | `module load mpi/openmpi-x86_64` |
+
+That and the scheduler options are all a test file holds. `tests/jean.json`:
 
 ```json
 {
@@ -135,12 +145,6 @@ the scheduler options are all a test file holds, for example `tests/jean.json`:
   }
 }
 ```
-
-| System | Command that loads MPI |
-|---|---|
-| `jean` | `module load mpi/openmpi/4.1.5` |
-| `nautilus` | `module load mpich/gnu/3.3.2` |
-| `aws` | `module load mpi/openmpi-x86_64` |
 
 ## Step 3: change the code and release it
 
@@ -172,11 +176,12 @@ test:
   script:
     - ...
     - |
-      RUN=$(pw workflows run "$CI_PROJECT_DIR/workflow.yaml" -o json \
+      pw workflows run "$CI_PROJECT_DIR/workflow.yaml" -o json \
         -i "tests/$SYSTEM.json" \
         --input resource="pw://$(pw auth whoami)/$SYSTEM" \
         --input gitlab.ref="$CI_COMMIT_TAG" \
-        --input gitlab.token="$CI_JOB_TOKEN" ... | jq -r .run.slug)
+        --input gitlab.token="$CI_JOB_TOKEN" ... > run.json || { cat run.json; exit 1; }
+    - RUN=$(jq -r .run.slug run.json)
     - pw workflows runs logs -f "$RUN"
     - test "$(pw workflows runs view "$RUN" -o json | jq -r .status)" = completed
 ```
@@ -194,6 +199,7 @@ Hello SC26 from rank 0 of 4 on <node>
 Hello SC26 from rank 2 of 4 on <node>
 Hello SC26 from rank 1 of 4 on <node>
 Hello SC26 from rank 3 of 4 on <node>
+...
 ::notice::The test passed on <system>
 --- Run completed with status: completed ---
 ```
@@ -207,9 +213,9 @@ fix, commit and release again. Canceling a job cancels its run and its batch job
 
 | What the job log says | Why | What to do |
 |---|---|---|
-| The job stays *pending* | the project is outside your runners' group | Push it to `<group>/mpi-hello`, or transfer it there |
-| `no context configured` or `Authentication has expired` | the job has no key: `PW_API_KEY` is missing or expired, or it is protected and the tag is not | Step 1.5: the variable, and `v*` under Protected tags |
-| `inputs.resource ...` or `not found` when the run starts | no resource of yours has the job's `SYSTEM` name, or it is off | Name the test file and the `SYSTEM:` entry after the resource; switch it on |
+| Nothing: the job stays *pending* | the project is outside your runners' group | Push it to `<group>/mpi-hello`, or transfer it there |
+| `no context configured; use 'pw auth'`, or `Authentication has expired` | the job has no key: `PW_API_KEY` is missing or expired, or it is protected and the tag is not | Step 1.5: the variable, and `v*` under Protected tags |
+| `Cluster or instance not found` | no resource of yours has the job's `SYSTEM` name, or it is off | Name the test file and the `SYSTEM:` entry after the resource; switch it on |
 | `GitLab did not answer through the tunnel` | `GITLAB_RESOURCE` is not the resource GitLab runs on | Set it in `.gitlab-ci.yml` |
 | `sbatch: error: ...` | an option the system requires is missing or wrong | Fix `cluster.slurm` in the system's test file; `scheduler_directives` takes any other `#SBATCH` line |
 | `mpicc: command not found`, or a module error | the command that loads MPI | Fix `mpi.load` in the system's test file |
@@ -224,11 +230,11 @@ GitLab prints (`Git over HTTP from this host: http://127.0.0.1:<port>/...`):
 
 ```bash
 cd ~/mpi-hello
-pw workflows run "$PWD/workflow.yaml" -i tests/aws.json \
+pw workflows run "$PWD/workflow.yaml" -o text -i tests/aws.json \
     --input resource=pw://<username>/aws \
     --input gitlab.resource=<resource> --input gitlab.port=<port> \
     --input gitlab.project=<group>/mpi-hello \
     --input gitlab.user=<token user name> --input gitlab.token=<token>
 ```
 
-It prints the run's name; `pw workflows runs logs -f <name>` follows it.
+It prints the run's slug; `pw workflows runs logs -f <slug>` follows the run.

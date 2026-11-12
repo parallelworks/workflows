@@ -41,7 +41,7 @@ Five words GitLab uses:
 
 ## Before you start
 
-You need two things; the workflow's [README](../README.md) covers both:
+You need two things; the workflow's [README](../../README.md) covers both:
 
 - **A GitLab served by this workflow.** Its owner launched it and shares it from the
   platform's sessions page. Open it **in its own browser tab** (it does not work
@@ -88,7 +88,7 @@ owner, whoever committed: that is who every job of your runners runs as. The job
 in a fresh checkout of the repository in your runner directory (*Where things are*,
 below). Change a line, commit, and it runs again. The web editor is enough for the
 tutorial; to clone the project to your laptop and push from there, see *Git from the
-command line* in the workflow's [README](../README.md).
+command line* in the workflow's [README](../../README.md).
 
 ## Step 2: the same runner reaches every system, with `pw`
 
@@ -271,7 +271,7 @@ A job's wall time counts against GitLab's job timeout too (one hour by default, 
   project directory on the cluster in the script for large data.
 - **Git from your laptop:** clone, edit and push with `git` through a tunnel to the
   cluster, with an SSH key or a token: *Git from the command line* in the workflow's
-  [README](../README.md).
+  [README](../../README.md).
 - **PBS clusters:** Jacamar runs on PBS too (`qsub` options in `SCHEDULER_PARAMETERS`); the
   workflow registers the SLURM runner today. A PBS system is reached from a pipeline the
   step 2 way, `pw ssh <system> 'qsub ...'`.

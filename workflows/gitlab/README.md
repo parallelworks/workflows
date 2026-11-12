@@ -22,10 +22,12 @@ with the others from the platform's sessions page. They can sign in, create proj
 and push to them, but they have no runners: those who need pipelines run the workflow
 again, on the same cluster, in *Add my runners* mode.
 
-New to GitLab? The [tutorial](tutorial/README.md) takes you from a new project to
+New to GitLab? The [tutorial](tutorial/basic/README.md) takes you from a new project to
 pipelines on the login node and on the compute nodes, and shows how a job uses the
 `pw` client to run on any system connected to your ACTIVATE account, in about 30
-minutes.
+minutes. At home in GitLab already? In
+[a release that tests your code on every HPC system](tutorial/activate-workflow-demo/README.md),
+a release's pipeline runs an ACTIVATE workflow on several clusters at once.
 
 ```
 Start GitLab (the owner)
@@ -139,7 +141,7 @@ directory reuses the registration:
 
 How to write the jobs — the shell runner with the `pw` client, the SLURM runner's
 `SCHEDULER_PARAMETERS` and id token, artifacts, schedules, when pipelines start — is
-steps 1 to 5 of the [tutorial](tutorial/README.md).
+steps 1 to 5 of the [tutorial](tutorial/basic/README.md).
 
 ### The owner's runners
 
@@ -186,7 +188,7 @@ persistent disk where home does not survive a restart: *Keeping the data across
 cluster restarts*).
 
 Your jobs run as you and are written like the owner's: steps 1 to 5 of the
-[tutorial](tutorial/README.md) apply to your runners unchanged.
+[tutorial](tutorial/basic/README.md) apply to your runners unchanged.
 
 ### How the runners reach GitLab
 

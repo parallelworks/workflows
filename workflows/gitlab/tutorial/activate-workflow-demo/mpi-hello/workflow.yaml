@@ -1,0 +1,219 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+# Runs this project's test on a cluster: clones the project from GitLab onto the
+# cluster, loads MPI and submits test.sh through the script submitter. The release
+# pipeline (.gitlab-ci.yml) runs it once per system, with that system's file in tests/.
+
+# The run calls pw itself (pw forward)
+permissions:
+  - '*'
+
+jobs:
+  clone:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      # GitLab listens on the loopback of its own node, so the cluster reaches it
+      # through a tunnel that lasts as long as this job
+      - name: Open a tunnel to the GitLab node
+        run: |
+          port=$(pw agent open-port)
+          setsid nohup pw forward -L 127.0.0.1:${port}:localhost:${{ inputs.gitlab.port }} ${{ inputs.gitlab.resource }} > forward.log 2>&1 < /dev/null &
+          echo $! > forward.pid
+          echo "TUNNEL_PORT=${port}" >> $OUTPUTS
+          if ! timeout 60 bash -c "until curl -so /dev/null http://127.0.0.1:${port}/; do sleep 2; done"; then
+            cat forward.log
+            echo "::error::GitLab did not answer through the tunnel to ${{ inputs.gitlab.resource }}, port ${{ inputs.gitlab.port }}"
+            exit 1
+          fi
+          cat forward.log
+        cleanup: kill "$(cat forward.pid)"
+      - name: Clone the project
+        uses: parallelworks/checkout
+        with:
+          repo: http://gitlab-ci-token:${{ inputs.gitlab.token }}@127.0.0.1:${{ needs.clone.outputs.TUNNEL_PORT }}/${{ inputs.gitlab.project }}.git
+          branch: ${{ inputs.gitlab.ref }}
+
+  test:
+    needs:
+      - clone
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Run the test
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/script_submitter/v3.6/hsp.yaml
+          resource: ${{ inputs.resource }}
+          rundir: ${{ env.PW_PARENT_JOB_DIR }}
+          use_existing_script: false
+          # The submitter does not report how the script ended, so the script
+          # leaves its exit status in a file for the next step
+          script: |
+            trap 'echo $? > test.exit' EXIT
+            set -e
+            ${{ inputs.mpi.load }}
+            bash test.sh ${{ inputs.mpi.processes }}
+          define_cleanup_script: false
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            account: ${{ inputs.cluster.slurm.account }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            qos: ${{ inputs.cluster.slurm.qos }}
+            cpus_per_task: 1
+            nodes: 1
+            node_type: ${{ inputs.cluster.slurm.node_type }}
+            time: ${{ inputs.cluster.slurm.time }}
+            scheduler_directives: |
+              #SBATCH --ntasks=${{ inputs.mpi.processes }}
+              ${{ inputs.cluster.slurm.scheduler_directives }}
+          pbs:
+            is_enabled: false
+      - name: Check the result
+        run: |
+          status=$(cat test.exit 2>/dev/null || true)
+          if [ "${status}" != "0" ]; then
+            echo "::error::The test failed on ${{ inputs.resource.name }} (exit status: ${status:-none, the job never finished})"
+            exit 1
+          fi
+          echo "::notice::The test passed on ${{ inputs.resource.name }}"
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Cluster
+        include-workspace: false
+      mpi:
+        type: group
+        label: MPI
+        items:
+          load:
+            type: string
+            label: Command that loads MPI
+            description: It differs per system, for example module load mpi/openmpi/4.1.5.
+          processes:
+            type: number
+            label: MPI processes
+            default: 4
+            min: 1
+            step: 1
+      cluster:
+        type: group
+        label: Scheduler
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ .hidden }}
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
+          slurm:
+            type: group
+            label: SLURM directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ .hidden }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                type: slurm-accounts
+                label: SLURM account
+                resource: ${{ inputs.resource }}
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                description: Empty for the system's default partition.
+                resource: ${{ inputs.resource }}
+                optional: true
+              qos:
+                type: slurm-qos
+                label: Quality of service (QoS)
+                resource: ${{ inputs.resource }}
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              node_type:
+                type: dropdown
+                label: Node type
+                description: The --constraint the Navy, AFRL and MHPCC systems require.
+                optional: true
+                default: ''
+                option-key: ${{ inputs.resource.ip }}
+                ignore: ${{ 'existing' != inputs.resource.provider || (inputs.resource.ip != 'blueback.navydsrc.hpc.mil' && inputs.resource.ip != 'narwhal.navydsrc.hpc.mil' && inputs.resource.ip != 'nautilus.navydsrc.hpc.mil' && inputs.resource.ip != 'raider.afrl.hpc.mil' && inputs.resource.ip != 'crux.mhpcc.hpc.mil') }}
+                hidden: ${{ .ignore }}
+                options:
+                  blueback.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  narwhal.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - smla
+                    - dmla
+                    - viz
+                    - transfer
+                  nautilus.navydsrc.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  raider.afrl.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  crux.mhpcc.hpc.mil:
+                    - AMD
+                    - Intel
+              time:
+                type: string
+                label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
+                default: '00:10:00'
+              scheduler_directives:
+                type: editor
+                label: Scheduler directives
+                description: 'One per line, with the #SBATCH prefix.'
+                optional: true
+      gitlab:
+        type: group
+        label: GitLab project
+        items:
+          resource:
+            type: string
+            label: Resource GitLab runs on
+            description: The cluster opens a tunnel to it to clone the project.
+          port:
+            type: number
+            label: GitLab HTTP port
+            description: The port GitLab listens on, on its node's loopback. It changes when GitLab restarts.
+            step: 1
+          project:
+            type: string
+            label: Project path
+            description: Namespace included, for example team/mpi-hello.
+          ref:
+            type: string
+            label: Branch or tag
+            default: main
+          token:
+            type: password
+            label: Token
+            description: The job token of the pipeline that starts the run.

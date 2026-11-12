@@ -1,7 +1,7 @@
 {
   "_test": {
     "timeout_s": 3000,
-    "warm_marker": "/gitlab/gitlab/data/postgresql/data",
+    "warm_marker": "/disk/gitlab-alvaro/data/postgresql/data",
     "leftover_patterns": [
       "assets/init-rootless",
       "runsvdir -P /opt/gitlab/service",
@@ -9,7 +9,7 @@
       "pw endpoints run"
     ],
     "leftover_commands": {
-      "instances": "grep -l /gitlab/gitlab/data /proc/[0-9]*/mountinfo 2>/dev/null | wc -l"
+      "instances": "grep -l /disk/gitlab-alvaro/data /proc/[0-9]*/mountinfo 2>/dev/null | wc -l"
     }
   },
   "resource": "pw://alvaro/awsstig",
@@ -17,7 +17,7 @@
   "service": {
     "container_runtime": "gitlab-singularity",
     "subdomain": "gitlab-alvaro-test2",
-    "rundir": "/gitlab/gitlab",
+    "rundir": "/disk/gitlab-alvaro",
     "ssh_port": 2223
   },
   "runners": {

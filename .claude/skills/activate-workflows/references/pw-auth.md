@@ -77,8 +77,9 @@ the run's. An app
 that needs the key as a string in its own config takes it on every cluster type
 (`workflows/librechat`, `ACTIVATE_API_KEY`: checked with `pw auth whoami` before the
 controller writes it into LibreChat's `.env`). Keep `set -x` off around it, or the
-trace prints it; the platform keeps form values, password inputs included, in plain
-text in the run's record (`pw workflows runs view`, verified 2026-10-27). A test
+trace prints it. The platform masks a `password` input in the run's record
+(`pw workflows runs view` shows `********`) and in the log of a `parallelworks/checkout`
+whose `repo` URL carries it (verified 2026-11-12). A test
 passes it from an environment variable (`_test.secrets`, `tools/tests/README.md`): a
 key never sits in a test file or anywhere else in the repo.
 

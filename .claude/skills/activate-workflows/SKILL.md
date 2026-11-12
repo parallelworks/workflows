@@ -222,7 +222,7 @@ workflow was tested while the row does not exist.
 
 Running by hand instead (`pw workflows run /abs/path.yaml -i inputs.json`, the absolute
 path because the shell's cwd is not guaranteed between tool calls):
-- Pass the resource as its URI (`pw://<user>/<cluster>`) or bare name, never an IP; it
+- Pass the resource as its URI (`pw://<user>/<cluster>`), never a bare name or an IP; it
   must be `active` in `pw cluster ls`. A `compute-resources` input (the hybrid k8s
   forms) needs the resource object (reference §2).
 - What the run's completion proves, and how the service or job is torn down, is in

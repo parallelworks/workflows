@@ -1,0 +1,14 @@
+{
+  "mpi": {
+    "load": "module load mpi",
+    "processes": 16
+  },
+  "cluster": {
+    "scheduler": true,
+    "slurm": {
+      "account": "hpcmo49636prw",
+      "partition": "debug",
+      "qos": "normal"
+    }
+  }
+}

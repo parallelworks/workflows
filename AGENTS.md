@@ -358,7 +358,7 @@ paths): validate that statically.
   checkout and `uses:` steps pull this repo from GitHub at run time. The YAML itself
   is read from the absolute path you pass, so a YAML-only edit tests without a push.
 - Run with the **absolute** YAML path (a relative path is parsed as a git host):
-  `pw workflows run /abs/path/workflows/<name>/yamls/general.yaml -i '{"resource":"<cluster>","cluster":{"scheduler":false}}'`
+  `pw workflows run /abs/path/workflows/<name>/yamls/general.yaml -i '{"resource":"pw://<user>/<cluster>","cluster":{"scheduler":false}}'`
 - **Tear down:** `pw endpoints delete <name>` kills the remote process tree; verify
   with `ps -x` (daemonizing apps that re-parent to PID 1 can survive). A batch run
   leaves nothing to delete; a Kubernetes run is cancelled.

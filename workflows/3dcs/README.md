@@ -36,9 +36,11 @@ workspace_preprocessing ─► preprocessing ─┬─► workers-1..N ─► me
 ```
 
 1. **workspace_preprocessing** runs in the user workspace: it checks that the
-   organization group still has 3DCS allocation hours (the platform API key is only
-   available there) and raises `sshd`'s `MaxSessions` on the cluster, which the executor
-   needs to multiplex the steps of many parallel workers.
+   organization group still has 3DCS allocation hours (a request to the organizations
+   API with the run's `PW_API_KEY` as the bearer token), that the metering daemon is
+   running (only the workspace reaches the metering server) and raises `sshd`'s
+   `MaxSessions` on the cluster, which the executor needs to multiplex the steps of
+   many parallel workers.
 2. **preprocessing** runs on the login node: checkout, `inputs.sh`, `controller.sh`
    (creates the conda environment of the CPU/memory monitor and takes ownership of the
    Wine prefix, both idempotent), downloads the model from the bucket, rewrites the

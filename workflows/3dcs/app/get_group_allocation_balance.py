@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """Print the 3DCS allocation balance (total - used hours) of an organization group.
 
-Exits 1 when the group is missing or its balance is zero or negative. Runs in the
-user workspace, the only host that holds the platform API key, before any compute
-job starts.
+Exits 1 when the group is missing or its balance is zero or negative. Runs before any
+compute job starts, on the PW_API_KEY the platform gives every step of the run.
 
 Usage: get_group_allocation_balance.py <group-name> <organization-name>
 """
 import os
 import sys
-from base64 import b64encode
 
 import requests
 
@@ -19,10 +17,11 @@ def main():
         sys.exit(f"usage: {sys.argv[0]} <group-name> <organization-name>")
     group_name, org_name = sys.argv[1], sys.argv[2]
     host = os.environ["PW_PLATFORM_HOST"]
-    key = b64encode(os.environ["PW_API_KEY"].encode()).decode()
+    key = os.environ["PW_API_KEY"]
     response = requests.get(
         f"https://{host}/api/organizations/{org_name}/groups",
-        headers={"Authorization": f"Basic {key}"},
+        # The run's key is a JWT: the API answers 401 to it under the Basic scheme
+        headers={"Authorization": f"Bearer {key}"},
         timeout=60,
     )
     response.raise_for_status()

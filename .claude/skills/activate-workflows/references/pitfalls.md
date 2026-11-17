@@ -707,6 +707,12 @@
   and export it for the runner: `PW_CREDENTIALS_DIR=<dir> pw auth --with-api-key < key.txt`.
 - **A `pw` call inside the run gets `401 Unauthorized`:** the workflow (or the parent
   of the subworkflow making the call) lacks `permissions: ['*']`.
+- **A script's own API request inside the run gets `401 Client Error: Unauthorized`
+  although the workflow has `permissions: ['*']`** (verified 2026-11-17, `3dcs` run
+  `3dcshondajapanv4-00031`): it sent the run's `PW_API_KEY` as `Basic base64(key)`. The
+  run's key is a JWT and only works as `Authorization: Bearer`; Basic is for personal
+  `pwt_...` keys. It had worked while the step sourced the user's key from the
+  workspace profile, which no longer exports one ([pw-auth.md](pw-auth.md)).
 - **`pw workflows run` with a relative YAML path:** CLIs before v7.105 parsed it as a git
   host and failed with a bogus DNS/GitLab error; v7.105.0 accepts `./x.yaml` and `x.yaml`
   (dry-run verified 2026-10-12). Still pass the **absolute path**: the shell's cwd is not

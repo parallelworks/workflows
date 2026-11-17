@@ -19,6 +19,13 @@ they keep doing so after the run completes.
 clusters, authenticate for a cloud cluster or a local CLI. A `PW_API_KEY` environment
 variable takes precedence over the saved credential.
 
+The workspace's sign-in is a workload identity (`pw context list` there:
+`workspace:<user>@<host>`), not a key in the environment: its
+`/etc/profile.d/parallelworks-env.sh` carries `PW_WORKSPACE_ENROLLED=true` and no
+`PW_API_KEY` (verified 2026-11-17, user container v7.139.0; on 2026-10-08 it still
+exported the user's key, which the `3dcs` balance check relied on). A step that
+sources the profile to get the user's key keeps the run's.
+
 ## The run's key
 
 The platform puts the run's `PW_API_KEY` into the environment of every step, on a
@@ -35,6 +42,14 @@ run's own sessions is refused (`pw clusters ls`, `pw endpoints list`, `pw workfl
 `Unauthorized`; the docs: the run "will only be able to update any sessions it
 creates"; verified 2026-10-27 on a cluster login node and on the workspace). The token
 itself differs with the permission.
+
+The key is a JWT (`eyJ...`), so a script that calls the API itself sends it as
+`Authorization: Bearer <key>`, or lets `pw api <route>` do it. Under
+`Basic base64(key)`, which the API accepts for a personal `pwt_...` key, it gets `401`
+whatever the permissions (verified 2026-11-17 from one step of a run with
+`permissions: ['*']`: `organizations/<org>/groups` answered 401 to Basic, 200 to
+Bearer; `workflows/3dcs/app/get_group_allocation_balance.py`). A personal key is
+accepted under both.
 
 **It belongs to the run.** It is rejected as soon as the run ends (verified 2026-09-24):
 a scheduler job or a service that inherited it keeps serving the endpoint it registered

@@ -14,10 +14,6 @@ jobs:
             - workflows/3dcs/app
       - name: Check 3DCS Allocation Balance
         run: |
-          # Needs the user's own platform API key, which the workspace profile exports; the
-          # run-scoped PW_API_KEY the executor sets is not authorized for the organizations API
-          source /etc/profile.d/parallelworks.sh
-          source /etc/profile.d/parallelworks-env.sh
           group="${{ inputs.service.run_hours_3dcs_group }}"
           balance=$(python3 workflows/3dcs/app/get_group_allocation_balance.py "${group}" "${{ inputs.service.org_name }}") || exit 1
           echo "::notice::3DCS allocation balance of ${group}: ${balance} hours"

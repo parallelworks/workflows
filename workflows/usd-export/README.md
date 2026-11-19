@@ -79,12 +79,13 @@ section extruded across the plane and colored by its pressure coefficient.
 `Streamlines` are traced from 16 seeds upstream, and `Label` names the airfoil, its
 angle and its lift and drag.
 
-The colors use fixed ranges scaled by the freestream (speed over freestream from 0 to
-1.6, pressure coefficient from -2.5 to 1, eddy viscosity ratio from 0.1 to 1000 on a
-log scale), so designs compare across a study. They are resampled onto 2048 pixel wide
-textures and shown as emissive color, because Isaac Sim's RTX renderer ignores
-per-vertex color fed to emission. Emission renders on front faces only, so the plane's
-faces are wound toward the camera.
+The colors use fixed ranges scaled by the freestream, so designs compare across a
+study: speed over freestream from 0 to 1.6; pressure coefficient from -2.5 to 1, with
+0 (the freestream) at the neutral middle of the diverging map; eddy viscosity ratio
+from 0.1 to 1000 on a log scale. They are resampled onto 2048 pixel wide textures and
+shown as emissive color, because Isaac Sim's RTX renderer ignores per-vertex color fed
+to emission. Emission renders on front faces only, so the plane's faces are wound
+toward +z, the side the desktop's camera looks from.
 
 To switch the field, select `/World` in the Stage panel and pick the `field` variant
 in the Property panel.

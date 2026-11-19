@@ -53,7 +53,7 @@ UINF_DEFAULT = 10.0
 
 FIELDS = {
     "velocity": {"title": "Velocity magnitude / freestream", "range": (0.0, 1.6), "map": "turbo"},
-    "pressure": {"title": "Pressure coefficient Cp", "range": (-2.5, 1.0), "map": "coolwarm"},
+    "pressure": {"title": "Pressure coefficient Cp", "range": (-2.5, 1.0), "map": "coolwarm", "center": 0.0},
     "turbulence": {"title": "Eddy viscosity ratio, log10(nut / nu)", "range": (-1.0, 3.0), "map": "viridis"},
 }
 
@@ -79,10 +79,22 @@ def to_linear(srgb):
     return np.where(srgb <= 0.04045, srgb / 12.92, ((srgb + 0.055) / 1.055) ** 2.4)
 
 
-def colormap(name, values, lo, hi, linear=True):
+def normalize(values, lo, hi, center=None):
+    """Positions on the color map for values on [lo, hi], clamped. With a center, each side
+    of it fills half the map, so a diverging map shows the center (Cp = 0, the
+    freestream) as its neutral middle on an asymmetric range."""
+    v = np.asarray(values, dtype=np.float64)
+    if center is None:
+        t = (v - lo) / (hi - lo)
+    else:
+        t = np.where(v < center, 0.5 * (v - lo) / (center - lo), 0.5 + 0.5 * (v - center) / (hi - center))
+    return np.clip(t, 0.0, 1.0)
+
+
+def colormap(name, values, lo, hi, linear=True, center=None):
     """Colors for values on [lo, hi] (clamped), linear RGB for USD, sRGB for images."""
     table = np.asarray(MAPS[name])
-    t = np.clip((np.asarray(values, dtype=np.float64) - lo) / (hi - lo), 0.0, 1.0)
+    t = normalize(values, lo, hi, center)
     x = np.linspace(0.0, 1.0, len(table))
     rgb = np.stack([np.interp(t, x, table[:, k]) for k in range(3)], axis=-1)
     return to_linear(rgb) if linear else rgb
@@ -478,9 +490,9 @@ def write_design(stage_dir, prim, design_id, data, params, results, label_image)
     for name, spec in FIELDS.items():
         image = data["images"][name]
         save_png(os.path.join(tex_dir, name + ".png"),
-                 colormap(spec["map"], image, *spec["range"], linear=False)[::-1])
+                 colormap(spec["map"], image, *spec["range"], linear=False, center=spec.get("center"))[::-1])
     strip = colormap("coolwarm", np.concatenate([data["cp_wall"], data["cp_wall"][:1]]),
-                     *FIELDS["pressure"]["range"], linear=False)
+                     *FIELDS["pressure"]["range"], linear=False, center=FIELDS["pressure"]["center"])
     save_png(os.path.join(tex_dir, "airfoil.png"), np.repeat(strip[np.newaxis], 8, axis=0))
 
     path = os.path.join(stage_dir, "designs", "." + prim + ".tmp.usdc")
@@ -632,14 +644,20 @@ def write_legend(path, spec):
     img = Image.new("RGB", (w, h), (24, 26, 30))
     draw = ImageDraw.Draw(img)
     lo, hi = spec["range"]
-    bar = colormap(spec["map"], np.linspace(lo, hi, w - 80), lo, hi, linear=False)
+    center = spec.get("center")
+    m = 90  # room for the end labels, centered on the bar's ends
+    bar = colormap(spec["map"], np.linspace(0.0, 1.0, w - 2 * m), 0.0, 1.0, linear=False)
     for i, c in enumerate(bar):
-        draw.line([(40 + i, 70), (40 + i, 150)], fill=tuple(int(255 * v) for v in c))
-    for k in range(5):
-        x = 40 + k * (w - 81) / 4
+        draw.line([(m + i, 70), (m + i, 150)], fill=tuple(int(255 * v) for v in c))
+    if center is None:
+        ticks = [lo + k * (hi - lo) / 4 for k in range(5)]
+    else:
+        ticks = [lo, (lo + center) / 2, center, (center + hi) / 2, hi]
+    for value, t in zip(ticks, normalize(ticks, lo, hi, center)):
+        x = m + t * (w - 2 * m - 1)
         draw.line([(x, 150), (x, 165)], fill=(220, 222, 226), width=3)
-        draw.text((x, 170), f"{lo + k * (hi - lo) / 4:g}", font=font(46), fill=(240, 242, 245), anchor="mt")
-    draw.text((40, 14), spec["title"], font=font(44), fill=(240, 242, 245))
+        draw.text((x, 170), f"{value:g}", font=font(46), fill=(240, 242, 245), anchor="mt")
+    draw.text((m, 14), spec["title"], font=font(44), fill=(240, 242, 245))
     img.save(path)
 
 

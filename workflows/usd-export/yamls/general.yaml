@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
 # Exports simulation results to an OpenUSD stage for Omniverse: every solved case under
 # the results directory becomes a design file, and study.usda references them all on a
-# grid with a legend and a field switch. The omniverse workflow's desktop, given the same
-# stage directory, reloads the study as it changes, so designs appear while the export
-# runs. A batch job: preprocessing checks the form, installs the exporter's Python once
+# grid with a legend and a field switch, and flow.usda animates the flow around one
+# design in 3D. The omniverse workflow's desktop, given either file, reloads it as it
+# changes, so designs appear while the export runs. A batch job: preprocessing checks the form, installs the exporter's Python once
 # and writes export.sh; the submitter runs it on the login node or a SLURM/PBS node; the
 # run fails when the export does.
 permissions:
@@ -33,6 +33,7 @@ jobs:
           results_follow_minutes="${{ inputs.results.follow_minutes }}"
           stage_directory="${{ inputs.stage.directory }}"
           stage_columns="${{ inputs.stage.columns }}"
+          stage_flow="${{ inputs.stage.flow }}"
           service_parent_install_dir="${{ inputs.software.install_dir }}"
           EOF
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
@@ -188,6 +189,15 @@ jobs:
             min: 1
             max: 32
             step: 1
+          flow:
+            type: string
+            label: Animated flow design
+            default: best
+            description: The design flow.usda shows in 3D with tracer particles; best is the highest lift to drag ratio, none writes no flow.usda.
+            tooltip: |
+              Or a design name as the study shows it (case_3, iter_2/case_1). With best,
+              flow.usda moves to a better design as one is exported. Give
+              <stage directory>/flow.usda to the omniverse desktop as its stage.
       software:
         type: group
         label: Software

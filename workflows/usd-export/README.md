@@ -28,6 +28,7 @@ about the export and the export can run after a study or alongside it.
 | Keep exporting new cases for | 0 minutes | 0 exports what has solved and ends |
 | Stage directory | `${HOME}/pw/omniverse/stages/study` | give the same directory to the desktop |
 | Designs per row | 4 | |
+| Animated flow design | best | the design `flow.usda` animates: best lift to drag, a design name, or none |
 | Software | install under `${HOME}/pw/software` | or commands that load a Python with usd-core 25.11, vtk, numpy and pillow |
 
 The batch job runs on the login node or as a SLURM or PBS job. The first run installs
@@ -74,6 +75,7 @@ wrong image on every design after the reload; new names avoid that.
 ├─ textures/<design>/     the three field images and the airfoil's pressure strip, as
 │                         <name>-<hash>.png
 ├─ labels/, legend/       design labels and color bars, named the same way
+├─ flow.usda, flow/       the animated flow of one design (below)
 └─ designs.json           the designs in arrival order, with their parameters and results
 ```
 
@@ -103,6 +105,39 @@ exporter's Python stays under `<install directory>/usd-export` for later runs.
 A run fails when a solved case cannot be exported (its warning names the case and the
 error), even though the other cases were exported, and when the results directory
 holds no solved case and the stage is still empty.
+
+## The animated flow
+
+`flow.usda` shows one design's flow in 3D: the airfoil as a wing section from a wall to
+a free tip, colored by its pressure coefficient; streamtubes colored by speed over
+freestream at two span stations; and tracer particles at three stations (about 700 in
+view at a time) that ride the solved velocity field along the streamlines in an 8
+second loop, colored by their local speed.
+The wall behind the wing carries the design's label and the three legends, and a `wall`
+variant set on `/World` puts the velocity, pressure or eddy viscosity slice on it
+(dark by default). The scene is Y up, lift up and span along z.
+
+The openfoam-naca cases are two-dimensional, one cell across the span, so every span
+station sees the same flow; the tubes and particles are the mid-plane solution placed
+at several stations, and the wing's span is for viewing. A particle moves at the local
+solved speed, scaled so one chord at freestream takes 1.2 seconds, and particles are
+released along each streamline at fixed intervals so the loop has no seam.
+
+The stage holds 192 frames at 24 frames a second as time samples of a point instancer:
+positions, a color band per particle, and the particles that are past the end of their
+line. Isaac Sim's RTX renderer draws a `Points` prim's spheres with texture coordinates
+of its own and ignores a per-point color, so each of 16 color bands is a prototype
+sphere with its own material. The tubes and particles carry Omniverse's
+`doNotCastShadows` primvar.
+
+With **Animated flow design** at best, the export writes `flow.usda` for the design with
+the highest lift to drag ratio and rewrites it when a better one is exported, so in
+follow mode it tracks an optimization. Building it takes about one second.
+`flow.usda` is small (lights, time range, and the desktop's view and autoplay hints)
+and sublayers `flow/<design>-<hash>.usdc`, which holds the geometry and the particle
+samples (about 5 MB); the textures beside it are named by content like the study's.
+A design whose flow cannot be built is a warning, and the run still succeeds on its
+study.
 
 ## Adding a format
 

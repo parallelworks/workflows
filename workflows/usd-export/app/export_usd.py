@@ -1,6 +1,7 @@
 """Exports solved openfoam-naca cases to an OpenUSD stage the Omniverse desktop follows.
 
     python export_usd.py --source DIR --stage-dir DIR [--format F] [--columns N] [--follow-minutes M]
+                         [--flow best|none|DESIGN]
 
 Every case directory under DIR (a directory holding case/case.foam, as openfoam-naca,
 doe-openfoam and dakota-openfoam leave them) that has a results.out becomes one design
@@ -18,6 +19,11 @@ With --follow-minutes M the export keeps scanning DIR for cases that finish, and
 when none has finished for M minutes or, for a doe-openfoam study, when its results.csv
 exists and every case has finished. Values are the raw fields of the last time step
 plus their colors; colors use fixed ranges scaled by the freestream, so designs compare.
+
+<stage-dir>/flow.usda shows one design in 3D and animated (flow_scene.py): the wing on a
+wall, streamtubes and tracer particles moving with the solved field. --flow picks the
+design: best (the highest lift to drag ratio, the default, which moves to a better
+design as one is exported), a design name, or none.
 """
 
 import argparse
@@ -819,6 +825,51 @@ def export_case(case_dir, source, stage_dir, manifest, columns, reader):
         write_study(stage_dir, manifest, columns)
     log(f"exported {design_id}: {len(data['points'])} points, {len(data['curves'])} streamlines, "
         f"{time.time() - started:.1f} s -> {file}")
+    return data
+
+
+def lift_to_drag(entry):
+    results = entry.get("results", {})
+    cd = results.get("drag_coefficient")
+    if not cd or "neg_lift_coefficient" not in results:
+        return None
+    return -results["neg_lift_coefficient"] / cd
+
+
+def flow_choice(manifest, wanted):
+    """The manifest entry flow.usda shows: the highest lift to drag ratio for "best", or
+    the named design; None for "none" or when there is no such design yet."""
+    if wanted == "none":
+        return None
+    if wanted != "best":
+        return next((e for e in manifest if e["design"] == wanted), None)
+    ranked = [e for e in manifest if lift_to_drag(e) is not None]
+    return max(ranked, key=lift_to_drag) if ranked else None
+
+
+def update_flow(stage_dir, manifest, wanted, shown, reader, fresh=None):
+    """Writes flow.usda when the design it should show is not the one it shows (shown is
+    the (design, design file) pair written last); fresh is (case_dir, data) of the case
+    just exported, so that case is not read twice. Returns the pair now shown. A design
+    whose flow cannot be built is a warning: the study is the export's result."""
+    import flow_scene
+    entry = flow_choice(manifest, wanted)
+    if entry is None or (entry["design"], entry["file"]) == shown:
+        return shown
+    started = time.time()
+    try:
+        data = fresh[1] if fresh and fresh[0] == entry["case_dir"] else reader(entry["case_dir"])
+        label = write_label(os.path.join(stage_dir, "labels"), entry["prim"], entry["design"], entry["params"],
+                            entry["results"])
+        flow_scene.write_flow(stage_dir, entry["prim"], entry["design"], entry["case_dir"], data, entry["params"],
+                              entry["results"], "../labels/" + label)
+    except Exception as error:
+        log(f"::warning::flow.usda could not show {entry['design']}: {error}")
+        return (entry["design"], entry["file"])
+    ratio = lift_to_drag(entry)
+    log(f"flow.usda shows {entry['design']}" + (f" (L/D {ratio:.1f})" if ratio is not None else "") +
+        f", {time.time() - started:.1f} s")
+    return (entry["design"], entry["file"])
 
 
 # A format is a reader from one case directory to the pieces write_design draws: the
@@ -836,7 +887,11 @@ def main():
     parser.add_argument("--follow-minutes", type=float, default=0,
                         help="keep exporting cases as they finish until none has for this long")
     parser.add_argument("--poll-seconds", type=float, default=10)
+    parser.add_argument("--flow", default="best",
+                        help="the design flow.usda animates: best (highest lift to drag), a design name, or none")
     args = parser.parse_args()
+    # flow_scene imports this module by name; run as a script, this is __main__
+    sys.modules.setdefault("export_usd", sys.modules[__name__])
 
     if not os.path.isdir(args.source):
         sys.exit(f"::error::The results directory {args.source} does not exist")
@@ -847,6 +902,7 @@ def main():
         for name, spec in FIELDS.items():
             write_legend(os.path.join(args.stage_dir, "legend"), name, spec)
         write_study(args.stage_dir, manifest, args.columns)
+        shown = update_flow(args.stage_dir, manifest, args.flow, None, FORMATS[args.format])
     log(f"stage {os.path.join(args.stage_dir, 'study.usda')}, source {args.source}")
 
     done, failed, broken = set(), set(), set()
@@ -863,9 +919,13 @@ def main():
                 last_change = time.time()
             elif state == "solved":
                 try:
-                    export_case(case_dir, args.source, args.stage_dir, manifest, args.columns,
-                                FORMATS[args.format])
+                    data = export_case(case_dir, args.source, args.stage_dir, manifest, args.columns,
+                                       FORMATS[args.format])
                     done.add(case_dir)
+                    with lock(args.stage_dir):
+                        manifest[:] = load_manifest(args.stage_dir)
+                        shown = update_flow(args.stage_dir, manifest, args.flow, shown, FORMATS[args.format],
+                                            (os.path.abspath(case_dir), data))
                 except Exception as error:  # the other cases still export; the run fails at the end
                     broken.add(case_dir)
                     log(f"::warning::{case_dir} could not be exported: {error}")
@@ -879,6 +939,8 @@ def main():
 
     log(f"{len(done)} designs exported, {len(failed)} skipped (the solver failed), "
         f"{len(broken)} could not be exported, {len(pending)} still pending")
+    if args.flow not in ("none", "best") and shown is None:
+        log(f"::warning::No design named {args.flow} in the stage, so flow.usda was not written")
     if broken:
         sys.exit(f"::error::{len(broken)} solved cases could not be exported (the warnings above say why); "
                  f"{len(done)} were")

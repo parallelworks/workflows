@@ -14,6 +14,10 @@ the Property panel is written there too; with the study as the root, the first s
 edit would leave it with unsaved changes, which a reload would discard. Under the
 in-memory root, those edits stay in place while the study reloads beneath them. A file
 layer with unsaved edits (the edit target moved onto it) is left alone, with a warning.
+
+Two hints in the stage's customLayerData, which usd-export's flow.usda carries: pw:view
+(eye and target, in stage units) places the camera there in place of framing the stage,
+and pw:play starts the timeline over the stage's time range, looping.
 """
 
 import asyncio
@@ -28,17 +32,33 @@ from pxr import Sdf, Usd
 POLL_S = 3.0
 
 
+STAGE_INFO = ("upAxis", "metersPerUnit", "defaultPrim", "startTimeCode", "endTimeCode", "timeCodesPerSecond",
+              "framesPerSecond")
+
+
+def copy_info(study, root):
+    """The followed layer's stage metadata onto the in-memory root, which is what Kit and
+    the timeline read."""
+    for key in STAGE_INFO:
+        if study is not None and study.pseudoRoot.HasInfo(key):
+            root.pseudoRoot.SetInfo(key, study.pseudoRoot.GetInfo(key))
+
+
 def follow_stage(path):
-    """An in-memory stage over the study, with its up axis, units and default prim."""
+    """An in-memory stage over the study, with its up axis, units, default prim and time
+    range."""
     study = Sdf.Layer.FindOrOpen(path)
     name = os.path.basename(os.path.dirname(os.path.realpath(path))) or "study"
     stage = Usd.Stage.CreateInMemory(f"{name}.usda")
     root = stage.GetRootLayer()
     root.subLayerPaths.append(path)
-    for key in ("upAxis", "metersPerUnit", "defaultPrim"):
-        if study is not None and study.pseudoRoot.HasInfo(key):
-            root.pseudoRoot.SetInfo(key, study.pseudoRoot.GetInfo(key))
+    copy_info(study, root)
     return stage
+
+
+def hints(path):
+    layer = Sdf.Layer.FindOrOpen(path)
+    return dict(layer.customLayerData) if layer is not None else {}
 
 
 def frame(stage):
@@ -83,6 +103,47 @@ def aim(stage):
         carb.log_warn(f"stage-follow: could not aim the camera: {error}")
 
 
+def look(stage, view):
+    """Puts the perspective camera at the pw:view hint's eye, looking at its target, up
+    along the stage's up axis, with the orbit pivot on the target and a near clip close
+    enough for a close look at a model one unit across."""
+    try:
+        import omni.kit.commands
+        from omni.kit.viewport.utility import get_active_viewport
+        from pxr import Gf, UsdGeom
+        viewport = get_active_viewport()
+        if viewport is None:
+            return
+        up = Gf.Vec3d(0, 0, 1) if UsdGeom.GetStageUpAxis(stage) == UsdGeom.Tokens.z else Gf.Vec3d(0, 1, 0)
+        eye, target = Gf.Vec3d(*view["eye"]), Gf.Vec3d(*view["target"])
+        matrix = Gf.Matrix4d().SetLookAt(eye, target, up)
+        omni.kit.commands.execute("TransformPrimCommand", path=str(viewport.camera_path),
+                                  new_transform_matrix=matrix.GetInverse())
+        camera = stage.GetPrimAtPath(viewport.camera_path)
+        with Usd.EditContext(stage, stage.GetSessionLayer()):
+            UsdGeom.Camera(camera).GetClippingRangeAttr().Set(Gf.Vec2f(0.01, 1.0e5))
+            pivot = camera.GetAttribute("omni:kit:centerOfInterest")
+            if pivot:
+                pivot.Set(Gf.Vec3d(0, 0, -(target - eye).GetLength()))
+    except Exception as error:
+        carb.log_warn(f"stage-follow: could not place the camera: {error}")
+
+
+def play(stage):
+    """Plays the stage's time range in a loop."""
+    try:
+        import omni.timeline
+        timeline = omni.timeline.get_timeline_interface()
+        rate = stage.GetTimeCodesPerSecond()
+        timeline.set_time_codes_per_second(rate)
+        timeline.set_start_time(stage.GetStartTimeCode() / rate)
+        timeline.set_end_time(stage.GetEndTimeCode() / rate)
+        timeline.set_looping(True)
+        timeline.play()
+    except Exception as error:
+        carb.log_warn(f"stage-follow: could not start the timeline: {error}")
+
+
 def mtimes(stage):
     found = {}
     for layer in stage.GetUsedLayers():
@@ -107,8 +168,14 @@ async def follow(path):
     for _ in range(10):
         await app.next_update_async()
     stage = context.get_stage()
-    aim(stage)
-    frame(stage)
+    hint = hints(path)
+    if "pw:view" in hint:
+        look(stage, hint["pw:view"])
+    else:
+        aim(stage)
+        frame(stage)
+    if hint.get("pw:play"):
+        play(stage)
     root = stage.GetRootLayer().identifier
     print(f"stage-follow: following {os.path.realpath(path)}", flush=True)
     seen = {p: m for p, (m, _) in mtimes(stage).items()}
@@ -133,9 +200,13 @@ async def follow(path):
             for _ in range(2):
                 await app.next_update_async()
             stage = context.get_stage()
+            copy_info(Sdf.Layer.FindOrOpen(path), stage.GetRootLayer())
             seen = {p: m for p, (m, _) in mtimes(stage).items()}
             designs = stage.GetPrimAtPath("/World/Designs")
-            now = len(designs.GetChildren()) if designs else 0
+            if not designs:
+                print(f"stage-follow: reloaded; {hints(path).get('design', 'the stage')} shown", flush=True)
+                continue
+            now = len(designs.GetChildren())
             print(f"stage-follow: reloaded; {now} designs", flush=True)
             if now != count:
                 frame(stage)

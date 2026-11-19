@@ -97,6 +97,15 @@ fips=()
 if [ "$(cat /proc/sys/crypto/fips_enabled 2> /dev/null)" = 1 ]; then
     fips=(--env OPENSSL_FORCE_FIPS_MODE=0)
 fi
+# --nv binds the driver libraries listed in the runtime's nvliblist.conf, which in
+# apptainer 1.3 leaves out libnvidia-ngx.so.1; without it RTX has no DLSS denoiser
+# ("Failed to create NGX context") and lit surfaces render grainy
+ngx=()
+ngx_lib=$(ldconfig -p 2> /dev/null | awk '/libnvidia-ngx\.so\.1 \(.*x86-64/ {print $NF; exit}')
+ngx_conf=$(singularity buildcfg 2> /dev/null | sed -n 's/^SYSCONFDIR=//p')
+if [ -r "${ngx_lib}" ] && ! grep -qs '^libnvidia-ngx' "${ngx_conf}"/{apptainer,singularity}/nvliblist.conf; then
+    ngx=(--bind "${ngx_lib}:/.singularity.d/libs/libnvidia-ngx.so.1")
+fi
 # NVIDIA's driver crashes while Kit opens its window on an X server without GLX, so
 # that is checked first, with the image's own Python and Xlib
 glx_check='
@@ -119,7 +128,7 @@ case "${glx}" in
     *) echo "Could not check ${DISPLAY} for GLX (exit status ${glx})" >&2; exit 1 ;;
 esac
 echo "Starting ${app} from ${sif} on display ${DISPLAY}; the window takes a few minutes"
-exec singularity exec --nv --cleanenv "${userns[@]}" "${fips[@]}" "${sockets[@]}" "${follow[@]}" \
+exec singularity exec --nv --cleanenv "${userns[@]}" "${fips[@]}" "${ngx[@]}" "${sockets[@]}" "${follow[@]}" \
     --home "${cache}:/cache" --bind "${cache}/kit:/isaac-sim/kit/cache" \
     --bind "${xauth}:/tmp/.Xauthority" \
     --env "DISPLAY=${DISPLAY}" --env XAUTHORITY=/tmp/.Xauthority --env ACCEPT_EULA=Y \

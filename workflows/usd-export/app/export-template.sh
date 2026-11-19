@@ -13,7 +13,8 @@ python "${export_app}/export_usd.py" \
     --stage-dir "${stage_directory}" \
     --format "${results_format:-openfoam-naca}" \
     --columns "${stage_columns:-4}" \
-    --follow-minutes "${results_follow_minutes:-0}" &
+    --follow-minutes "${results_follow_minutes:-0}" \
+    --flow "${stage_flow:-best}" &
 exporter=$!
 trap 'kill -TERM ${exporter} 2> /dev/null; wait ${exporter}; exit 143' TERM HUP
 trap 'kill -TERM ${exporter} 2> /dev/null; wait ${exporter}; exit 130' INT

@@ -13,3 +13,8 @@ if [ "${status}" != "0" ]; then
 fi
 designs=$(grep -c '"prim"' "$(dirname "${STAGE_FILE}")/designs.json" 2> /dev/null || true)
 echo "::notice title=Stage::${STAGE_FILE} holds ${designs:-0} designs; open it in the omniverse workflow's desktop (Stage to follow)"
+flow_file="$(dirname "${STAGE_FILE}")/flow.usda"
+if [ -f "${flow_file}" ]; then
+    design=$(sed -n 's/^ *string design = "\(.*\)"$/\1/p' "${flow_file}" | head -1)
+    echo "::notice title=Flow::${flow_file} animates ${design:-one design} in 3D; give it to the desktop as its stage"
+fi

@@ -38,6 +38,16 @@ runtime_setup() {
         echo "::error title=Error::singularity cannot run ${container_sif} on $(hostname), with or without --userns"
         exit 1
     fi
+    # --nv binds the driver libraries listed in the runtime's nvliblist.conf, which in
+    # apptainer 1.3 leaves out libnvidia-ngx.so.1; without it RTX has no DLSS denoiser
+    # ("Failed to create NGX context") and lit surfaces render grainy
+    ngx_binds=()
+    local ngx_lib ngx_conf
+    ngx_lib=$(ldconfig -p 2> /dev/null | awk '/libnvidia-ngx\.so\.1 \(.*x86-64/ {print $NF; exit}')
+    ngx_conf=$(singularity buildcfg 2> /dev/null | sed -n 's/^SYSCONFDIR=//p')
+    if [ -r "${ngx_lib}" ] && ! grep -qs '^libnvidia-ngx' "${ngx_conf}"/{apptainer,singularity}/nvliblist.conf; then
+        ngx_binds=("${ngx_lib}:/.singularity.d/libs/libnvidia-ngx.so.1")
+    fi
     container_image_label="${container_sif}"
 }
 
@@ -66,7 +76,7 @@ container_run() {
     if [ -n "${CUDA_VISIBLE_DEVICES}" ]; then
         args+=(--env "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}")
     fi
-    for item in "${container_binds[@]}"; do
+    for item in "${container_binds[@]}" "${ngx_binds[@]}"; do
         args+=(--bind "${item}")
     done
     singularity "${args[@]}" "${container_sif}" "$@"

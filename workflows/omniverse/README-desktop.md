@@ -72,6 +72,13 @@ again when designs were added. The [usd-export](../usd-export/README.md) workflo
 writes such a stage from simulation results, so a desktop started on the same stage
 directory shows each design as the export adds it, while the study is still running.
 
+A stage can carry two hints in its layer metadata, and usd-export's `flow.usda` (one
+design's flow in 3D, with tracer particles) carries both: `pw:view`, an eye and a target
+the camera is placed at instead of framing the stage, and `pw:play`, which starts the
+timeline over the stage's time range in a loop. Give `<stage directory>/flow.usda` as
+**Stage to follow** to open the animation; the export rewrites it when a better design
+arrives, and the open stage switches to that design while it keeps playing.
+
 The stage the app shows is an in-memory layer with the study file as its sublayer.
 Changes made in the app, such as a field picked in the Property panel, go to that
 layer, so they survive the study's reloads and the study file is never written. Save

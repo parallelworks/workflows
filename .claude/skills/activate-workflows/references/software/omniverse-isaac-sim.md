@@ -47,10 +47,14 @@
   `/etc/docker/daemon.json` (keep the `nvidia` runtime entry) and `systemctl restart
   containerd docker` moved them to the 160 GB `/home`; `docker info` then shows the new
   root and the check reads containerd's root from the config file.
-- The NVIDIA NGX library (`libnvidia-ngx.so`) reaches neither container (the Docker
-  toolkit's `all` capabilities and Singularity's `nvliblist.conf` both leave it out), so
-  DLSS fails (`Failed to create NGX context`) and the real-time renderers come out
-  speckled. `carb.settings.get_settings().set("/rtx/post/aa/op", 1)` (TAA) plus
+- The NVIDIA NGX library (`libnvidia-ngx.so`) reaches neither container by default (the
+  Docker toolkit's `all` capabilities and apptainer 1.3's `nvliblist.conf` both leave it
+  out), so DLSS fails (`Failed to create NGX context`) and the real-time renderers come
+  out speckled. Singularity: `--bind <host lib>:/.singularity.d/libs/libnvidia-ngx.so.1`
+  (the host path from `ldconfig -p`) gives clean real-time frames; the omniverse
+  workflow's `isaac-sim-gui.sh` and `omniverse-singularity/runtime.sh` add it when the
+  host has the library and the runtime's list lacks it. On an A30 (no RT cores) Kit
+  still warns that DLSS-RR is unsupported for that GPU. Without the library: `carb.settings.get_settings().set("/rtx/post/aa/op", 1)` (TAA) plus
   `rep.orchestrator.step(rt_subframes=32)` converges the lighting: clean frames at about
   0.5 to 1 s each at 1280x720 on an L4. Path tracing (64 spp, the OptiX denoiser, which
   is bound) is clean at 1 pass, about 2 s a frame.
@@ -189,6 +193,29 @@
   `PIL` and `yaml` are, through `python.sh` only (the bare `kit/python/bin/python3` has
   no site packages on its path). `pxr` is not importable without Kit: a standalone USD
   script on the login node takes `pip install usd-core` in a venv.
+
+## Animated scenes for RTX
+
+Found building usd-export's `flow.usda` (particles moving through a solved flow field,
+November 2026):
+
+- RTX draws a `UsdGeom.Points` prim's spheres with texture coordinates of its own, so a
+  per-point `st` into a colormap texture is ignored and every point takes one color. A
+  `PointInstancer` whose prototypes are colored spheres (one per color band) with
+  time-sampled `positions`, `protoIndices` and `invisibleIds` animates and colors per
+  particle.
+- `primvars:doNotCastShadows` (bool, constant) is Omniverse RTX's own switch to keep a
+  prim out of shadows; thin tubes and particles otherwise speckle the surfaces under them.
+- A Replicator camera (`rep.functional.create.camera`) has USD's default clipping range
+  (1, 1e6) in stage units; for a model one unit across, anything nearer than 1 is cut
+  away and the inside of the mesh shows black. Set `clippingRange` on the camera prim.
+- The viewport's timeline follows the stage's time metadata on the layer Kit opened; an
+  in-memory root over a file layer needs `startTimeCode`, `endTimeCode`,
+  `timeCodesPerSecond` and `framesPerSecond` copied onto it (`stage-follow.py` does),
+  and `omni.timeline.get_timeline_interface()` `set_looping(True)` and `play()` start it.
+- Isaac Sim 6.2 on an A30 played the scene (about 1,600 instances, 45k tube faces) at
+  about 19 frames a second in a 1280x720 viewport. The A30 has no RT cores, so treat it
+  as a floor: Isaac Sim's system requirements call for RTX GPUs, which have them.
 
 ## The GUI in a platform desktop session
 

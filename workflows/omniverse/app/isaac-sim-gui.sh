@@ -10,7 +10,8 @@
 # A stage after the application (a .usd/.usda/.usdc file, or a directory holding
 # study.usda, as the usd-export workflow writes it) is opened once it exists and
 # reloaded whenever it or a layer it uses changes on disk (kit-scripts/stage-follow.py),
-# so designs appear as they are exported.
+# so designs appear as they are exported. Arguments that start with a dash go to Kit, in
+# place of the stage or after it.
 #
 # The Singularity runtime's controller installs this file beside the SIF it pulls, so
 # any run of the workflow with that runtime leaves both in the install directory. The
@@ -23,14 +24,23 @@ app="isaac-sim"
 case "${1:-}" in
     ""|physx) ;;
     newton) app="isaac-sim.newton" ;;
-    *) echo "usage: $0 [physx|newton] [stage]"; exit 1 ;;
+    *) echo "usage: $0 [physx|newton] [stage] [kit arguments]"; exit 1 ;;
 esac
 here="$(cd "$(dirname "$0")" && pwd)"
 follow=()
 kit_args=()
-stage="${2:-}"
-[ "${stage}" = undefined ] && stage=""
+stage=""
+passthrough=("${@:2}")
+case "${2:-}" in
+    -*) ;;
+    ""|undefined) passthrough=("${@:3}") ;;
+    *) stage="$2"; passthrough=("${@:3}") ;;
+esac
 if [ -n "${stage}" ]; then
+    # Kit splits the exec string below on spaces
+    case "${stage}" in
+        *[[:space:]]*) echo "The stage path cannot contain spaces: ${stage}" >&2; exit 1 ;;
+    esac
     case "${stage}" in
         *.usd|*.usda|*.usdc) ;;
         *) stage="${stage%/}/study.usda" ;;
@@ -89,4 +99,4 @@ exec singularity exec --nv --cleanenv "${userns[@]}" "${fips[@]}" "${sockets[@]}
     --home "${cache}:/cache" --bind "${cache}/kit:/isaac-sim/kit/cache" \
     --bind "${xauth}:/tmp/.Xauthority" \
     --env "DISPLAY=${DISPLAY}" --env XAUTHORITY=/tmp/.Xauthority --env ACCEPT_EULA=Y \
-    "${sif}" "/isaac-sim/${app}.sh" "${kit_args[@]}" "${@:3}"
+    "${sif}" "/isaac-sim/${app}.sh" "${kit_args[@]}" "${passthrough[@]}"

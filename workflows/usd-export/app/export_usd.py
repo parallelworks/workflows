@@ -849,12 +849,12 @@ def main():
         write_study(args.stage_dir, manifest, args.columns)
     log(f"stage {os.path.join(args.stage_dir, 'study.usda')}, source {args.source}")
 
-    done, failed, errors = set(), set(), 0
+    done, failed, broken = set(), set(), set()
     last_change = time.time()
     while True:
         cases = find_cases(args.source)
         for case_dir in cases:
-            if case_dir in done or case_dir in failed:
+            if case_dir in done or case_dir in failed or case_dir in broken:
                 continue
             state = case_state(case_dir)
             if state == "failed":
@@ -865,22 +865,24 @@ def main():
                 try:
                     export_case(case_dir, args.source, args.stage_dir, manifest, args.columns,
                                 FORMATS[args.format])
-                except Exception as error:  # one unreadable case must not stop the study
-                    errors += 1
-                    log(f"::warning::{case_dir}: {error}")
-                    failed.add(case_dir)
-                done.add(case_dir)
+                    done.add(case_dir)
+                except Exception as error:  # the other cases still export; the run fails at the end
+                    broken.add(case_dir)
+                    log(f"::warning::{case_dir} could not be exported: {error}")
                 last_change = time.time()
-        pending = [c for c in cases if c not in done and c not in failed]
+        pending = [c for c in cases if c not in done and c not in failed and c not in broken]
         study_closed = os.path.isfile(os.path.join(args.source, "results.csv")) and not pending
         idle = time.time() - last_change
         if args.follow_minutes <= 0 or study_closed or idle > args.follow_minutes * 60:
             break
         time.sleep(args.poll_seconds)
 
-    exported = len(done) - errors
-    log(f"{exported} designs exported, {len(failed)} skipped, {len(pending)} still pending")
-    if exported == 0 and not load_manifest(args.stage_dir):
+    log(f"{len(done)} designs exported, {len(failed)} skipped (the solver failed), "
+        f"{len(broken)} could not be exported, {len(pending)} still pending")
+    if broken:
+        sys.exit(f"::error::{len(broken)} solved cases could not be exported (the warnings above say why); "
+                 f"{len(done)} were")
+    if not done and not load_manifest(args.stage_dir):
         sys.exit(f"::error::No solved case under {args.source}: nothing to show")
 
 

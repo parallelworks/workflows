@@ -170,7 +170,7 @@ jobs:
             min: 0
             max: 1440
             step: 1
-            tooltip: Set it when the study is still running, so cases appear in the desktop as they finish. A doe-openfoam study ends the export early, once its results.csv exists and every case has finished.
+            tooltip: Set it when the study is still running, so cases appear in the desktop as they finish. A doe-openfoam study ends the export early, once its results.csv exists and every case has finished. Submitted to the scheduler, the export must also fit inside the walltime.
       stage:
         type: group
         label: Stage

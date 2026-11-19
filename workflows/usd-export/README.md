@@ -59,6 +59,11 @@ longer than one generation takes. Each design file and the study are written to 
 temporary file and renamed into place, so a desktop reloading them never reads a
 partial file.
 
+Images are named by their content (`velocity-<hash>.png`), and a design exported
+again with different images gets new files while the old ones are removed. When the
+images were rewritten in place under the same names, an open Isaac Sim showed one
+wrong image on every design after the reload; new names avoid that.
+
 ## What the stage holds
 
 ```
@@ -66,8 +71,9 @@ partial file.
 ├─ study.usda             /World: lights, /World/Designs/<design> references on the grid,
 │                         /World/Legend, and the field variant set
 ├─ designs/<design>.usdc  one per case
-├─ textures/<design>/     the three field images and the airfoil's pressure strip
-├─ labels/, legend/       design labels and color bars
+├─ textures/<design>/     the three field images and the airfoil's pressure strip, as
+│                         <name>-<hash>.png
+├─ labels/, legend/       design labels and color bars, named the same way
 └─ designs.json           the designs in arrival order, with their parameters and results
 ```
 
@@ -89,6 +95,14 @@ toward +z, the side the desktop's camera looks from.
 
 To switch the field, select `/World` in the Stage panel and pick the `field` variant
 in the Property panel.
+
+The stage directory outlives the run, and later exports add to it. The run leaves no
+process or endpoint behind. Remove a study with `rm -rf <stage directory>`; the
+exporter's Python stays under `<install directory>/usd-export` for later runs.
+
+A run fails when a solved case cannot be exported (its warning names the case and the
+error), even though the other cases were exported, and when the results directory
+holds no solved case and the stage is still empty.
 
 ## Adding a format
 

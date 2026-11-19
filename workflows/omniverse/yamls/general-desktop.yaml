@@ -209,7 +209,7 @@ jobs:
             type: string
             label: Stage to follow
             optional: true
-            description: A USD file, or a directory holding study.usda, opened once it exists and reloaded whenever it changes; empty opens an empty stage.
+            description: A USD file, or a directory holding study.usda, opened once it exists and reloaded whenever it changes; empty opens an empty stage. The path cannot contain spaces.
             tooltip: |
               Give the usd-export workflow's stage directory (default ${HOME}/pw/omniverse/stages/study) to watch
               designs arrive while an export runs. Select /World and pick the field (velocity, pressure,

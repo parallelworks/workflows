@@ -42,9 +42,13 @@ else
     fi
 fi
 
-# The GUI launcher for a desktop session, beside the image it starts
+# The GUI launcher for a desktop session, beside the image it starts, and the script
+# it hands Kit to open and follow a stage
 cp workflows/omniverse/app/isaac-sim-gui.sh "${service_parent_install_dir}/omniverse/isaac-sim-gui.sh"
 chmod a+rx "${service_parent_install_dir}/omniverse/isaac-sim-gui.sh"
+mkdir -p "${service_parent_install_dir}/omniverse/kit-scripts"
+cp workflows/omniverse/app/stage-follow.py "${service_parent_install_dir}/omniverse/kit-scripts/stage-follow.py"
+chmod a+r "${service_parent_install_dir}/omniverse/kit-scripts/stage-follow.py"
 
 if [ "${fracture_own_mesh}" = true ]; then
     bash workflows/omniverse/app/install-blast.sh "${service_parent_install_dir}"

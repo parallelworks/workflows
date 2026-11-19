@@ -22,7 +22,7 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: omniverse-usd-export
           sparse_checkout:
             - workflows/omniverse/app
             - workflows/omniverse/omniverse-singularity
@@ -91,7 +91,7 @@ jobs:
                 ${{ inputs.cluster.pbs.scheduler_directives }}
           desktop:
             kasmvnc_os: rocky9
-            startup_command: bash ${{ inputs.software.install_dir }}/omniverse/isaac-sim-gui.sh ${{ inputs.desktop.app }}
+            startup_command: bash ${{ inputs.software.install_dir }}/omniverse/isaac-sim-gui.sh ${{ inputs.desktop.app }} ${{ inputs.desktop.stage }}
 
 'on':
   execute:
@@ -205,6 +205,16 @@ jobs:
               - value: newton
                 label: Isaac Sim with Newton physics
             tooltip: The full Isaac Sim application from the SIF (isaac-sim.sh or isaac-sim.newton.sh), its window on the desktop's X server; an xterm on the node is there too.
+          stage:
+            type: string
+            label: Stage to follow
+            optional: true
+            description: A USD file, or a directory holding study.usda, opened once it exists and reloaded whenever it changes; empty opens an empty stage.
+            tooltip: |
+              Give the usd-export workflow's stage directory (default ${HOME}/pw/omniverse/stages/study) to watch
+              designs arrive while an export runs. Select /World and pick the field (velocity, pressure,
+              turbulence) under Variants in the Property panel. Opening another stage from the File menu
+              stops the following.
       software:
         type: group
         label: Software

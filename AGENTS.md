@@ -110,6 +110,7 @@ or tunnel logic; write a new workflow so it can be called in turn.
 | **Batch job** | the script finishes; the run fails when it fails | `script_submitter` once, then a step that reads the exit file the script wrote | `activate-batch` (smallest), `benchmarks`, `3dcs`, `cwl-mpi-hello-world`, `openfoam-naca`, `probe`'s `general_run_tests.yaml` | `shapes/batch.md` |
 | **Callable step** (login node only) | its steps finish; one `general.yaml` for every platform | plain `run:` steps; a detached `pw endpoints run` with a `!success()` handler when it serves a page | `doe`, `dakota`, `design-explorer`, `wait_for_endpoint` | `shapes/composed.md` |
 | **Composed** | the study or loop finishes | `uses:` of the rows above: a matrix of evaluators, retry-as-loop, a live page | `doe-openfoam`, `dakota-openfoam`, `openfoam-naca`'s `*-restart.yaml` | `shapes/composed.md` |
+| **Desktop session** (login node) | the application in a platform desktop session reports ready; the session outlives the run until `pw sessions stop` | plain `run:` steps: `pw sessions create --type desktop`, the application started on the session's display, a step `cleanup:` that stops the session when the run did not get that far | `omniverse/yamls/general-desktop.yaml` | AGENTS.md, Desktops |
 | **Kubernetes** | never: cancelling the run is the teardown | the sidecar pod jobs; no submitter, nothing checked out | `mlflow/yamls/k8s.yaml` (k8s-only), `openvscode/yamls/general_k8s.yaml` (hybrid) | `references/k8s-workflows.md` |
 
 The rows combine: a **service plus the work that uses it** (`burst-render-demo`,
@@ -124,7 +125,7 @@ the same invariants:
 - **The run ends on evidence** — a health probe that saw the URL answer, an exit file
   the script wrote — and **fails loud without it**. `script_submitter` never forwards
   the script's exit status; the workflow's own steps do.
-- **Whatever outlives the run has a teardown** (`pw endpoints delete <name>`, or
+- **Whatever outlives the run has a teardown** (`pw endpoints delete <name>`, `pw sessions stop <name>`, or
   cancelling a Kubernetes run), and the README says what it is.
 - **A cancel at any moment leaves nothing behind**: no process, scheduler job,
   container, listener or endpoint record.
@@ -257,6 +258,22 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
   the React path and the worked example (`workflows/probe/app/web`):
   `.claude/skills/activate-workflows/references/app-ui.md`. A third-party app a
   workflow serves keeps its own UI.
+
+### Desktops
+
+- **A GUI application runs in a platform desktop session**, the kind the Sessions page
+  starts: a plain step on the login node runs
+  `pw sessions create --type desktop --name <app>-${PW_RUN_SLUG} --wait <resource>`,
+  finds the display the session opened, and starts the application on it detached.
+  The run ends when the application reports ready; stopping the session is the
+  teardown, and an X client exits with the session's X server. The worked example is
+  `workflows/omniverse` (`app/desktop-session.sh`, `yamls/general-desktop.yaml`).
+- **No new KasmVNC desktops.** Do not start a KasmVNC container or compose the
+  `kasmvnc` or `vncserver` workflows in new work; both are to be retired in favor of
+  platform desktop sessions (decided November 2026).
+- A session on a compute node (`pw sessions create --environment` or `--worker`) runs
+  its X server on that node, where the run's step cannot reach it; a workflow that
+  needs one has no worked example yet.
 
 ### Workflow YAMLs
 - **The repo is fetched from GitHub at runtime**: `parallelworks/checkout` steps pull

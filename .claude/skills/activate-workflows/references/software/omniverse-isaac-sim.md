@@ -190,27 +190,35 @@
   no site packages on its path). `pxr` is not importable without Kit: a standalone USD
   script on the login node takes `pip install usd-core` in a venv.
 
-## The GUI in a VNC desktop
+## The GUI in a platform desktop session
 
 - **Isaac Sim's GUI needs an X server with the GLX extension, even though Kit renders
-  with Vulkan** (verified 2026-10-23 on the AWS GPU cluster, driver 610.43.02). On the platform's
-  desktop sessions (TigerVNC 1.14.1 Xvnc, `/opt/pw/software/verified/tigervnc`, built
-  without GLX: `xdpyinfo` lists DRI3 and Present but no GLX, and `+extension GLX` is a
-  no-op) `isaac-sim.sh` dies about 25 s in: Xlib logs `extension "GLX" missing`, then a
-  call to a null address from `libnvidia-eglcore.so` under
-  `libcarb.graphics-vulkan.plugin.so` (seen with an `LD_PRELOAD`ed SIGSEGV handler that
-  prints the return addresses on the stack through `dladdr`; breakpad's own backtrace
-  shows nothing). `--no-window` on the same display runs. A client-side `libxcb` 1.17
-  bound over the container's 1.15, or `/dev/null` bound over `libxcb-dri3.so.0`, change
-  nothing: it is the X server. On KasmVNC's Xvnc (GLX present) the same command showed
-  the window and rendered the viewport at about 27 fps, so the fix is an Xvnc with GLX
-  (Mesa's libglx), a platform-side change. `app/isaac-sim-gui.sh` is the launcher the
-  Singularity controller installs beside the SIF for a desktop session's terminal; it
-  binds the session's X authority file (`~/.vnc/xauth-<display>` when `XAUTHORITY` is
-  unset) at `/tmp/.Xauthority`, passes `DISPLAY` through `--cleanenv`, and the X socket
-  comes with the default `/tmp` bind.
-- How the earlier KasmVNC check was done, for the next time a VNC X server has to be
-  reached from outside its container: the job's `container_tmp/` holds the X socket
-  directory and `.Xauthority`; `xwininfo -root -tree` and `xdpyinfo` on the login node
-  reach it through a symlink `/tmp/.X11-unix/X<N>` to the socket; a screenshot without
-  `xwd` comes from libX11 through ctypes in the container's Python (PIL is there).
+  with Vulkan.** Without it `isaac-sim.sh` dies about 25 s in: Xlib logs `extension
+  "GLX" missing`, then a call to a null address from `libnvidia-eglcore.so` under
+  `libcarb.graphics-vulkan.plugin.so` (verified 2026-10-23, AWS GPU cluster, driver
+  610.43.02, when the platform's desktop sessions ran TigerVNC 1.14.1 without GLX).
+  Desktop sessions have GLX since (verified 2026-11-19: the window opened and rendered
+  the viewport at 43 to 52 fps on an A30). `app/isaac-sim-gui.sh` checks the display
+  for GLX before starting Kit, with `ctypes` and `libX11.so.6` in the image's
+  `/isaac-sim/kit/python/bin/python3` (the image has no `xdpyinfo`), and fails with a
+  message where it is missing.
+- **The workflow starts the session itself** (`app/desktop-session.sh`):
+  `pw sessions create --type desktop --name omniverse-${PW_RUN_SLUG} --wait <resource>`
+  from a plain step, which `pw` authenticates from the job's environment. Neither the
+  session record nor the VNC server says which X display the session got: the
+  desktop name TigerVNC reports through the session's socket is `user@host`, and the
+  agent's log line `Xvnc started display=N ... sessionId=<id>` is root-only on managed
+  clusters (`pw agent logs`). The display is the one Xvnc of the user (`pgrep -x Xvnc`,
+  `-auth` from its command line) that was not running before the create; two at once
+  fail the run. The launcher goes on that display with `setsid`, the step waits for
+  Kit's `app ready` line (45 s on warm shader caches), and a step `cleanup:` stops the
+  session unless a marker file says Kit got there. A cancel during start-up stopped the
+  session within seconds (verified 2026-11-19).
+- **Stopping the session ends Isaac Sim**: Kit prints `X connection to :N broken` and
+  exits within 5 s, and nothing of the container is left.
+- **Reading a session's screen from the node**: `DISPLAY=:N XAUTHORITY=~/.vnc/xauth-N`
+  with `ffmpeg -f x11grab -video_size WxH -i :N -frames:v 1 out.png` (no `xwd` to PNG
+  converter on the host); `xdpyinfo -queryExtensions | grep GLX` checks the extension.
+- The platform agent logs a GPU mode per desktop session (`software`, or
+  `accelerated` through VirtualGL when the cluster allows it); Isaac Sim renders
+  through Vulkan in its container and does not depend on it.

@@ -421,7 +421,7 @@ def write_root(stage_dir, data_layer, frames, design_id):
     layer.customLayerData = {
         "exported_by": "usd-export",
         "design": design_id,
-        "pw:view": {"eye": Gf.Vec3d(-0.85, 1.6, 3.4), "target": Gf.Vec3d(0.8, 0.35, -0.45)},
+        "pw:view": {"eye": Gf.Vec3d(-0.72, 1.3, 2.95), "target": Gf.Vec3d(0.75, 0.42, -0.45)},
         "pw:play": True,
     }
     lights = UsdGeom.Scope.Define(stage, "/World/Lights")

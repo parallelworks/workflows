@@ -31,7 +31,10 @@ case "${1:-}" in
 esac
 here="$(cd "$(dirname "$0")" && pwd)"
 follow=()
-kit_args=()
+# Kit's HTTP service (omni.services.transport.server.http, with unauthenticated asset and
+# CAD conversion routes) listens on all interfaces by default; the node's own processes
+# are its only clients here
+kit_args=(--/exts/omni.services.transport.server.http/host=127.0.0.1)
 stage=""
 passthrough=("${@:2}")
 case "${2:-}" in
@@ -57,7 +60,7 @@ if [ -n "${stage}" ]; then
     echo "Following ${stage}; it opens once it exists"
     # Kit spreads each frame over every GPU it finds by default; the viewer renders on one
     follow=(--bind "$(dirname "${stage}")" --bind "${here}/kit-scripts:/kit-scripts:ro")
-    kit_args=(--/renderer/multiGpu/enabled=false --exec "/kit-scripts/stage-follow.py ${stage}")
+    kit_args+=(--/renderer/multiGpu/enabled=false --exec "/kit-scripts/stage-follow.py ${stage}")
 fi
 sif="${OMNIVERSE_SIF:-$(ls -t "${here}"/containers/isaac-sim-*.sif 2> /dev/null | head -n 1 || true)}"
 if [ -z "${sif}" ] || ! [ -f "${sif}" ]; then

@@ -93,7 +93,9 @@ os.makedirs(assets_dir)
 # Kit starts here; every omni.* / isaacsim.* import must come after it
 from isaacsim import SimulationApp  # noqa: E402
 
-simulation_app = SimulationApp({"headless": True})
+# Kit's HTTP service listens on all interfaces by default; nothing outside the node uses it
+simulation_app = SimulationApp({"headless": True,
+                                "extra_args": ["--/exts/omni.services.transport.server.http/host=127.0.0.1"]})
 
 import omni.replicator.core as rep  # noqa: E402
 import omni.usd  # noqa: E402

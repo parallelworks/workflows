@@ -65,11 +65,12 @@ def start(args):
     os.makedirs(args.out, exist_ok=True)
     from isaacsim import SimulationApp  # noqa: E402
 
-    extra_args = []
+    # Kit's HTTP service listens on all interfaces by default; nothing outside the node uses it
+    extra_args = ["--/exts/omni.services.transport.server.http/host=127.0.0.1"]
     if args.engine == "newton":
         # Newton ships as an opt-in backend: its extensions are not in the python
         # experience, and the manager keeps PhysX unless told at launch
-        extra_args = ["--/exts/isaacsim.core.simulation_manager/default_engine=newton",
+        extra_args += ["--/exts/isaacsim.core.simulation_manager/default_engine=newton",
                       "--enable", "isaacsim.physics.newton", "--enable", "isaacsim.physics.newton.tensors"]
     _app = SimulationApp({
         "headless": True,

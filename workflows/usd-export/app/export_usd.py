@@ -4,12 +4,13 @@
 
 Every case directory under DIR (a directory holding case/case.foam, as openfoam-naca,
 doe-openfoam and dakota-openfoam leave them) that has a results.out becomes one design
-file, <stage-dir>/designs/<id>.usdc: the flow on the mid plane around the airfoil as
-three meshes (velocity, pressure, eddy viscosity; one visible at a time), the airfoil
-extruded across the plane and colored by its pressure coefficient, streamlines seeded
-upstream, and a label with the design and its coefficients. <stage-dir>/study.usda
-references every design on a grid in the order they arrived, with a legend, lights and
-a "field" variant set on /World that switches every design's mesh at once. The study is
+file, <stage-dir>/designs/<id>.usdc: the flow on the mid plane around the airfoil (the
+solver's points, with velocity, pressure and eddy viscosity as primvars, colored by
+textures resampled from the fields), the airfoil extruded across the plane and colored
+by its pressure coefficient, streamlines seeded upstream, and a label with the design
+and its coefficients. <stage-dir>/study.usda references every design on a grid in the
+order they arrived, with a legend, lights and a "field" variant set on /World that
+switches the field every design shows. The study is
 rewritten whole after each new design, under a lock, so a desktop that reloads it on
 change shows designs as they are exported.
 
@@ -44,8 +45,9 @@ from pxr import Gf, Kind, Sdf, Usd, UsdGeom, UsdLux, UsdShade, Vt
 BOX = (-0.6, 2.4, -0.9, 0.9)
 GAP = (0.7, 0.9)
 SPAN = 0.5
-LABEL_H = 0.22
-SEEDS = 28
+LABEL_H = 0.30
+SEEDS = 16
+TEX_W = 2048
 NU_DEFAULT = 1e-5
 UINF_DEFAULT = 10.0
 
@@ -262,12 +264,64 @@ def streamlines(mesh, uinf_dir):
     return curves, speeds
 
 
+def fill_invalid(values, valid, rounds=8):
+    """Spreads valid pixels into the invalid ones next to them (the airfoil's inside),
+    so the texture filtering at the wall does not blend in a placeholder color."""
+    values = np.where(valid, values, 0.0)
+    valid = valid.copy()
+    for _ in range(rounds):
+        total = np.zeros_like(values)
+        count = np.zeros(values.shape)
+        for axis, shift in ((0, 1), (0, -1), (1, 1), (1, -1)):
+            total += np.roll(values * valid, shift, axis=axis)
+            count += np.roll(valid, shift, axis=axis)
+        grow = ~valid & (count > 0)
+        values[grow] = total[grow] / count[grow]
+        valid |= grow
+    return values
+
+
+def field_images(mesh, uinf, nu):
+    """The fields resampled on a TEX_W-wide grid over BOX on the mid plane: one image of
+    values per field, row 0 at the bottom of the box."""
+    _, z = mid_plane(mesh)
+    w = TEX_W
+    h = int(round(TEX_W * (BOX[3] - BOX[2]) / (BOX[1] - BOX[0])))
+    resample = fc.vtkResampleToImage()
+    resample.SetInputDataObject(mesh)
+    resample.UseInputBoundsOff()
+    resample.SetSamplingBounds(BOX[0], BOX[1], BOX[2], BOX[3], z, z)
+    resample.SetSamplingDimensions(w, h, 1)
+    resample.Update()
+    pd = resample.GetOutput().GetPointData()
+    valid = vtk_to_numpy(pd.GetArray("vtkValidPointMask")).reshape(h, w).astype(bool)
+    u = vtk_to_numpy(pd.GetArray("U")).reshape(h, w, 3)
+    p = vtk_to_numpy(pd.GetArray("p")).reshape(h, w)
+    nut = vtk_to_numpy(pd.GetArray("nut")).reshape(h, w) if pd.GetArray("nut") is not None else np.zeros((h, w))
+    q = 0.5 * uinf * uinf
+    return {
+        "velocity": fill_invalid(np.linalg.norm(u, axis=2) / uinf, valid),
+        "pressure": fill_invalid(p / q, valid),
+        "turbulence": fill_invalid(np.log10(np.maximum(nut, 1e-12) / nu), valid),
+    }
+
+
 def polys(data):
-    """Face vertex counts and indices of a polydata's polygons."""
+    """Face vertex counts and indices of a polydata's polygons, every face wound
+    counterclockwise seen from +z: the cutter leaves either winding, and the renderer
+    shows a material's emission on the front face only."""
     conn = data.GetPolys()
-    offsets = vtk_to_numpy(conn.GetOffsetsArray())
-    indices = vtk_to_numpy(conn.GetConnectivityArray())
-    return np.diff(offsets).astype(np.int32), indices.astype(np.int32)
+    offsets = vtk_to_numpy(conn.GetOffsetsArray()).astype(np.int64)
+    indices = vtk_to_numpy(conn.GetConnectivityArray()).astype(np.int32).copy()
+    xy = vtk_to_numpy(data.GetPoints().GetData())[:, :2]
+    counts = np.diff(offsets)
+    nxt = np.arange(len(indices)) + 1
+    nxt[offsets[1:] - 1] = offsets[:-1]
+    a, b = xy[indices], xy[indices[nxt]]
+    area = np.add.reduceat(a[:, 0] * b[:, 1] - b[:, 0] * a[:, 1], offsets[:-1])
+    for f in np.nonzero(area < 0)[0]:
+        indices[offsets[f]:offsets[f + 1]] = indices[offsets[f]:offsets[f + 1]][::-1].copy()
+    return counts.astype(np.int32), indices
 
 
 def read_case(case_dir):
@@ -294,35 +348,20 @@ def read_case(case_dir):
             "pressure": p / q,
             "turbulence": np.log10(np.maximum(nut, 1e-12) / nu),
         },
+        "images": field_images(mesh, uinf, nu),
         "contour": contour, "cp_wall": p_wall / q,
         "curves": curves, "speeds": [s / uinf for s in speeds],
     }
 
 
 # Writing USD
+#
+# Colors reach the renderer as textures: Omniverse RTX shades a UsdPreviewSurface whose
+# emissiveColor comes from a UsdUVTexture, and ignored a UsdPrimvarReader feeding it.
+# The field planes and labels are emissive with ior 1 (no reflection), so they show the
+# colormap's colors exactly and without sampling noise whatever the lighting.
 
-def preview_material(stage, path, emissive):
-    """A UsdPreviewSurface reading the displayColor primvar: emissive (flat, exact
-    colormap colors whatever the lighting) for field meshes, diffuse for solids."""
-    material = UsdShade.Material.Define(stage, path)
-    shader = UsdShade.Shader.Define(stage, path.AppendChild("Surface"))
-    shader.CreateIdAttr("UsdPreviewSurface")
-    reader = UsdShade.Shader.Define(stage, path.AppendChild("DisplayColor"))
-    reader.CreateIdAttr("UsdPrimvarReader_float3")
-    reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("displayColor")
-    color = reader.CreateOutput("result", Sdf.ValueTypeNames.Float3)
-    if emissive:
-        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0, 0, 0))
-        shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(color)
-    else:
-        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(color)
-    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.6 if not emissive else 1.0)
-    shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
-    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
-    return material
-
-
-def texture_material(stage, path, image):
+def texture_material(stage, path, image, diffuse=False, emission=1.0):
     material = UsdShade.Material.Define(stage, path)
     shader = UsdShade.Shader.Define(stage, path.AppendChild("Surface"))
     shader.CreateIdAttr("UsdPreviewSurface")
@@ -333,11 +372,33 @@ def texture_material(stage, path, image):
     tex.CreateIdAttr("UsdUVTexture")
     tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(image)
     tex.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("sRGB")
+    tex.CreateInput("wrapS", Sdf.ValueTypeNames.Token).Set("clamp")
+    tex.CreateInput("wrapT", Sdf.ValueTypeNames.Token).Set("clamp")
     tex.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(st.ConnectableAPI(), "result")
     rgb = tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+    if diffuse:
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(rgb)
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.55)
+    else:
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0, 0, 0))
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(1.0)
+        shader.CreateInput("ior", Sdf.ValueTypeNames.Float).Set(1.0)
+    if emission > 0:
+        if emission != 1.0:
+            tex.CreateInput("scale", Sdf.ValueTypeNames.Float4).Set(Gf.Vec4f(emission, emission, emission, 1))
+        shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(rgb)
+    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    return material
+
+
+def flat_material(stage, path, rgb):
+    material = UsdShade.Material.Define(stage, path)
+    shader = UsdShade.Shader.Define(stage, path.AppendChild("Surface"))
+    shader.CreateIdAttr("UsdPreviewSurface")
     shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0, 0, 0))
-    shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(rgb)
+    shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*rgb))
     shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(1.0)
+    shader.CreateInput("ior", Sdf.ValueTypeNames.Float).Set(1.0)
     material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
     return material
 
@@ -405,7 +466,26 @@ def triangulate(contour):
     return tris
 
 
-def write_design(path, design_id, data, params, results, label_image):
+def save_png(path, rgb):
+    from PIL import Image
+    Image.fromarray(np.clip(np.round(np.asarray(rgb) * 255), 0, 255).astype(np.uint8)).save(path)
+
+
+def write_design(stage_dir, prim, design_id, data, params, results, label_image):
+    """designs/<prim>.usdc and its textures under textures/<prim>/."""
+    tex_dir = os.path.join(stage_dir, "textures", prim)
+    os.makedirs(tex_dir, exist_ok=True)
+    for name, spec in FIELDS.items():
+        image = data["images"][name]
+        save_png(os.path.join(tex_dir, name + ".png"),
+                 colormap(spec["map"], image, *spec["range"], linear=False)[::-1])
+    strip = colormap("coolwarm", np.concatenate([data["cp_wall"], data["cp_wall"][:1]]),
+                     *FIELDS["pressure"]["range"], linear=False)
+    save_png(os.path.join(tex_dir, "airfoil.png"), np.repeat(strip[np.newaxis], 8, axis=0))
+
+    path = os.path.join(stage_dir, "designs", "." + prim + ".tmp.usdc")
+    if os.path.exists(path):
+        os.remove(path)
     stage = Usd.Stage.CreateNew(path)
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
     UsdGeom.SetStageMetersPerUnit(stage, 1.0)
@@ -418,88 +498,90 @@ def write_design(path, design_id, data, params, results, label_image):
     root.GetPrim().SetCustomData(info)
 
     looks = Sdf.Path("/Design/Looks")
-    field_look = preview_material(stage, looks.AppendChild("Field"), emissive=True)
-    solid_look = preview_material(stage, looks.AppendChild("Airfoil"), emissive=False)
+    rel = f"../textures/{prim}/"
+    field_looks = {name: texture_material(stage, looks.AppendChild("Field_" + name), rel + name + ".png")
+                   for name in FIELDS}
 
-    points = vec3(data["points"])
-    for name, spec in FIELDS.items():
-        mesh = UsdGeom.Mesh.Define(stage, f"/Design/Field_{name}")
-        mesh.CreatePointsAttr(points)
-        mesh.CreateFaceVertexCountsAttr(Vt.IntArray.FromNumpy(data["counts"]))
-        mesh.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(data["indices"]))
-        mesh.CreateNormalsAttr(Vt.Vec3fArray([Gf.Vec3f(0, 0, 1)] * len(data["points"])))
-        mesh.SetNormalsInterpolation(UsdGeom.Tokens.vertex)
-        mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
-        mesh.CreateDoubleSidedAttr(True)
-        mesh.CreateExtentAttr(extent(np.column_stack([data["points"], np.zeros(len(data["points"]))])))
-        colors = colormap(spec["map"], data["scalars"][name], *spec["range"])
-        mesh.CreateDisplayColorPrimvar(UsdGeom.Tokens.vertex).Set(Vt.Vec3fArray.FromNumpy(colors.astype(np.float32)))
-        api = UsdGeom.PrimvarsAPI(mesh)
+    # The flow on the mid plane: the solver's points with the raw fields as primvars, the
+    # colors from the resampled textures; /World's field variant switches the material
+    pts = data["points"]
+    mesh = UsdGeom.Mesh.Define(stage, "/Design/Field")
+    mesh.CreatePointsAttr(vec3(pts))
+    mesh.CreateFaceVertexCountsAttr(Vt.IntArray.FromNumpy(data["counts"]))
+    mesh.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(data["indices"]))
+    mesh.CreateNormalsAttr(Vt.Vec3fArray([Gf.Vec3f(0, 0, 1)] * len(pts)))
+    mesh.SetNormalsInterpolation(UsdGeom.Tokens.vertex)
+    mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
+    mesh.CreateDoubleSidedAttr(True)
+    mesh.CreateExtentAttr(extent(np.column_stack([pts, np.zeros(len(pts))])))
+    api = UsdGeom.PrimvarsAPI(mesh)
+    st = np.column_stack([(pts[:, 0] - BOX[0]) / (BOX[1] - BOX[0]), (pts[:, 1] - BOX[2]) / (BOX[3] - BOX[2])])
+    api.CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex).Set(
+        Vt.Vec2fArray.FromNumpy(st.astype(np.float32)))
+    for name in FIELDS:
         api.CreatePrimvar(name, Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex).Set(
             Vt.FloatArray.FromNumpy(data["scalars"][name].astype(np.float32)))
-        if name == "velocity":
-            api.CreatePrimvar("U", Sdf.ValueTypeNames.Vector3fArray, UsdGeom.Tokens.vertex).Set(
-                Vt.Vec3fArray.FromNumpy(data["U"].astype(np.float32)))
-            api.CreatePrimvar("p", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex).Set(
-                Vt.FloatArray.FromNumpy(data["p"].astype(np.float32)))
-            api.CreatePrimvar("nut", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex).Set(
-                Vt.FloatArray.FromNumpy(data["nut"].astype(np.float32)))
-        mesh.GetPrim().SetCustomData({"field": spec["title"], "range": Gf.Vec2d(*spec["range"]),
-                                      "colormap": spec["map"]})
-        UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(field_look)
-        if name != "velocity":
-            mesh.MakeInvisible()
+    api.CreatePrimvar("U", Sdf.ValueTypeNames.Vector3fArray, UsdGeom.Tokens.vertex).Set(
+        Vt.Vec3fArray.FromNumpy(data["U"].astype(np.float32)))
+    api.CreatePrimvar("p", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex).Set(
+        Vt.FloatArray.FromNumpy(data["p"].astype(np.float32)))
+    api.CreatePrimvar("nut", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex).Set(
+        Vt.FloatArray.FromNumpy(data["nut"].astype(np.float32)))
+    mesh.GetPrim().SetCustomData({"fields": {name: {"title": spec["title"], "range": Gf.Vec2d(*spec["range"]),
+                                                    "colormap": spec["map"]} for name, spec in FIELDS.items()}})
+    UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(field_looks["velocity"])
 
-    # The airfoil: the section extruded across the plane, sides colored by Cp
-    contour, cp = data["contour"], data["cp_wall"]
+    # The airfoil: the section extruded across the plane, its sides colored by Cp
+    contour = data["contour"]
     n = len(contour)
     lo = np.column_stack([contour, np.full(n, -SPAN / 2)])
     hi = np.column_stack([contour, np.full(n, SPAN / 2)])
-    side_pts = np.vstack([lo, hi])
-    side_faces = []
-    for i in range(n):
-        j = (i + 1) % n
-        side_faces += [i, j, n + j, n + i]
+    ring = np.vstack([contour, contour[:1]])
+    lo_r = np.column_stack([ring, np.full(n + 1, -SPAN / 2)])
+    hi_r = np.column_stack([ring, np.full(n + 1, SPAN / 2)])
+    side_faces = [k for i in range(n) for k in (i, i + 1, n + 2 + i, n + 1 + i)]
     tris = triangulate(contour)
-    cap_pts = np.vstack([lo, hi])
-    cap_faces = [k for t in range(0, len(tris), 3) for k in (tris[t + 2], tris[t + 1], tris[t])]
-    cap_faces += [n + k for k in tris]
+    base = 2 * (n + 1)
+    cap_faces = [base + k for t in range(0, len(tris), 3) for k in (tris[t + 2], tris[t + 1], tris[t])]
+    cap_faces += [base + n + k for k in tris]
     airfoil = UsdGeom.Mesh.Define(stage, "/Design/Airfoil")
-    airfoil.CreatePointsAttr(vec3(np.vstack([side_pts, cap_pts])))
-    counts = [4] * n + [3] * (len(cap_faces) // 3)
-    airfoil.CreateFaceVertexCountsAttr(counts)
-    airfoil.CreateFaceVertexIndicesAttr(side_faces + [2 * n + k for k in cap_faces])
+    all_pts = np.vstack([lo_r, hi_r, lo, hi])
+    airfoil.CreatePointsAttr(vec3(all_pts))
+    airfoil.CreateFaceVertexCountsAttr([4] * n + [3] * (len(cap_faces) // 3))
+    airfoil.CreateFaceVertexIndicesAttr(side_faces + cap_faces)
     airfoil.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
-    airfoil.CreateExtentAttr(extent(side_pts))
-    side_colors = colormap("coolwarm", np.concatenate([cp, cp]), *FIELDS["pressure"]["range"])
-    cap_colors = np.full((2 * n, 3), to_linear([0.55, 0.57, 0.6]))
-    airfoil.CreateDisplayColorPrimvar(UsdGeom.Tokens.vertex).Set(
-        Vt.Vec3fArray.FromNumpy(np.vstack([side_colors, cap_colors]).astype(np.float32)))
+    airfoil.CreateExtentAttr(extent(all_pts))
+    u = (np.arange(n + 1) + 0.5) / (n + 1)
+    st = np.vstack([np.column_stack([u, np.full(n + 1, 0.5)])] * 2 + [np.full((2 * n, 2), [0.0, 0.0])])
+    UsdGeom.PrimvarsAPI(airfoil).CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray,
+                                               UsdGeom.Tokens.vertex).Set(Vt.Vec2fArray.FromNumpy(st.astype(np.float32)))
     UsdGeom.PrimvarsAPI(airfoil).CreatePrimvar("Cp", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex).Set(
-        Vt.FloatArray.FromNumpy(np.concatenate([cp, cp, np.zeros(2 * n)]).astype(np.float32)))
-    UsdShade.MaterialBindingAPI.Apply(airfoil.GetPrim()).Bind(solid_look)
+        Vt.FloatArray.FromNumpy(np.concatenate([data["cp_wall"], data["cp_wall"][:1]] * 2 +
+                                               [np.zeros(2 * n)]).astype(np.float32)))
+    UsdShade.MaterialBindingAPI.Apply(airfoil.GetPrim()).Bind(
+        texture_material(stage, looks.AppendChild("Airfoil"), rel + "airfoil.png", diffuse=True, emission=0.5))
 
     # Streamlines just above the plane
     if data["curves"]:
         curves = UsdGeom.BasisCurves.Define(stage, "/Design/Streamlines")
         curves.CreateTypeAttr(UsdGeom.Tokens.linear)
         curves.CreateCurveVertexCountsAttr([len(c) for c in data["curves"]])
-        pts = np.vstack(data["curves"])
-        curves.CreatePointsAttr(vec3(pts, z=0.004))
-        curves.CreateWidthsAttr(Vt.FloatArray([0.006]))
+        cpts = np.vstack(data["curves"])
+        curves.CreatePointsAttr(vec3(cpts, z=0.004))
+        curves.CreateWidthsAttr(Vt.FloatArray([0.007]))
         curves.SetWidthsInterpolation(UsdGeom.Tokens.constant)
-        curves.CreateExtentAttr(extent(np.column_stack([pts, np.full(len(pts), 0.004)])))
-        speed = np.concatenate(data["speeds"])
-        shade = 0.75 + 0.25 * np.clip(speed / FIELDS["velocity"]["range"][1], 0, 1)
-        curves.CreateDisplayColorPrimvar(UsdGeom.Tokens.vertex).Set(
-            Vt.Vec3fArray.FromNumpy(np.column_stack([shade, shade, shade]).astype(np.float32)))
-        UsdShade.MaterialBindingAPI.Apply(curves.GetPrim()).Bind(field_look)
+        curves.CreateExtentAttr(extent(np.column_stack([cpts, np.full(len(cpts), 0.004)])))
+        curves.CreateDisplayColorPrimvar(UsdGeom.Tokens.constant).Set([Gf.Vec3f(0.92, 0.93, 0.95)])
+        UsdShade.MaterialBindingAPI.Apply(curves.GetPrim()).Bind(
+            flat_material(stage, looks.AppendChild("Streamlines"), (0.92, 0.93, 0.95)))
 
-    # The label above the plane
     if label_image:
         quad(stage, "/Design/Label", BOX[0], BOX[3] + 0.04, BOX[1], BOX[3] + 0.04 + LABEL_H, 0.0,
              texture_material(stage, looks.AppendChild("Label"), label_image))
     stage.GetRootLayer().Save()
+    final = os.path.join(stage_dir, "designs", prim + ".usdc")
+    os.replace(path, final)
+    return os.path.relpath(final, stage_dir)
 
 
 # Labels and legend as images
@@ -534,12 +616,13 @@ def write_label(path, design_id, params, results):
     cd = results.get("drag_coefficient")
     cl = -results["neg_lift_coefficient"] if "neg_lift_coefficient" in results else None
     alpha = params.get("angle_of_attack")
-    head = f"{naca_name(params)}" + (f" at {alpha:.1f} deg" if alpha is not None else "")
-    tail = "   ".join(s for s in [f"Cl {cl:.3f}" if cl is not None else "", f"Cd {cd:.4f}" if cd else "",
-                                  f"L/D {cl / cd:.1f}" if cl is not None and cd else ""] if s)
-    draw.text((24, h / 2), design_id, font=font(int(h * 0.42)), fill=(150, 156, 168), anchor="lm")
-    draw.text((w * 0.27, h / 2), head, font=font(int(h * 0.5)), fill=(240, 242, 245), anchor="lm")
-    draw.text((w - 24, h / 2), tail, font=font(int(h * 0.5)), fill=(240, 242, 245), anchor="rm")
+    head = naca_name(params) + (f" at {alpha:.1f} deg" if alpha is not None else "")
+    tail = "     ".join(s for s in [f"Cl {cl:.3f}" if cl is not None else "", f"Cd {cd:.4f}" if cd else "",
+                                    f"L/D {cl / cd:.1f}" if cl is not None and cd else ""] if s)
+    big, small = font(int(h * 0.36)), font(int(h * 0.27))
+    draw.text((28, h * 0.30), head, font=big, fill=(240, 242, 245), anchor="lm")
+    draw.text((w - 28, h * 0.30), design_id, font=small, fill=(150, 156, 168), anchor="rm")
+    draw.text((28, h * 0.74), tail, font=small, fill=(205, 210, 218), anchor="lm")
     img.save(path)
 
 
@@ -621,10 +704,10 @@ def write_study(stage_dir, manifest, columns):
         vset.SetVariantSelection(name)
         with vset.GetVariantEditContext():
             for entry in manifest:
-                for other in FIELDS:
-                    over = stage.OverridePrim(designs.GetPath().AppendChild(entry["prim"]).AppendChild(f"Field_{other}"))
-                    UsdGeom.Imageable(over).CreateVisibilityAttr(
-                        UsdGeom.Tokens.inherited if other == name else UsdGeom.Tokens.invisible)
+                design = designs.GetPath().AppendChild(entry["prim"])
+                over = stage.OverridePrim(design.AppendChild("Field"))
+                UsdShade.MaterialBindingAPI.Apply(over).GetDirectBindingRel().SetTargets(
+                    [design.AppendPath(Sdf.Path("Looks/Field_" + name))])
     vset.SetVariantSelection("velocity")
 
     layer.Save()
@@ -668,10 +751,7 @@ def export_case(case_dir, source, stage_dir, manifest, columns):
     data = read_case(case_dir)
     label = os.path.join("labels", prim + ".png")
     write_label(os.path.join(stage_dir, label), design_id, params, results)
-    file = os.path.join("designs", prim + ".usdc")
-    tmp = os.path.join(stage_dir, "designs", "." + prim + ".tmp.usdc")
-    write_design(tmp, design_id, data, params, results, "../" + label)
-    os.replace(tmp, os.path.join(stage_dir, file))
+    file = write_design(stage_dir, prim, design_id, data, params, results, "../" + label)
     with lock(stage_dir):
         manifest[:] = load_manifest(stage_dir)
         entry = next((e for e in manifest if e["prim"] == prim), None)
@@ -700,7 +780,7 @@ def main():
 
     if not os.path.isdir(args.source):
         sys.exit(f"::error::The results directory {args.source} does not exist")
-    for sub in ("designs", "labels", "legend"):
+    for sub in ("designs", "labels", "legend", "textures"):
         os.makedirs(os.path.join(args.stage_dir, sub), exist_ok=True)
     for name, spec in FIELDS.items():
         write_legend(os.path.join(args.stage_dir, "legend", name + ".png"), spec)

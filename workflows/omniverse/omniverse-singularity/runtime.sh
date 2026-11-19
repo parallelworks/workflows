@@ -43,8 +43,8 @@ runtime_setup() {
     # ("Failed to create NGX context") and lit surfaces render grainy
     ngx_binds=()
     local ngx_lib ngx_conf
-    ngx_lib=$(ldconfig -p 2> /dev/null | awk '/libnvidia-ngx\.so\.1 \(.*x86-64/ {print $NF; exit}')
-    ngx_conf=$(singularity buildcfg 2> /dev/null | sed -n 's/^SYSCONFDIR=//p')
+    ngx_lib=$(ldconfig -p 2> /dev/null | awk '/libnvidia-ngx\.so\.1 \(.*x86-64/ && !n {print $NF; n=1}' || true)
+    ngx_conf=$(singularity buildcfg 2> /dev/null | sed -n 's/^SYSCONFDIR=//p' || true)
     if [ -r "${ngx_lib}" ] && ! grep -qs '^libnvidia-ngx' "${ngx_conf}"/{apptainer,singularity}/nvliblist.conf; then
         ngx_binds=("${ngx_lib}:/.singularity.d/libs/libnvidia-ngx.so.1")
     fi

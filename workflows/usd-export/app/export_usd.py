@@ -22,6 +22,9 @@ plus their colors; colors use fixed ranges scaled by the freestream, so designs 
 
 import argparse
 import fcntl
+import glob
+import hashlib
+import io
 import json
 import math
 import os
@@ -478,22 +481,48 @@ def triangulate(contour):
     return tris
 
 
-def save_png(path, rgb):
+def publish_image(img, directory, stem):
+    """Writes a PIL image as <directory>/<stem>-<hash>.png, named by its content, removes
+    the stem's other versions and returns the file name. A renderer that has an image
+    loaded never sees that file change: RTX keeps showing what it loaded when a texture
+    is rewritten in place under a stage it reloads. A changed image is a new file, which
+    the rewritten layer that names it brings in. Written to a temporary file and
+    renamed, so a reader never sees part of one."""
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    data = buffer.getvalue()
+    name = f"{stem}-{hashlib.sha1(data).hexdigest()[:12]}.png"
+    path = os.path.join(directory, name)
+    if not os.path.isfile(path):
+        tmp = os.path.join(directory, f".{name}.tmp")
+        with open(tmp, "wb") as out:
+            out.write(data)
+        os.replace(tmp, path)
+    for old in glob.glob(os.path.join(glob.escape(directory), glob.escape(stem) + "-*.png")) + \
+            [os.path.join(directory, stem + ".png")]:
+        if os.path.basename(old) != name and os.path.isfile(old):
+            os.remove(old)
+    return name
+
+
+def save_png(directory, stem, rgb):
     from PIL import Image
-    Image.fromarray(np.clip(np.round(np.asarray(rgb) * 255), 0, 255).astype(np.uint8)).save(path)
+    img = Image.fromarray(np.clip(np.round(np.asarray(rgb) * 255), 0, 255).astype(np.uint8))
+    return publish_image(img, directory, stem)
 
 
 def write_design(stage_dir, prim, design_id, data, params, results, label_image):
     """designs/<prim>.usdc and its textures under textures/<prim>/."""
     tex_dir = os.path.join(stage_dir, "textures", prim)
     os.makedirs(tex_dir, exist_ok=True)
+    images = {}
     for name, spec in FIELDS.items():
         image = data["images"][name]
-        save_png(os.path.join(tex_dir, name + ".png"),
-                 colormap(spec["map"], image, *spec["range"], linear=False, center=spec.get("center"))[::-1])
+        images[name] = save_png(tex_dir, name, colormap(spec["map"], image, *spec["range"], linear=False,
+                                                        center=spec.get("center"))[::-1])
     strip = colormap("coolwarm", np.concatenate([data["cp_wall"], data["cp_wall"][:1]]),
                      *FIELDS["pressure"]["range"], linear=False, center=FIELDS["pressure"]["center"])
-    save_png(os.path.join(tex_dir, "airfoil.png"), np.repeat(strip[np.newaxis], 8, axis=0))
+    images["airfoil"] = save_png(tex_dir, "airfoil", np.repeat(strip[np.newaxis], 8, axis=0))
 
     path = os.path.join(stage_dir, "designs", "." + prim + ".tmp.usdc")
     if os.path.exists(path):
@@ -511,7 +540,7 @@ def write_design(stage_dir, prim, design_id, data, params, results, label_image)
 
     looks = Sdf.Path("/Design/Looks")
     rel = f"../textures/{prim}/"
-    field_looks = {name: texture_material(stage, looks.AppendChild("Field_" + name), rel + name + ".png")
+    field_looks = {name: texture_material(stage, looks.AppendChild("Field_" + name), rel + images[name])
                    for name in FIELDS}
 
     # The flow on the mid plane: the solver's points with the raw fields as primvars, the
@@ -571,7 +600,7 @@ def write_design(stage_dir, prim, design_id, data, params, results, label_image)
         Vt.FloatArray.FromNumpy(np.concatenate([data["cp_wall"], data["cp_wall"][:1]] * 2 +
                                                [np.zeros(2 * n)]).astype(np.float32)))
     UsdShade.MaterialBindingAPI.Apply(airfoil.GetPrim()).Bind(
-        texture_material(stage, looks.AppendChild("Airfoil"), rel + "airfoil.png", diffuse=True, emission=0.5))
+        texture_material(stage, looks.AppendChild("Airfoil"), rel + images["airfoil"], diffuse=True, emission=0.5))
 
     # Streamlines just above the plane
     if data["curves"]:
@@ -619,7 +648,7 @@ def naca_name(params):
         return "NACA"
 
 
-def write_label(path, design_id, params, results):
+def write_label(directory, stem, design_id, params, results):
     from PIL import Image, ImageDraw
     w = 1600
     h = int(w * LABEL_H / (BOX[1] - BOX[0]))
@@ -635,10 +664,10 @@ def write_label(path, design_id, params, results):
     draw.text((28, h * 0.30), head, font=big, fill=(240, 242, 245), anchor="lm")
     draw.text((w - 28, h * 0.30), design_id, font=small, fill=(150, 156, 168), anchor="rm")
     draw.text((28, h * 0.74), tail, font=small, fill=(205, 210, 218), anchor="lm")
-    img.save(path)
+    return publish_image(img, directory, stem)
 
 
-def write_legend(path, spec):
+def write_legend(directory, stem, spec):
     from PIL import Image, ImageDraw
     w, h = 1600, 260
     img = Image.new("RGB", (w, h), (24, 26, 30))
@@ -658,7 +687,7 @@ def write_legend(path, spec):
         draw.line([(x, 150), (x, 165)], fill=(220, 222, 226), width=3)
         draw.text((x, 170), f"{value:g}", font=font(46), fill=(240, 242, 245), anchor="mt")
     draw.text((m, 14), spec["title"], font=font(44), fill=(240, 242, 245))
-    img.save(path)
+    return publish_image(img, directory, stem)
 
 
 # The study
@@ -672,6 +701,13 @@ def lock(stage_dir):
 def load_manifest(stage_dir):
     path = os.path.join(stage_dir, "designs.json")
     return json.load(open(path)) if os.path.isfile(path) else []
+
+
+def current_image(stage_dir, sub, stem):
+    """The file name publish_image gave the stem's image in <stage_dir>/<sub>."""
+    found = sorted(glob.glob(os.path.join(glob.escape(os.path.join(stage_dir, sub)), glob.escape(stem) + "-*.png")),
+                   key=os.path.getmtime)
+    return os.path.basename(found[-1]) if found else stem + ".png"
 
 
 def write_study(stage_dir, manifest, columns):
@@ -713,7 +749,7 @@ def write_study(stage_dir, manifest, columns):
     for k, name in enumerate(FIELDS):
         x0 = k * tile_w + BOX[0]
         quad(stage, legend.GetPath().AppendChild(name), x0, y, x0 + legend_w, y + legend_h, 0.0,
-             texture_material(stage, looks.AppendChild(name), f"./legend/{name}.png"))
+             texture_material(stage, looks.AppendChild(name), "./legend/" + current_image(stage_dir, "legend", name)))
 
     # One switch for the field every design shows: select /World, Variants, field
     vset = world.GetPrim().GetVariantSets().AddVariantSet("field")
@@ -767,9 +803,8 @@ def export_case(case_dir, source, stage_dir, manifest, columns, reader):
     results = read_pairs(os.path.join(case_dir, "results.out"))
     started = time.time()
     data = reader(case_dir)
-    label = os.path.join("labels", prim + ".png")
-    write_label(os.path.join(stage_dir, label), design_id, params, results)
-    file = write_design(stage_dir, prim, design_id, data, params, results, "../" + label)
+    label = write_label(os.path.join(stage_dir, "labels"), prim, design_id, params, results)
+    file = write_design(stage_dir, prim, design_id, data, params, results, "../labels/" + label)
     with lock(stage_dir):
         manifest[:] = load_manifest(stage_dir)
         entry = next((e for e in manifest if e["prim"] == prim), None)
@@ -807,10 +842,10 @@ def main():
         sys.exit(f"::error::The results directory {args.source} does not exist")
     for sub in ("designs", "labels", "legend", "textures"):
         os.makedirs(os.path.join(args.stage_dir, sub), exist_ok=True)
-    for name, spec in FIELDS.items():
-        write_legend(os.path.join(args.stage_dir, "legend", name + ".png"), spec)
     manifest = load_manifest(args.stage_dir)
     with lock(args.stage_dir):
+        for name, spec in FIELDS.items():
+            write_legend(os.path.join(args.stage_dir, "legend"), name, spec)
         write_study(args.stage_dir, manifest, args.columns)
     log(f"stage {os.path.join(args.stage_dir, 'study.usda')}, source {args.source}")
 

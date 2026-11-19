@@ -63,7 +63,7 @@ Name=Isaac Sim
 Comment=NVIDIA Isaac Sim (Omniverse Kit) from the omniverse workflow's image; the window takes a minute or more
 Exec=/bin/bash ${service_parent_install_dir}/omniverse/isaac-sim-gui.sh physx
 Terminal=false
-Categories=Graphics;Science;
+Categories=Graphics;3DGraphics;
 EOF
 fi
 

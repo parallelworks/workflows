@@ -2,13 +2,13 @@
 
 [NVIDIA Omniverse](https://www.nvidia.com/en-us/omniverse/) on a GPU node of a cluster,
 through the one Omniverse application anyone can pull without an NVIDIA account: Isaac
-Sim, in a container, headless or in a browser desktop. Three workflows:
+Sim, in a container, headless or in a platform desktop session. Three workflows:
 
 | Workflow | What it does | README |
 |---|---|---|
 | **Render** | Renders or simulates a USD scene: the bundled examples (a pyramid of blocks, a wall prefractured with the Blast SDK), yours, or a mesh of yours fractured by the run, with PhysX or Newton; serves the frames or the poses as a page | [README-render.md](README-render.md) |
 | **Build** | Builds a USD scene from a manifest: meshes converted, URDF and MJCF robots imported, physics applied; a batch job | [README-build.md](README-build.md) |
-| **Desktop** | Isaac Sim's own window in a KasmVNC browser desktop, from the same image | [README-desktop.md](README-desktop.md) |
+| **Desktop** | Isaac Sim's own window in a platform desktop session, from the same image, optionally following a stage that usd-export writes | [README-desktop.md](README-desktop.md) |
 
 Running any of them accepts NVIDIA's
 [Isaac Sim license](https://www.nvidia.com/en-us/agreements/enterprise-software/isaac-sim-additional-software-and-materials-license/).

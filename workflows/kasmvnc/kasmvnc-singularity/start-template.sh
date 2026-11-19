@@ -377,24 +377,6 @@ else
     WRITABLE_TMPFS_FLAG="--writable-tmpfs"
 fi
 
-# --nv injects the host's GL dispatch libraries (libGLX, libGLdispatch) into the
-# container. A host whose glibc is newer than the image's (Ubuntu 24.04 against the
-# Rocky and Ubuntu 22.04 images) builds them against symbols the image lacks, and Xvnc
-# cannot start. The desktop then runs without --nv: its own GL applications render in
-# software, while applications started on the host (the startup command, the terminal)
-# still reach the GPU through their own runtimes.
-if [ -n "${GPU_FLAG}" ]; then
-    # set -e is on and Xvnc exits non-zero in the failing case
-    _nv_probe=$(${CONTAINER} exec ${USERNS_FLAG} ${GPU_FLAG} ${NV_GL_BIND_FLAGS} "${container_image}" Xvnc -version 2>&1) || true
-    case "${_nv_probe}" in
-        *GLIBC_*"not found"*)
-            echo "::warning::The host's NVIDIA GL libraries need a newer glibc than the ${kasmvnc_os} image has; starting the desktop without GPU rendering inside its container (applications started on the host still use the GPU)"
-            GPU_FLAG=""
-            NV_GL_BIND_FLAGS=""
-            ;;
-    esac
-fi
-
 env
 
 # Retry a couple of times on a fresh display in case of a display collision.

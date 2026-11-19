@@ -17,6 +17,8 @@ set -x
 #   - software_sif_registry: the ORAS reference of the prebuilt SIF
 #   - service_parent_install_dir: where omniverse/cache (Isaac Sim's home shared by
 #     runs) and omniverse/containers (the SIF) go
+#   - desktop_app: set by the desktop workflow only, which also gets an Isaac Sim entry
+#     in the Applications menu of desktop sessions
 ################################################################################
 
 source workflows/omniverse/app/check-inputs.sh
@@ -49,6 +51,21 @@ chmod a+rx "${service_parent_install_dir}/omniverse/isaac-sim-gui.sh"
 mkdir -p "${service_parent_install_dir}/omniverse/kit-scripts"
 cp workflows/omniverse/app/stage-follow.py "${service_parent_install_dir}/omniverse/kit-scripts/stage-follow.py"
 chmod a+r "${service_parent_install_dir}/omniverse/kit-scripts/stage-follow.py"
+
+# An Isaac Sim entry in the Applications menu of the platform's desktop sessions, on
+# any node that shares this home directory
+if [ -n "${desktop_app}" ]; then
+    mkdir -p "${HOME}/.local/share/applications"
+    cat > "${HOME}/.local/share/applications/pw-isaac-sim.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Isaac Sim
+Comment=NVIDIA Isaac Sim (Omniverse Kit) from the omniverse workflow's image; the window takes a minute or more
+Exec=/bin/bash ${service_parent_install_dir}/omniverse/isaac-sim-gui.sh physx
+Terminal=false
+Categories=Graphics;Science;
+EOF
+fi
 
 if [ "${fracture_own_mesh}" = true ]; then
     bash workflows/omniverse/app/install-blast.sh "${service_parent_install_dir}"

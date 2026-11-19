@@ -1,20 +1,19 @@
 # yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
 # Isaac Sim's own window (the full Omniverse Kit GUI: the stage, the viewport, the
-# physics and the extensions) inside a KasmVNC browser desktop on a GPU node, from
-# the same Singularity image the render workflow uses. Preprocessing checks the form,
-# pulls the SIF once and installs app/isaac-sim-gui.sh beside it; the kasmvnc workflow,
-# called as a subworkflow, starts the desktop on the login node or a SLURM/PBS node
-# and runs that launcher as the desktop's startup application, so the run completes
-# when the desktop answers its URL (kasmvnc-<run slug>) and Isaac Sim keeps loading in
-# it for a few minutes. The desktop outlives the run until the endpoint is deleted. The
-# platform's own desktop sessions cannot show the window yet (desktop-issue.txt).
+# physics and the extensions) in a platform desktop session on the GPU host's login
+# node, from the same Singularity image the render workflow uses. The steps check the
+# form, pull the SIF once, install app/isaac-sim-gui.sh beside it with an Isaac Sim entry
+# in the desktops' Applications menu, start the desktop session omniverse-<run slug>
+# with pw sessions create, and start Isaac Sim on its display (app/desktop-session.sh).
+# The run completes when Kit reports its window ready. The session outlives the run
+# until it is stopped, and Isaac Sim ends with it.
 # Running it accepts NVIDIA's Isaac Sim license (the container's ACCEPT_EULA):
 # https://www.nvidia.com/en-us/agreements/enterprise-software/isaac-sim-additional-software-and-materials-license/
 permissions:
   - '*'
 
 jobs:
-  preprocessing:
+  desktop:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
@@ -37,18 +36,26 @@ jobs:
           # Write input form variables and ensure the pw agent is in the PATH
           cat <<'EOF' >> inputs.sh
           PATH=$HOME/pw:$PATH
-          cluster_scheduler="${{ inputs.cluster.scheduler }}"
-          cluster_gpus="${{ inputs.cluster.gpus }}"
-          cluster_cpus="${{ inputs.cluster.cpus }}"
           desktop_app="${{ inputs.desktop.app }}"
+          desktop_stage="${{ inputs.desktop.stage }}"
           software_sif_registry="${{ inputs.software.sif_registry }}"
           service_parent_install_dir="${{ inputs.software.install_dir }}"
           software_runtime="omniverse-singularity"
           software_sif="${{ inputs.software.sif }}"
+          resource_name="${{ inputs.resource.name }}"
+          resource_namespace="${{ inputs.resource.namespace }}"
           EOF
+          echo "session_name=omniverse-${PW_RUN_SLUG}" >> inputs.sh
           # Remove empty and undefined variables
           sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
           sed -i '/=""/d' inputs.sh
+          sed -i '/="undefined"/d' inputs.sh
+          # The session's cluster as pw sessions create takes it
+          if grep -q '^resource_namespace=' inputs.sh; then
+            echo 'session_resource="pw://${resource_namespace}/${resource_name}"' >> inputs.sh
+          else
+            echo 'session_resource="${resource_name}"' >> inputs.sh
+          fi
           # Add export to all lines
           sed -i 's/^/export /' inputs.sh
       - name: Controller Preprocessing
@@ -58,40 +65,17 @@ jobs:
           cp inputs.sh controller-${PW_JOB_ID}.sh
           cat workflows/omniverse/omniverse-singularity/controller.sh >> controller-${PW_JOB_ID}.sh
           bash controller-${PW_JOB_ID}.sh
-      - name: Scheduler Directives
+      - name: Desktop session with Isaac Sim
         run: |
           source inputs.sh
-          bash workflows/omniverse/app/scheduler-directives.sh
-
-  desktop:
-    needs:
-      - preprocessing
-    ssh:
-      remoteHost: ${{ inputs.resource.ip }}
-    steps:
-      - name: Desktop with Isaac Sim
-        uses: github/parallelworks/workflows@omniverse-usd-export
-        with:
-          $yaml: workflows/kasmvnc/yamls/general.yaml
-          resource: ${{ inputs.resource }}
-          cluster:
-            scheduler: ${{ inputs.cluster.scheduler }}
-            slurm:
-              is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
-              partition: ${{ inputs.cluster.slurm.partition }}
-              time: ${{ inputs.cluster.slurm.time }}
-              scheduler_directives: |
-                ${{ needs.preprocessing.outputs.SLURM_CPU_DIRECTIVE }}
-                ${{ needs.preprocessing.outputs.SLURM_GPU_DIRECTIVE }}
-                ${{ inputs.cluster.slurm.scheduler_directives }}
-            pbs:
-              is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
-              scheduler_directives: |
-                ${{ needs.preprocessing.outputs.PBS_RESOURCE_DIRECTIVE }}
-                ${{ inputs.cluster.pbs.scheduler_directives }}
-          desktop:
-            kasmvnc_os: rocky9
-            startup_command: bash ${{ inputs.software.install_dir }}/omniverse/isaac-sim-gui.sh ${{ inputs.desktop.app }} ${{ inputs.desktop.stage }}
+          bash workflows/omniverse/app/desktop-session.sh
+        cleanup: |
+          # A run that failed or was canceled before Isaac Sim was ready leaves no session
+          if [ -f isaac-sim.ready ]; then
+            exit 0
+          fi
+          export PATH=$HOME/pw:$PATH
+          pw sessions stop "omniverse-${PW_RUN_SLUG}" > /dev/null 2>&1 || true
 
 'on':
   execute:
@@ -100,96 +84,7 @@ jobs:
         type: compute-clusters
         label: GPU host
         include-workspace: false
-        tooltip: The desktop and Isaac Sim run on its login node, or on a compute node when submitted to the scheduler
-      cluster:
-        hidden: ${{ inputs.resource.schedulerType == '' }}
-        ignore: ${{ inputs.resource.schedulerType == '' }}
-        type: group
-        label: Compute cluster settings
-        items:
-          scheduler:
-            type: boolean
-            default: false
-            label: Submit to the scheduler
-            description: Otherwise the job runs on the login node.
-          cpus:
-            type: number
-            label: Cores per job
-            description: Requested ahead of the directives below; a job gets one core by default, and Kit stalls on one.
-            default: 8
-            min: 1
-            max: 256
-            step: 1
-            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
-            ignore: ${{ .hidden }}
-            tooltip: |
-              Requested as --cpus-per-task=N (PBS: -l select=1:ncpus=N) ahead of the directives
-              below, which can override it.
-          gpus:
-            type: number
-            label: GPUs per job
-            description: Requested ahead of the directives below; 0 requests none, which is right for cloud clusters.
-            default: 0
-            min: 0
-            max: 8
-            step: 1
-            hidden: ${{ inputs.resource.schedulerType == '' || inputs.cluster.scheduler == false }}
-            ignore: ${{ .hidden }}
-            tooltip: |
-              Requested as --gres=gpu:N (PBS: -l select=1:ngpus=N) ahead of the directives
-              below, which can override it. The cloud clusters define no GRES (every node of
-              a GPU partition has its GPU), so 0 requests none; an on-premises cluster that
-              schedules GPUs as GRES takes 1.
-          slurm:
-            type: group
-            label: SLURM directives
-            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
-            items:
-              is_enabled:
-                type: boolean
-                hidden: true
-                default: true
-                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
-              partition:
-                type: slurm-partitions
-                label: SLURM partition
-                description: Pick a partition with GPU nodes.
-                optional: true
-                resource: ${{ inputs.resource }}
-              time:
-                label: Walltime
-                description: HH:MM:SS, or D-HH:MM:SS for runs over a day; the desktop ends with the job.
-                type: string
-                default: '04:00:00'
-                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
-              scheduler_directives:
-                type: editor
-                label: Scheduler directives
-                optional: true
-                tooltip: |
-                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
-                  #SBATCH --exclusive
-                  #SBATCH --nodelist=<node-name>
-          pbs:
-            type: group
-            label: PBS directives
-            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
-            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
-            items:
-              is_enabled:
-                type: boolean
-                hidden: true
-                default: true
-                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
-              scheduler_directives:
-                label: Scheduler directives
-                type: editor
-                optional: true
-                tooltip: |
-                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
-                  #PBS -l walltime=04:00:00
-                  #PBS -l select=1:ncpus=8:ngpus=1
+        tooltip: The desktop session and Isaac Sim run on its login node, which needs an NVIDIA GPU and singularity or apptainer
       desktop:
         type: group
         label: Desktop
@@ -197,14 +92,14 @@ jobs:
           app:
             type: dropdown
             label: Application
-            description: Started in the desktop a few seconds after it opens; Isaac Sim takes about three minutes to show its window.
+            description: Started in the desktop session once it is up; the run completes when its window is ready, under a minute once the node's shader caches exist.
             default: physx
             options:
               - value: physx
                 label: Isaac Sim (PhysX)
               - value: newton
                 label: Isaac Sim with Newton physics
-            tooltip: The full Isaac Sim application from the SIF (isaac-sim.sh or isaac-sim.newton.sh), its window on the desktop's X server; an xterm on the node is there too.
+            tooltip: The full Isaac Sim application from the SIF (isaac-sim.sh or isaac-sim.newton.sh), its window on the session's X server. The Applications menu of later desktop sessions gets an Isaac Sim entry too.
           stage:
             type: string
             label: Stage to follow
@@ -225,7 +120,7 @@ jobs:
             label: Singularity image file
             description: Empty pulls ghcr.io/parallelworks/isaac-sim:6.2.0.1 into the install directory once.
             optional: true
-            tooltip: A SIF built with build-container.sh from the workflow's isaac-sim.def, on a filesystem the desktop's node sees.
+            tooltip: A SIF built with build-container.sh from the workflow's isaac-sim.def, readable on the GPU host.
           sif_registry:
             type: string
             hidden: true

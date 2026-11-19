@@ -1,6 +1,6 @@
 """Exports solved openfoam-naca cases to an OpenUSD stage the Omniverse desktop follows.
 
-    python export_usd.py --source DIR --stage-dir DIR [--columns N] [--follow-minutes M]
+    python export_usd.py --source DIR --stage-dir DIR [--format F] [--columns N] [--follow-minutes M]
 
 Every case directory under DIR (a directory holding case/case.foam, as openfoam-naca,
 doe-openfoam and dakota-openfoam leave them) that has a results.out becomes one design
@@ -741,14 +741,14 @@ def case_state(case_dir):
     return "pending"
 
 
-def export_case(case_dir, source, stage_dir, manifest, columns):
+def export_case(case_dir, source, stage_dir, manifest, columns, reader):
     rel = os.path.relpath(case_dir, source)
     design_id = os.path.basename(os.path.abspath(source)) if rel == "." else rel
     prim = prim_name(design_id)
     params = read_pairs(os.path.join(case_dir, "params.in"))
     results = read_pairs(os.path.join(case_dir, "results.out"))
     started = time.time()
-    data = read_case(case_dir)
+    data = reader(case_dir)
     label = os.path.join("labels", prim + ".png")
     write_label(os.path.join(stage_dir, label), design_id, params, results)
     file = write_design(stage_dir, prim, design_id, data, params, results, "../" + label)
@@ -768,10 +768,17 @@ def export_case(case_dir, source, stage_dir, manifest, columns):
         f"{time.time() - started:.1f} s -> {file}")
 
 
+# A format is a reader from one case directory to the pieces write_design draws: the
+# plane's points, faces, raw fields and field images, the airfoil, the streamlines.
+FORMATS = {"openfoam-naca": read_case}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--source", required=True, help="a case directory, or a directory of cases")
     parser.add_argument("--stage-dir", required=True, help="where study.usda and designs/ go")
+    parser.add_argument("--format", choices=sorted(FORMATS), default="openfoam-naca",
+                        help="the solver output the cases hold")
     parser.add_argument("--columns", type=int, default=4, help="designs per row of the grid")
     parser.add_argument("--follow-minutes", type=float, default=0,
                         help="keep exporting cases as they finish until none has for this long")
@@ -803,7 +810,8 @@ def main():
                 last_change = time.time()
             elif state == "solved":
                 try:
-                    export_case(case_dir, args.source, args.stage_dir, manifest, args.columns)
+                    export_case(case_dir, args.source, args.stage_dir, manifest, args.columns,
+                                FORMATS[args.format])
                 except Exception as error:  # one unreadable case must not stop the study
                     errors += 1
                     log(f"::warning::{case_dir}: {error}")

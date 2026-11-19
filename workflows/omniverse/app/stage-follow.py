@@ -60,6 +60,29 @@ def frame(stage):
         carb.log_warn(f"stage-follow: could not frame the stage: {error}")
 
 
+def aim(stage):
+    """Points the perspective camera down at the stage from its front (-y) side, about 30
+    degrees off vertical, so a grid of designs on the z = 0 plane reads like a table.
+    Framing afterwards keeps this direction."""
+    try:
+        import omni.kit.commands
+        from omni.kit.viewport.utility import get_active_viewport
+        from pxr import Gf, UsdGeom
+        viewport = get_active_viewport()
+        box = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]) \
+            .ComputeWorldBound(stage.GetDefaultPrim()).ComputeAlignedRange()
+        if viewport is None or box.IsEmpty() or UsdGeom.GetStageUpAxis(stage) != UsdGeom.Tokens.z:
+            return
+        center, size = box.GetMidpoint(), box.GetSize()
+        reach = max(size[0], size[1], 1e-3)
+        eye = center + Gf.Vec3d(0.0, -0.55 * reach, reach)
+        view = Gf.Matrix4d().SetLookAt(eye, center, Gf.Vec3d(0.0, 0.0, 1.0))
+        omni.kit.commands.execute("TransformPrimCommand", path=str(viewport.camera_path),
+                                  new_transform_matrix=view.GetInverse())
+    except Exception as error:
+        carb.log_warn(f"stage-follow: could not aim the camera: {error}")
+
+
 def mtimes(stage):
     found = {}
     for layer in stage.GetUsedLayers():
@@ -84,6 +107,7 @@ async def follow(path):
     for _ in range(10):
         await app.next_update_async()
     stage = context.get_stage()
+    aim(stage)
     frame(stage)
     root = stage.GetRootLayer().identifier
     print(f"stage-follow: following {os.path.realpath(path)}", flush=True)

@@ -12,6 +12,7 @@ source "${env_file}"
 python "${export_app}/export_usd.py" \
     --source "${results_source}" \
     --stage-dir "${stage_directory}" \
+    --format "${results_format:-openfoam-naca}" \
     --columns "${stage_columns:-4}" \
     --follow-minutes "${results_follow_minutes:-0}" &
 wait $!

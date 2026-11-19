@@ -70,7 +70,7 @@ jobs:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Desktop with Isaac Sim
-        uses: github/parallelworks/workflows@canary
+        uses: github/parallelworks/workflows@omniverse-usd-export
         with:
           $yaml: workflows/kasmvnc/yamls/general.yaml
           resource: ${{ inputs.resource }}

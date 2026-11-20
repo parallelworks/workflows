@@ -365,6 +365,9 @@ def write_flow(stage_dir, prim, design_id, case_dir, data, params, results, labe
             plain).CreateDoubleSidedAttr(True)
     wall = ex.quad(stage, "/World/Wall", ex.BOX[0], ex.BOX[2], ex.BOX[1], ex.BOX[3], wall_z, plain)
     wall.CreateDoubleSidedAttr(True)
+    # The variant binds the wall's material; a binding authored on the wall itself is a
+    # local opinion, which outranks any variant, and would pin it dark.
+    wall.GetPrim().RemoveProperty("material:binding")
     y0 = ex.BOX[3] + 0.06
     if label_image:
         ex.quad(stage, "/World/Label", ex.BOX[0], y0, ex.BOX[1], y0 + ex.LABEL_H, wall_z,

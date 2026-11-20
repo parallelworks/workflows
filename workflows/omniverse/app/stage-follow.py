@@ -18,9 +18,20 @@ layer with unsaved edits (the edit target moved onto it) is left alone, with a w
 Two hints in the stage's customLayerData, which usd-export's flow.usda carries: pw:view
 (eye and target, in stage units) places the camera there in place of framing the stage,
 and pw:play starts the timeline over the stage's time range, looping.
+
+    stage-follow.py <stage.usda> --controls
+
+also answers a streamed web viewer (omni.kit.livestream.messaging): a "pw:control"
+message with action play, pause, wall (value: a variant of /World's "wall" set), view
+(back to the pw:view hint) or state gets a "pw:state" reply, and a reload sends one
+unasked. The state is one JSON string field, "json": playing, the wall variant and its
+choices, the design and /World's customData. The streaming plugin drops replies until
+it counts the viewer as connected, a few hundred milliseconds after the video starts,
+so a viewer asks for the state until the first reply arrives.
 """
 
 import asyncio
+import json
 import os
 import sys
 
@@ -144,6 +155,61 @@ def play(stage):
         carb.log_warn(f"stage-follow: could not start the timeline: {error}")
 
 
+def stage_state(path, playing=None):
+    """The viewer's state as one JSON string. The timeline applies play and pause on the
+    next update, so a reply to either passes the requested state as playing."""
+    stage = omni.usd.get_context().get_stage()
+    world = stage.GetPrimAtPath("/World") if stage else None
+    state = {"playing": False, "wall": "", "walls": [], "design": hints(path).get("design", ""), "info": {}}
+    try:
+        from omni.timeline import get_timeline_interface
+        state["playing"] = bool(get_timeline_interface().is_playing()) if playing is None else playing
+    except Exception:
+        pass
+    if world:
+        sets = world.GetVariantSets()
+        if sets.HasVariantSet("wall"):
+            wall = sets.GetVariantSet("wall")
+            state["wall"], state["walls"] = wall.GetVariantSelection(), list(wall.GetVariantNames())
+        state["info"] = {k: v for k, v in world.GetCustomData().items() if isinstance(v, (bool, int, float, str))}
+    return {"json": json.dumps(state)}
+
+
+def enable_controls(path):
+    """Answers the web viewer's pw:control messages; returns a function that sends the
+    state unasked."""
+    manager = omni.kit.app.get_app().get_extension_manager()
+    if not manager.is_extension_enabled("omni.kit.livestream.messaging"):
+        manager.set_extension_enabled_immediate("omni.kit.livestream.messaging", True)
+    import carb.eventdispatcher
+    import omni.kit.livestream.messaging as messaging
+
+    @messaging.observe_and_dispatch("pw:control", response_name="pw:state")
+    def control(event, action="state", value="", **_):
+        print(f"stage-follow: control {action} {value}".rstrip(), flush=True)
+        stage = omni.usd.get_context().get_stage()
+        try:
+            from omni.timeline import get_timeline_interface
+            timeline = get_timeline_interface()
+            if action == "play":
+                timeline.play()
+            elif action == "pause":
+                timeline.pause()
+            elif action == "wall" and stage and stage.GetPrimAtPath("/World"):
+                wall = stage.GetPrimAtPath("/World").GetVariantSets().GetVariantSet("wall")
+                if value in wall.GetVariantNames():
+                    wall.SetVariantSelection(value)
+            elif action == "view" and "pw:view" in hints(path):
+                look(stage, hints(path)["pw:view"])
+        except Exception as error:
+            carb.log_warn(f"stage-follow: control {action}: {error}")
+        return stage_state(path, playing={"play": True, "pause": False}.get(action))
+
+    messaging.register_event_type_to_send("pw:state")
+    print("stage-follow: answering pw:control messages from a streamed viewer", flush=True)
+    return lambda: carb.eventdispatcher.get_eventdispatcher().dispatch_event("pw:state", payload=stage_state(path))
+
+
 def mtimes(stage):
     found = {}
     for layer in stage.GetUsedLayers():
@@ -153,7 +219,7 @@ def mtimes(stage):
     return found
 
 
-async def follow(path):
+async def follow(path, controls=False):
     app = omni.kit.app.get_app()
     for _ in range(30):
         await app.next_update_async()
@@ -178,6 +244,12 @@ async def follow(path):
         play(stage)
     root = stage.GetRootLayer().identifier
     print(f"stage-follow: following {os.path.realpath(path)}", flush=True)
+    send_state = None
+    if controls:
+        try:
+            send_state = enable_controls(path)
+        except Exception as error:
+            carb.log_error(f"stage-follow: no web controls: {error}")
     seen = {p: m for p, (m, _) in mtimes(stage).items()}
     count = len(stage.GetPrimAtPath("/World/Designs").GetChildren()) if stage.GetPrimAtPath("/World/Designs") else 0
     while True:
@@ -201,6 +273,8 @@ async def follow(path):
                 await app.next_update_async()
             stage = context.get_stage()
             copy_info(Sdf.Layer.FindOrOpen(path), stage.GetRootLayer())
+            if send_state:
+                send_state()
             seen = {p: m for p, (m, _) in mtimes(stage).items()}
             designs = stage.GetPrimAtPath("/World/Designs")
             if not designs:
@@ -214,6 +288,6 @@ async def follow(path):
 
 
 if len(sys.argv) < 2:
-    carb.log_error("stage-follow: usage: stage-follow.py <stage.usda>")
+    carb.log_error("stage-follow: usage: stage-follow.py <stage.usda> [--controls]")
 else:
-    asyncio.ensure_future(follow(sys.argv[1]))
+    asyncio.ensure_future(follow(sys.argv[1], controls="--controls" in sys.argv[2:]))

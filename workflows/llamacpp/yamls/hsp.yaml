@@ -1,0 +1,708 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          service_hf_repo="${{ inputs.service.hf_repo }}"
+          service_gguf_file="${{ inputs.service.gguf_file }}"
+          service_vision="${{ inputs.service.vision }}"
+          service_mmproj_file="${{ inputs.service.mmproj_file }}"
+          service_speculative="${{ inputs.service.speculative }}"
+          service_draft_file="${{ inputs.service.draft_file }}"
+          service_ctx_size="${{ inputs.service.ctx_size }}"
+          service_extra_args="${{ inputs.service.extra_args }}"
+          service_gpu_ids="${{ inputs.service.gpu_ids }}"
+          service_release_url="${{ inputs.service.release_url }}"
+          service_models_dir="${{ inputs.service.models_dir }}"
+          service_hf_token="${{ inputs.service.hf_token }}"
+          endpoint_name="$(printf '%s' '${{ inputs.service.endpoint_name }}' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
+          pw_endpoints_args="--name ${endpoint_name:-llamacpp-${PW_RUN_SLUG}}"
+          EOF
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh # remove var=""
+          # Add export= to all lines
+          sed -i 's/^/export /' inputs.sh
+          # session_runner v1.4 computed the shared HSP install dir; v5 calls
+          # script_submitter directly, so replicate that step here.
+          #
+          # The shared location is preferred because several users then read one
+          # copy of the software, but it is not guaranteed: PROJECTS_HOME can be
+          # unset, can point at a tree the account cannot write (seen as
+          # /p/app/unsupported on a system with no project directory yet), or can
+          # exist while its parent refuses a new subdirectory. A private
+          # directory always works, so an unusable shared one degrades to that
+          # instead of ending the run.
+          source /etc/profile
+          usable_dir() { # writable if it exists, creatable if it does not
+            [ -n "$1" ] || return 1
+            if [ -d "$1" ]; then
+              [ -w "$1" ] || return 1
+            else
+              mkdir -p "$1" 2> /dev/null || return 1
+              chmod g+rwx,o+rx "$1" 2> /dev/null || true
+            fi
+            return 0
+          }
+          # Home is the smallest filesystem on these systems and the image and
+          # its sandbox are gigabytes, so a private install goes to the work
+          # filesystem where the site defines one and only falls back to home
+          # where it does not.
+          hsp_install_dir=""
+          private_dir="${HOME}/pw"
+          [ -n "${WORKDIR}" ] && [ -d "${WORKDIR}" ] && private_dir="${WORKDIR}/pw"
+          if [ -n "${PROJECTS_HOME}" ] && usable_dir "${PROJECTS_HOME}/hsp"; then
+            hsp_install_dir="${PROJECTS_HOME}/hsp"
+          elif usable_dir "${private_dir}"; then
+            [ -n "${PROJECTS_HOME}" ] \
+              && echo "::warning title=Install Directory::${PROJECTS_HOME}/hsp is not writable by this account; installing to ${private_dir} instead, which no other user shares" \
+              || echo "::warning title=Install Directory::PROJECTS_HOME is empty; installing to ${private_dir}, which no other user shares"
+            hsp_install_dir="${private_dir}"
+          elif usable_dir "${HOME}/pw"; then
+            echo "::warning title=Install Directory::${private_dir} is not writable by this account; installing to ${HOME}/pw, which is the smallest filesystem here"
+            hsp_install_dir="${HOME}/pw"
+          else
+            echo "::error title=Install Directory::Neither ${PROJECTS_HOME:-a project directory} nor ${private_dir} nor ${HOME}/pw can be written; the run has nowhere to install"
+            exit 1
+          fi
+          echo "::notice title=Install Directory::Using Install Directory: ${hsp_install_dir}"
+          echo "export service_parent_install_dir=${hsp_install_dir}" >> inputs.sh
+
+          # Where the software goes and where the models come from are separate
+          # questions. Installing needs a writable directory; reading a model
+          # that is already staged needs only read permission, and the project
+          # directory is where models are staged for everyone on the system.
+          # Tying the two together is what sent an account outside the project
+          # group off to re-download tens of gigabytes that were already on the
+          # filesystem, so the project store is named here whether or not this
+          # account can write to it, and the controller decides between reusing
+          # it read-only and staging into the work filesystem instead.
+          # Same split for the software: an image or tarball already staged in
+          # the project directory is readable by every account on the system, so
+          # an account that cannot write there should run that copy rather than
+          # download 2.8 GB of container again into its own work filesystem.
+          if [ -n "${PROJECTS_HOME}" ] && [ -d "${PROJECTS_HOME}/hsp" ]; then
+            echo "export service_shared_install_dir=\"${PROJECTS_HOME}/hsp\"" >> inputs.sh
+          fi
+          if [ -n "${PROJECTS_HOME}" ] && [ -d "${PROJECTS_HOME}/hsp/llamacpp/models" ]; then
+            echo "::notice title=Model Directory::Project model store: ${PROJECTS_HOME}/hsp/llamacpp/models"
+            echo "export service_shared_models_dir=\"${PROJECTS_HOME}/hsp/llamacpp/models\"" >> inputs.sh
+          fi
+      - name: Controller Preprocessing
+        run: |
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat <<'CONTROLLER_EOF' >> controller-${PW_JOB_ID}.sh
+          # Install llama.cpp and stage the GGUF files on the controller node, which
+          # has the internet access a compute node may lack. Everything resolved here is
+          # appended to inputs.sh, so the service script never re-derives it.
+          set -o pipefail
+          fail() { echo "::error title=$1::$2"; exit 1; }
+          writable_dir() { [ -n "$1" ] && mkdir -p "$1" 2> /dev/null && [ -w "$1" ]; }
+          if ! type module > /dev/null 2>&1; then
+              for init in /etc/profile.d/modules.sh /etc/profile.d/lmod.sh \
+                          /usr/share/Modules/init/bash /usr/share/lmod/lmod/init/bash; do
+                  [ -r "${init}" ] && . "${init}" 2> /dev/null && break
+              done
+          fi
+          
+          # The same order the other service workflows use: project directory, install
+          # directory, work filesystem, home. A ready copy anywhere is reused read-only;
+          # a new download goes to the first writable one.
+          roots=()
+          for root in "${service_shared_install_dir}" "${service_parent_install_dir}" \
+                      "${WORKDIR:+${WORKDIR}/pw/software}" "${HOME}/pw/software"; do
+              [ -n "${root}" ] && roots+=("${root}")
+          done
+          
+          tag="$(basename "${service_release_url}")"
+          tag="${tag%.tar.gz}"; tag="${tag%.tgz}"
+          install_dir=""
+          for root in "${roots[@]}"; do
+              if [ -f "${root}/llamacpp/${tag}/.ready" ]; then
+                  install_dir="$(cat "${root}/llamacpp/${tag}/.ready")"
+                  [ -x "${install_dir}/llama-server" ] && break
+                  install_dir=""
+              fi
+          done
+          
+          if [ -n "${install_dir}" ]; then
+              echo "::notice title=llama.cpp::Reusing ${install_dir}"
+          else
+              target=""
+              for root in "${roots[@]}"; do
+                  writable_dir "${root}/llamacpp/${tag}" && target="${root}/llamacpp/${tag}" && break
+              done
+              [ -n "${target}" ] || fail "Install Directory" "No writable directory for llama.cpp"
+              echo "::notice title=llama.cpp::Installing ${tag} into ${target}"
+              curl -fsSL -o "${target}/llama.tar.gz" "${service_release_url}" \
+                  || fail "Download" "Could not download ${service_release_url}"
+              tar -xzf "${target}/llama.tar.gz" -C "${target}" && rm -f "${target:?}/llama.tar.gz"
+              bin="$(find "${target}" -name llama-server -type f | head -1)"
+              [ -n "${bin}" ] || fail "llama.cpp" "No llama-server in ${service_release_url}"
+              install_dir="$(cd "$(dirname "${bin}")" && pwd)"
+              cuda_lib="${install_dir}/libggml-cuda.so"
+          
+              # Prebuilt CUDA tarballs often leave out the CUDA runtime. The CUDA backend
+              # is a plugin llama-server loads at run time, so a missing runtime does not
+              # fail the launch: it silently serves on CPU. NVIDIA publishes the runtime
+              # and cuBLAS as wheels on PyPI; place their libraries beside the binary.
+              major="$(ldd "${cuda_lib}" 2> /dev/null | grep -oE 'libcudart\.so\.[0-9]+ => not found' | sed -E 's/libcudart\.so\.([0-9]+).*/\1/')"
+              if [ -n "${major}" ]; then
+                  echo "::notice title=CUDA runtime::Fetching the CUDA ${major} runtime and cuBLAS from PyPI"
+                  wheels="$(mktemp -d)"
+                  python3 -m pip download -q --no-deps --only-binary=:all: \
+                      --platform manylinux_2_28_x86_64 --platform manylinux_2_27_x86_64 --platform manylinux2014_x86_64 \
+                      --python-version 3.12 -d "${wheels}" \
+                      "nvidia-cuda-runtime-cu${major}<$((major + 1))" "nvidia-cublas-cu${major}<$((major + 1))" \
+                      || fail "CUDA runtime" "pip could not download the CUDA ${major} runtime wheels"
+                  for w in "${wheels}"/*.whl; do
+                      python3 - "${w}" "${install_dir}" "${major}" <<'PY'
+          import sys, zipfile
+          wheel, dest, major = sys.argv[1:]
+          want = {f"libcudart.so.{major}", f"libcublas.so.{major}", f"libcublasLt.so.{major}"}
+          z = zipfile.ZipFile(wheel)
+          for name in z.namelist():
+              base = name.rsplit("/", 1)[-1]
+              if base in want:
+                  open(f"{dest}/{base}", "wb").write(z.read(name))
+          PY
+                  done
+                  rm -rf "${wheels:?}"
+              fi
+          
+              # The build may need a newer libstdc++ than the system provides (RHEL 9
+              # ships GLIBCXX_3.4.29). A gcc module usually carries one; copy it beside
+              # the binary so the job needs no module at run time.
+              need="$(LD_LIBRARY_PATH="${install_dir}" ldd "${cuda_lib}" 2>&1 | grep -oE 'GLIBCXX_[0-9.]+[0-9]. not found' | grep -oE 'GLIBCXX_[0-9.]+[0-9]' | sort -V | tail -1)"
+              if [ -n "${need}" ] && type module > /dev/null 2>&1; then
+                  for m in $(module -t avail gcc 2>&1 | grep -E '^gcc/' | sort -V -r); do
+                      module load "${m}" > /dev/null 2>&1 || continue
+                      lib="$(readlink -f "$(gcc -print-file-name=libstdc++.so.6)")"
+                      module unload "${m}" > /dev/null 2>&1
+                      if [ -f "${lib}" ] && grep -qa "${need}" "${lib}"; then
+                          cp "${lib}" "${install_dir}/libstdc++.so.6"
+                          echo "::notice title=libstdc++::Using ${need} from ${m}"
+                          break
+                      fi
+                  done
+              fi
+          
+              missing="$(LD_LIBRARY_PATH="${install_dir}" ldd "${cuda_lib}" 2>&1 | grep 'not found')"
+              [ -z "${missing}" ] || fail "llama.cpp" "Unresolved libraries for the CUDA backend: ${missing}"
+              chmod -R g+rX,o+rX "${target}" 2> /dev/null
+              echo "${install_dir}" > "${target}/.ready"
+          fi
+          "${install_dir}/llama-server" --version 2>&1 | tail -2
+          
+          # Stage the GGUF files. A store that already holds every file is used as is,
+          # even read-only; otherwise they are downloaded to the first writable store.
+          repo_name="$(basename "${service_hf_repo}")"
+          files=("${service_gguf_file}")
+          [ "${service_vision}" = "true" ] && files+=("${service_mmproj_file}")
+          [ "${service_speculative}" = "true" ] && files+=("${service_draft_file}")
+          has_all() {
+              local f
+              for f in "${files[@]}"; do
+                  [ -s "$1/${repo_name}/${f}" ] && [ ! -e "$1/${repo_name}/${f}.part" ] || return 1
+              done
+          }
+          stores=()
+          if [ -n "${service_models_dir}" ]; then
+              stores=("${service_models_dir}")
+          else
+              for root in "${roots[@]}"; do stores+=("${root}/llamacpp/models"); done
+          fi
+          model_root=""
+          for root in "${stores[@]}"; do has_all "${root}" && model_root="${root}" && break; done
+          if [ -n "${model_root}" ]; then
+              echo "::notice title=Models::Serving staged files from ${model_root}/${repo_name}"
+          else
+              for root in "${stores[@]}"; do writable_dir "${root}/${repo_name}" && model_root="${root}" && break; done
+              [ -n "${model_root}" ] || fail "Models" "No writable model directory"
+              dir="${model_root}/${repo_name}"
+              todo=()
+              for f in "${files[@]}"; do
+                  [ -s "${dir}/${f}" ] && [ ! -e "${dir}/${f}.part" ] || todo+=("${f}")
+              done
+              for f in "${todo[@]}"; do touch "${dir}/${f}.part"; done
+              echo "::notice title=Models::Downloading ${todo[*]} from ${service_hf_repo} into ${dir}"
+              # hf moves data in parallel chunks (about 25x a single curl stream in
+              # testing). Install it once beside the models; keep its cache off home.
+              export HF_HOME="${model_root}/.hf-home"
+              hf_lib="${model_root}/.hf-cli"
+              if [ -d "${hf_lib}/huggingface_hub" ] || python3 -m pip install -q --target "${hf_lib}" 'huggingface_hub[hf_xet]'; then
+                  HF_TOKEN="${service_hf_token}" PYTHONPATH="${hf_lib}" python3 -m huggingface_hub.cli.hf \
+                      download "${service_hf_repo}" "${todo[@]}" --local-dir "${dir}" \
+                      || fail "Models" "hf download failed"
+              else
+                  echo "::warning title=Models::huggingface_hub could not be installed; falling back to curl"
+                  for f in "${todo[@]}"; do
+                      curl -fL -C - ${service_hf_token:+-H "Authorization: Bearer ${service_hf_token}"} \
+                          -o "${dir}/${f}" "https://huggingface.co/${service_hf_repo}/resolve/main/${f}" \
+                          || fail "Models" "Download of ${f} failed"
+                  done
+              fi
+              for f in "${todo[@]}"; do
+                  [ -s "${dir}/${f}" ] || fail "Models" "Download of ${f} failed"
+                  rm -f "${dir:?}/${f:?}.part"
+                  chmod g+r,o+r "${dir}/${f}" 2> /dev/null
+              done
+          fi
+          dir="${model_root}/${repo_name}"
+          {
+              echo "export service_exec=\"${install_dir}/llama-server\""
+              echo "export service_lib_dir=\"${install_dir}\""
+              echo "export service_model_path=\"${dir}/${service_gguf_file}\""
+              if [ "${service_vision}" = "true" ]; then
+                  echo "export service_mmproj_path=\"${dir}/${service_mmproj_file}\""
+              fi
+              if [ "${service_speculative}" = "true" ]; then
+                  echo "export service_draft_path=\"${dir}/${service_draft_file}\""
+              fi
+          } >> inputs.sh
+          exit 0
+          CONTROLLER_EOF
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+          # Runs on the controller or a compute node. Serves the staged model with
+          # llama-server behind a pw endpoint registered as an OpenAI-compatible
+          # provider, so the platform chat and AI tools list it.
+          export LD_LIBRARY_PATH="${service_lib_dir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+          if [ -n "${service_gpu_ids}" ]; then
+              export CUDA_DEVICE_ORDER=PCI_BUS_ID
+              export CUDA_VISIBLE_DEVICES="${service_gpu_ids}"
+          fi
+          devices="$("${service_exec}" --list-devices 2>&1)"
+          echo "${devices}"
+          if ! echo "${devices}" | grep -q 'CUDA0'; then
+              echo "::error title=No GPU::llama-server sees no CUDA device on $(hostname). On a cluster, submit to the scheduler with a GPU request."
+              exit 1
+          fi
+          
+          alias_name="$(basename "${service_model_path}" .gguf)"
+          args=(--model "${service_model_path}" --alias "${alias_name}" --ctx-size "${service_ctx_size}" --host 127.0.0.1)
+          if [ -n "${service_mmproj_path}" ]; then
+              args+=(--mmproj "${service_mmproj_path}")
+          fi
+          if [ -n "${service_draft_path}" ]; then
+              args+=(--model-draft "${service_draft_path}" --spec-type draft-dspark --spec-draft-n-max 3 --n-gpu-layers-draft 99)
+          fi
+          
+          # pw endpoints run exports PORT to the wrapped command at runtime
+          cat > launch-llamacpp-${PW_JOB_ID}.sh <<LAUNCH_EOF
+          #!/bin/bash
+          exec ${service_exec} $(printf '%q ' "${args[@]}") --port \${PORT} ${service_extra_args}
+          LAUNCH_EOF
+          chmod +x launch-llamacpp-${PW_JOB_ID}.sh
+          cat launch-llamacpp-${PW_JOB_ID}.sh
+          
+          echo "::group::Start Service"
+          echo "::notice::Serving ${alias_name}: pw endpoints run --openai ${pw_endpoints_args}"
+          pw endpoints run --openai ${pw_endpoints_args} -- ./launch-llamacpp-${PW_JOB_ID}.sh
+          endpoints_rc=$?
+          
+          # The workflow cancels this job's wrapper once the endpoint is healthy; that
+          # is how a successful launch ends. Only a launch that never registered is a
+          # failure.
+          if [ ${endpoints_rc} -ne 0 ]; then
+              served_name=$(printf '%s' "${pw_endpoints_args}" | sed -n 's/.*--name[ =]\{1,\}\([^ ]*\).*/\1/p')
+              if [ -n "${served_name}" ] && pw endpoints list 2>/dev/null | awk '{print $1}' | grep -qxF "${served_name}"; then
+                  echo "::notice::Endpoint ${served_name} served until this job was cancelled; exiting cleanly"
+                  exit 0
+              fi
+              echo "::error title=Error::pw endpoints command failed"
+              sleep 3
+              exit 1
+          fi
+          echo "::endgroup::"
+          EOF
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+          endpoint_name="$(printf '%s' '${{ inputs.service.endpoint_name }}' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
+          echo "ENDPOINT_NAME=${endpoint_name:-llamacpp-${PW_RUN_SLUG}}" | tee -a $OUTPUTS
+
+  session_runner:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Session Runner
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/hsp.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            account: ${{ inputs.cluster.slurm.account }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            qos: ${{ inputs.cluster.slurm.qos }}
+            cpus_per_task: ${{ inputs.cluster.slurm.cpus_per_task }}
+            nodes: ${{ inputs.cluster.slurm.nodes }}
+            node_type: ${{ inputs.cluster.slurm.node_type }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            time: ${{ inputs.cluster.slurm.time }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            account: ${{ inputs.cluster.pbs.account }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::Session runner failed before the endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ needs.preprocessing.outputs.ENDPOINT_NAME }}
+          host: ${{ inputs.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          budget: 900
+          path: /health
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - session_runner
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Service host
+        include-workspace: false
+      cluster:
+        type: group
+        label: Compute cluster settings
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
+          slurm:
+            type: group
+            label: SLURM directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=partition slurm directive'
+              qos:
+                label: Quality of service (QoS)
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              cpus_per_task:
+                label: CPUs per task
+                type: number
+                default: 1
+                step: 1
+                tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              nodes:
+                label: Number of nodes
+                type: number
+                default: 1
+                step: 1
+                tooltip: '--nodes=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              node_type:
+                label: Node type
+                type: dropdown
+                optional: true
+                default: ''
+                option-key: ${{ inputs.resource.ip }}
+                tooltip: '--constraint=<value> slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider || (inputs.resource.ip != 'blueback.navydsrc.hpc.mil' && inputs.resource.ip != 'narwhal.navydsrc.hpc.mil' && inputs.resource.ip != 'nautilus.navydsrc.hpc.mil' && inputs.resource.ip != 'raider.afrl.hpc.mil' && inputs.resource.ip != 'crux.mhpcc.hpc.mil') }}
+                hidden: ${{ .ignore }}
+                options:
+                  blueback.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  narwhal.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - smla
+                    - dmla
+                    - viz
+                    - transfer
+                  nautilus.navydsrc.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  raider.afrl.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  crux.mhpcc.hpc.mil:
+                    - AMD
+                    - Intel
+              time:
+                label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
+                type: string
+                default: '00:30:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              scheduler_directives:
+                type: editor
+                label: Scheduler directives
+                optional: true
+                default: |
+                  #SBATCH --gres=gpu:1
+                  ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix.
+                  One GPU is requested by default, since a model server without one runs
+                  on CPU and answers slowly. How a GPU is named is site specific: plain
+                  gpu:1 works where the scheduler defines no GPU types, and elsewhere the
+                  type belongs in the request, as in --gres=gpu:h100_nvl:1. Run
+                  sinfo -o "%P %G" on the cluster to see the types it offers. Other
+                  examples:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+          pbs:
+            type: group
+            label: PBS directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              account:
+                label: Account
+                type: string
+                tooltip: PBS account for job submission (-A)
+              scheduler_directives:
+                label: Scheduler directives
+                type: editor
+                default: |
+                  # Parameters that apply to all sites
+                  #PBS -l walltime=00:30:00
+                  #PBS -V
+                  #PBS -q standard
+                  # The select line is site specific; adjust ncpus to the node shape
+                  #PBS -l select=1:ncpus=1:ngpus=1
+                  # Remove first # to activate specific lines
+                  #=====Ruth (Lustre, only vis has NVIDIA)=====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128:ngpus=1
+                  #=====Warhawk (Lustre)====
+                  ##PBS -l select=1:ncpus=128:mpiprocs=128:ngpus=2
+                  #=====Wheat (WEKA, nmlas=4|6)====
+                  ##PBS -l select=1:ncpus=92:mpiprocs=92:nmlas=4
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+
+      service:
+        type: group
+        label: llama.cpp settings
+        items:
+          hf_repo:
+            label: Hugging Face repository
+            type: string
+            default: unsloth/Inkling-2-Mini-GGUF
+            tooltip: GGUF repository on Hugging Face. Files are downloaded once and reused across runs.
+          gguf_file:
+            label: GGUF file
+            type: string
+            default: Inkling-2-Mini-UD-Q4_K_XL.gguf
+            tooltip: |
+              Quantization to serve. For Inkling 2 Mini, UD-Q4_K_XL (17.6 GB) is the model
+              card's recommendation and fits a 24 GB GPU; UD-Q8_K_XL (22.9 GB) is full
+              precision and suits a GPU with 40 GB or more.
+          vision:
+            label: Enable image input
+            type: boolean
+            default: true
+          mmproj_file:
+            label: Vision projector file
+            type: string
+            default: mmproj-F16.gguf
+            hidden: ${{ inputs.service.vision == false }}
+            ignore: ${{ .hidden }}
+          speculative:
+            label: Enable speculative decoding
+            type: boolean
+            default: false
+            tooltip: |
+              DSpark speculative decoding with the drafter in the same repository. It
+              needs memory beside the model: on a 24 GB GPU it does not fit and was
+              slower, so leave it off there.
+          draft_file:
+            label: Drafter file
+            type: string
+            default: dspark-Inkling-2-Mini-Q8_0.gguf
+            hidden: ${{ inputs.service.speculative == false }}
+            ignore: ${{ .hidden }}
+          ctx_size:
+            label: Context size
+            type: number
+            default: 32768
+            tooltip: Context window in tokens. Inkling 2 Mini supports up to 1M; the KV cache grows with the window.
+          extra_args:
+            label: Extra llama-server arguments
+            type: string
+            default: --jinja --parallel 1 --flash-attn on --fit off -ngl all --ubatch-size 256 --cache-type-k q8_0 --cache-type-v q8_0 --temp 1.0 --top-p 1.0 --top-k 0 --min-p 0.0
+            tooltip: |
+              --jinja applies the model's chat template and is required for tool calling.
+              --parallel 1 gives one request the whole context. The default places every
+              layer on the GPU (--fit off -ngl all) with a smaller micro-batch and a q8_0
+              KV cache, which is what fits UD-Q4_K_XL, the projector, and 32K context in
+              24 GB. On a larger GPU drop --ubatch-size 256 and the cache types for faster
+              prompt processing; --fit on instead lets llama-server spill experts to CPU,
+              which is slower. Sampling values are the model card's recommendation.
+          gpu_ids:
+            label: GPU IDs
+            type: string
+            optional: true
+            tooltip: CUDA_VISIBLE_DEVICES for the server, e.g. 0. Leave empty under a scheduler, which assigns the GPU.
+          release_url:
+            label: llama.cpp build
+            type: string
+            default: https://github.com/unslothai/llama.cpp/releases/download/b12588-mix-c0c3de8/app-b12588-mix-c0c3de8-linux-x64-cuda12-portable.tar.gz
+            tooltip: |
+              Prebuilt llama-server tarball. Unsloth's build reads the looped-layer GGUF
+              layout of Inkling 2 Mini, which mainline llama.cpp does not yet. Any Linux
+              CUDA build of llama.cpp works for other models.
+          models_dir:
+            label: Model directory
+            type: string
+            optional: true
+            tooltip: |
+              Directory holding <repository name>/<file>. Setting it pins the store. Left
+              empty, the run reuses a store that already holds every file, searching
+              ${PROJECTS_HOME}/hsp/llamacpp/models (staged for everyone on the
+              system), ${WORKDIR}/pw/software/llamacpp/models, then ${HOME}/pw/software/llamacpp/models, and otherwise downloads into the first writable one.
+          hf_token:
+            label: Hugging Face token
+            type: string
+            optional: true
+            tooltip: Needed only for gated repositories.
+          endpoint_name:
+            label: Endpoint name
+            description: Defaults to llamacpp-<run slug>; a fixed name keeps chat model ids stable across relaunches.
+            type: string
+            optional: true
+            tooltip: |
+              Name of the endpoint session. The name becomes a DNS label, so it is folded
+              to lowercase and anything outside a-z 0-9 - becomes a dash.
+
+configurations:
+  Makau:
+    inputs:
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 8
+          is_enabled: true
+          nodes: 1
+          partition: standard
+          qos: standard
+          scheduler_directives: "#SBATCH --gres=gpu:h100_nvl:1"
+          time: "04:00:00"
+      service:
+        # One 94 GB H100 NVL holds the full-precision quant, the vision
+        # projector, and the model's full 1M-token window (93 of 95.8 GB in
+        # use). The drafter does not fit beside a 1M window, since it
+        # allocates its own KV cache for the same window, so speculative
+        # decoding is off. Agent clients send long prompts: a 128K window
+        # rejected 210K-token requests, which clients report as a tool-calling
+        # failure. Measured: 232K-token prompt 204 s to first token, 388K
+        # 379 s; follow-up turns reuse the cached prefix and answer in seconds.
+        gguf_file: Inkling-2-Mini-UD-Q8_K_XL.gguf
+        speculative: false
+        ctx_size: 1048576
+        extra_args: --jinja --parallel 1 --flash-attn on --fit off -ngl all --batch-size 2048 --ubatch-size 2048 --temp 1.0 --top-p 1.0 --top-k 0 --min-p 0.0
+        endpoint_name: inkling2-mini

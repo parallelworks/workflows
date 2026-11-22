@@ -412,6 +412,7 @@ jobs:
           host: ${{ inputs.resource.ip }}
           skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
           budget: 900
+          path: /health
       - name: Cancel Script Submitter
         uses: parallelworks/cancel-jobs
         with:
@@ -693,10 +694,15 @@ configurations:
           time: "04:00:00"
       service:
         # One 94 GB H100 NVL holds the full-precision quant, the vision
-        # projector, the drafter, and a 128K window with room to spare, so the
-        # 24 GB settings (smaller micro-batch, q8_0 KV cache) are dropped.
+        # projector, and the model's full 1M-token window (93 of 95.8 GB in
+        # use). The drafter does not fit beside a 1M window, since it
+        # allocates its own KV cache for the same window, so speculative
+        # decoding is off. Agent clients send long prompts: a 128K window
+        # rejected 210K-token requests, which clients report as a tool-calling
+        # failure. Measured: 232K-token prompt 204 s to first token, 388K
+        # 379 s; follow-up turns reuse the cached prefix and answer in seconds.
         gguf_file: Inkling-2-Mini-UD-Q8_K_XL.gguf
-        speculative: true
-        ctx_size: 131072
-        extra_args: --jinja --parallel 1 --flash-attn on --fit off -ngl all --temp 1.0 --top-p 1.0 --top-k 0 --min-p 0.0
+        speculative: false
+        ctx_size: 1048576
+        extra_args: --jinja --parallel 1 --flash-attn on --fit off -ngl all --batch-size 2048 --ubatch-size 2048 --temp 1.0 --top-p 1.0 --top-k 0 --min-p 0.0
         endpoint_name: inkling2-mini

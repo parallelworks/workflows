@@ -343,6 +343,7 @@ jobs:
           host: ${{ inputs.resource.ip }}
           skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
           budget: 900
+          path: /health
       - name: Cancel Script Submitter
         uses: parallelworks/cancel-jobs
         with:

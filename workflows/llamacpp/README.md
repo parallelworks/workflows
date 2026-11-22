@@ -52,14 +52,22 @@ Measured with Inkling 2 Mini on a 300-word answer and a 2,170-token prompt:
 | 24 GB A30 | UD-Q4_K_XL, vision, 32K context | defaults | 20.7 tok/s | 284 tok/s |
 | 24 GB A30 | same | `--fit on` (experts spill to CPU) | 15 tok/s | 178 tok/s |
 | 24 GB A30 | same, with the DSpark drafter | `--fit on` | 12 tok/s | 162 tok/s |
-| 94 GB H100 NVL | UD-Q8_K_XL, vision, DSpark drafter, 128K context | Makau configuration | 46 to 51 tok/s | 1,288 tok/s |
+| 94 GB H100 NVL | UD-Q8_K_XL, vision, DSpark drafter, 128K context | earlier test | 46 to 51 tok/s | 1,288 tok/s |
+| 94 GB H100 NVL | UD-Q8_K_XL, vision, 1M context, no drafter | Makau configuration | 37 to 44 tok/s | 1,020 to 1,140 tok/s on 232K to 388K-token prompts |
 
 On a 24 GB GPU the default micro-batch needs a 3.3 GB compute buffer and runs
 out of memory with every layer on the GPU, so the defaults use
 `--ubatch-size 256` and a q8_0 KV cache. On a larger GPU drop those for faster
 prompt processing, and consider UD-Q8_K_XL (full precision) and speculative
-decoding. Sampling follows the model card: temperature 1.0, top-p 1.0, top-k
-off, min-p 0.
+decoding. Agent clients can send prompts of 200K tokens or more, which a
+smaller window rejects and clients then report as a tool-calling failure. At
+about 1,100 tok/s a 230K-token prompt takes over three minutes to the first
+token; later turns reuse the cached prefix (`--parallel 1` keeps one slot) and
+answer in seconds. The drafter allocates its own KV cache for the full window,
+so it does not fit beside a 1M window on one 94 GB GPU.
+
+Sampling follows the model card: temperature 1.0, top-p 1.0, top-k off,
+min-p 0.
 
 ## Using the model
 

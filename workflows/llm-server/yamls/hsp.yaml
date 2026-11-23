@@ -954,42 +954,15 @@ configurations:
         attention_backend: TRITON_ATTN
 
   # Inkling 2 Mini on one 94 GB H100 NVL at its full 1M-token window, three
-  # ways. Measured on Makau (single runs, DSpark drafter where noted):
-  #   SGLang     ready in 112 s with the kernel cache warm (531 s cold);
-  #              232K-token prompt 24 s to first token, 388K 49 s; cached
+  # ways. vLLM is the default: no first-start compile, broadest model
+  # support. Measured on Makau (single runs, DSpark drafter where noted):
+  #   vLLM       ready in 141 s; 232K-token prompt 29 s to first token, 388K
+  #              69 s; cached follow-up 0.75 s; 200 to 560 tok/s
+  #   SGLang     ready in 112 s with the kernel cache warm (531 s on the
+  #              first start on a GPU type); 232K 24 s, 388K 49 s; cached
   #              follow-up 0.13 s; 180 to 585 tok/s
-  #   vLLM       ready in 141 s; 232K 29 s, 388K 69 s; cached follow-up
-  #              0.75 s; 200 to 560 tok/s
   #   llama.cpp  UD-Q8_K_XL, no drafter; 232K 204 s, 388K 379 s; 37 to 44 tok/s
   Makau-Inkling-2-Mini:
-    inputs:
-      engine: sglang
-      cluster:
-        scheduler: true
-        slurm:
-          cpus_per_task: 8
-          is_enabled: true
-          nodes: 1
-          partition: standard
-          qos: standard
-          scheduler_directives: "#SBATCH --gres=gpu:h100_nvl:1"
-          time: "04:00:00"
-      model:
-        source: huggingface
-        hf_model_id: thinkingmachines/Inkling-2-Mini
-        hf_token: ${{ org.HF_TOKEN }}
-      sglang:
-        num_gpus: "1"
-        mem_fraction: "0.88"
-        context_length: "1048576"
-        extra_args: "--max-running-requests 8 --reasoning-parser inkling --tool-call-parser inkling2 --enable-multimodal --speculative-algorithm DSPARK"
-        # lmsysorg/sglang at digest sha256:efac853b4681..., staged as
-        # $PROJECTS_HOME/hsp/containers/sglang-inkling-2-mini.sif
-        container_uri: ghcr.io/parallelworks/sglang-inkling-2-mini:v1
-      service:
-        endpoint_name: inkling2-mini
-
-  Makau-Inkling-2-Mini-vLLM:
     inputs:
       engine: vllm
       cluster:
@@ -1021,7 +994,35 @@ configurations:
         # Inkling-specific image tag lacks H100 (sm90) kernels.
         container_uri: ghcr.io/parallelworks/vllm-openai-nightly-20261123:v1
       service:
-        endpoint_name: inkling2-mini-vllm
+        endpoint_name: inkling2-mini
+
+  Makau-Inkling-2-Mini-SGLang:
+    inputs:
+      engine: sglang
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 8
+          is_enabled: true
+          nodes: 1
+          partition: standard
+          qos: standard
+          scheduler_directives: "#SBATCH --gres=gpu:h100_nvl:1"
+          time: "04:00:00"
+      model:
+        source: huggingface
+        hf_model_id: thinkingmachines/Inkling-2-Mini
+        hf_token: ${{ org.HF_TOKEN }}
+      sglang:
+        num_gpus: "1"
+        mem_fraction: "0.88"
+        context_length: "1048576"
+        extra_args: "--max-running-requests 8 --reasoning-parser inkling --tool-call-parser inkling2 --enable-multimodal --speculative-algorithm DSPARK"
+        # lmsysorg/sglang at digest sha256:efac853b4681..., staged as
+        # $PROJECTS_HOME/hsp/containers/sglang-inkling-2-mini.sif
+        container_uri: ghcr.io/parallelworks/sglang-inkling-2-mini:v1
+      service:
+        endpoint_name: inkling2-mini-sglang
 
   Makau-Inkling-2-Mini-llama.cpp:
     inputs:

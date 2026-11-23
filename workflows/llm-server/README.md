@@ -19,7 +19,7 @@ vLLM and SGLang need a GPU with enough memory for the weights and KV cache. llam
 
 A run whose engine exits before it answers, or whose model cannot be found or downloaded, ends in error.
 
-The endpoint is named `<engine>-<run slug>` unless an endpoint name is set under Advanced settings. A fixed name keeps model ids in chat clients stable across relaunches. Launching with a name that is already listed replaces that endpoint: it is deleted, which stops its server, once the new run has everything installed.
+The endpoint is named `<engine>-<run slug>` unless an endpoint name is set under Advanced settings. A fixed name keeps model ids in chat clients stable across relaunches. Launching with a name that is already listed replaces that endpoint: it is deleted, which stops its server, once the controller has installed the image or the llama.cpp build and GGUF files. The checkpoint download of vLLM and SGLang runs beside the controller, so with a model that is not cached yet the previous server can already be gone when a download fails.
 
 ## Variants
 
@@ -31,7 +31,7 @@ The engines, their settings and the scripts under `app/` are the same in every v
 | `hsp.yaml` | activate.hpc.mil | `$PROJECTS_HOME/hsp`, models in `models/` under it | account, partition, QoS, CPUs, nodes, node type |
 | `noaa.yaml` | noaa.parallel.works | the cluster's shared software directory (`/contrib/pw` on Hera, Mercury and Ursa), models in `models/` under it; `${HOME}/pw/software` on cloud clusters | account, partition, QoS, tasks, nodes; `--gres=gpu:<number of GPUs>` and `--mem=0` are added to the job |
 
-An empty model cache directory resolves to `models/` under the install directory in every variant.
+The NOAA form leaves the install and model cache directories empty, and an empty model cache directory resolves to `models/` under the install directory. The general and HSP forms prefill both.
 
 ## Engine notes
 

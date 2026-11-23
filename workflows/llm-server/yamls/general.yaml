@@ -72,12 +72,14 @@ jobs:
           llamacpp_gpu_ids="${{ inputs.llamacpp.gpu_ids }}"
           llamacpp_release_url="${{ inputs.llamacpp.release_url }}"
           llamacpp_models_dir="${{ inputs.llamacpp.models_dir }}"
-          hf_token="${{ inputs.llamacpp.hf_token }}"
           EOF
           OUTPUTS="${OUTPUTS}" bash workflows/llm-server/app/create-inputs.sh form.sh
       - name: Controller Preprocessing
         early-cancel: any-job-failed
         run: |
+          # Before the trace starts, and not through inputs.sh: the run prints
+          # the scripts inputs.sh is copied into
+          export HF_TOKEN="${{ inputs.llamacpp.hf_token }}"
           set -x
           if [ ! -s workflows/llm-server/app/controller.sh ]; then
               echo "::error title=Error::controller.sh not found in the checkout"
@@ -314,7 +316,7 @@ jobs:
             ignore: ${{ inputs.model.source != 'local' }}
           hf_model_id:
             type: string
-            label: HuggingFace model ID
+            label: Hugging Face model ID
             placeholder: openai/gpt-oss-20b
             default: openai/gpt-oss-20b
             prefillDefault: true
@@ -322,7 +324,7 @@ jobs:
             hidden: ${{ inputs.model.source != 'huggingface' }}
             ignore: ${{ inputs.model.source != 'huggingface' }}
           hf_token:
-            label: HuggingFace token
+            label: Hugging Face token
             description: Required for gated models such as Llama.
             default: ${{ org.HF_TOKEN }}
             type: password
@@ -335,7 +337,7 @@ jobs:
             description: Downloaded once and reused by later runs; needs disk space.
             default: ~/pw/models
             prefillDefault: true
-            tooltip: Directory the model is downloaded into. Left empty, models/ under the parent install directory.
+            tooltip: Directory the model is downloaded into.
             hidden: ${{ inputs.model.source != 'huggingface' }}
             ignore: ${{ inputs.model.source != 'huggingface' }}
 
@@ -481,9 +483,10 @@ jobs:
         items:
           hf_repo:
             label: Hugging Face repository
+            description: The files are downloaded once and reused by later runs.
             type: string
             default: unsloth/Inkling-2-Mini-GGUF
-            tooltip: GGUF repository on Hugging Face. Files are downloaded once and reused across runs.
+            tooltip: GGUF repository on Hugging Face, <owner>/<name>.
           gguf_file:
             label: GGUF file
             type: string
@@ -518,6 +521,7 @@ jobs:
           ctx_size:
             label: Context size
             type: number
+            step: 1
             default: 32768
             tooltip: Context window in tokens; 0 uses the model's trained maximum. The KV cache grows with the window.
           extra_args:
@@ -531,9 +535,10 @@ jobs:
               KV cache, which fits UD-Q4_K_XL, the projector, and 32K context in 24 GB.
           gpu_ids:
             label: GPU IDs
+            description: Leave empty under a scheduler, which assigns the GPU.
             type: string
             optional: true
-            tooltip: CUDA_VISIBLE_DEVICES for the server, e.g. 0. Leave empty under a scheduler, which assigns the GPU.
+            tooltip: CUDA_VISIBLE_DEVICES for the server, e.g. 0.
           release_url:
             label: llama.cpp build
             type: string
@@ -544,6 +549,7 @@ jobs:
               CUDA build of llama.cpp works for other models.
           models_dir:
             label: Model directory
+            description: Leave empty to reuse a store that already holds the files, or to download into the first writable one.
             type: string
             optional: true
             tooltip: |

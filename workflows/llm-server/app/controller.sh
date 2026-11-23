@@ -7,6 +7,12 @@
 # installed on the controller, which has the internet access a compute node
 # may lack.
 
+# The Hugging Face token for the GGUF download arrives in the environment and
+# never through inputs.sh, which is copied into the scripts the run prints
+hf_token="${HF_TOKEN}"
+unset HF_TOKEN
+[ "${hf_token}" = "undefined" ] && hf_token=""
+
 set -o pipefail
 set -x
 
@@ -14,8 +20,9 @@ fail() { echo "::error title=$1::$2"; exit 1; }
 
 # The run waits for its endpoint by name, so one already listed under it (an
 # earlier launch with the same Endpoint name, still serving or left stopped)
-# would be taken for the new server. Deleting it stops its server. Called last:
-# a failed install leaves the previous server running.
+# would be taken for the new server. Deleting it stops its server. Called last,
+# so a failed install here leaves the previous server running; prepare_model
+# runs beside this script, so a model download can still fail afterwards.
 free_endpoint_name() {
     endpoint_listed() {
         pw endpoints list 2>/dev/null | awk -F'\t' -v name="${endpoint_name}" '$1 == name { found = 1 } END { exit !found }'
@@ -229,12 +236,15 @@ PY
             curl_auth="header = \"Authorization: Bearer ${hf_token}\""
         fi
         set -x
+        # An old python3 installs a huggingface_hub without the hf command, and
+        # a cancelled install leaves the directory half written: curl covers both
+        hf_done=""
         if [ -d "${hf_lib}/huggingface_hub" ] || python3 -m pip install -q --target "${hf_lib}" 'huggingface_hub[hf_xet]'; then
             PYTHONPATH="${hf_lib}" python3 -m huggingface_hub.cli.hf \
-                download "${llamacpp_hf_repo}" "${todo[@]}" --local-dir "${dir}" \
-                || fail "Models" "hf download failed"
-        else
-            echo "::warning title=Models::huggingface_hub could not be installed; falling back to curl"
+                download "${llamacpp_hf_repo}" "${todo[@]}" --local-dir "${dir}" && hf_done=yes
+        fi
+        if [ -z "${hf_done}" ]; then
+            echo "::warning title=Models::the hf command is not available or failed; downloading with curl"
             for f in "${todo[@]}"; do
                 { set +x; } 2>/dev/null
                 printf '%s\n' "${curl_auth}" | curl -fL -C - --config - \
@@ -306,8 +316,9 @@ if [ -z "${oras_bin}" ]; then
         *) fail "Error" "unsupported architecture $(uname -m)" ;;
     esac
     curl -fsSL --connect-timeout 15 --max-time 300 -o oras.tar.gz \
-        "https://github.com/oras-project/oras/releases/download/v${VER}/oras_${VER}_linux_${ARCH}.tar.gz"
-    tar -xzf oras.tar.gz -C "${dir}" oras
+        "https://github.com/oras-project/oras/releases/download/v${VER}/oras_${VER}_linux_${ARCH}.tar.gz" \
+        || fail "Error" "could not download oras v${VER}"
+    tar -xzf oras.tar.gz -C "${dir}" oras || fail "Error" "could not unpack oras into ${dir}"
     rm -f oras.tar.gz
     chmod -R a+rX "${dir}"
     oras_bin="${dir}/oras"
@@ -342,16 +353,22 @@ pull_sif() {
     [ -f "${target}" ] && return 0
     echo "::group::SIF Download ${uri}"
     pull_dir=$(mktemp -d -p "${target%/*}")
-    # ghcr.io intermittently answers "toomanyrequests" to anonymous pulls;
-    # a short retry rides out the rate limit instead of failing the workflow
-    local attempt pulled=""
+    # Anonymously first, as tools/oras/libs.sh does: the packages are public,
+    # and a stale ghcr login in ~/.docker/config.json makes the registry answer
+    # "denied" for one. ghcr.io also intermittently answers "toomanyrequests"
+    # to anonymous pulls; a short retry rides out the rate limit.
+    local attempt pulled="" anon_config
+    anon_config=$(mktemp)
+    echo '{}' > "${anon_config}"
     for attempt in 1 2 3; do
-        if "${oras_bin}" pull "${uri}" -o "${pull_dir}"; then
+        if "${oras_bin}" pull --registry-config "${anon_config}" "${uri}" -o "${pull_dir}" \
+           || "${oras_bin}" pull "${uri}" -o "${pull_dir}"; then
             pulled=yes
             break
         fi
         [ "${attempt}" -lt 3 ] && sleep $((attempt * 5))
     done
+    rm -f "${anon_config}"
     [ -n "${pulled}" ] || fail "Error" "oras pull failed for ${uri} after ${attempt} attempts"
     pulled_sif=$(find "${pull_dir}" -name '*.sif' -type f | head -1)
     [ -s "${pulled_sif}" ] || fail "Error" "no SIF file found in ${uri}"

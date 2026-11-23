@@ -5,7 +5,6 @@
 
 set -x
 
-endpoint_port=$(pw agent open-port)
 svc_log="${PWD}/${engine}-${PW_JOB_ID}.out"
 launcher="${PWD}/launch-${engine}-${PW_JOB_ID}.sh"
 app_dir=${PW_PARENT_JOB_DIR}/workflows/llm-server/app
@@ -26,6 +25,7 @@ if [ "${engine}" = "llamacpp" ]; then
     fi
 
     served_model_name="$(basename "${llamacpp_model_path}" .gguf)"
+    endpoint_port=$(pw agent open-port)
     args=(--model "${llamacpp_model_path}" --alias "${served_model_name}"
           --ctx-size "${llamacpp_ctx_size:-0}" --host 127.0.0.1 --port "${endpoint_port}")
     [ -n "${llamacpp_mmproj_path}" ] && args+=(--mmproj "${llamacpp_mmproj_path}")
@@ -119,6 +119,10 @@ else
         echo "::error title=Error::cannot run or unpack ${container_sif}"
         exit 1
     fi
+
+    # Picked after the checks and the unpack above, which can take minutes: the
+    # port stays unbound until the engine has loaded the model
+    endpoint_port=$(pw agent open-port)
 
     # Per-job /tmp: the host /tmp is often small and shared, and the job dir
     # path is too long for ZMQ IPC sockets, so tmp paths must be the short

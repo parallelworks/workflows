@@ -245,6 +245,12 @@
   `cancel.sh` that scancels the recorded job ids — on cancel the submitter killed the
   process group and `cancel.sh` scancelled the running 10-node job (clever-blowfish).
   Handler jobs with `if: ${{ !success() }}` remain the hook for the *error* path.
+- **A step cancelled by `early-cancel` does not fail its job** (verified 2026-11-23,
+  `workflows/llm-server`, run precise-magpie): when `prepare_model` failed, the waiter's
+  `Wait for endpoint` step was cancelled, its second step was skipped, the
+  `cancel-jobs` step after it still ran, and the job read `completed`; the run ended
+  in `error` because of the job that failed. Do not read a `completed` waiter as "the
+  endpoint answered": the evidence is the run's status and the `SKIP_CLEANUP` file.
 - **A step's own `cleanup:` runs after a user cancel and after `early-cancel`**
   (verified 2026-11-10 on workspace jobs that each hold one long step open; the log
   lists it as `POST <step name>`), unlike the job-level list and the handler jobs of
@@ -375,6 +381,15 @@
   run completed 20 min late). A retried attempt whose `timeout` is shorter than queue +
   `ResumeTimeout` + walltime is cancelled before such a requeue gets to run
   (`workflows/openfoam-naca/yamls/general-restart.yaml`, `restart.attempt_timeout`).
+- **A cloud cluster whose deployment failed still reads `provisioning` in `pw cluster ls`**
+  (observed 2026-11-23, an AWS GPU cluster): the controller's instance type had no
+  capacity in its availability zone (`InsufficientInstanceCapacity`), the deployment
+  ended `failed` after 13 minutes and the listing never changed, so a wait on `active`
+  never returns. `pw cluster view <cluster>` shows `Deployment: #N failed` and the
+  provider's error under the step that failed. `pw cluster start` only follows a
+  cluster that is on its way up, and a dry-run that names it answers `Compute resource
+  is stopped or disconnected`; another zone or instance type is the owner's change to
+  make in the cluster's definition.
 - **The test runner counts every queued job of the user after a scheduled test**
   (`squeue -h -u $USER`), not only the test's own: an interactive `srun bash` running
   meanwhile makes the row read `cleanup=leftover:squeue` (2026-10-16). Check with
@@ -792,6 +807,16 @@
   serves longer than the wait turns into a false `leftover:proc:pw endpoints run`. Run the
   tests of one resource sequentially (one `run-workflow-test.py` invocation takes several
   test files and runs them in order).
+
+- **A GPU test on a server other accounts use can run their job out of memory**
+  (2026-11-23, an existing GPU server): a fine-tune of another account held 23.3 of
+  24.6 GB of the one large GPU, and an inference engine started by a test allocates on
+  device 0 by default. Before a GPU test on a shared machine, look at who holds the
+  GPUs (`nvidia-smi --query-compute-apps=pid,used_memory,process_name --format=csv`,
+  then `ps -o user= -p <pid>`), and ask before sharing one. The failure paths are
+  GPU-free and still run: a model path that does not exist ends the start script before
+  the engine starts, a model id that cannot be downloaded ends `prepare_model`
+  (`workflows/llm-server/tests/general/a30-missing-model.json`, `a30-bad-model-id.json`).
 
 - **Every PROBE test of a workflow failing at launch with `Missing required fields:
   Service host` (`#/resource`) is a definition whose `inputs` no longer match the form**

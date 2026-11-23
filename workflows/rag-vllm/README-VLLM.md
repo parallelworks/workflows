@@ -1,6 +1,6 @@
 # ACTIVATE — vLLM
 
-This Compose stack runs from the [github repo here](https://github.com/parallelworks/activate-rag-vllm) and executes the below services in Docker or Singularity modes:
+This Compose stack runs from [workflows/rag-vllm](https://github.com/parallelworks/workflows/tree/canary/workflows/rag-vllm) in the parallelworks/workflows repo and executes the below services in Docker or Singularity modes:
 
 - **vLLM** model server (OpenAI-compatible)
 - **Open WebUI** (optional) pointing to the Proxy

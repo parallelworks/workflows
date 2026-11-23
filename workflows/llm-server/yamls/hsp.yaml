@@ -1,0 +1,1224 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+---
+# LLM server: serves a model behind an OpenAI-compatible pw endpoint with
+# one of three engines.
+#   vllm      safetensors checkpoints from Hugging Face, in a SIF image
+#   sglang    safetensors checkpoints from Hugging Face, in a SIF image
+#   llamacpp  GGUF files, with a prebuilt llama-server binary
+# HSP (activate.hpc.mil) deployment variant.
+#
+# SIF images are pulled once from ghcr.io as ORAS artifacts; nodes that cannot
+# mount squashfs images get a sandbox directory unpacked from them on demand.
+# The run completes once the endpoint registers and the service lives on;
+# tear it down with `pw endpoints delete <name>`.
+
+permissions:
+  - '*'
+
+jobs:
+  preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: canary
+          sparse_checkout:
+            - workflows/llm-server/app
+      - name: Create Inputs
+        run: |
+          set -x
+          # Write PW variables
+          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
+          # Encase values between quotes
+          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          engine="${{ inputs.engine }}"
+          endpoint_name="$(printf '%s' '${{ inputs.service.endpoint_name }}' | sed 's/^undefined$//' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
+          endpoint_name="${endpoint_name:-${engine}-${PW_RUN_SLUG}}"
+          # Write input form variables and ensure the pw agent is in the PATH
+          cat <<'EOF' >> inputs.sh
+          PATH=$HOME/pw:$PATH
+          engine="${{ inputs.engine }}"
+          service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
+          model_source="${{ inputs.model.source }}"
+          model_local_path="${{ inputs.model.local_path }}"
+          hf_model_id="${{ inputs.model.hf_model_id }}"
+          cached_model_id="${{ inputs.model.cached_model_id }}"
+          model_cache_dir="${{ inputs.model.cache_dir }}"
+          chat_template_override="${{ inputs.vllm.chat_template }}"
+          vllm_attention_backend="${{ inputs.vllm.attention_backend }}"
+          llamacpp_hf_repo="${{ inputs.llamacpp.hf_repo }}"
+          llamacpp_gguf_file="${{ inputs.llamacpp.gguf_file }}"
+          llamacpp_vision="${{ inputs.llamacpp.vision }}"
+          llamacpp_mmproj_file="${{ inputs.llamacpp.mmproj_file }}"
+          llamacpp_speculative="${{ inputs.llamacpp.speculative }}"
+          llamacpp_draft_file="${{ inputs.llamacpp.draft_file }}"
+          llamacpp_ctx_size="${{ inputs.llamacpp.ctx_size }}"
+          llamacpp_extra_args="${{ inputs.llamacpp.extra_args }}"
+          llamacpp_gpu_ids="${{ inputs.llamacpp.gpu_ids }}"
+          llamacpp_release_url="${{ inputs.llamacpp.release_url }}"
+          llamacpp_models_dir="${{ inputs.llamacpp.models_dir }}"
+          EOF
+          echo "pw_endpoints_args=\"--name ${endpoint_name} --openai\"" >> inputs.sh
+          case "${engine}" in
+            vllm)
+              echo 'container_uri="${{ inputs.vllm.container_uri }}"' >> inputs.sh
+              echo 'hf_token="${{ inputs.model.hf_token }}"' >> inputs.sh
+              vllm_args="--tensor-parallel-size ${{ inputs.vllm.num_gpus }} --gpu-memory-utilization ${{ inputs.vllm.gpu_memory }}"
+              if [ "${{ inputs.vllm.dtype }}" != "custom" ]; then
+                vllm_args="--dtype ${{ inputs.vllm.dtype }} ${vllm_args}"
+              fi
+              if [ "${{ inputs.vllm.max_model_len }}" != "auto" ]; then
+                vllm_args="${vllm_args} --max-model-len ${{ inputs.vllm.max_model_len }}"
+              fi
+              vllm_args="${vllm_args} ${{ inputs.vllm.extra_args }}"
+              echo "vllm_args=\"${vllm_args}\"" >> inputs.sh
+              ;;
+            sglang)
+              echo 'container_uri="${{ inputs.sglang.container_uri }}"' >> inputs.sh
+              echo 'hf_token="${{ inputs.model.hf_token }}"' >> inputs.sh
+              sglang_args="--tp ${{ inputs.sglang.num_gpus }} --mem-fraction-static ${{ inputs.sglang.mem_fraction }}"
+              if [ "${{ inputs.sglang.context_length }}" != "auto" ]; then
+                sglang_args="${sglang_args} --context-length ${{ inputs.sglang.context_length }}"
+              fi
+              sglang_args="${sglang_args} ${{ inputs.sglang.extra_args }}"
+              echo "sglang_args=\"${sglang_args}\"" >> inputs.sh
+              ;;
+            llamacpp)
+              echo 'hf_token="${{ inputs.llamacpp.hf_token }}"' >> inputs.sh
+              ;;
+          esac
+          # Remove empty variables
+          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
+          sed -i '/=""/d' inputs.sh
+          sed -i '/="undefined"/d' inputs.sh
+          # Add export to all lines
+          sed -i 's/^/export /' inputs.sh
+          echo "ENDPOINT_NAME=${endpoint_name}" | tee -a $OUTPUTS
+      - name: Controller Preprocessing
+        early-cancel: any-job-failed
+        run: |
+          set -x
+          if [ ! -s workflows/llm-server/app/controller.sh ]; then
+              echo "::error title=Error::controller.sh not found in the checkout"
+              exit 1
+          fi
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/llm-server/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          if [ ! -s workflows/llm-server/app/start-template.sh ]; then
+              echo "::error title=Error::start-template.sh not found in the checkout"
+              exit 1
+          fi
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+
+          cat workflows/llm-server/app/start-template.sh >> start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  prepare_model:
+    if: ${{ inputs.engine != 'llamacpp' && inputs.model.source == 'huggingface' }}
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Download Model
+        early-cancel: any-job-failed
+        run: |
+          set -o pipefail
+          set -x
+          MODEL_ID="${{ inputs.model.hf_model_id }}"
+          HF_TOKEN="${{ inputs.model.hf_token }}"
+          CACHE_DIR="${{ inputs.model.cache_dir }}"
+          if [ -z "${CACHE_DIR}" ] || [ "${CACHE_DIR}" = "undefined" ]; then
+              CACHE_DIR="${PROJECTS_HOME:-$HOME/pw}/hsp/models"
+          fi
+          CACHE_DIR="${CACHE_DIR/#\~/$HOME}"
+          NAME="${MODEL_ID##*/}"
+          # A shared cache (<shared software directory>/models on NOAA) is usually owned by whoever
+          # staged it first: a model already there is served read-only by every
+          # account, and one that still has to be downloaded goes there only when this
+          # account can write it, otherwise into a private cache. start-template.sh
+          # looks in both.
+          PRIVATE_CACHE_DIR="${HOME}/pw/software/models"
+
+          validate_model() {
+              [ -s "$1/config.json" ] || return 1
+              local f
+              f=$(find "$1" -maxdepth 1 \( -name '*.safetensors' -o -name '*.bin' \) -size +1M 2>/dev/null | head -1)
+              [ -n "$f" ]
+          }
+          usable_dir() { # writable if it exists, creatable if it does not
+              if [ -d "$1" ]; then [ -w "$1" ]; else mkdir -p "$1" 2>/dev/null; fi
+          }
+          # Leaves what this run uses from a shared cache group-writable so any project
+          # member can refresh it; best effort, and nothing to do for a private path
+          share() {
+              case "$1" in "${HOME}"/*) return 0 ;; esac
+              chmod -R g+rwX,o+rX "$1" 2>/dev/null
+              find "$1" -type d -exec chmod g+s {} + 2>/dev/null
+              chmod g+rwx,o+rx "${1%/*}" 2>/dev/null
+              chmod g+s "${1%/*}" 2>/dev/null
+              return 0
+          }
+
+          for d in "${CACHE_DIR}" "${PRIVATE_CACHE_DIR}"; do
+              if validate_model "${d}/${NAME}"; then
+                  share "${d}/${NAME}"
+                  echo "Model already cached at ${d}/${NAME}"
+                  exit 0
+              fi
+          done
+          if ! usable_dir "${CACHE_DIR}/${NAME}"; then
+              echo "::warning::${CACHE_DIR} is not writable; downloading ${MODEL_ID} into ${PRIVATE_CACHE_DIR}"
+              CACHE_DIR="${PRIVATE_CACHE_DIR}"
+              if ! usable_dir "${CACHE_DIR}/${NAME}"; then
+                  echo "::error title=Error::cannot create ${CACHE_DIR}/${NAME}"
+                  exit 1
+              fi
+          fi
+          TARGET_DIR="${CACHE_DIR}/${NAME}"
+          # Keep HF working caches off the small $HOME filesystem where possible
+          export HF_HOME="${CACHE_DIR}/cache"
+          usable_dir "${HF_HOME}" || export HF_HOME="${PRIVATE_CACHE_DIR}/cache"
+
+          VENV_BASE="${{ inputs.service.parent_install_dir }}"
+          if [ -z "${VENV_BASE}" ] || [ "${VENV_BASE}" = "undefined" ]; then
+              VENV_BASE=${HOME}/pw/software
+          fi
+          HF_BIN=""
+          for d in "${VENV_BASE/#\~/$HOME}/.hfcli" "${HOME}/pw/software/.hfcli"; do
+              for b in "${d}/bin/hf" "${d}/bin/huggingface-cli"; do
+                  if [ -x "${b}" ]; then
+                      HF_BIN="${b}"
+                      break 2
+                  fi
+              done
+          done
+          if [ -z "${HF_BIN}" ]; then
+              VENV="${VENV_BASE/#\~/$HOME}/.hfcli"
+              usable_dir "${VENV}" || VENV="${HOME}/pw/software/.hfcli"
+              if ! python3 -m venv "${VENV}"; then
+                  echo "::error title=Error::python3 -m venv failed; install python3/python3-venv on the cluster"
+                  exit 1
+              fi
+              "${VENV}/bin/pip" install --quiet --upgrade 'huggingface_hub[hf_transfer]'
+              share "${VENV}"
+              HF_BIN="${VENV}/bin/hf"
+              [ -x "${HF_BIN}" ] || HF_BIN="${VENV}/bin/huggingface-cli"
+          fi
+
+          if [ -n "${HF_TOKEN}" ] && [ "${HF_TOKEN}" != "undefined" ]; then
+              export HF_TOKEN
+          fi
+          # hf download is incremental: it resumes a partial download in place
+          # and only fetches files that are missing or changed
+          export HF_HUB_ENABLE_HF_TRANSFER=1
+          for attempt in 1 2 3; do
+              if "${HF_BIN}" download "${MODEL_ID}" --local-dir "${TARGET_DIR}" \
+                  --exclude "original/*" --exclude "metal/*" --exclude "*.bin" \
+                  --exclude "*.gguf" --exclude "*.onnx" --exclude "consolidated*.pth"; then
+                  break
+              fi
+              if [ "${attempt}" = 3 ]; then
+                  echo "::error title=Error::model download failed after 3 attempts"
+                  exit 1
+              fi
+              # hf_transfer can be flaky on some networks; retry without it
+              unset HF_HUB_ENABLE_HF_TRANSFER
+              sleep $((attempt * 5))
+          done
+
+          # Some models only ship bin weights
+          if ! ls "${TARGET_DIR}"/*.safetensors >/dev/null 2>&1; then
+              "${HF_BIN}" download "${MODEL_ID}" --local-dir "${TARGET_DIR}" --include "*.bin"
+          fi
+
+          if ! validate_model "${TARGET_DIR}"; then
+              echo "::error title=Error::downloaded model at ${TARGET_DIR} is incomplete"
+              exit 1
+          fi
+          share "${TARGET_DIR}"
+          share "${HF_HOME}"
+          echo "Model ready at ${TARGET_DIR}"
+
+  script_submitter:
+    needs:
+      - preprocessing
+      - prepare_model
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Script Submitter
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/hsp.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            account: ${{ inputs.cluster.slurm.account }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            qos: ${{ inputs.cluster.slurm.qos }}
+            cpus_per_task: ${{ inputs.cluster.slurm.cpus_per_task }}
+            nodes: ${{ inputs.cluster.slurm.nodes }}
+            node_type: ${{ inputs.cluster.slurm.node_type }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            time: ${{ inputs.cluster.slurm.time }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            account: ${{ inputs.cluster.pbs.account }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ needs.preprocessing.outputs.ENDPOINT_NAME }}
+          host: ${{ inputs.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          healthy: '2*|3*|401'
+          path: /v1/models
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - script_submitter
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: GPU cluster
+        autoselect: true
+        include-workspace: false
+      engine:
+        label: Inference engine
+        type: dropdown
+        default: vllm
+        tooltip: |
+          vLLM and SGLang serve safetensors checkpoints from Hugging Face on GPUs.
+          llama.cpp serves quantized GGUF files and fits larger models on smaller GPUs.
+        options:
+          - value: vllm
+            label: vLLM
+          - value: sglang
+            label: SGLang
+          - value: llamacpp
+            label: llama.cpp (GGUF)
+      cluster:
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
+        type: group
+        label: Compute cluster settings
+        items:
+          scheduler:
+            type: boolean
+            default: true
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
+          slurm:
+            type: group
+            label: SLURM directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              account:
+                label: SLURM account
+                type: slurm-accounts
+                resource: ${{ inputs.resource }}
+                tooltip: '--account=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+                tooltip: '--partition=value slurm directive'
+              qos:
+                label: Quality of service (QoS)
+                type: slurm-qos
+                resource: ${{ inputs.resource }}
+                tooltip: '--qos=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              cpus_per_task:
+                label: CPUs per task
+                type: number
+                default: 1
+                step: 1
+                tooltip: '--cpus-per-task= SLURM directive to set the number of CPUs per task'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              nodes:
+                label: Number of nodes
+                type: number
+                default: 1
+                step: 1
+                tooltip: '--nodes=value slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider }}
+                hidden: ${{ .ignore }}
+              node_type:
+                label: Node type
+                type: dropdown
+                optional: true
+                default: ""
+                option-key: ${{ inputs.resource.ip }}
+                tooltip: '--constraint=<value> slurm directive'
+                ignore: ${{ 'existing' != inputs.resource.provider || (inputs.resource.ip != 'blueback.navydsrc.hpc.mil' && inputs.resource.ip != 'narwhal.navydsrc.hpc.mil' && inputs.resource.ip != 'nautilus.navydsrc.hpc.mil' && inputs.resource.ip != 'raider.afrl.hpc.mil' && inputs.resource.ip != 'crux.mhpcc.hpc.mil') }}
+                hidden: ${{ .ignore }}
+                options:
+                  blueback.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  narwhal.navydsrc.hpc.mil:
+                    - standard
+                    - bigmem
+                    - mla
+                    - smla
+                    - dmla
+                    - viz
+                    - transfer
+                  nautilus.navydsrc.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  raider.afrl.hpc.mil:
+                    - standard
+                    - highclock
+                    - bigmem
+                    - mla
+                    - viz
+                    - transfer
+                  crux.mhpcc.hpc.mil:
+                    - AMD
+                    - Intel
+              time:
+                label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
+                type: string
+                default: '04:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              scheduler_directives:
+                type: editor
+                label: Scheduler directives
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --nodelist=<node-name>
+                default: |
+                  ##SBATCH --gres=gpu:1 # uncomment for gpus on onprem systems
+                  ##SBATCH --constraint=mla # uncomment for Navy and AFRL DSRC systems
+          pbs:
+            type: group
+            label: PBS directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              account:
+                label: Account
+                type: string
+                tooltip: PBS account for job submission (-A)
+              scheduler_directives:
+                label: Scheduler directives
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+
+
+      model:
+        type: group
+        label: Model
+        hidden: ${{ inputs.engine == 'llamacpp' }}
+        ignore: ${{ .hidden }}
+        items:
+          source:
+            type: dropdown
+            label: Model source
+            default: huggingface
+            tooltip: Use a pre-downloaded model (local) or download from Hugging Face
+            options:
+              - value: local
+                label: "📁 Local Path (pre-staged weights)"
+              - value: huggingface
+                label: "🤗 HuggingFace Download"
+              - value: cached_model
+                label: "Cached Model"
+          cached_model_id:
+            type: dropdown
+            label: Cached model
+            default: openai/gpt-oss-20b
+            hidden: ${{ inputs.model.source != 'cached_model' }}
+            ignore: ${{ inputs.model.source != 'cached_model' }}
+            options:
+              - value: openai/gpt-oss-20b
+                label: "openai/gpt-oss-20b"
+              - value: openai/gpt-oss-120b
+                label: "openai/gpt-oss-120b"
+          local_path:
+            type: string
+            label: Model path
+            placeholder: /path/to/model/weights
+            tooltip: Full path to the directory holding the model weights and config.json
+            hidden: ${{ inputs.model.source != 'local' }}
+            ignore: ${{ inputs.model.source != 'local' }}
+          hf_model_id:
+            type: string
+            label: HuggingFace model ID
+            placeholder: openai/gpt-oss-20b
+            default: openai/gpt-oss-20b
+            prefillDefault: true
+            tooltip: Model ID to download from Hugging Face. Downloaded once into the model cache directory and reused.
+            hidden: ${{ inputs.model.source != 'huggingface' }}
+            ignore: ${{ inputs.model.source != 'huggingface' }}
+          hf_token:
+            label: HuggingFace token
+            description: Required for gated models such as Llama.
+            default: ${{ org.HF_TOKEN }}
+            type: password
+            optional: true
+            hidden: ${{ inputs.model.source != 'huggingface' }}
+            ignore: ${{ inputs.model.source != 'huggingface' }}
+          cache_dir:
+            type: string
+            label: Model cache directory
+            description: Downloaded once and reused by later runs; needs disk space.
+            default: ${PROJECTS_HOME:-$HOME/pw}/hsp/models
+            prefillDefault: true
+            tooltip: Directory holding downloaded and pre-cached models ($PROJECTS_HOME defaults to $HOME/pw if unset).
+            hidden: ${{ inputs.model.source == 'local' }}
+            ignore: ${{ inputs.model.source == 'local' }}
+
+      vllm:
+        type: group
+        label: vLLM settings
+        collapsed: true
+        hidden: ${{ inputs.engine != 'vllm' }}
+        ignore: ${{ .hidden }}
+        items:
+          num_gpus:
+            type: dropdown
+            label: Number of GPUs
+            description: Tensor parallelism; must match the GPUs available.
+            default: "1"
+            options:
+              - value: "1"
+                label: "1 GPU"
+              - value: "2"
+                label: "2 GPUs"
+              - value: "4"
+                label: "4 GPUs"
+              - value: "8"
+                label: "8 GPUs"
+          gpu_memory:
+            type: dropdown
+            label: GPU memory utilization
+            description: Lower it on out-of-memory errors.
+            default: "0.85"
+            options:
+              - value: "0.95"
+                label: "95% (Maximum)"
+              - value: "0.92"
+                label: "92%"
+              - value: "0.90"
+                label: "90%"
+              - value: "0.85"
+                label: "85% (Recommended)"
+              - value: "0.80"
+                label: "80%"
+              - value: "0.70"
+                label: "70% (Conservative)"
+          max_model_len:
+            type: string
+            label: Max context length
+            description: Tokens, or auto for the model's default. Lower values use less memory.
+            default: "auto"
+          dtype:
+            type: dropdown
+            label: Data type
+            description: Custom takes --dtype from the additional arguments.
+            default: bfloat16
+            options:
+              - value: bfloat16
+                label: "bfloat16 (Recommended for A100/H100)"
+              - value: float16
+                label: "float16 (Better compatibility)"
+              - value: auto
+                label: "Auto (model default)"
+              - value: custom
+                label: "Custom (specify in extra args)"
+          attention_backend:
+            type: dropdown
+            label: Attention backend
+            default: TRITON_ATTN
+            options: [FLASH_ATTN, TRITON_ATTN, FLASHINFER, FLASHINFER_MLA, TRITON_MLA, CUTLASS_MLA, FLASHMLA, FLASHMLA_SPARSE, FLASH_ATTN_MLA, TORCH_SDPA, ROCM_ATTN, ROCM_AITER_MLA, ROCM_AITER_TRITON_MLA, ROCM_AITER_FA, PALLAS, IPEX, CPU_ATTN, NO_ATTENTION, CUSTOM]
+          extra_args:
+            type: string
+            label: Additional arguments
+            default: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
+            prefillDefault: true
+            tooltip: Additional vLLM server arguments. If dtype is Custom, include --dtype here. JSON values do not survive the quoting; use dotted keys such as --speculative-config.method instead.
+            optional: true
+          chat_template:
+            type: string
+            label: Chat template override
+            description: Leave blank to auto-detect; needed for models whose tokenizer ships no template.
+            optional: true
+            default: ""
+            tooltip: >
+              Path on the cluster to a Jinja2 chat template, for checkpoints whose
+              tokenizer ships none (base models such as OLMo). Left blank, the
+              tokenizer's own template is used, and a bundled Alpaca-style
+              template only when the model has none.
+          container_uri:
+            label: vLLM container
+            type: string
+            default: ghcr.io/parallelworks/vllm:v1.0
+            tooltip: ORAS artifact holding the vLLM SIF image. <name>:<tag> is stored as containers/<name>.sif under the install directory and reused while that file exists.
+
+      sglang:
+        type: group
+        label: SGLang settings
+        collapsed: true
+        hidden: ${{ inputs.engine != 'sglang' }}
+        ignore: ${{ .hidden }}
+        items:
+          num_gpus:
+            type: dropdown
+            label: Number of GPUs
+            description: Tensor parallelism; must match the GPUs available.
+            default: "1"
+            options:
+              - value: "1"
+                label: "1 GPU"
+              - value: "2"
+                label: "2 GPUs"
+              - value: "4"
+                label: "4 GPUs"
+              - value: "8"
+                label: "8 GPUs"
+          mem_fraction:
+            type: string
+            label: Static memory fraction
+            description: Share of GPU memory for weights and KV cache; lower it on out-of-memory errors.
+            default: "0.88"
+          context_length:
+            type: string
+            label: Context length
+            description: Tokens, or auto for the model's default.
+            default: "auto"
+          extra_args:
+            type: string
+            label: Additional arguments
+            optional: true
+            default: "--max-running-requests 8"
+            tooltip: Additional sglang.launch_server arguments, such as --reasoning-parser, --tool-call-parser, or --speculative-algorithm.
+          container_uri:
+            label: SGLang container
+            type: string
+            default: ghcr.io/parallelworks/sglang-inkling-2-mini:v1
+            tooltip: |
+              ORAS artifact holding the SGLang SIF image. <name>:<tag> is stored as
+              containers/<name>.sif under the install directory and reused while that
+              file exists. Compiled kernels are kept in cache/sglang there, so only the
+              first start on a GPU type compiles them.
+
+      llamacpp:
+        type: group
+        label: llama.cpp settings
+        hidden: ${{ inputs.engine != 'llamacpp' }}
+        ignore: ${{ .hidden }}
+        items:
+          hf_repo:
+            label: Hugging Face repository
+            type: string
+            default: unsloth/Inkling-2-Mini-GGUF
+            tooltip: GGUF repository on Hugging Face. Files are downloaded once and reused across runs.
+          gguf_file:
+            label: GGUF file
+            type: string
+            default: Inkling-2-Mini-UD-Q4_K_XL.gguf
+            tooltip: |
+              Quantization to serve. For Inkling 2 Mini, UD-Q4_K_XL (17.6 GB) is the model
+              card's recommendation and fits a 24 GB GPU; UD-Q8_K_XL (22.9 GB) is full
+              precision and suits a GPU with 40 GB or more.
+          vision:
+            label: Enable image input
+            type: boolean
+            default: true
+          mmproj_file:
+            label: Vision projector file
+            type: string
+            default: mmproj-F16.gguf
+            hidden: ${{ inputs.llamacpp.vision == false }}
+            ignore: ${{ .hidden }}
+          speculative:
+            label: Enable speculative decoding
+            type: boolean
+            default: false
+            tooltip: |
+              DSpark speculative decoding with the drafter in the same repository. It
+              needs memory beside the model and its own KV cache for the same window.
+          draft_file:
+            label: Drafter file
+            type: string
+            default: dspark-Inkling-2-Mini-Q8_0.gguf
+            hidden: ${{ inputs.llamacpp.speculative == false }}
+            ignore: ${{ .hidden }}
+          ctx_size:
+            label: Context size
+            type: number
+            default: 32768
+            tooltip: Context window in tokens; 0 uses the model's trained maximum. The KV cache grows with the window.
+          extra_args:
+            label: Extra llama-server arguments
+            type: string
+            default: --jinja --parallel 1 --flash-attn on --fit off -ngl all --ubatch-size 256 --cache-type-k q8_0 --cache-type-v q8_0 --temp 1.0 --top-p 1.0 --top-k 0 --min-p 0.0
+            tooltip: |
+              --jinja applies the model's chat template and is required for tool calling.
+              --parallel 1 gives one request the whole context. The default places every
+              layer on the GPU (--fit off -ngl all) with a smaller micro-batch and a q8_0
+              KV cache, which fits UD-Q4_K_XL, the projector, and 32K context in 24 GB.
+          gpu_ids:
+            label: GPU IDs
+            type: string
+            optional: true
+            tooltip: CUDA_VISIBLE_DEVICES for the server, e.g. 0. Leave empty under a scheduler, which assigns the GPU.
+          release_url:
+            label: llama.cpp build
+            type: string
+            default: https://github.com/unslothai/llama.cpp/releases/download/b12588-mix-c0c3de8/app-b12588-mix-c0c3de8-linux-x64-cuda12-portable.tar.gz
+            tooltip: |
+              Prebuilt llama-server tarball. Unsloth's build reads the looped-layer GGUF
+              layout of Inkling 2 Mini, which mainline llama.cpp does not yet. Any Linux
+              CUDA build of llama.cpp works for other models.
+          models_dir:
+            label: Model directory
+            type: string
+            optional: true
+            tooltip: |
+              Directory holding <repository name>/<file>. Left empty, the run reuses a
+              store that already holds every file (llamacpp/models under the install
+              directory, the work filesystem, then home) and otherwise downloads into
+              the first writable one.
+          hf_token:
+            label: Hugging Face token
+            type: password
+            optional: true
+            default: ${{ org.HF_TOKEN }}
+            tooltip: Needed only for gated repositories.
+
+      service:
+        type: group
+        label: Advanced settings
+        collapsed: true
+        items:
+          endpoint_name:
+            label: Endpoint name
+            description: Defaults to <engine>-<run slug>; a fixed name keeps chat model ids stable across relaunches.
+            type: string
+            optional: true
+            tooltip: The name becomes a DNS label, so it is folded to lowercase and anything outside a-z 0-9 - becomes a dash.
+          parent_install_dir:
+            label: Parent install directory
+            description: Needs enough free space for the container images.
+            type: string
+            default: ${PROJECTS_HOME:-$HOME/pw}/hsp
+            tooltip: Images go to containers/, tools and caches beside them ($PROJECTS_HOME defaults to $HOME/pw if unset). Shared with rag-vllm, so images it staged are reused.
+
+# ==============================================================================
+# CONFIGURATIONS
+# ==============================================================================
+configurations:
+  Blueback-gpt-oss-20b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 1
+          is_enabled: true
+          nodes: 1
+          # Blueback's only CUDA GPUs are the visualization nodes' single
+          # NVIDIA L40 48GB; its AI/ML nodes are AMD MI300A APUs, which the
+          # CUDA vLLM container cannot use. 20b (~13GiB of weights) fits on
+          # one L40; 120b does not fit on this system.
+          node_type: viz
+          qos: standard
+          scheduler_directives: "#SBATCH --gres=gpu:l40:1"
+          time: "01:00:00"
+      model:
+        source: cached_model
+        hf_token: ${{ org.HF_TOKEN }}
+      vllm:
+        dtype: bfloat16
+        extra_args: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
+        gpu_memory: "0.90"
+        max_model_len: "auto"
+        num_gpus: "1"
+        attention_backend: TRITON_ATTN
+
+  Carpenter-gpt-oss-20b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        pbs:
+          scheduler_directives: |
+            #PBS -q HIE
+            #PBS -l select=1:ncpus=128:mpiprocs=1:ngpus=1
+            #PBS -l walltime=01:00:00
+            #PBS -V
+      model:
+        source: cached_model
+        hf_token: ${{ org.HF_TOKEN }}
+      vllm:
+        dtype: bfloat16
+        extra_args: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
+        gpu_memory: "0.90"
+        max_model_len: "auto"
+        num_gpus: "1"
+        attention_backend: TRITON_ATTN
+
+  Jean-gpt-oss-20b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 1
+          is_enabled: true
+          nodes: 1
+          partition: AIML
+          qos: normal
+          # Explicit gres so Slurm sets CUDA_VISIBLE_DEVICES and the job never
+          # shares GPUs if the AIML partition schedules nodes non-exclusively
+          scheduler_directives: "#SBATCH --gres=gpu:1"
+          time: '01:00:00'
+      model:
+        source: cached_model
+        hf_token: ${{ org.HF_TOKEN }}
+      vllm:
+        dtype: bfloat16
+        extra_args: '--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai'
+        gpu_memory: '0.90'
+        max_model_len: auto
+        num_gpus: '1'
+        attention_backend: TRITON_ATTN
+
+  Jean-gpt-oss-120b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 1
+          is_enabled: true
+          nodes: 1
+          partition: AIML
+          qos: normal
+          # 120b is sharded across 4 H100s for KV-cache headroom; explicit
+          # gres so Slurm sets CUDA_VISIBLE_DEVICES and the job never shares
+          # GPUs if the AIML partition schedules nodes non-exclusively
+          scheduler_directives: "#SBATCH --gres=gpu:4"
+          time: '01:00:00'
+      model:
+        source: cached_model
+        cached_model_id: openai/gpt-oss-120b
+        hf_token: ${{ org.HF_TOKEN }}
+      vllm:
+        dtype: bfloat16
+        extra_args: '--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai'
+        gpu_memory: '0.90'
+        max_model_len: auto
+        num_gpus: '4'
+        attention_backend: TRITON_ATTN
+
+
+  Makau-gpt-oss-20b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 1
+          is_enabled: true
+          nodes: 1
+          partition: standard
+          qos: standard
+          scheduler_directives: "#SBATCH --gres=gpu:h100_nvl:1"
+          time: "01:00:00"
+      model:
+        source: cached_model
+        hf_token: ${{ org.HF_TOKEN }}
+      vllm:
+        dtype: bfloat16
+        extra_args: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
+        gpu_memory: "0.90"
+        max_model_len: "auto"
+        num_gpus: "1"
+        attention_backend: TRITON_ATTN
+
+  Makau-gpt-oss-120b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 1
+          is_enabled: true
+          nodes: 1
+          partition: standard
+          qos: standard
+          # 120b needs 4x H100 SXM5 (80GB): weights alone are ~64GiB, so a
+          # single GPU leaves no room for the KV cache
+          scheduler_directives: "#SBATCH --gres=gpu:h100_sxm5:4"
+          time: "01:00:00"
+      model:
+        source: cached_model
+        cached_model_id: openai/gpt-oss-120b
+        hf_token: ${{ org.HF_TOKEN }}
+      vllm:
+        dtype: bfloat16
+        extra_args: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
+        gpu_memory: "0.90"
+        max_model_len: "auto"
+        num_gpus: "4"
+        attention_backend: TRITON_ATTN
+
+  # Inkling 2 Mini on one 94 GB H100 NVL at its full 1M-token window, three
+  # ways. Measured on Makau (single runs, DSpark drafter where noted):
+  #   SGLang     ready in 112 s with the kernel cache warm (531 s cold);
+  #              232K-token prompt 24 s to first token, 388K 49 s; cached
+  #              follow-up 0.13 s; 180 to 585 tok/s
+  #   vLLM       ready in 141 s; 232K 29 s, 388K 69 s; cached follow-up
+  #              0.75 s; 200 to 560 tok/s
+  #   llama.cpp  UD-Q8_K_XL, no drafter; 232K 204 s, 388K 379 s; 37 to 44 tok/s
+  Makau-Inkling-2-Mini:
+    inputs:
+      engine: sglang
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 8
+          is_enabled: true
+          nodes: 1
+          partition: standard
+          qos: standard
+          scheduler_directives: "#SBATCH --gres=gpu:h100_nvl:1"
+          time: "04:00:00"
+      model:
+        source: huggingface
+        hf_model_id: thinkingmachines/Inkling-2-Mini
+        hf_token: ${{ org.HF_TOKEN }}
+      sglang:
+        num_gpus: "1"
+        mem_fraction: "0.88"
+        context_length: "1048576"
+        extra_args: "--max-running-requests 8 --reasoning-parser inkling --tool-call-parser inkling2 --enable-multimodal --speculative-algorithm DSPARK"
+        # lmsysorg/sglang at digest sha256:efac853b4681..., staged as
+        # $PROJECTS_HOME/hsp/containers/sglang-inkling-2-mini.sif
+        container_uri: ghcr.io/parallelworks/sglang-inkling-2-mini:v1
+      service:
+        endpoint_name: inkling2-mini
+
+  Makau-Inkling-2-Mini-vLLM:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 8
+          is_enabled: true
+          nodes: 1
+          partition: standard
+          qos: standard
+          scheduler_directives: "#SBATCH --gres=gpu:h100_nvl:1"
+          time: "04:00:00"
+      model:
+        source: huggingface
+        hf_model_id: thinkingmachines/Inkling-2-Mini
+        hf_token: ${{ org.HF_TOKEN }}
+      vllm:
+        dtype: auto
+        # The DSpark drafter is set with dotted keys: a JSON value would not
+        # survive the quoting of vllm_args
+        extra_args: "--max-num-seqs 8 --enable-prefix-caching --reasoning-parser inkling --enable-auto-tool-choice --tool-call-parser inkling --speculative-config.method dspark --speculative-config.num_speculative_tokens 7 --speculative-config.draft_sample_method probabilistic"
+        gpu_memory: "0.92"
+        max_model_len: "1048576"
+        num_gpus: "1"
+        attention_backend: FLASH_ATTN
+        # Inkling 2 Mini support is only in vLLM nightlies so far: the
+        # vllm/vllm-openai nightly at digest sha256:7474ce29a070..., staged as
+        # $PROJECTS_HOME/hsp/containers/vllm-openai-nightly-20261123.sif. The
+        # Inkling-specific image tag lacks H100 (sm90) kernels.
+        container_uri: ghcr.io/parallelworks/vllm-openai-nightly-20261123:v1
+      service:
+        endpoint_name: inkling2-mini-vllm
+
+  Makau-Inkling-2-Mini-llama.cpp:
+    inputs:
+      engine: llamacpp
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 8
+          is_enabled: true
+          nodes: 1
+          partition: standard
+          qos: standard
+          scheduler_directives: "#SBATCH --gres=gpu:h100_nvl:1"
+          time: "04:00:00"
+      llamacpp:
+        # Full-precision quant, projector, and the full window use 93 of
+        # 95.8 GB; the drafter does not fit beside a 1M window
+        gguf_file: Inkling-2-Mini-UD-Q8_K_XL.gguf
+        speculative: false
+        ctx_size: 1048576
+        extra_args: --jinja --parallel 1 --flash-attn on --fit off -ngl all --batch-size 2048 --ubatch-size 2048 --temp 1.0 --top-p 1.0 --top-k 0 --min-p 0.0
+      service:
+        endpoint_name: inkling2-mini-llamacpp
+
+  Nautilus-gpt-oss-20b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 1
+          is_enabled: true
+          nodes: 1
+          node_type: mla
+          partition: general
+          qos: hie
+          time: "01:00:00"
+      model:
+        source: cached_model
+        hf_token: ${{ org.HF_TOKEN }}
+      vllm:
+        dtype: bfloat16
+        extra_args: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
+        gpu_memory: "0.90"
+        max_model_len: "auto"
+        num_gpus: "1"
+        attention_backend: TRITON_ATTN
+
+  Nautilus-gpt-oss-120b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 1
+          is_enabled: true
+          nodes: 1
+          # 120b's weights alone are ~64GiB and Nautilus GPUs are A100 40GB,
+          # so the model must be sharded across all 4 GPUs of an AI/ML (mla)
+          # node; qos standard because HIE is meant for interactive work
+          node_type: mla
+          partition: general
+          qos: standard
+          scheduler_directives: "#SBATCH --gres=gpu:4"
+          time: "01:00:00"
+      model:
+        source: cached_model
+        cached_model_id: openai/gpt-oss-120b
+        hf_token: ${{ org.HF_TOKEN }}
+      vllm:
+        dtype: bfloat16
+        extra_args: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
+        gpu_memory: "0.90"
+        max_model_len: "auto"
+        num_gpus: "4"
+        attention_backend: TRITON_ATTN
+
+  Raider-gpt-oss-20b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 1
+          is_enabled: true
+          nodes: 1
+          # Raider's MLA nodes have 4x A100 SXM4 40GB; the guide requires the
+          # typed gpu gres to be paired with the mla/viz constraint
+          node_type: mla
+          partition: general
+          qos: standard
+          scheduler_directives: "#SBATCH --gres=gpu:a100:1"
+          time: "01:00:00"
+      model:
+        source: cached_model
+        hf_token: ${{ org.HF_TOKEN }}
+        # $PROJECTS_HOME is not set in non-interactive shells on Raider, so
+        # the ${PROJECTS_HOME:-$HOME/pw} default resolves to $HOME/pw there;
+        # pin the real paths where the SIF and models are staged
+        cache_dir: /p/app/projects/hsp/models
+      service:
+        parent_install_dir: /p/app/projects/hsp
+      vllm:
+        dtype: bfloat16
+        extra_args: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
+        gpu_memory: "0.90"
+        max_model_len: "auto"
+        num_gpus: "1"
+        attention_backend: TRITON_ATTN
+
+  Raider-gpt-oss-120b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        slurm:
+          cpus_per_task: 1
+          is_enabled: true
+          nodes: 1
+          # 120b's weights alone are ~64GiB and Raider GPUs are A100 40GB, so
+          # the model must be sharded across all 4 GPUs of an MLA node; the
+          # guide requires the typed gpu gres to be paired with the mla
+          # constraint
+          node_type: mla
+          partition: general
+          qos: standard
+          scheduler_directives: "#SBATCH --gres=gpu:a100:4"
+          time: "01:00:00"
+      model:
+        source: cached_model
+        cached_model_id: openai/gpt-oss-120b
+        hf_token: ${{ org.HF_TOKEN }}
+        # $PROJECTS_HOME is not set in non-interactive shells on Raider, so
+        # the ${PROJECTS_HOME:-$HOME/pw} default resolves to $HOME/pw there;
+        # pin the real paths where the SIF and models are staged
+        cache_dir: /p/app/projects/hsp/models
+      service:
+        parent_install_dir: /p/app/projects/hsp
+      vllm:
+        dtype: bfloat16
+        # --disable-custom-all-reduce: vLLM's custom all-reduce kernel faults
+        # with 'Invalid access of peer GPU memory over nvlink' on Raider's
+        # A100 nodes during CUDA graph capture; NCCL all-reduce works
+        extra_args: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai --disable-custom-all-reduce"
+        # 0.85, not 0.90: at 0.90 the weights+KV+graphs budget fills the 40GB
+        # A100 completely and the sampler warm-up (256 seqs x 201k vocab)
+        # OOMs on its ~600MiB transient buffer
+        gpu_memory: "0.85"
+        max_model_len: "auto"
+        num_gpus: "4"
+        attention_backend: TRITON_ATTN
+
+  Wheat-gpt-oss-20b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        pbs:
+          scheduler_directives: |
+            #PBS -q HIE
+            #PBS -l select=1:ncpus=92:mpiprocs=1:ngpus=1
+            #PBS -l walltime=01:00:00
+            #PBS -V
+      model:
+        source: cached_model
+        hf_token: ${{ org.HF_TOKEN }}
+      vllm:
+        dtype: bfloat16
+        extra_args: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
+        gpu_memory: "0.90"
+        max_model_len: "auto"
+        num_gpus: "1"
+        attention_backend: TRITON_ATTN
+
+  Wheat-gpt-oss-120b:
+    inputs:
+      engine: vllm
+      cluster:
+        scheduler: true
+        pbs:
+          # 120b's weights alone are ~64GiB and every Wheat GPU is an A100 40GB,
+          # so the model must be sharded across a 4-GPU MLA node (nmlas selects
+          # MLA nodes on Wheat); HIE is capped at one 92-core node and is not
+          # meant for regular batch work, hence the standard queue
+          scheduler_directives: |
+            #PBS -q standard
+            #PBS -l select=1:ncpus=92:mpiprocs=1:nmlas=4
+            #PBS -l walltime=01:00:00
+            #PBS -V
+      model:
+        source: cached_model
+        cached_model_id: openai/gpt-oss-120b
+        hf_token: ${{ org.HF_TOKEN }}
+      vllm:
+        dtype: bfloat16
+        extra_args: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
+        gpu_memory: "0.90"
+        max_model_len: "auto"
+        num_gpus: "4"
+        attention_backend: TRITON_ATTN

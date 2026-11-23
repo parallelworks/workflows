@@ -12,6 +12,25 @@ set -x
 
 fail() { echo "::error title=$1::$2"; exit 1; }
 
+# The run waits for its endpoint by name, so one already listed under it (an
+# earlier launch with the same Endpoint name, still serving or left stopped)
+# would be taken for the new server. Deleting it stops its server. Called last:
+# a failed install leaves the previous server running.
+free_endpoint_name() {
+    endpoint_listed() {
+        pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${endpoint_name}"
+    }
+    [ -n "${endpoint_name}" ] && endpoint_listed || return 0
+    echo "::notice title=Endpoint::Replacing the endpoint already listed as ${endpoint_name}"
+    pw endpoints delete "${endpoint_name}"
+    local _
+    for _ in $(seq 1 30); do
+        endpoint_listed || return 0
+        sleep 2
+    done
+    fail "Endpoint" "${endpoint_name} is still listed after deleting it; run 'pw endpoints delete ${endpoint_name}' and launch again"
+}
+
 if [ -z "${service_parent_install_dir}" ] || [ "${service_parent_install_dir}" = "undefined" ]; then
     service_parent_install_dir=${HOME}/pw/software
 fi
@@ -201,16 +220,28 @@ PY
         # testing). Install it once beside the models; keep its cache off home.
         export HF_HOME="${model_root}/.hf-home"
         hf_lib="${model_root}/.hf-cli"
+        # The token goes through the environment and curl's stdin with the
+        # trace off, so it reaches neither the step log nor a command line
+        { set +x; } 2>/dev/null
+        curl_auth=""
+        if [ -n "${hf_token}" ]; then
+            export HF_TOKEN="${hf_token}"
+            curl_auth="header = \"Authorization: Bearer ${hf_token}\""
+        fi
+        set -x
         if [ -d "${hf_lib}/huggingface_hub" ] || python3 -m pip install -q --target "${hf_lib}" 'huggingface_hub[hf_xet]'; then
-            HF_TOKEN="${hf_token}" PYTHONPATH="${hf_lib}" python3 -m huggingface_hub.cli.hf \
+            PYTHONPATH="${hf_lib}" python3 -m huggingface_hub.cli.hf \
                 download "${llamacpp_hf_repo}" "${todo[@]}" --local-dir "${dir}" \
                 || fail "Models" "hf download failed"
         else
             echo "::warning title=Models::huggingface_hub could not be installed; falling back to curl"
             for f in "${todo[@]}"; do
-                curl -fL -C - ${hf_token:+-H "Authorization: Bearer ${hf_token}"} \
-                    -o "${dir}/${f}" "https://huggingface.co/${llamacpp_hf_repo}/resolve/main/${f}" \
-                    || fail "Models" "Download of ${f} failed"
+                { set +x; } 2>/dev/null
+                printf '%s\n' "${curl_auth}" | curl -fL -C - --config - \
+                    -o "${dir}/${f}" "https://huggingface.co/${llamacpp_hf_repo}/resolve/main/${f}"
+                rc=$?
+                set -x
+                [ "${rc}" -eq 0 ] || fail "Models" "Download of ${f} failed"
             done
         fi
         for f in "${todo[@]}"; do
@@ -231,6 +262,7 @@ PY
             echo "export llamacpp_draft_path=\"${dir}/${llamacpp_draft_file}\""
         fi
     } >> ./inputs.sh
+    free_endpoint_name
     exit 0
 fi
 
@@ -329,6 +361,11 @@ pull_sif() {
     echo "::endgroup::"
 }
 
+case "${engine}" in
+    vllm) container_uri="${vllm_container_uri}" ;;
+    sglang) container_uri="${sglang_container_uri}" ;;
+esac
+[ -n "${container_uri}" ] || fail "Error" "no container image given for ${engine}"
 resolve_sif "${container_uri}" \
     || fail "Error" "neither ${shared_root} nor ${private_root} is writable; nowhere to store ${container_uri}"
 container_sif="${sif}"
@@ -380,8 +417,9 @@ if [ "${engine}" = "sglang" ]; then
     fi
 fi
 
+# Same rule as prepare-model.sh, which downloads into it
 if [ -z "${model_cache_dir}" ] || [ "${model_cache_dir}" = "undefined" ]; then
-    model_cache_dir=${HOME}/pw/models
+    model_cache_dir="${service_parent_install_dir}/models"
 fi
 
 {
@@ -391,3 +429,4 @@ fi
     echo "export tiktoken_dir=\"${tiktoken_dir}\""
     echo "export kernel_cache_dir=\"${kernel_cache_dir}\""
 } >> ./inputs.sh
+free_endpoint_name

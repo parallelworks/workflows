@@ -152,7 +152,11 @@ else
                  --env FLASHINFER_WORKSPACE_BASE="${kc}" --env CUDA_CACHE_PATH="${kc}/cuda")
         cmd=(python3 -m sglang.launch_server --model-path "${model_dir}"
              --served-model-name "${served_model_name}" --host 127.0.0.1 --port "${endpoint_port}")
-        engine_args="${sglang_args}"
+        engine_args="--tp ${sglang_num_gpus:-1} --mem-fraction-static ${sglang_mem_fraction:-0.88}"
+        if [ "${sglang_context_length:-auto}" != "auto" ]; then
+            engine_args="${engine_args} --context-length ${sglang_context_length}"
+        fi
+        engine_args="${engine_args} ${sglang_extra_args}"
     else
         # vLLM's chat endpoint errors when the tokenizer ships no chat
         # template (base checkpoints such as OLMo). An explicit override wins;
@@ -174,7 +178,15 @@ else
         fi
         cmd=(python3 -m vllm.entrypoints.openai.api_server --model "${model_dir}"
              --served-model-name "${served_model_name}" --host 127.0.0.1 --port "${endpoint_port}")
-        engine_args="${vllm_args} ${chat_template_arg}"
+        engine_args="--tensor-parallel-size ${vllm_num_gpus:-1} --gpu-memory-utilization ${vllm_gpu_memory:-0.85}"
+        # Custom takes --dtype from the additional arguments
+        if [ "${vllm_dtype:-auto}" != "custom" ]; then
+            engine_args="--dtype ${vllm_dtype:-auto} ${engine_args}"
+        fi
+        if [ "${vllm_max_model_len:-auto}" != "auto" ]; then
+            engine_args="${engine_args} --max-model-len ${vllm_max_model_len}"
+        fi
+        engine_args="${engine_args} ${vllm_extra_args} ${chat_template_arg}"
     fi
 
     # umask 002 keeps what SGLang adds to the shared kernel cache writable for

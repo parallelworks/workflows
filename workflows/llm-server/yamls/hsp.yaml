@@ -16,7 +16,9 @@ permissions:
   - '*'
 
 jobs:
-  preprocessing:
+  # Its own job: preprocessing and prepare_model run side by side and both
+  # read the checkout
+  checkout:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
@@ -24,31 +26,43 @@ jobs:
         uses: parallelworks/checkout
         with:
           repo: https://github.com/parallelworks/workflows.git
-          branch: canary
+          branch: llm-server-alvaro
           sparse_checkout:
             - workflows/llm-server/app
+
+  preprocessing:
+    needs:
+      - checkout
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
       - name: Create Inputs
         run: |
-          set -x
-          # Write PW variables
-          env | grep '^PW_' | grep -v 'PW_API_KEY' > inputs.sh
-          # Encase values between quotes
-          sed -i 's/=\(.*\)/="\1"/' inputs.sh
+          # The form as key="value" lines, kept literal so a path such as
+          # ${PROJECTS_HOME:-$HOME/pw}/hsp expands where inputs.sh is sourced;
+          # app/create-inputs.sh, shared by every variant, writes inputs.sh
+          cat <<'EOF' > form.sh
           engine="${{ inputs.engine }}"
-          endpoint_name="$(printf '%s' '${{ inputs.service.endpoint_name }}' | sed 's/^undefined$//' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
-          endpoint_name="${endpoint_name:-${engine}-${PW_RUN_SLUG}}"
-          # Write input form variables and ensure the pw agent is in the PATH
-          cat <<'EOF' >> inputs.sh
-          PATH=$HOME/pw:$PATH
-          engine="${{ inputs.engine }}"
+          endpoint_name="${{ inputs.service.endpoint_name }}"
           service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
           model_source="${{ inputs.model.source }}"
           model_local_path="${{ inputs.model.local_path }}"
           hf_model_id="${{ inputs.model.hf_model_id }}"
           cached_model_id="${{ inputs.model.cached_model_id }}"
           model_cache_dir="${{ inputs.model.cache_dir }}"
-          chat_template_override="${{ inputs.vllm.chat_template }}"
+          vllm_num_gpus="${{ inputs.vllm.num_gpus }}"
+          vllm_gpu_memory="${{ inputs.vllm.gpu_memory }}"
+          vllm_max_model_len="${{ inputs.vllm.max_model_len }}"
+          vllm_dtype="${{ inputs.vllm.dtype }}"
           vllm_attention_backend="${{ inputs.vllm.attention_backend }}"
+          vllm_extra_args="${{ inputs.vllm.extra_args }}"
+          chat_template_override="${{ inputs.vllm.chat_template }}"
+          vllm_container_uri="${{ inputs.vllm.container_uri }}"
+          sglang_num_gpus="${{ inputs.sglang.num_gpus }}"
+          sglang_mem_fraction="${{ inputs.sglang.mem_fraction }}"
+          sglang_context_length="${{ inputs.sglang.context_length }}"
+          sglang_extra_args="${{ inputs.sglang.extra_args }}"
+          sglang_container_uri="${{ inputs.sglang.container_uri }}"
           llamacpp_hf_repo="${{ inputs.llamacpp.hf_repo }}"
           llamacpp_gguf_file="${{ inputs.llamacpp.gguf_file }}"
           llamacpp_vision="${{ inputs.llamacpp.vision }}"
@@ -60,43 +74,9 @@ jobs:
           llamacpp_gpu_ids="${{ inputs.llamacpp.gpu_ids }}"
           llamacpp_release_url="${{ inputs.llamacpp.release_url }}"
           llamacpp_models_dir="${{ inputs.llamacpp.models_dir }}"
+          hf_token="${{ inputs.llamacpp.hf_token }}"
           EOF
-          echo "pw_endpoints_args=\"--name ${endpoint_name} --openai\"" >> inputs.sh
-          case "${engine}" in
-            vllm)
-              echo 'container_uri="${{ inputs.vllm.container_uri }}"' >> inputs.sh
-              echo 'hf_token="${{ inputs.model.hf_token }}"' >> inputs.sh
-              vllm_args="--tensor-parallel-size ${{ inputs.vllm.num_gpus }} --gpu-memory-utilization ${{ inputs.vllm.gpu_memory }}"
-              if [ "${{ inputs.vllm.dtype }}" != "custom" ]; then
-                vllm_args="--dtype ${{ inputs.vllm.dtype }} ${vllm_args}"
-              fi
-              if [ "${{ inputs.vllm.max_model_len }}" != "auto" ]; then
-                vllm_args="${vllm_args} --max-model-len ${{ inputs.vllm.max_model_len }}"
-              fi
-              vllm_args="${vllm_args} ${{ inputs.vllm.extra_args }}"
-              echo "vllm_args=\"${vllm_args}\"" >> inputs.sh
-              ;;
-            sglang)
-              echo 'container_uri="${{ inputs.sglang.container_uri }}"' >> inputs.sh
-              echo 'hf_token="${{ inputs.model.hf_token }}"' >> inputs.sh
-              sglang_args="--tp ${{ inputs.sglang.num_gpus }} --mem-fraction-static ${{ inputs.sglang.mem_fraction }}"
-              if [ "${{ inputs.sglang.context_length }}" != "auto" ]; then
-                sglang_args="${sglang_args} --context-length ${{ inputs.sglang.context_length }}"
-              fi
-              sglang_args="${sglang_args} ${{ inputs.sglang.extra_args }}"
-              echo "sglang_args=\"${sglang_args}\"" >> inputs.sh
-              ;;
-            llamacpp)
-              echo 'hf_token="${{ inputs.llamacpp.hf_token }}"' >> inputs.sh
-              ;;
-          esac
-          # Remove empty variables
-          sed -i '/=\s*$\|=undefined\s*$/d' inputs.sh
-          sed -i '/=""/d' inputs.sh
-          sed -i '/="undefined"/d' inputs.sh
-          # Add export to all lines
-          sed -i 's/^/export /' inputs.sh
-          echo "ENDPOINT_NAME=${endpoint_name}" | tee -a $OUTPUTS
+          OUTPUTS="${OUTPUTS}" bash workflows/llm-server/app/create-inputs.sh form.sh
       - name: Controller Preprocessing
         early-cancel: any-job-failed
         run: |
@@ -143,128 +123,17 @@ jobs:
 
   prepare_model:
     if: ${{ inputs.engine != 'llamacpp' && inputs.model.source == 'huggingface' }}
+    needs:
+      - checkout
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
       - name: Download Model
         early-cancel: any-job-failed
         run: |
-          set -o pipefail
-          set -x
-          MODEL_ID="${{ inputs.model.hf_model_id }}"
-          HF_TOKEN="${{ inputs.model.hf_token }}"
-          CACHE_DIR="${{ inputs.model.cache_dir }}"
-          if [ -z "${CACHE_DIR}" ] || [ "${CACHE_DIR}" = "undefined" ]; then
-              CACHE_DIR="${PROJECTS_HOME:-$HOME/pw}/hsp/models"
-          fi
-          CACHE_DIR="${CACHE_DIR/#\~/$HOME}"
-          NAME="${MODEL_ID##*/}"
-          # A shared cache (<shared software directory>/models on NOAA) is usually owned by whoever
-          # staged it first: a model already there is served read-only by every
-          # account, and one that still has to be downloaded goes there only when this
-          # account can write it, otherwise into a private cache. start-template.sh
-          # looks in both.
-          PRIVATE_CACHE_DIR="${HOME}/pw/software/models"
-
-          validate_model() {
-              [ -s "$1/config.json" ] || return 1
-              local f
-              f=$(find "$1" -maxdepth 1 \( -name '*.safetensors' -o -name '*.bin' \) -size +1M 2>/dev/null | head -1)
-              [ -n "$f" ]
-          }
-          usable_dir() { # writable if it exists, creatable if it does not
-              if [ -d "$1" ]; then [ -w "$1" ]; else mkdir -p "$1" 2>/dev/null; fi
-          }
-          # Leaves what this run uses from a shared cache group-writable so any project
-          # member can refresh it; best effort, and nothing to do for a private path
-          share() {
-              case "$1" in "${HOME}"/*) return 0 ;; esac
-              chmod -R g+rwX,o+rX "$1" 2>/dev/null
-              find "$1" -type d -exec chmod g+s {} + 2>/dev/null
-              chmod g+rwx,o+rx "${1%/*}" 2>/dev/null
-              chmod g+s "${1%/*}" 2>/dev/null
-              return 0
-          }
-
-          for d in "${CACHE_DIR}" "${PRIVATE_CACHE_DIR}"; do
-              if validate_model "${d}/${NAME}"; then
-                  share "${d}/${NAME}"
-                  echo "Model already cached at ${d}/${NAME}"
-                  exit 0
-              fi
-          done
-          if ! usable_dir "${CACHE_DIR}/${NAME}"; then
-              echo "::warning::${CACHE_DIR} is not writable; downloading ${MODEL_ID} into ${PRIVATE_CACHE_DIR}"
-              CACHE_DIR="${PRIVATE_CACHE_DIR}"
-              if ! usable_dir "${CACHE_DIR}/${NAME}"; then
-                  echo "::error title=Error::cannot create ${CACHE_DIR}/${NAME}"
-                  exit 1
-              fi
-          fi
-          TARGET_DIR="${CACHE_DIR}/${NAME}"
-          # Keep HF working caches off the small $HOME filesystem where possible
-          export HF_HOME="${CACHE_DIR}/cache"
-          usable_dir "${HF_HOME}" || export HF_HOME="${PRIVATE_CACHE_DIR}/cache"
-
-          VENV_BASE="${{ inputs.service.parent_install_dir }}"
-          if [ -z "${VENV_BASE}" ] || [ "${VENV_BASE}" = "undefined" ]; then
-              VENV_BASE=${HOME}/pw/software
-          fi
-          HF_BIN=""
-          for d in "${VENV_BASE/#\~/$HOME}/.hfcli" "${HOME}/pw/software/.hfcli"; do
-              for b in "${d}/bin/hf" "${d}/bin/huggingface-cli"; do
-                  if [ -x "${b}" ]; then
-                      HF_BIN="${b}"
-                      break 2
-                  fi
-              done
-          done
-          if [ -z "${HF_BIN}" ]; then
-              VENV="${VENV_BASE/#\~/$HOME}/.hfcli"
-              usable_dir "${VENV}" || VENV="${HOME}/pw/software/.hfcli"
-              if ! python3 -m venv "${VENV}"; then
-                  echo "::error title=Error::python3 -m venv failed; install python3/python3-venv on the cluster"
-                  exit 1
-              fi
-              "${VENV}/bin/pip" install --quiet --upgrade 'huggingface_hub[hf_transfer]'
-              share "${VENV}"
-              HF_BIN="${VENV}/bin/hf"
-              [ -x "${HF_BIN}" ] || HF_BIN="${VENV}/bin/huggingface-cli"
-          fi
-
-          if [ -n "${HF_TOKEN}" ] && [ "${HF_TOKEN}" != "undefined" ]; then
-              export HF_TOKEN
-          fi
-          # hf download is incremental: it resumes a partial download in place
-          # and only fetches files that are missing or changed
-          export HF_HUB_ENABLE_HF_TRANSFER=1
-          for attempt in 1 2 3; do
-              if "${HF_BIN}" download "${MODEL_ID}" --local-dir "${TARGET_DIR}" \
-                  --exclude "original/*" --exclude "metal/*" --exclude "*.bin" \
-                  --exclude "*.gguf" --exclude "*.onnx" --exclude "consolidated*.pth"; then
-                  break
-              fi
-              if [ "${attempt}" = 3 ]; then
-                  echo "::error title=Error::model download failed after 3 attempts"
-                  exit 1
-              fi
-              # hf_transfer can be flaky on some networks; retry without it
-              unset HF_HUB_ENABLE_HF_TRANSFER
-              sleep $((attempt * 5))
-          done
-
-          # Some models only ship bin weights
-          if ! ls "${TARGET_DIR}"/*.safetensors >/dev/null 2>&1; then
-              "${HF_BIN}" download "${MODEL_ID}" --local-dir "${TARGET_DIR}" --include "*.bin"
-          fi
-
-          if ! validate_model "${TARGET_DIR}"; then
-              echo "::error title=Error::downloaded model at ${TARGET_DIR} is incomplete"
-              exit 1
-          fi
-          share "${TARGET_DIR}"
-          share "${HF_HOME}"
-          echo "Model ready at ${TARGET_DIR}"
+          MODEL_ID="${{ inputs.model.hf_model_id }}" HF_TOKEN="${{ inputs.model.hf_token }}" \
+            CACHE_DIR="${{ inputs.model.cache_dir }}" INSTALL_DIR="${{ inputs.service.parent_install_dir }}" \
+            bash workflows/llm-server/app/prepare-model.sh
 
   script_submitter:
     needs:
@@ -307,6 +176,10 @@ jobs:
         with:
           jobs:
             - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::Service ended before the endpoint came online"
+          exit 1
 
   wait_for_endpoint:
     needs:
@@ -782,7 +655,7 @@ jobs:
         items:
           endpoint_name:
             label: Endpoint name
-            description: Defaults to <engine>-<run slug>; a fixed name keeps chat model ids stable across relaunches.
+            description: Defaults to <engine>-<run slug>. A fixed name keeps chat model ids stable across relaunches and replaces the endpoint already running under it.
             type: string
             optional: true
             tooltip: The name becomes a DNS label, so it is folded to lowercase and anything outside a-z 0-9 - becomes a dash.

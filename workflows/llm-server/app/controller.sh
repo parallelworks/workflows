@@ -18,7 +18,7 @@ fail() { echo "::error title=$1::$2"; exit 1; }
 # a failed install leaves the previous server running.
 free_endpoint_name() {
     endpoint_listed() {
-        pw endpoints list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qxF "${endpoint_name}"
+        pw endpoints list 2>/dev/null | awk -F'\t' -v name="${endpoint_name}" '$1 == name { found = 1 } END { exit !found }'
     }
     [ -n "${endpoint_name}" ] && endpoint_listed || return 0
     echo "::notice title=Endpoint::Replacing the endpoint already listed as ${endpoint_name}"

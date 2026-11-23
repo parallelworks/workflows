@@ -113,6 +113,8 @@ for attempt in 1 2 3; do
         break
     fi
     if [ "${attempt}" = 3 ]; then
+        # A partial download stays, to be resumed; a directory nothing reached does not
+        rmdir "${TARGET_DIR}" 2>/dev/null
         echo "::error title=Error::model download failed after 3 attempts"
         exit 1
     fi

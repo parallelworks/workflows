@@ -1,0 +1,33 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "expect": "error",
+    "endpoint": false,
+    "warm_marker": [
+      "${HOME}/pw/software/containers/sglang-inkling-2-mini.sif"
+    ],
+    "leftover_patterns": [
+      "sglang.launch_server",
+      "pw endpoints"
+    ]
+  },
+  "resource": "pw://alvaro/a30gpuserver",
+  "engine": "sglang",
+  "cluster": {
+    "scheduler": false
+  },
+  "model": {
+    "source": "local",
+    "local_path": "/nonexistent/llm-server-test-model"
+  },
+  "sglang": {
+    "num_gpus": "1",
+    "mem_fraction": "0.50",
+    "context_length": "4096",
+    "extra_args": "--max-running-requests 8",
+    "container_uri": "ghcr.io/parallelworks/sglang-inkling-2-mini:v1"
+  },
+  "service": {
+    "parent_install_dir": "${HOME}/pw/software"
+  }
+}

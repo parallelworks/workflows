@@ -1,0 +1,30 @@
+{
+  "_test": {
+    "timeout_s": 2400,
+    "warm_marker": [
+      "${HOME}/pw/software/llamacpp/app-b12588-mix-c0c3de8-linux-x64-cuda12-portable/.ready",
+      "${HOME}/pw/software/llamacpp/models/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    ],
+    "leftover_patterns": [
+      "llama-server",
+      "pw endpoints"
+    ]
+  },
+  "resource": "pw://alvaro/awsgpu",
+  "engine": "llamacpp",
+  "cluster": {
+    "scheduler": false
+  },
+  "llamacpp": {
+    "hf_repo": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+    "gguf_file": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+    "vision": false,
+    "speculative": false,
+    "ctx_size": 4096,
+    "extra_args": "--jinja --parallel 1 -ngl all",
+    "release_url": "https://github.com/unslothai/llama.cpp/releases/download/b12588-mix-c0c3de8/app-b12588-mix-c0c3de8-linux-x64-cuda12-portable.tar.gz"
+  },
+  "service": {
+    "parent_install_dir": "${HOME}/pw/software"
+  }
+}

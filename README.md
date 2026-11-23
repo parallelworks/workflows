@@ -61,6 +61,7 @@ How this repo was assembled, and where anything older lives, is recorded in
 | [langflow-singularity](workflows/langflow-singularity/) | Langflow (Singularity) | hsp |
 | [librechat](workflows/librechat/) | LibreChat (+ `-all` stacks with manager & Langflow) | general, hsp, general-all, hsp-all |
 | [lite-agent](workflows/lite-agent/) | Lightweight agent worker | general |
+| [llm-server](workflows/llm-server/) | LLM behind an OpenAI-compatible endpoint, the engine chosen on the form: vLLM, SGLang or llama.cpp (GGUF) | general, hsp, noaa |
 | [marimo](workflows/marimo/) | marimo notebooks (edit or run mode) | general, hsp, noaa |
 | [metabase](workflows/metabase/) | Metabase BI server (Docker) on a compute cluster or Kubernetes | general, general_k8s |
 | [mlflow](workflows/mlflow/) | MLflow tracking server (UI + REST API) on a compute cluster or Kubernetes | general, hsp, noaa, k8s, general_k8s |

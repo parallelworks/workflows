@@ -1,0 +1,577 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+---
+# LLM server: serves a model behind an OpenAI-compatible pw endpoint with
+# one of three engines.
+#   vllm      safetensors checkpoints from Hugging Face, in a SIF image
+#   sglang    safetensors checkpoints from Hugging Face, in a SIF image
+#   llamacpp  GGUF files, with a prebuilt llama-server binary
+#
+# SIF images are pulled once from ghcr.io as ORAS artifacts; nodes that cannot
+# mount squashfs images get a sandbox directory unpacked from them on demand.
+# The run completes once the endpoint registers and the service lives on;
+# tear it down with `pw endpoints delete <name>`.
+
+permissions:
+  - '*'
+
+jobs:
+  # Its own job: preprocessing and prepare_model run side by side and both
+  # read the checkout
+  checkout:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Checkout
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/workflows.git
+          branch: llm-server-alvaro
+          sparse_checkout:
+            - workflows/llm-server/app
+
+  preprocessing:
+    needs:
+      - checkout
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Create Inputs
+        run: |
+          # The form as key="value" lines, kept literal so a path such as
+          # ${HOME}/pw/software expands where inputs.sh is sourced;
+          # app/create-inputs.sh, shared by every variant, writes inputs.sh
+          cat <<'EOF' > form.sh
+          engine="${{ inputs.engine }}"
+          endpoint_name="${{ inputs.service.endpoint_name }}"
+          service_parent_install_dir="${{ inputs.service.parent_install_dir }}"
+          model_source="${{ inputs.model.source }}"
+          model_local_path="${{ inputs.model.local_path }}"
+          hf_model_id="${{ inputs.model.hf_model_id }}"
+          model_cache_dir="${{ inputs.model.cache_dir }}"
+          vllm_num_gpus="${{ inputs.vllm.num_gpus }}"
+          vllm_gpu_memory="${{ inputs.vllm.gpu_memory }}"
+          vllm_max_model_len="${{ inputs.vllm.max_model_len }}"
+          vllm_dtype="${{ inputs.vllm.dtype }}"
+          vllm_attention_backend="${{ inputs.vllm.attention_backend }}"
+          vllm_extra_args="${{ inputs.vllm.extra_args }}"
+          chat_template_override="${{ inputs.vllm.chat_template }}"
+          vllm_container_uri="${{ inputs.vllm.container_uri }}"
+          sglang_num_gpus="${{ inputs.sglang.num_gpus }}"
+          sglang_mem_fraction="${{ inputs.sglang.mem_fraction }}"
+          sglang_context_length="${{ inputs.sglang.context_length }}"
+          sglang_extra_args="${{ inputs.sglang.extra_args }}"
+          sglang_container_uri="${{ inputs.sglang.container_uri }}"
+          llamacpp_hf_repo="${{ inputs.llamacpp.hf_repo }}"
+          llamacpp_gguf_file="${{ inputs.llamacpp.gguf_file }}"
+          llamacpp_vision="${{ inputs.llamacpp.vision }}"
+          llamacpp_mmproj_file="${{ inputs.llamacpp.mmproj_file }}"
+          llamacpp_speculative="${{ inputs.llamacpp.speculative }}"
+          llamacpp_draft_file="${{ inputs.llamacpp.draft_file }}"
+          llamacpp_ctx_size="${{ inputs.llamacpp.ctx_size }}"
+          llamacpp_extra_args="${{ inputs.llamacpp.extra_args }}"
+          llamacpp_gpu_ids="${{ inputs.llamacpp.gpu_ids }}"
+          llamacpp_release_url="${{ inputs.llamacpp.release_url }}"
+          llamacpp_models_dir="${{ inputs.llamacpp.models_dir }}"
+          hf_token="${{ inputs.llamacpp.hf_token }}"
+          EOF
+          OUTPUTS="${OUTPUTS}" bash workflows/llm-server/app/create-inputs.sh form.sh
+      - name: Controller Preprocessing
+        early-cancel: any-job-failed
+        run: |
+          set -x
+          if [ ! -s workflows/llm-server/app/controller.sh ]; then
+              echo "::error title=Error::controller.sh not found in the checkout"
+              exit 1
+          fi
+          cp inputs.sh controller-${PW_JOB_ID}.sh
+          cat workflows/llm-server/app/controller.sh >> controller-${PW_JOB_ID}.sh
+          bash controller-${PW_JOB_ID}.sh
+      - name: Create Service Script
+        run: |
+          if [ ! -s workflows/llm-server/app/start-template.sh ]; then
+              echo "::error title=Error::start-template.sh not found in the checkout"
+              exit 1
+          fi
+          rm -f HOSTNAME SESSION_PORT job.ended job.started
+          # This script starts the service
+          cp inputs.sh start-service-${PW_JOB_ID}.sh
+
+          # Write code common to all services
+          cat <<'EOF' >> start-service-${PW_JOB_ID}.sh
+
+          cleanup() {
+              trap - EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+              echo "::notice::Cleaning up..."
+              if [ -f cancel.sh ]; then
+                  mv cancel.sh cancel.sh.submitted
+                  echo "echo Cleanup script was already executed" > cancel.sh
+                  bash cancel.sh.submitted
+              fi
+              kill -- -$$
+          }
+
+          trap cleanup EXIT INT TERM HUP QUIT USR1 USR2 PIPE
+
+          echo "::notice::Starting service"
+          EOF
+
+          cat workflows/llm-server/app/start-template.sh >> start-service-${PW_JOB_ID}.sh
+          echo "SCRIPT_PATH=${PWD}/start-service-${PW_JOB_ID}.sh" | tee -a $OUTPUTS
+          echo "SKIP_CLEANUP_PATH=${PWD}/SKIP_CLEANUP" | tee -a $OUTPUTS
+
+  prepare_model:
+    if: ${{ inputs.engine != 'llamacpp' && inputs.model.source == 'huggingface' }}
+    needs:
+      - checkout
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Download Model
+        early-cancel: any-job-failed
+        run: |
+          MODEL_ID="${{ inputs.model.hf_model_id }}" HF_TOKEN="${{ inputs.model.hf_token }}" \
+            CACHE_DIR="${{ inputs.model.cache_dir }}" INSTALL_DIR="${{ inputs.service.parent_install_dir }}" \
+            bash workflows/llm-server/app/prepare-model.sh
+
+  script_submitter:
+    needs:
+      - preprocessing
+      - prepare_model
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Script Submitter
+        uses: github/parallelworks/workflows@canary
+        early-cancel: any-job-failed
+        with:
+          $yaml: workflows/script_submitter/v3.6/general.yaml
+          resource: ${{ inputs.resource }}
+          shebang: '#!/bin/bash'
+          use_existing_script: true
+          script_path: ${{ needs.preprocessing.outputs.SCRIPT_PATH }}
+          define_cleanup_script: true
+          cleanup_script_path: ./cancel.sh
+          scheduler: ${{ inputs.cluster.scheduler }}
+          use_scheduler_agent: false
+          submit_and_exit: false
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          slurm:
+            is_enabled: ${{ inputs.cluster.slurm.is_enabled }}
+            partition: ${{ inputs.cluster.slurm.partition }}
+            scheduler_directives: ${{ inputs.cluster.slurm.scheduler_directives }}
+            time: ${{ inputs.cluster.slurm.time }}
+            gpus: ${{ inputs.cluster.slurm.gpus }}
+          pbs:
+            is_enabled: ${{ inputs.cluster.pbs.is_enabled }}
+            scheduler_directives: ${{ inputs.cluster.pbs.scheduler_directives }}
+      - name: Cancel Wait for Endpoint
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - wait_for_endpoint
+      - name: Exit Workflow with Error
+        run: |
+          echo "::error title=Error::Service ended before the endpoint came online"
+          exit 1
+
+  wait_for_endpoint:
+    needs:
+      - preprocessing
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Wait for endpoint
+        early-cancel: any-job-failed
+        uses: github/parallelworks/workflows@canary
+        with:
+          $yaml: workflows/wait_for_endpoint/general.yaml
+          endpoint_name: ${{ needs.preprocessing.outputs.ENDPOINT_NAME }}
+          host: ${{ inputs.resource.ip }}
+          skip_cleanups_file: ${{ needs.preprocessing.outputs.SKIP_CLEANUP_PATH }}
+          healthy: '2*|3*|401'
+          path: /v1/models
+      - name: Cancel Script Submitter
+        uses: parallelworks/cancel-jobs
+        with:
+          jobs:
+            - script_submitter
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: GPU cluster
+        include-workspace: false
+      engine:
+        label: Inference engine
+        type: dropdown
+        default: vllm
+        tooltip: |
+          vLLM and SGLang serve safetensors checkpoints from Hugging Face on GPUs.
+          llama.cpp serves quantized GGUF files and fits larger models on smaller GPUs.
+        options:
+          - value: vllm
+            label: vLLM
+          - value: sglang
+            label: SGLang
+          - value: llamacpp
+            label: llama.cpp (GGUF)
+      cluster:
+        hidden: ${{ inputs.resource.schedulerType == '' }}
+        ignore: ${{ inputs.resource.schedulerType == '' }}
+        type: group
+        label: Compute cluster settings
+        items:
+          scheduler:
+            type: boolean
+            default: false
+            label: Submit to the scheduler
+            description: Otherwise the job runs on the login node.
+          slurm:
+            type: group
+            label: SLURM directives
+            hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is SLURM enabled? Yes, unless the slurm section is hidden and ignored
+              partition:
+                type: slurm-partitions
+                label: SLURM partition
+                optional: true
+                resource: ${{ inputs.resource }}
+              time:
+                label: Walltime
+                description: HH:MM:SS, or D-HH:MM:SS for runs over a day.
+                type: string
+                default: '04:00:00'
+                tooltip: '--time= SLURM directive to set the maximum wall-clock time limit for the job'
+              gpus:
+                label: Number of GPUs
+                type: number
+                optional: true
+                min: 0
+                step: 1
+                default: 0
+                hidden: ${{ inputs.resource.ip != 'dn-slurm-1.parallel.works' }}
+                ignore: ${{ .hidden }}
+                tooltip: '--gpus= SLURM directive to set the number of GPUs allocated for the job'
+              scheduler_directives:
+                type: editor
+                label: Scheduler directives
+                description: "Request the GPUs here where the scheduler tracks them, for example #SBATCH --gres=gpu:1."
+                optional: true
+                tooltip: |
+                  Add extra SLURM directives, one per line, using the #SBATCH prefix. For example:
+                  #SBATCH --exclusive
+                  #SBATCH --gres=gpu:1
+          pbs:
+            type: group
+            label: PBS directives
+            hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.cluster.scheduler == false }}
+            items:
+              is_enabled:
+                type: boolean
+                hidden: true
+                default: true
+                label: Is PBS enabled? Yes, unless the pbs section is hidden and ignored
+              scheduler_directives:
+                label: Scheduler directives
+                type: editor
+                optional: true
+                tooltip: |
+                  Add extra PBS directives, one per line, using the #PBS prefix. For example:
+                  #PBS -l mem=16gb
+                  #PBS -l ngpus=1
+
+      model:
+        type: group
+        label: Model
+        hidden: ${{ inputs.engine == 'llamacpp' }}
+        ignore: ${{ .hidden }}
+        items:
+          source:
+            type: dropdown
+            label: Model source
+            default: huggingface
+            tooltip: Use a pre-downloaded model (local) or download from Hugging Face
+            options:
+              - value: local
+                label: "📁 Local Path (pre-staged weights)"
+              - value: huggingface
+                label: "🤗 HuggingFace Download"
+          local_path:
+            type: string
+            label: Model path
+            placeholder: /path/to/model/weights
+            tooltip: Full path to the directory holding the model weights and config.json
+            hidden: ${{ inputs.model.source != 'local' }}
+            ignore: ${{ inputs.model.source != 'local' }}
+          hf_model_id:
+            type: string
+            label: HuggingFace model ID
+            placeholder: openai/gpt-oss-20b
+            default: openai/gpt-oss-20b
+            prefillDefault: true
+            tooltip: Model ID to download from Hugging Face. Downloaded once into the model cache directory and reused.
+            hidden: ${{ inputs.model.source != 'huggingface' }}
+            ignore: ${{ inputs.model.source != 'huggingface' }}
+          hf_token:
+            label: HuggingFace token
+            description: Required for gated models such as Llama.
+            default: ${{ org.HF_TOKEN }}
+            type: password
+            optional: true
+            hidden: ${{ inputs.model.source != 'huggingface' }}
+            ignore: ${{ inputs.model.source != 'huggingface' }}
+          cache_dir:
+            type: string
+            label: Model cache directory
+            description: Downloaded once and reused by later runs; needs disk space.
+            default: ~/pw/models
+            prefillDefault: true
+            tooltip: Directory the model is downloaded into. Left empty, models/ under the parent install directory.
+            hidden: ${{ inputs.model.source != 'huggingface' }}
+            ignore: ${{ inputs.model.source != 'huggingface' }}
+
+      vllm:
+        type: group
+        label: vLLM settings
+        collapsed: true
+        hidden: ${{ inputs.engine != 'vllm' }}
+        ignore: ${{ .hidden }}
+        items:
+          num_gpus:
+            type: dropdown
+            label: Number of GPUs
+            description: Tensor parallelism; must match the GPUs available.
+            default: "1"
+            options:
+              - value: "1"
+                label: "1 GPU"
+              - value: "2"
+                label: "2 GPUs"
+              - value: "4"
+                label: "4 GPUs"
+              - value: "8"
+                label: "8 GPUs"
+          gpu_memory:
+            type: dropdown
+            label: GPU memory utilization
+            description: Lower it on out-of-memory errors.
+            default: "0.85"
+            options:
+              - value: "0.95"
+                label: "95% (Maximum)"
+              - value: "0.92"
+                label: "92%"
+              - value: "0.90"
+                label: "90%"
+              - value: "0.85"
+                label: "85% (Recommended)"
+              - value: "0.80"
+                label: "80%"
+              - value: "0.70"
+                label: "70% (Conservative)"
+          max_model_len:
+            type: string
+            label: Max context length
+            description: Tokens, or auto for the model's default. Lower values use less memory.
+            default: "auto"
+          dtype:
+            type: dropdown
+            label: Data type
+            description: Custom takes --dtype from the additional arguments.
+            default: bfloat16
+            options:
+              - value: bfloat16
+                label: "bfloat16 (Recommended for A100/H100)"
+              - value: float16
+                label: "float16 (Better compatibility)"
+              - value: auto
+                label: "Auto (model default)"
+              - value: custom
+                label: "Custom (specify in extra args)"
+          attention_backend:
+            type: dropdown
+            label: Attention backend
+            default: TRITON_ATTN
+            options: [FLASH_ATTN, TRITON_ATTN, FLASHINFER, FLASHINFER_MLA, TRITON_MLA, CUTLASS_MLA, FLASHMLA, FLASHMLA_SPARSE, FLASH_ATTN_MLA, TORCH_SDPA, ROCM_ATTN, ROCM_AITER_MLA, ROCM_AITER_TRITON_MLA, ROCM_AITER_FA, PALLAS, IPEX, CPU_ATTN, NO_ATTENTION, CUSTOM]
+          extra_args:
+            type: string
+            label: Additional arguments
+            default: "--trust_remote_code --async-scheduling --enable-auto-tool-choice --tool-call-parser openai"
+            prefillDefault: true
+            tooltip: Additional vLLM server arguments. If dtype is Custom, include --dtype here. JSON values do not survive the quoting; use dotted keys such as --speculative-config.method instead.
+            optional: true
+          chat_template:
+            type: string
+            label: Chat template override
+            description: Leave blank to auto-detect; needed for models whose tokenizer ships no template.
+            optional: true
+            default: ""
+            tooltip: >
+              Path on the cluster to a Jinja2 chat template, for checkpoints whose
+              tokenizer ships none (base models such as OLMo). Left blank, the
+              tokenizer's own template is used, and a bundled Alpaca-style
+              template only when the model has none.
+          container_uri:
+            label: vLLM container
+            type: string
+            default: ghcr.io/parallelworks/vllm:v1.0
+            tooltip: ORAS artifact holding the vLLM SIF image. <name>:<tag> is stored as containers/<name>.sif under the install directory and reused while that file exists.
+
+      sglang:
+        type: group
+        label: SGLang settings
+        collapsed: true
+        hidden: ${{ inputs.engine != 'sglang' }}
+        ignore: ${{ .hidden }}
+        items:
+          num_gpus:
+            type: dropdown
+            label: Number of GPUs
+            description: Tensor parallelism; must match the GPUs available.
+            default: "1"
+            options:
+              - value: "1"
+                label: "1 GPU"
+              - value: "2"
+                label: "2 GPUs"
+              - value: "4"
+                label: "4 GPUs"
+              - value: "8"
+                label: "8 GPUs"
+          mem_fraction:
+            type: string
+            label: Static memory fraction
+            description: Share of GPU memory for weights and KV cache; lower it on out-of-memory errors.
+            default: "0.88"
+          context_length:
+            type: string
+            label: Context length
+            description: Tokens, or auto for the model's default.
+            default: "auto"
+          extra_args:
+            type: string
+            label: Additional arguments
+            optional: true
+            default: "--max-running-requests 8"
+            tooltip: Additional sglang.launch_server arguments, such as --reasoning-parser, --tool-call-parser, or --speculative-algorithm.
+          container_uri:
+            label: SGLang container
+            type: string
+            default: ghcr.io/parallelworks/sglang-inkling-2-mini:v1
+            tooltip: |
+              ORAS artifact holding the SGLang SIF image. <name>:<tag> is stored as
+              containers/<name>.sif under the install directory and reused while that
+              file exists. Compiled kernels are kept in cache/sglang there, so only the
+              first start on a GPU type compiles them.
+
+      llamacpp:
+        type: group
+        label: llama.cpp settings
+        hidden: ${{ inputs.engine != 'llamacpp' }}
+        ignore: ${{ .hidden }}
+        items:
+          hf_repo:
+            label: Hugging Face repository
+            type: string
+            default: unsloth/Inkling-2-Mini-GGUF
+            tooltip: GGUF repository on Hugging Face. Files are downloaded once and reused across runs.
+          gguf_file:
+            label: GGUF file
+            type: string
+            default: Inkling-2-Mini-UD-Q4_K_XL.gguf
+            tooltip: |
+              Quantization to serve. For Inkling 2 Mini, UD-Q4_K_XL (17.6 GB) is the model
+              card's recommendation and fits a 24 GB GPU; UD-Q8_K_XL (22.9 GB) is full
+              precision and suits a GPU with 40 GB or more.
+          vision:
+            label: Enable image input
+            type: boolean
+            default: true
+          mmproj_file:
+            label: Vision projector file
+            type: string
+            default: mmproj-F16.gguf
+            hidden: ${{ inputs.llamacpp.vision == false }}
+            ignore: ${{ .hidden }}
+          speculative:
+            label: Enable speculative decoding
+            type: boolean
+            default: false
+            tooltip: |
+              DSpark speculative decoding with the drafter in the same repository. It
+              needs memory beside the model and its own KV cache for the same window.
+          draft_file:
+            label: Drafter file
+            type: string
+            default: dspark-Inkling-2-Mini-Q8_0.gguf
+            hidden: ${{ inputs.llamacpp.speculative == false }}
+            ignore: ${{ .hidden }}
+          ctx_size:
+            label: Context size
+            type: number
+            default: 32768
+            tooltip: Context window in tokens; 0 uses the model's trained maximum. The KV cache grows with the window.
+          extra_args:
+            label: Extra llama-server arguments
+            type: string
+            default: --jinja --parallel 1 --flash-attn on --fit off -ngl all --ubatch-size 256 --cache-type-k q8_0 --cache-type-v q8_0 --temp 1.0 --top-p 1.0 --top-k 0 --min-p 0.0
+            tooltip: |
+              --jinja applies the model's chat template and is required for tool calling.
+              --parallel 1 gives one request the whole context. The default places every
+              layer on the GPU (--fit off -ngl all) with a smaller micro-batch and a q8_0
+              KV cache, which fits UD-Q4_K_XL, the projector, and 32K context in 24 GB.
+          gpu_ids:
+            label: GPU IDs
+            type: string
+            optional: true
+            tooltip: CUDA_VISIBLE_DEVICES for the server, e.g. 0. Leave empty under a scheduler, which assigns the GPU.
+          release_url:
+            label: llama.cpp build
+            type: string
+            default: https://github.com/unslothai/llama.cpp/releases/download/b12588-mix-c0c3de8/app-b12588-mix-c0c3de8-linux-x64-cuda12-portable.tar.gz
+            tooltip: |
+              Prebuilt llama-server tarball. Unsloth's build reads the looped-layer GGUF
+              layout of Inkling 2 Mini, which mainline llama.cpp does not yet. Any Linux
+              CUDA build of llama.cpp works for other models.
+          models_dir:
+            label: Model directory
+            type: string
+            optional: true
+            tooltip: |
+              Directory holding <repository name>/<file>. Left empty, the run reuses a
+              store that already holds every file (llamacpp/models under the install
+              directory, the work filesystem, then home) and otherwise downloads into
+              the first writable one.
+          hf_token:
+            label: Hugging Face token
+            type: password
+            optional: true
+            default: ${{ org.HF_TOKEN }}
+            tooltip: Needed only for gated repositories.
+
+      service:
+        type: group
+        label: Advanced settings
+        collapsed: true
+        items:
+          endpoint_name:
+            label: Endpoint name
+            description: Defaults to <engine>-<run slug>. A fixed name keeps chat model ids stable across relaunches and replaces the endpoint already running under it.
+            type: string
+            optional: true
+            tooltip: The name becomes a DNS label, so it is folded to lowercase and anything outside a-z 0-9 - becomes a dash.
+          parent_install_dir:
+            label: Parent install directory
+            description: Needs enough free space for the container images.
+            type: string
+            default: ${HOME}/pw/software
+            tooltip: Images go to containers/, tools and caches beside them. Shared with rag-vllm, so images it staged are reused.

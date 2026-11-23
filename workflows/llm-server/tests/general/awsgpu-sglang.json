@@ -1,0 +1,33 @@
+{
+  "_test": {
+    "timeout_s": 5400,
+    "warm_marker": [
+      "${HOME}/pw/software/containers/sglang-inkling-2-mini.sif",
+      "${HOME}/pw/models/Qwen2.5-0.5B-Instruct/config.json"
+    ],
+    "leftover_patterns": [
+      "sglang.launch_server",
+      "pw endpoints"
+    ]
+  },
+  "resource": "pw://alvaro/awsgpu",
+  "engine": "sglang",
+  "cluster": {
+    "scheduler": false
+  },
+  "model": {
+    "source": "huggingface",
+    "hf_model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+    "cache_dir": "~/pw/models"
+  },
+  "sglang": {
+    "num_gpus": "1",
+    "mem_fraction": "0.50",
+    "context_length": "4096",
+    "extra_args": "--max-running-requests 8",
+    "container_uri": "ghcr.io/parallelworks/sglang-inkling-2-mini:v1"
+  },
+  "service": {
+    "parent_install_dir": "${HOME}/pw/software"
+  }
+}

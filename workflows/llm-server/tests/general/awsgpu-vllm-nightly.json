@@ -1,0 +1,35 @@
+{
+  "_test": {
+    "timeout_s": 3600,
+    "warm_marker": [
+      "${HOME}/pw/software/containers/vllm-openai-nightly-20261123.sif",
+      "${HOME}/pw/models/Qwen2.5-0.5B-Instruct/config.json"
+    ],
+    "leftover_patterns": [
+      "vllm.entrypoints",
+      "pw endpoints"
+    ]
+  },
+  "resource": "pw://alvaro/awsgpu",
+  "engine": "vllm",
+  "cluster": {
+    "scheduler": false
+  },
+  "model": {
+    "source": "huggingface",
+    "hf_model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+    "cache_dir": "~/pw/models"
+  },
+  "vllm": {
+    "num_gpus": "1",
+    "gpu_memory": "0.70",
+    "max_model_len": "4096",
+    "dtype": "auto",
+    "attention_backend": "FLASH_ATTN",
+    "extra_args": "--max-num-seqs 8 --enable-prefix-caching",
+    "container_uri": "ghcr.io/parallelworks/vllm-openai-nightly-20261123:v1"
+  },
+  "service": {
+    "parent_install_dir": "${HOME}/pw/software"
+  }
+}

@@ -101,9 +101,10 @@ installs into a shared directory on the login node (`service_parent_install_dir`
 visible from the compute nodes), and the script that does the work is handed to the
 `script_submitter` subworkflow, which runs it on the login node (`scheduler: false`) or
 submits it to SLURM/PBS (`scheduler: true`). **Call subworkflows; compose, never
-copy.** `script_submitter`, `wait_for_endpoint`, `doe`, `dakota`, `openfoam-naca` and
-`design-explorer` exist to be called; never hand-write job submission, port allocation
-or tunnel logic; write a new workflow so it can be called in turn.
+copy.** `script_submitter`, `wait_for_endpoint`, `update_pw_cli`, `doe`, `dakota`,
+`openfoam-naca` and `design-explorer` exist to be called; never hand-write job
+submission, port allocation or tunnel logic; write a new workflow so it can be called
+in turn.
 
 | Shape | The run ends when | After preprocessing | Examples | Read |
 |---|---|---|---|---|
@@ -193,6 +194,8 @@ the same invariants:
 - It runs only on the login node and submits no scheduler job, so it keeps a **single
   `general.yaml`**: nothing differs between platforms, and a caller on any platform
   calls that one file. A site difference a hostname can decide is runtime logic inside it.
+  The one exception is a step that exists for a single platform and is named after it:
+  `update_pw_cli/yamls/emed.yaml`.
 - A composed workflow **calls, never copies**: `uses: github/parallelworks/workflows@canary`
   with `$yaml: workflows/<name>/yamls/general.yaml` and the callee's form as its `with:`
   block (nested groups as nested maps). Calls nest at most five deep.

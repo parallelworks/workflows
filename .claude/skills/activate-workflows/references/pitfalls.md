@@ -840,7 +840,6 @@
   serves longer than the wait turns into a false `leftover:proc:pw endpoints run`. Run the
   tests of one resource sequentially (one `run-workflow-test.py` invocation takes several
   test files and runs them in order).
-
 - **Testing the `emed` variants on `cluster.einsteinmed.edu`** (2026-11-24; the tests
   under `tests/emed/`): `pw://einsteinloginnode` (managed) and the user's
   `einsteindefault` (existing) share the home and both SLURM clusters, so they count as

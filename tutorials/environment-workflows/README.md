@@ -37,7 +37,6 @@ The tutorial is written for a **cloud cluster**, which runs SLURM and boots its 
 
 - An active cloud cluster with at least two nodes free in one partition
 - The [`pw` CLI](https://parallelworks.com/docs/cli) for the command-line path. It is already installed and signed in on your user workspace
-- Basic familiarity with YAML
 
 ---
 

@@ -282,6 +282,10 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
   paths. Support both SLURM and PBS (`scheduler: true` submits; `false` runs on the
   login node). Copy the `cluster` form and the submitter's `with:` block from the same
   variant of a sibling workflow; `--dry-run` does not catch a mismatch.
+- **An `emed` variant upgrades the CLI first**: its preprocessing job starts with a
+  call to `workflows/update_pw_cli/yamls/emed.yaml` (`ignore-errors: true`, the
+  resource as its one input), before the checkout. Why `~/pw/pw`, and what replacing
+  a binary on a home shared over NFS takes: `workflows/update_pw_cli/README.md`.
 - **Code that several variants share is written once**, so a change lands once and
   the variants differ only where the platform does. A step body only this workflow
   runs lives in a script under `app/`, called from a one-line step with its inputs as

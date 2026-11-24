@@ -455,7 +455,10 @@ many workflows call, or that takes several steps or jobs, is a subworkflow they 
 resolves the cluster's shared software directory through
 `tools/utils/shared-software-dir.sh` (login host in, directory out, nothing for an
 unknown host; sparse-checkout `tools/utils`) and decides itself whether to install
-there, reuse it read-only or fall back.
+there, reuse it read-only or fall back. An `emed` variant starts its preprocessing
+job with a call to `workflows/update_pw_cli/yamls/emed.yaml` (`ignore-errors: true`,
+`resource: ${{ inputs.cluster.resource }}`), which upgrades the CLI at `~/pw/pw` that
+its scripts run (the README there says why, and what the shared home takes).
 
 The same choice applies to **`script_submitter`** (§5) and to the **resource form
 section** of your YAML: the `resource`, `scheduler`, `slurm`, and `pbs` input groups and

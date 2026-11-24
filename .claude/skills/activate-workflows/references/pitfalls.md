@@ -305,7 +305,13 @@
   already holds `subworkflows/<job>/step_0/`. The nested call, a job of its own, added
   about 4 s to preprocessing (`update_pw_cli`, first step of every `emed` variant).
   A call that must never stop its caller carries `ignore-errors: true`: the callee
-  absorbing its own failures does not cover a sub-run the platform fails.
+  absorbing its own failures does not cover a sub-run the platform fails. It does not
+  cover a missing file either: a `$yaml` that is not on the referenced branch is
+  refused at launch, dry-run included (`This workflow's file ... isn't in
+  github.com/parallelworks/workflows@canary`), so a new subworkflow and its callers
+  land in one merge, and until then the callers point at the development branch. With
+  `ignore-errors` a passing caller test no longer proves the call ran: read the
+  step's status (`pw workflows runs view <slug> -o json`, `executedJobs`).
 - **A run in `error` after 0 s with no failed job or step** carries the cause in
   `statusReason` (`pw workflows runs view <slug> -o json`; `runs errors` prints it as
   `Reason:`). `jobDirectoryNotWritable` came once on `cluster.einsteinmed.edu`
@@ -835,6 +841,24 @@
   tests of one resource sequentially (one `run-workflow-test.py` invocation takes several
   test files and runs them in order).
 
+- **Testing the `emed` variants on `cluster.einsteinmed.edu`** (2026-11-24; the tests
+  under `tests/emed/`): `pw://einsteinloginnode` (managed) and the user's
+  `einsteindefault` (existing) share the home and both SLURM clusters, so they count as
+  one resource: a baseline launched on one while the runner tore a test down on the
+  other was reported as `leftover:squeue`. The inputs that work are `slurm_options:
+  hpc4`, `partition_hpc4: test`. A session that writes nothing to `run.*.out` for
+  minutes is on an overloaded node, not broken: `cpu-811` ran at load 60 with 44 cores
+  allocated while six nodes of the partition sat idle (`sinfo -M hpc4 -p test -N -o
+  "%N %t %O %C"`); cancel, and resubmit with `--exclude=<node>` in
+  `scheduler_directives`. On the default cluster JupyterLab took two minutes to start
+  and missed the 120 s health budget, with the unchanged canary YAML as well. `kasmvnc`
+  needs about ten minutes there: singularity has no setuid bit, so every start
+  converts the 880 MB SIF to a sandbox (4.5 min on one core) before the desktop comes
+  up; give the test `cpus_per_task: 4` and 15 minutes. The existing cluster's node
+  mounts the home over NFS (`timeo=600`): when `dmesg` there says `nfs: server ... not
+  responding`, a `sed -i` takes a minute, the step script still exits 0 and the run
+  fails with `Error copying step summary from remote ... context deadline exceeded`;
+  launch again.
 - **Every PROBE test of a workflow failing at launch with `Missing required fields:
   Service host` (`#/resource`) is a definition whose `inputs` no longer match the form**
   (verified 2026-10-19: 26 definitions still passed `cluster.resource` after the forms took

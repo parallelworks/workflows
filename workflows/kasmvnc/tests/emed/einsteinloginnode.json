@@ -1,6 +1,6 @@
 {
   "_test": {
-    "timeout_s": 2400,
+    "timeout_s": 1200,
     "leftover_patterns": [
       "Xvnc",
       "kasmvnc",
@@ -17,9 +17,10 @@
       "is_enabled": true,
       "slurm_options": "hpc4",
       "partition_hpc4": "test",
-      "cpus_per_task": 1,
+      "cpus_per_task": 4,
       "mem": "8GB",
-      "time": "00:30:00"
+      "time": "00:30:00",
+      "scheduler_directives": "--exclude=cpu-811"
     }
   },
   "desktop": {}

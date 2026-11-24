@@ -1,0 +1,36 @@
+# permissions authenticates the in-workflow pw CLI — pw workers asks the
+# platform to submit the scheduler job.
+permissions:
+  - '*'
+
+jobs:
+  # No ssh block: this job runs in your user workspace. It talks to the
+  # platform, and the platform talks to the cluster.
+  request:
+    steps:
+      - name: Request Nodes
+        # The environment supplies the partition, the node count, the wall time
+        # and the scheduler directives. --wait holds the step until the
+        # scheduler job is running and its node has connected.
+        run: |
+          set -o pipefail
+          pw workers create --environment "${{ inputs.environment }}" --wait "${{ inputs.resource.uri }}" 2>&1 | tee worker.log
+          WORKER_ID=$(grep -o 'Worker [0-9a-f]*' worker.log | head -1 | cut -d' ' -f2)
+          echo "WORKER_ID=${WORKER_ID}" | tee -a $OUTPUTS
+          echo "::notice::Nodes are ready. Worker ID: ${WORKER_ID}"
+          echo "::notice::The worker holds the nodes until its wall time ends or you delete it: pw workers delete ${WORKER_ID}"
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Resource target
+        tooltip: The compute cluster to request the nodes on.
+        autoselect: true
+        optional: false
+      environment:
+        type: string
+        label: Environment
+        description: Name of an environment on the cluster; its saved settings decide the partition, the node count and the wall time.
+        default: demo

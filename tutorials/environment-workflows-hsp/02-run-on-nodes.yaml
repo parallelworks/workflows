@@ -1,0 +1,25 @@
+# permissions authenticates the in-workflow pw CLI — pw ssh reaches the worker
+# through the platform.
+permissions:
+  - '*'
+
+jobs:
+  # No ssh block and no cluster input: the worker ID is all this workflow needs.
+  hello:
+    steps:
+      - name: Hello From the Worker's Node
+        run: pw ssh "worker/${{ inputs.worker }}" 'echo "Hello world from $(hostname)"'
+      - name: Hello From Every Node
+        # srun --jobid starts the command inside the scheduler job the worker
+        # holds, once per task, so it reaches every node of the request.
+        run: |
+          JOB_ID=$(pw workers get -o json "${{ inputs.worker }}" | jq -r .schedulerJobId)
+          pw ssh "worker/${{ inputs.worker }}" "srun --jobid=${JOB_ID} bash -c 'echo Hello world from \$(hostname)'"
+
+'on':
+  execute:
+    inputs:
+      worker:
+        type: string
+        label: Worker ID
+        description: Printed by 01-request-nodes.yaml when the nodes are ready; pw workers ls lists it too.

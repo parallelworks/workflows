@@ -29,7 +29,7 @@ By the end of this tutorial you will understand how to:
 - Run a command on the worker's node, or on every node it holds, with `pw ssh`
 - Add node types (GPU, big memory, ...) without touching the workflows
 
-The tutorial is written for a **cloud cluster**, which runs SLURM and boots its compute nodes on demand.
+The tutorial is written for a **cloud cluster**, which runs SLURM and boots its compute nodes on demand. For a DSRC system, with a node type saved as the environment, follow the [HSP edition](../environment-workflows-hsp/README.md).
 
 ---
 

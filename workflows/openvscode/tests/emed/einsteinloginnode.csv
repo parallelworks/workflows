@@ -1,0 +1,2 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-11-24T15:35:10Z,,pass,ok,4c8168b,162207a,555f2f1,8b924a4-dirty,7914caa,emed-update-client,avidaltorr,equal-crow,161,

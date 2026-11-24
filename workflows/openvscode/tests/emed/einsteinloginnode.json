@@ -1,0 +1,25 @@
+{
+  "_test": {
+    "timeout_s": 1500,
+    "leftover_patterns": [
+      "code-server",
+      "pw endpoints run"
+    ],
+    "leftover_commands": {
+      "squeue_hpc4": "squeue -M hpc4 -h -u $USER | grep -v '^CLUSTER' | wc -l"
+    }
+  },
+  "cluster": {
+    "resource": "pw://einsteinloginnode",
+    "scheduler": true,
+    "slurm": {
+      "is_enabled": true,
+      "slurm_options": "hpc4",
+      "partition_hpc4": "test",
+      "cpus_per_task": 1,
+      "mem": "8GB",
+      "time": "00:30:00"
+    }
+  },
+  "service": {}
+}

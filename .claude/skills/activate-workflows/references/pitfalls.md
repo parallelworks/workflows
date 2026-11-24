@@ -300,6 +300,18 @@
   restart variants' `Report` step runs the attempts' copy of `restart-report.sh` from
   `${PW_PARENT_JOB_DIR}/subworkflows/solve/step_0/` and guards against it missing
   (no attempt got as far as the checkout). Moving the retried step changes the index.
+- **A `uses:` step may come before `parallelworks/checkout` in the same job** (verified
+  2026-11-24, run modest-bison): the checkout materializes into a job directory that
+  already holds `subworkflows/<job>/step_0/`. The nested call, a job of its own, added
+  about 4 s to preprocessing (`update_pw_cli`, first step of every `emed` variant).
+  A call that must never stop its caller carries `ignore-errors: true`: the callee
+  absorbing its own failures does not cover a sub-run the platform fails.
+- **A run in `error` after 0 s with no failed job or step** carries the cause in
+  `statusReason` (`pw workflows runs view <slug> -o json`; `runs errors` prints it as
+  `Reason:`). `jobDirectoryNotWritable` came once on `cluster.einsteinmed.edu`
+  (2026-11-24, run upward-ape, the first file run of the day on that resource):
+  `~/pw/jobs` was writable, and the same launch completed a minute later and in ten
+  more tries, whatever the run name. Launch again before looking for a cause.
 
 ## Resources, nodes and filesystems
 
@@ -760,6 +772,34 @@
   and exit through its cleanup trap when that is gone (`workflows/ray-cluster/app/dispatch_workers.sh`).
 - **`faulted`** is the status of a run whose job failed while the others wind down; it never
   completes, so treat it as final.
+- **`pw upgrade` swaps the binary by rename and needs only the platform host**
+  (verified 2026-11-24 on `cluster.einsteinmed.edu`, v7.136.0 and v7.138.1 to v7.141.0):
+  it downloads to `.pw-cli-update-<n>` beside the binary and renames that over it (new
+  inode). No sign-in and no `PW_API_KEY`: it upgraded a copy under an empty `HOME` with
+  `PW_PLATFORM_HOST` alone. About 1.5 s on a login node, 0.1 s when current. It needs
+  write access to the binary: on the emed managed cluster the `pw` on the PATH is the
+  root-owned `/usr/local/bin/pw` (v7.136.0 while the platform served v7.141.0), so the
+  `emed` variants upgrade a copy at `~/pw/pw`, which their `inputs.sh` puts first in
+  the PATH (`workflows/update_pw_cli`). Killed mid-download (`SIGTERM` or `SIGKILL`) it
+  leaves the binary intact and working, and its partial download (6 to 110 MB) behind;
+  no later upgrade removes those, so the step sweeps the ones older than ten minutes.
+- **Replacing a binary on a shared home from one host makes it a stale file handle for
+  a process running it on another host over NFS** (verified 2026-11-24): the emed
+  managed login node has the home on GPFS, the user's existing cluster mounts the same
+  home over NFSv3, and `~/pw/pw` there is the running agent's binary
+  (`~/pw/pw agent start-existing`). After `pw upgrade` ran on the managed node,
+  `stat -L /proc/<agent pid>/exe` on the existing node answered `Stale file handle`:
+  the agent lives on the pages it has in memory, and one it has to read back cannot
+  be read (a bus error; not seen in the hour that followed). Reproduced with a copy of `sleep`: replaced by rename from
+  the other host, stale; replaced on the NFS client itself, fine (the client keeps the
+  open file as `.nfs*`); **hard-linked before the rename, fine** from either host: the
+  old inode stays allocated. `update_pw_cli` links `~/pw/pw` to `.pw.keep.<inode>`
+  before every upgrade and drops the replaced ones after 30 days. The same holds for
+  any file a long-lived process on another host executes or maps.
+- **`pgrep -f`/`pkill -f` over `pw ssh` match the whole remote command line**, every
+  other pattern written in it included: a `pkill -f 'probe/s[123] 900'` killed its own
+  shell because an earlier line of the same call spelled `probe/s1 900` (2026-11-24).
+  Match on the process name (`pgrep -x`, `pkill -x`) where there is one.
 
 ## Code delivery and tests
 

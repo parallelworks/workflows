@@ -9,6 +9,7 @@ jobs:
     steps:
       - name: Update pw CLI
         uses: github/parallelworks/workflows@emed-update-client
+        ignore-errors: true
         with:
           $yaml: workflows/update_pw_cli/yamls/emed.yaml
           resource: ${{ inputs.cluster.resource }}

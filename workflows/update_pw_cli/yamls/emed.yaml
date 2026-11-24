@@ -17,8 +17,17 @@ jobs:
             src=$(command -v pw || echo /usr/local/bin/pw)
             cp "$src" ~/pw/pw.tmp && chmod 755 ~/pw/pw.tmp && mv ~/pw/pw.tmp ~/pw/pw
           fi
-          # A failed upgrade must not block the caller: the CLI already there still serves
-          PW_PLATFORM_HOST=${PW_PLATFORM_HOST:-cluster.einsteinmed.edu} ~/pw/pw upgrade || echo "::warning::pw upgrade failed, continuing with $(~/pw/pw --version)"
+          # An upgrade killed mid-download (a canceled run) leaves its partial download
+          # beside the binary; the age keeps a concurrent run's download out of this
+          find ~/pw -maxdepth 1 -name '.pw-cli-update-*' -mmin +10 -delete || true
+          # Other hosts run this binary from the shared home (the existing cluster's
+          # agent, over NFS): a hard link keeps the replaced file alive for them, where
+          # the upgrade's bare rename leaves them a stale file handle
+          keep=~/pw/.pw.keep.$(stat -c %i ~/pw/pw)
+          [ -e "${keep}" ] || ln ~/pw/pw "${keep}" || true
+          find ~/pw -maxdepth 1 -name '.pw.keep.*' -ctime +30 ! -samefile ~/pw/pw -delete || true
+          # A failed or stalled upgrade must not block the caller: the CLI already there still serves
+          PW_PLATFORM_HOST=${PW_PLATFORM_HOST:-cluster.einsteinmed.edu} timeout 120 ~/pw/pw upgrade || echo "::warning::pw upgrade failed, continuing with $(~/pw/pw --version)"
 
 'on':
   execute:

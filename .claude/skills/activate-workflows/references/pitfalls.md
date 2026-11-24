@@ -794,7 +794,9 @@
   the other host, stale; replaced on the NFS client itself, fine (the client keeps the
   open file as `.nfs*`); **hard-linked before the rename, fine** from either host: the
   old inode stays allocated. `update_pw_cli` links `~/pw/pw` to `.pw.keep.<inode>`
-  before every upgrade and drops the replaced ones after 30 days. The same holds for
+  before and after every upgrade and drops the replaced ones after 30 days. The NFS
+  client also kept resolving the name to the replaced inode for about 30 s (its
+  lookup cache): a check from the other host right after a replacement reads the old file. The same holds for
   any file a long-lived process on another host executes or maps.
 - **`pgrep -f`/`pkill -f` over `pw ssh` match the whole remote command line**, every
   other pattern written in it included: a `pkill -f 'probe/s[123] 900'` killed its own

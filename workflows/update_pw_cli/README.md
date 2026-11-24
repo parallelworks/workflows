@@ -27,6 +27,8 @@ One step, on the login node over SSH:
    30 days.
 4. `~/pw/pw upgrade`, for 120 s at most, against `PW_PLATFORM_HOST`
    (`cluster.einsteinmed.edu` when the step's environment does not carry it).
+5. Link the binary now in place the same way: it always has its link, so an upgrade
+   someone runs by hand later is covered too.
 
 **It must never stop its caller.** A failed or stalled upgrade is a `::warning::`
 naming the version that stays in use, and the step exits 0. The call carries
@@ -77,8 +79,10 @@ and `~/pw/pw` is the binary that node's agent runs (`~/pw/pw agent start-existin
   it has to read back from the file can no longer be read, which the kernel answers
   with a bus error (not seen yet in the hour that followed).
 - The hard link of step 3 prevents it: the replaced inode stays allocated, so its file
-  handle stays valid on every host (reproduced with a copy of `sleep` replaced from the
-  other host, with and without the link). A replaced binary costs about 110 MB until
+  handle stays valid on every host. Reproduced with a copy of `sleep` replaced from the
+  other host, with and without the link, and with the workflow itself: a process on
+  the existing node held `~/pw/pw` (v7.136.0) open, a run on the managed node upgraded
+  it (run rested-leopard), and the process still read the whole old file. A replaced binary costs about 110 MB until
   it is dropped, 30 days after its replacement; an agent that keeps running a binary
   longer than that is exposed again. Restarting the cluster starts a new agent.
 - Killed mid-download (a canceled run), the upgrade leaves `~/pw/pw` intact and

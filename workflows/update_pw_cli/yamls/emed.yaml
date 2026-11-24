@@ -21,13 +21,18 @@ jobs:
           # beside the binary; the age keeps a concurrent run's download out of this
           find ~/pw -maxdepth 1 -name '.pw-cli-update-*' -mmin +10 -delete || true
           # Other hosts run this binary from the shared home (the existing cluster's
-          # agent, over NFS): a hard link keeps the replaced file alive for them, where
-          # the upgrade's bare rename leaves them a stale file handle
-          keep=~/pw/.pw.keep.$(stat -c %i ~/pw/pw)
-          [ -e "${keep}" ] || ln ~/pw/pw "${keep}" || true
+          # agent, over NFS): a hard link keeps a replaced file alive for them, where a
+          # bare rename leaves them a stale file handle. The binary in place always has
+          # one, so an upgrade run by hand is covered too
+          keep_binary() {
+            local keep=~/pw/.pw.keep.$(stat -c %i ~/pw/pw)
+            [ -e "${keep}" ] || ln ~/pw/pw "${keep}" || true
+          }
+          keep_binary
           find ~/pw -maxdepth 1 -name '.pw.keep.*' -ctime +30 ! -samefile ~/pw/pw -delete || true
           # A failed or stalled upgrade must not block the caller: the CLI already there still serves
           PW_PLATFORM_HOST=${PW_PLATFORM_HOST:-cluster.einsteinmed.edu} timeout 120 ~/pw/pw upgrade || echo "::warning::pw upgrade failed, continuing with $(~/pw/pw --version)"
+          keep_binary
 
 'on':
   execute:

@@ -49,6 +49,7 @@ workflows/<name>/thumbnails/ # marketplace thumbnails (one per registered varian
 workflows/<name>/tests/<variant>/  # end-to-end tests: <test>.json form inputs + <test>.csv results
 workflows/script_submitter/v3.6/  # shared subworkflow: SLURM/PBS/SSH script submission
 workflows/wait_for_endpoint/      # shared subworkflow: wait for an endpoint, probe its URL, release the submitter
+workflows/update_pw_cli/          # shared subworkflow of the emed variants: upgrade ~/pw/pw on the login node (yamls/emed.yaml)
 workflows/doe/, workflows/dakota/, workflows/openfoam-naca/, workflows/design-explorer/
                              # building blocks: a sampler, an optimizer step, a case runner, a study
                              # page; composed by doe-openfoam and dakota-openfoam, which have no code

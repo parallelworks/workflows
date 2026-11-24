@@ -7,6 +7,11 @@ jobs:
       ssh:
         remoteHost: ${{ inputs.cluster.resource.ip }}
       steps:
+        - name: Update pw CLI
+          uses: github/parallelworks/workflows@emed-update-client
+          with:
+            $yaml: workflows/update_pw_cli/yamls/emed.yaml
+            resource: ${{ inputs.cluster.resource }}
         - name: Checkout
           uses: parallelworks/checkout
           with:

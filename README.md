@@ -97,6 +97,8 @@ How this repo was assembled, and where anything older lives, is recorded in
 - [workflows/wait_for_endpoint/](workflows/wait_for_endpoint/) — waits until an
   endpoint is listed and its URL answers, then releases the submitter; the health
   check every endpoint workflow owns
+- [workflows/update_pw_cli/](workflows/update_pw_cli/) — upgrades the `pw` CLI at
+  `~/pw/pw` on the login node; the first preprocessing step of every `emed` variant
 
 The sampler, the optimizer step, the case runner and the study page
 ([doe](workflows/doe/), [dakota](workflows/dakota/),

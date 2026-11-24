@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  update_pw_cli:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Update pw CLI
+        run: |
+          set -x
+          # pw upgrade replaces its own binary, and /usr/local/bin/pw on the managed
+          # cluster is root-owned: upgrade a copy the user owns, the one the emed
+          # workflows put first in the PATH
+          if [ ! -x ~/pw/pw ]; then
+            src=$(command -v pw || echo /usr/local/bin/pw)
+            cp "$src" ~/pw/pw.tmp && chmod 755 ~/pw/pw.tmp && mv ~/pw/pw.tmp ~/pw/pw
+          fi
+          # A failed upgrade must not block the caller: the CLI already there still serves
+          PW_PLATFORM_HOST=${PW_PLATFORM_HOST:-cluster.einsteinmed.edu} ~/pw/pw upgrade || echo "::warning::pw upgrade failed, continuing with $(~/pw/pw --version)"
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        description: Upgrades ~/pw/pw on its login node to the platform's version; a failed upgrade is only a warning.
+        include-workspace: false
+        autoselect: true

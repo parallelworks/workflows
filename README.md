@@ -123,7 +123,9 @@ is a short standalone lesson on the `if:` status functions (`success()`, `failur
 `cancelled()`, `always()` and their negations) on steps and on jobs, with what replaces
 the keywords ACTIVATE removed. [`environment-workflows/`](tutorials/environment-workflows/)
 requests nodes in one workflow, from scheduler settings saved in an environment, and
-runs on them from another while a worker holds them.
+runs on them from another while a worker holds them;
+[`environment-workflows-hsp/`](tutorials/environment-workflows-hsp/) is its HSP edition,
+with a DSRC node type (Nautilus `mla`) saved as the environment.
 
 ## Variants
 

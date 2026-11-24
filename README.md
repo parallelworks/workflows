@@ -121,7 +121,9 @@ until convergence — behind a file contract that `dakota-openfoam` fills with r
 [`if-conditions/`](tutorials/if-conditions/)
 is a short standalone lesson on the `if:` status functions (`success()`, `failure()`,
 `cancelled()`, `always()` and their negations) on steps and on jobs, with what replaces
-the keywords ACTIVATE removed.
+the keywords ACTIVATE removed. [`environment-workflows/`](tutorials/environment-workflows/)
+requests nodes in one workflow, from scheduler settings saved in an environment, and
+runs on them from another while a worker holds them.
 
 ## Variants
 

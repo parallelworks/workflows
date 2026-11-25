@@ -34,6 +34,14 @@
   `default: false` does not reach `cleanup_script_path`'s `hidden:` test, so the path
   counts as required. Pass `define_cleanup_script: false` explicitly (verified
   2026-10-20; four `hsp` callers broke when the `hsp` submitter declared the flag).
+- **`This workflow's file ... isn't in github.com/parallelworks/workflows@<ref>`
+  (`workflow_file_not_found`) at launch, `--dry-run` included:** a `uses:` step names a
+  `$yaml` that is not on that branch yet. The launch is refused whole, whatever
+  `ignore-errors` the step carries (verified 2026-11-24), so a new subworkflow and its
+  callers land in one merge; until then test the callers with that one ref pointed at
+  the development branch. With `ignore-errors` on a call, a passing caller test does
+  not prove the call ran: read the step's status
+  (`pw workflows runs view <slug> -o json`, `executedJobs`).
 - **Wrong deployment variant / mismatched resource form:** `general`'s slurm/pbs
   fields passed to an `emed`/`noaa`/`hsp` subworkflow are NOT rejected by `--dry-run`
   (unknown fields pass silently; verified 2026-09-16), so the mismatch surfaces only
@@ -300,18 +308,6 @@
   restart variants' `Report` step runs the attempts' copy of `restart-report.sh` from
   `${PW_PARENT_JOB_DIR}/subworkflows/solve/step_0/` and guards against it missing
   (no attempt got as far as the checkout). Moving the retried step changes the index.
-- **A `uses:` step may come before `parallelworks/checkout` in the same job** (verified
-  2026-11-24, run modest-bison): the checkout materializes into a job directory that
-  already holds `subworkflows/<job>/step_0/`. The nested call, a job of its own, added
-  about 4 s to preprocessing (`update_pw_cli`, first step of every `emed` variant).
-  A call that must never stop its caller carries `ignore-errors: true`: the callee
-  absorbing its own failures does not cover a sub-run the platform fails. It does not
-  cover a missing file either: a `$yaml` that is not on the referenced branch is
-  refused at launch, dry-run included (`This workflow's file ... isn't in
-  github.com/parallelworks/workflows@canary`), so a new subworkflow and its callers
-  land in one merge, and until then the callers point at the development branch. With
-  `ignore-errors` a passing caller test no longer proves the call ran: read the
-  step's status (`pw workflows runs view <slug> -o json`, `executedJobs`).
 - **A run in `error` after 0 s with no failed job or step** carries the cause in
   `statusReason` (`pw workflows runs view <slug> -o json`; `runs errors` prints it as
   `Reason:`). `jobDirectoryNotWritable` came once on `cluster.einsteinmed.edu`

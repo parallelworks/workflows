@@ -243,7 +243,9 @@ also run on the cloud clusters of `activate.parallel.works`, which is how their 
 are recorded. A workflow that only runs on the
 login node and submits no scheduler job keeps a single `general.yaml` (`doe`, `dakota`,
 `design-explorer`): nothing differs between platforms, so a caller on any platform
-calls that one file.
+calls that one file. An `emed` variant starts its preprocessing job with a call to
+`workflows/update_pw_cli/yamls/emed.yaml`, which upgrades the `pw` CLI its scripts run
+([workflows/update_pw_cli/README.md](workflows/update_pw_cli/README.md)).
 
 ## 5. Testing
 

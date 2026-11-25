@@ -1,0 +1,12 @@
+Run loved-deer: error (11m57s)
+
+Failed jobs/steps:
+
+  preprocessing > Controller Preprocessing (error, 0s)
+    + cp inputs.sh controller-inline.loved-deer-00001.sh
+    + cat workflows/jupyterlab/app/controller.sh
+    + bash controller-inline.loved-deer-00001.sh
+    WARNING: overwriting environment variables set in the machine
+    overwriting variable {'LD_LIBRARY_PATH'}
+
+Summary: 1 job(s) failed, 1 step(s) failed

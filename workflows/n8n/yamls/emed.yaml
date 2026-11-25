@@ -7,6 +7,12 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.cluster.resource.ip }}
     steps:
+      - name: Update pw CLI
+        uses: github/parallelworks/workflows@canary
+        ignore-errors: true
+        with:
+          $yaml: workflows/update_pw_cli/yamls/emed.yaml
+          resource: ${{ inputs.cluster.resource }}
       - name: Checkout ${{ inputs.service.container_runtime }}
         uses: parallelworks/checkout
         with:

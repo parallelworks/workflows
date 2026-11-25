@@ -34,6 +34,14 @@
   `default: false` does not reach `cleanup_script_path`'s `hidden:` test, so the path
   counts as required. Pass `define_cleanup_script: false` explicitly (verified
   2026-10-20; four `hsp` callers broke when the `hsp` submitter declared the flag).
+- **`This workflow's file ... isn't in github.com/parallelworks/workflows@<ref>`
+  (`workflow_file_not_found`) at launch, `--dry-run` included:** a `uses:` step names a
+  `$yaml` that is not on that branch yet. The launch is refused whole, whatever
+  `ignore-errors` the step carries (verified 2026-11-24), so a new subworkflow and its
+  callers land in one merge; until then test the callers with that one ref pointed at
+  the development branch. With `ignore-errors` on a call, a passing caller test does
+  not prove the call ran: read the step's status
+  (`pw workflows runs view <slug> -o json`, `executedJobs`).
 - **Wrong deployment variant / mismatched resource form:** `general`'s slurm/pbs
   fields passed to an `emed`/`noaa`/`hsp` subworkflow are NOT rejected by `--dry-run`
   (unknown fields pass silently; verified 2026-09-16), so the mismatch surfaces only
@@ -300,6 +308,12 @@
   restart variants' `Report` step runs the attempts' copy of `restart-report.sh` from
   `${PW_PARENT_JOB_DIR}/subworkflows/solve/step_0/` and guards against it missing
   (no attempt got as far as the checkout). Moving the retried step changes the index.
+- **A run in `error` after 0 s with no failed job or step** carries the cause in
+  `statusReason` (`pw workflows runs view <slug> -o json`; `runs errors` prints it as
+  `Reason:`). `jobDirectoryNotWritable` came once on `cluster.einsteinmed.edu`
+  (2026-11-24, run upward-ape, the first file run of the day on that resource):
+  `~/pw/jobs` was writable, and the same launch completed a minute later and in ten
+  more tries, whatever the run name. Launch again before looking for a cause.
 
 ## Resources, nodes and filesystems
 
@@ -760,6 +774,36 @@
   and exit through its cleanup trap when that is gone (`workflows/ray-cluster/app/dispatch_workers.sh`).
 - **`faulted`** is the status of a run whose job failed while the others wind down; it never
   completes, so treat it as final.
+- **`pw upgrade` swaps the binary by rename and needs only the platform host**
+  (verified 2026-11-24 on `cluster.einsteinmed.edu`, v7.136.0 and v7.138.1 to v7.141.0):
+  it downloads to `.pw-cli-update-<n>` beside the binary and renames that over it (new
+  inode). No sign-in and no `PW_API_KEY`: it upgraded a copy under an empty `HOME` with
+  `PW_PLATFORM_HOST` alone. About 1.5 s on a login node, 0.1 s when current. It needs
+  write access to the binary: on the emed managed cluster the `pw` on the PATH is the
+  root-owned `/usr/local/bin/pw` (v7.136.0 while the platform served v7.141.0), so the
+  `emed` variants upgrade a copy at `~/pw/pw`, which their `inputs.sh` puts first in
+  the PATH (`workflows/update_pw_cli`). Killed mid-download (`SIGTERM` or `SIGKILL`) it
+  leaves the binary intact and working, and its partial download (6 to 110 MB) behind;
+  no later upgrade removes those, so the step sweeps the ones older than ten minutes.
+- **Replacing a binary on a shared home from one host makes it a stale file handle for
+  a process running it on another host over NFS** (verified 2026-11-24): the emed
+  managed login node has the home on GPFS, the user's existing cluster mounts the same
+  home over NFSv3, and `~/pw/pw` there is the running agent's binary
+  (`~/pw/pw agent start-existing`). After `pw upgrade` ran on the managed node,
+  `stat -L /proc/<agent pid>/exe` on the existing node answered `Stale file handle`:
+  the agent lives on the pages it has in memory, and one it has to read back cannot
+  be read (a bus error; not seen in the hour that followed). Reproduced with a copy of `sleep`: replaced by rename from
+  the other host, stale; replaced on the NFS client itself, fine (the client keeps the
+  open file as `.nfs*`); **hard-linked before the rename, fine** from either host: the
+  old inode stays allocated. `update_pw_cli` links `~/pw/pw` to `.pw.keep.<inode>`
+  before and after every upgrade and drops the replaced ones after 30 days. The NFS
+  client also kept resolving the name to the replaced inode for about 30 s (its
+  lookup cache): a check from the other host right after a replacement reads the old file. The same holds for
+  any file a long-lived process on another host executes or maps.
+- **`pgrep -f`/`pkill -f` over `pw ssh` match the whole remote command line**, every
+  other pattern written in it included: a `pkill -f 'probe/s[123] 900'` killed its own
+  shell because an earlier line of the same call spelled `probe/s1 900` (2026-11-24).
+  Match on the process name (`pgrep -x`, `pkill -x`) where there is one.
 
 ## Code delivery and tests
 
@@ -792,7 +836,24 @@
   serves longer than the wait turns into a false `leftover:proc:pw endpoints run`. Run the
   tests of one resource sequentially (one `run-workflow-test.py` invocation takes several
   test files and runs them in order).
-
+- **Testing the `emed` variants on `cluster.einsteinmed.edu`** (2026-11-24; the tests
+  under `tests/emed/`): `pw://einsteinloginnode` (managed) and the user's
+  `einsteindefault` (existing) share the home and both SLURM clusters, so they count as
+  one resource: a baseline launched on one while the runner tore a test down on the
+  other was reported as `leftover:squeue`. The inputs that work are `slurm_options:
+  hpc4`, `partition_hpc4: test`. A session that writes nothing to `run.*.out` for
+  minutes is on an overloaded node, not broken: `cpu-811` ran at load 60 with 44 cores
+  allocated while six nodes of the partition sat idle (`sinfo -M hpc4 -p test -N -o
+  "%N %t %O %C"`); cancel, and resubmit with `--exclude=<node>` in
+  `scheduler_directives`. On the default cluster JupyterLab took two minutes to start
+  and missed the 120 s health budget, with the unchanged canary YAML as well. `kasmvnc`
+  needs about ten minutes there: singularity has no setuid bit, so every start
+  converts the 880 MB SIF to a sandbox (4.5 min on one core) before the desktop comes
+  up; give the test `cpus_per_task: 4` and 15 minutes. The existing cluster's node
+  mounts the home over NFS (`timeo=600`): when `dmesg` there says `nfs: server ... not
+  responding`, a `sed -i` takes a minute, the step script still exits 0 and the run
+  fails with `Error copying step summary from remote ... context deadline exceeded`;
+  launch again.
 - **Every PROBE test of a workflow failing at launch with `Missing required fields:
   Service host` (`#/resource`) is a definition whose `inputs` no longer match the form**
   (verified 2026-10-19: 26 definitions still passed `cluster.resource` after the forms took

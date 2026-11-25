@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
+permissions:
+  - '*'
+
+jobs:
+  update_pw_cli:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    steps:
+      - name: Update pw CLI
+        run: |
+          set -x
+          # pw upgrade replaces its own binary, and /usr/local/bin/pw on the managed
+          # cluster is root-owned: upgrade a copy the user owns, the one the emed
+          # workflows put first in the PATH
+          if [ ! -x ~/pw/pw ]; then
+            src=$(command -v pw || echo /usr/local/bin/pw)
+            cp "$src" ~/pw/pw.tmp && chmod 755 ~/pw/pw.tmp && mv ~/pw/pw.tmp ~/pw/pw
+          fi
+          # An upgrade killed mid-download (a canceled run) leaves its partial download
+          # beside the binary; the age keeps a concurrent run's download out of this
+          find ~/pw -maxdepth 1 -name '.pw-cli-update-*' -mmin +10 -delete || true
+          # Other hosts run this binary from the shared home (the existing cluster's
+          # agent, over NFS): a hard link keeps a replaced file alive for them, where a
+          # bare rename leaves them a stale file handle. The binary in place always has
+          # one, so an upgrade run by hand is covered too
+          keep_binary() {
+            local keep=~/pw/.pw.keep.$(stat -c %i ~/pw/pw)
+            [ -e "${keep}" ] || ln ~/pw/pw "${keep}" || true
+          }
+          keep_binary
+          find ~/pw -maxdepth 1 -name '.pw.keep.*' -ctime +30 ! -samefile ~/pw/pw -delete || true
+          # A failed or stalled upgrade must not block the caller: the CLI already there still serves
+          PW_PLATFORM_HOST=${PW_PLATFORM_HOST:-cluster.einsteinmed.edu} timeout 120 ~/pw/pw upgrade || echo "::warning::pw upgrade failed, continuing with $(~/pw/pw --version)"
+          keep_binary
+
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Compute resource
+        description: Upgrades ~/pw/pw on its login node to the platform's version; a failed upgrade is only a warning.
+        include-workspace: false
+        autoselect: true

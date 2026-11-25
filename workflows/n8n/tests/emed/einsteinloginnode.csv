@@ -1,0 +1,3 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-11-24T16:28:05Z,,fail,ok,67faab9,162207a,555f2f1,a70cf0b-dirty,7914caa,emed-update-client,avidaltorr,precious-penguin,255,"run canceled, expected completed: Run precious-penguin: canceled (4m0s)"
+2026-11-24T16:34:37Z,,pass,ok,67faab9,162207a,555f2f1,a70cf0b-dirty,7914caa,emed-update-client,avidaltorr,evolving-filly,147,

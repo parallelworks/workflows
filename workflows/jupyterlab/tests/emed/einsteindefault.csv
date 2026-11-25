@@ -1,0 +1,4 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-11-24T15:22:53Z,,fail,ok,963fd8a,162207a,555f2f1,8b924a4-dirty,7914caa,emed-update-client,avidaltorr,loved-deer,729,"run error, expected completed: preprocessing > Controller Preprocessing (error, 0s)"
+2026-11-24T15:55:22Z,,fail,ok,963fd8a,162207a,555f2f1,a70cf0b-dirty,7914caa,emed-update-client,avidaltorr,usable-ewe,224,"run error, expected completed: preprocessing > Create Inputs (error, 0s)"
+2026-11-24T17:02:14Z,,pass,ok,963fd8a,162207a,555f2f1,a70cf0b-dirty,7914caa,emed-update-client,avidaltorr,united-cattle,115,

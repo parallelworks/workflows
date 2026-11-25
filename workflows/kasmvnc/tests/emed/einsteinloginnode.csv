@@ -1,0 +1,4 @@
+date,phase,result,cleanup,workflow_tree,submitter_tree,tools_tree,commit,fetched,branch,user,run_slug,duration_s,error
+2026-11-24T16:01:33Z,,fail,leftover:squeue,15565c1,162207a,555f2f1,a70cf0b-dirty,7914caa,emed-update-client,avidaltorr,relevant-jay,1403,"run canceled, expected completed: Run relevant-jay: canceled (23m9s)"
+2026-11-24T16:39:31Z,,fail,ok,15565c1,162207a,555f2f1,a70cf0b-dirty,7914caa,emed-update-client,avidaltorr,exotic-fly,495,timeout after 480s; run canceled
+2026-11-24T16:50:53Z,,pass,ok,15565c1,162207a,555f2f1,a70cf0b-dirty,7914caa,emed-update-client,avidaltorr,welcomed-chigger,637,

@@ -1,0 +1,12 @@
+{
+  "_test": {
+    "timeout_s": 600,
+    "endpoint": false,
+    "setup": "touch -d '1 hour ago' ~/pw/.pw-cli-update-0000000000",
+    "leftover_commands": {
+      "stale_downloads": "ls ~/pw/.pw-cli-update-* 2>/dev/null | wc -l",
+      "missing_keep_link": "[ -e ~/pw/.pw.keep.$(stat -c %i ~/pw/pw) ] && echo 0 || echo 1"
+    }
+  },
+  "resource": "pw://einsteinloginnode"
+}

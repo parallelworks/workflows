@@ -49,6 +49,7 @@ workflows/<name>/thumbnails/ # marketplace thumbnails (one per registered varian
 workflows/<name>/tests/<variant>/  # end-to-end tests: <test>.json form inputs + <test>.csv results
 workflows/script_submitter/v3.6/  # shared subworkflow: SLURM/PBS/SSH script submission
 workflows/wait_for_endpoint/      # shared subworkflow: wait for an endpoint, probe its URL, release the submitter
+workflows/update_pw_cli/          # shared subworkflow of the emed variants: upgrade ~/pw/pw on the login node (yamls/emed.yaml)
 workflows/doe/, workflows/dakota/, workflows/openfoam-naca/, workflows/design-explorer/
                              # building blocks: a sampler, an optimizer step, a case runner, a study
                              # page; composed by doe-openfoam and dakota-openfoam, which have no code
@@ -100,9 +101,10 @@ installs into a shared directory on the login node (`service_parent_install_dir`
 visible from the compute nodes), and the script that does the work is handed to the
 `script_submitter` subworkflow, which runs it on the login node (`scheduler: false`) or
 submits it to SLURM/PBS (`scheduler: true`). **Call subworkflows; compose, never
-copy.** `script_submitter`, `wait_for_endpoint`, `doe`, `dakota`, `openfoam-naca` and
-`design-explorer` exist to be called; never hand-write job submission, port allocation
-or tunnel logic; write a new workflow so it can be called in turn.
+copy.** `script_submitter`, `wait_for_endpoint`, `update_pw_cli`, `doe`, `dakota`,
+`openfoam-naca` and `design-explorer` exist to be called; never hand-write job
+submission, port allocation or tunnel logic; write a new workflow so it can be called
+in turn.
 
 | Shape | The run ends when | After preprocessing | Examples | Read |
 |---|---|---|---|---|
@@ -192,6 +194,8 @@ the same invariants:
 - It runs only on the login node and submits no scheduler job, so it keeps a **single
   `general.yaml`**: nothing differs between platforms, and a caller on any platform
   calls that one file. A site difference a hostname can decide is runtime logic inside it.
+  The one exception is a step that exists for a single platform and is named after it:
+  `update_pw_cli/yamls/emed.yaml`.
 - A composed workflow **calls, never copies**: `uses: github/parallelworks/workflows@canary`
   with `$yaml: workflows/<name>/yamls/general.yaml` and the callee's form as its `with:`
   block (nested groups as nested maps). Calls nest at most five deep.
@@ -281,6 +285,10 @@ To convert an older session-tunnel workflow to the endpoint shape, follow
   paths. Support both SLURM and PBS (`scheduler: true` submits; `false` runs on the
   login node). Copy the `cluster` form and the submitter's `with:` block from the same
   variant of a sibling workflow; `--dry-run` does not catch a mismatch.
+- **An `emed` variant upgrades the CLI first**: its preprocessing job starts with a
+  call to `workflows/update_pw_cli/yamls/emed.yaml` (`ignore-errors: true`, the
+  resource as its one input), before the checkout. Why `~/pw/pw`, and what replacing
+  a binary on a home shared over NFS takes: `workflows/update_pw_cli/README.md`.
 - **Code that several variants share is written once**, so a change lands once and
   the variants differ only where the platform does. A step body only this workflow
   runs lives in a script under `app/`, called from a one-line step with its inputs as

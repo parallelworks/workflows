@@ -1,0 +1,10 @@
+Run usable-ewe: error (3m23s)
+
+Failed jobs/steps:
+
+  preprocessing > Create Inputs (error, 0s)
+    2026-11-24T15:58:49Z [ERROR] Error copying step summary from remote error="context deadline exceeded" svc=workflow-executor
+    2026-11-24T15:58:49Z [WARNING] Could not look up the host keys recorded for the step target error="Error sending request: Get \"https://cluster.einsteinmed.edu/api/ssh/host-keys?resource=pw%3A%2F%2Favidaltorr%2Feinsteindefault\": context deadline exceeded" resource=pw://avidaltorr/einsteindefault svc=workflow-executor
+    2026-11-24T15:58:49Z [ERROR] Error copying the outputs of an attempt that did not succeed from remote error="error re-establishing ssh connection for output retrieval: ssh connection established but failed to run test command on remote host (likely an issue with the cluster itself): test command did not finish before the connection attempt ran out of time: context deadline exceeded" svc=workflow-executor
+
+Summary: 1 job(s) failed, 1 step(s) failed
